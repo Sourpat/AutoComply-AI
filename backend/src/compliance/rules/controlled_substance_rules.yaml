@@ -1,6 +1,97 @@
-# Placeholder ruleset for controlled substance license validation.
-rules:
-  - id: cs-001
-    description: Verify DEA registration is active.
-  - id: cs-002
-    description: Confirm state license expiration date is in the future.
+# =====================================================
+#  AutoComply AI – Controlled Substance Compliance Rules
+#  Editable, data-driven logic (no code updates needed)
+# =====================================================
+
+practice_types:
+  EMS:
+    form: "EMS Information Form"
+
+  HospitalPharmacy:
+    form: "Hospital Pharmacy Controlled Substance Form"
+
+  Researcher:
+    form: "Researcher Controlled Substance Form"
+
+  SurgeryCentre:
+    form: "Surgery Centre Controlled Substance Form"
+
+  FloridaPractitioner:
+    form: "Florida Practitioner Controlled Substance Form"
+
+  Standard:
+    form: "Standard Practitioner Controlled Substance Form"
+
+# -----------------------------------------------------
+# DEA License Rules
+# These match the Henry Schein TCX/expiry logic table
+# -----------------------------------------------------
+dea_license_rules:
+  - scenario: "Blank DEA (customer never made designation)"
+    check_expiry: false
+    drug_classes_trigger: ["Rx", "2", "2N", "3", "3N", "4", "5"]
+    checkout_prompt: true
+
+  - scenario: "Blank DEA + non-controlled item"
+    check_expiry: false
+    drug_classes_trigger: []
+    checkout_prompt: false
+
+  - scenario: "TCX expired"
+    expired: true
+    checkout_prompt: true
+
+  - scenario: "TCX nearing expiration"
+    near_expiry: true
+    checkout_prompt: true
+
+  - scenario: "TCX blank or 0"
+    check_expiry: true
+    checkout_prompt: true
+
+# -----------------------------------------------------
+# Purchase Intent → Addendum Threshold Rules
+# Based on HS flows (Testosterone / Weight Loss)
+# -----------------------------------------------------
+purchase_intent_rules:
+  Testosterone:
+    thresholds:
+      vial_quantity:
+        limit: 10
+        addendum_required: true
+        addendum: "Testosterone Addendum"
+
+  WeightLoss:
+    thresholds:
+      unit_quantity:
+        limit: 3000
+        addendum_required: true
+        addendum: "Weight Loss Addendum"
+
+  Research:
+    thresholds: {}
+
+  GeneralMedicalUse:
+    thresholds: {}
+
+# -----------------------------------------------------
+# State-Specific Rules
+# Florida case extracted from HS controlled substance flows
+# -----------------------------------------------------
+state_specific:
+  Florida:
+    requires_state_addendum: true
+    required_forms:
+      - "Florida Practitioner Controlled Substance Form"
+
+# -----------------------------------------------------
+# Checkout Gating Logic
+# If cart has CS items → controlled substance form may be required
+# -----------------------------------------------------
+checkout_logic:
+  cart_contains_cs:
+    if_yes:
+      show_modal: true
+      allow_skip: false
+    if_no:
+      show_modal: false
