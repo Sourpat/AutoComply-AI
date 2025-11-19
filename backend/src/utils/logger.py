@@ -1,18 +1,29 @@
-"""Shared logging configuration placeholder."""
-
 import logging
+import sys
+from pythonjsonlogger import jsonlogger
 
-LOGGER_NAME = "autocomply"
 
+def get_logger(name: str = "autocomply") -> logging.Logger:
+    """
+    Centralized structured logger for AutoComply AI.
+    - JSON logs for clean observability
+    - Works with LangChain / LangGraph tracing later
+    - Zero-op for production environments
+    """
 
-def get_logger() -> logging.Logger:
-    """Return a configured logger instance."""
+    logger = logging.getLogger(name)
 
-    logger = logging.getLogger(LOGGER_NAME)
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
+    if logger.handlers:
+        return logger  # avoid duplicate handlers
+
     logger.setLevel(logging.INFO)
+
+    handler = logging.StreamHandler(sys.stdout)
+    formatter = jsonlogger.JsonFormatter(
+        "%(asctime)s %(levelname)s %(name)s %(message)s"
+    )
+    handler.setFormatter(formatter)
+
+    logger.addHandler(handler)
+    logger.propagate = False
     return logger
