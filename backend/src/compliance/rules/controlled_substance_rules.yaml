@@ -1,0 +1,6 @@
+# Placeholder ruleset for controlled substance license validation.
+rules:
+  - id: cs-001
+    description: Verify DEA registration is active.
+  - id: cs-002
+    description: Confirm state license expiration date is in the future.
