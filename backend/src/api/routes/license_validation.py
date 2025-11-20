@@ -51,7 +51,7 @@ async def validate_license(payload: LicenseValidationRequest) -> dict:
     return response
 
 
-@router.post("/license/validate-pdf")
+@router.post("/validate-pdf")
 async def validate_license_pdf(file: UploadFile = File(...)):
     """
     Stub endpoint for PDF-based license validation.
