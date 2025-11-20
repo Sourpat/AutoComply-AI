@@ -1,5 +1,40 @@
 {
-  "name": "slack_alerts",
-  "nodes": [],
-  "connections": {}
+  "name": "AutoComply - Slack Alerts Webhook",
+  "active": false,
+  "nodes": [
+    {
+      "id": "1",
+      "name": "Incoming Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [300, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "autocomply/slack-alert",
+        "responseMode": "onReceived",
+        "responseData": "default",
+        "options": {}
+      }
+    },
+    {
+      "id": "2",
+      "name": "Slack - Post Message",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [650, 300],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": "#license-alerts",
+        "text": "={{$json[\"text\"] || (`License ${$json[\"license_id\"]} → ${$json[\"status\"]}`)}}"
+      }
+    }
+  ],
+  "connections": {
+    "Incoming Webhook": {
+      "main": [
+        [{ "node": "Slack - Post Message", "type": "main", "index": 0 }]
+      ]
+    }
+  }
 }

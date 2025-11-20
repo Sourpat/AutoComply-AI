@@ -1,5 +1,82 @@
 {
-  "name": "email_intake",
-  "nodes": [],
-  "connections": {}
+  "name": "AutoComply - License Email Intake",
+  "active": false,
+  "nodes": [
+    {
+      "id": "1",
+      "name": "IMAP Email",
+      "type": "n8n-nodes-base.imapEmail",
+      "typeVersion": 1,
+      "position": [300, 300],
+      "parameters": {
+        "mailbox": "INBOX",
+        "downloadAttachments": true,
+        "additionalFields": {
+          "fromEmail": "contains:@customer-domain.com",
+          "subject": "contains:license renewal"
+        }
+      }
+    },
+    {
+      "id": "2",
+      "name": "HTTP - Validate PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [600, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/api/v1/license/validate-pdf",
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersJson": "={ \"filename\": $json[\"attachment\"][0][\"fileName\"], \"file_url\": $json[\"attachment\"][0][\"fileId\"] }"
+      }
+    },
+    {
+      "id": "3",
+      "name": "Slack Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": "#license-alerts",
+        "text": "={{`License check result for ` + $json[\"license_id\"] + `: ` + $json[\"verdict\"][\"status\"]}}"
+      }
+    },
+    {
+      "id": "4",
+      "name": "Airtable Upsert",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [900, 500],
+      "parameters": {
+        "operation": "upsert",
+        "application": "YOUR_BASE_ID",
+        "table": "Licenses",
+        "updateKey": "license_id",
+        "options": {},
+        "fields": {
+          "license_id": "={{$json[\"license_id\"]}}",
+          "practitioner": "={{$json[\"practitioner_name\"]}}",
+          "state": "={{$json[\"state\"]}}",
+          "expiry": "={{$json[\"expiry\"]}}",
+          "status": "={{$json[\"verdict\"][\"status\"]}}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "HTTP - Validate PDF": {
+      "main": [
+        [{ "node": "Slack Alert", "type": "main", "index": 0 },
+         { "node": "Airtable Upsert", "type": "main", "index": 0 }]
+      ]
+    },
+    "IMAP Email": {
+      "main": [
+        [{ "node": "HTTP - Validate PDF", "type": "main", "index": 0 }]
+      ]
+    }
+  }
 }
