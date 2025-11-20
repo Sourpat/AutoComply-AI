@@ -1,7 +1,7 @@
 name: CD Pipeline
 
 on:
-  # Manual trigger only, and right now this is just a placeholder
+  # Manual trigger only; CD is disabled for now.
   workflow_dispatch:
 
 jobs:
