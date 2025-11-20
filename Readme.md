@@ -61,3 +61,15 @@ n8n: http://localhost:5678
 
 Make sure your project root has a .env file based on .env.example
 with valid values for AUTOCOMPLY_OPENAI_KEY and AUTOCOMPLY_GEMINI_KEY.
+
+### 🔌 API Overview
+
+The main backend endpoints are documented in:
+
+- [`docs/api_endpoints.md`](docs/api_endpoints.md)
+
+These cover:
+
+- JSON license validation (used by the React frontend)
+- PDF license validation (used by n8n and future uploads)
+- Optional event publishing to n8n for Slack alerts
