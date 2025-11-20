@@ -6,6 +6,7 @@ from fastapi import APIRouter, File, UploadFile
 from src.api.models.compliance_models import LicenseValidationRequest, LicenseValidationResponse
 from src.compliance.decision_engine import ComplianceEngine
 from src.utils.events import get_event_publisher
+from src.ocr.extract import extract_license_fields_from_pdf
 
 router = APIRouter(prefix="/licenses", tags=["licenses"])
 
@@ -54,15 +55,14 @@ async def validate_license(payload: LicenseValidationRequest) -> dict:
 @router.post("/validate-pdf")
 async def validate_license_pdf(file: UploadFile = File(...)):
     """
-    Stub endpoint for PDF-based license validation.
+    Endpoint for PDF-based license validation.
 
     Contract:
     - Accepts a single PDF file upload.
+    - Uses the OCR layer to extract license-like fields.
     - Returns a structured response compatible with the JSON validation endpoint.
-    - Internals can later be replaced with real OCR + RAG pipeline.
     """
 
-    # Read file bytes (for future OCR use)
     pdf_bytes = await file.read()
     if not pdf_bytes:
         return {
@@ -73,13 +73,24 @@ async def validate_license_pdf(file: UploadFile = File(...)):
             },
         }
 
-    # TODO: integrate real OCR + extraction using src.ocr.preprocess / src.ocr.extract
-    # For now, return a deterministic, fake-but-structured verdict for demos/tests.
+    extracted = extract_license_fields_from_pdf(pdf_bytes)
+
+    if not extracted:
+        return {
+            "success": False,
+            "verdict": {
+                "allow_checkout": False,
+                "reason": "Unable to extract license details from PDF.",
+            },
+        }
+
     dummy_verdict = {
-        "license_id": "DUMMY-PDF-LICENSE",
-        "state": "CA",
+        "license_id": extracted.get("license_id"),
+        "state": extracted.get("state"),
         "allow_checkout": True,
         "reason": "Stubbed PDF validation – replace with real OCR + compliance engine.",
+        "practitioner_name": extracted.get("practitioner_name"),
+        "expiry": extracted.get("expiry"),
     }
 
     response = {
@@ -87,6 +98,4 @@ async def validate_license_pdf(file: UploadFile = File(...)):
         "verdict": dummy_verdict,
     }
 
-    # Note: we are not emitting n8n events here yet; that can be added
-    # once the OCR pipeline is fully wired and stable.
     return response
