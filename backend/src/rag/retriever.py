@@ -1,8 +1,12 @@
-from typing import List, Dict, Any
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+
 import numpy as np
 
-from src.rag.loader import DocumentLoader
 from src.rag.embedder import Embedder
+from src.rag.knowledge_base import RegulationSnippet, get_snippets_for_jurisdiction
+from src.rag.loader import DocumentLoader
 
 
 class Retriever:
@@ -74,3 +78,37 @@ class Retriever:
         ]
 
         return results
+
+
+class RegulationRetriever:
+    """
+    Minimal, in-memory 'retriever' for regulatory snippets.
+
+    This is NOT a full vector / embedding-based retriever yet.
+    It exists to:
+      - Demonstrate how regulatory context would be fetched.
+      - Provide something concrete to attach to decisions and tests.
+    """
+
+    def get_context_for_state(
+        self,
+        state_code: str,
+        topic: Optional[str] = None,
+    ) -> List[RegulationSnippet]:
+        """
+        For now, we treat state-specific rules as 'US-<STATE>' jurisdiction.
+
+        Example:
+          state_code='CA' → jurisdiction='US-CA'
+        """
+        jurisdiction = f"US-{state_code.upper()}"
+        return get_snippets_for_jurisdiction(jurisdiction=jurisdiction, topic=topic)
+
+    def get_dea_baseline_context(
+        self,
+        topic: Optional[str] = None,
+    ) -> List[RegulationSnippet]:
+        """
+        Fetch baseline DEA-level context (e.g. Schedule II–V rules).
+        """
+        return get_snippets_for_jurisdiction(jurisdiction="US-DEA", topic=topic)
