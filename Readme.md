@@ -30,3 +30,22 @@ docker run -p 8000:8000 --env-file ../.env autocomply-backend
 
 The API will be available at http://localhost:8000.
 Make sure .env contains your AUTOCOMPLY_OPENAI_KEY and AUTOCOMPLY_GEMINI_KEY.
+
+### 🧪 Local full stack with Docker Compose
+
+To run the backend, frontend, and n8n together:
+
+```bash
+docker compose up --build
+```
+
+Services:
+
+Backend: http://localhost:8000
+
+Frontend: http://localhost:4173
+
+n8n: http://localhost:5678
+
+Make sure your project root has a .env file based on .env.example
+with valid values for AUTOCOMPLY_OPENAI_KEY and AUTOCOMPLY_GEMINI_KEY.
