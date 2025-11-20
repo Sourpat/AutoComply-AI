@@ -73,3 +73,10 @@ These cover:
 - JSON license validation (used by the React frontend)
 - PDF license validation (used by n8n and future uploads)
 - Optional event publishing to n8n for Slack alerts
+
+### 🎥 Demo Script
+
+For a step-by-step 5–8 minute walkthrough of the project (manual JSON
+validation, PDF validation, and regulatory context), see:
+
+- [`docs/demo_script_autocomply.md`](docs/demo_script_autocomply.md)
