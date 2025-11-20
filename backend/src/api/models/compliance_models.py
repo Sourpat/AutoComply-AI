@@ -69,6 +69,7 @@ class ComplianceVerdict(BaseModel):
     allow_checkout: bool
     sources: Optional[List[str]] = None  # from RAG
     metadata: Optional[dict] = None      # optional debugging info
+    regulatory_context: Optional[List[dict]] = None
 
 
 # ----------------------------

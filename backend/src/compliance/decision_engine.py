@@ -132,6 +132,7 @@ class ComplianceEngine:
         reason = result.get("reason")
         sources = result.get("sources", [])
         metadata = result.get("metadata", {})
+        regulatory_context = result.get("regulatory_context")
 
         addendum_obj = None
         if addendum:
@@ -148,5 +149,6 @@ class ComplianceEngine:
             addendum=addendum_obj,
             allow_checkout=allow_checkout,
             sources=sources,
-            metadata=metadata
+            metadata=metadata,
+            regulatory_context=regulatory_context,
         )
