@@ -18,6 +18,18 @@ Secrets required:
 
 Refer to the .env.example for local development and override in production environment.
 
+### ✅ Backend tests
+
+To run the backend tests locally:
+
+```bash
+cd backend
+python -m pytest
+```
+
+The CI pipeline runs these tests on every pull request to protect the
+core API (e.g., the JSON license validation endpoint).
+
 ### 🐳 Run backend with Docker (local)
 
 From the project root:
