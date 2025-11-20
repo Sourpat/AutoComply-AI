@@ -14,6 +14,11 @@ export default function ComplianceCard({ data }) {
 
   return (
     <div className="mt-6 p-6 rounded-xl bg-white border border-gray-300 shadow">
+      {verdict.addendum?.required && (
+        <div className="mb-4 rounded-lg bg-yellow-50 border border-yellow-200 px-4 py-2 text-sm text-yellow-800">
+          ⚠ Addendum required: {verdict.addendum.addendum_type} — {verdict.addendum.reason}
+        </div>
+      )}
       <h2 className="text-xl font-semibold text-gray-800 mb-4">
         Compliance Verdict
       </h2>
@@ -66,6 +71,26 @@ export default function ComplianceCard({ data }) {
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6">
+        {verdict.allow_checkout ? (
+          <button className="w-full px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold">
+            Proceed to Checkout
+          </button>
+        ) : (
+          <div className="space-y-2">
+            <button
+              className="w-full px-4 py-2 rounded-lg bg-gray-300 text-gray-600 cursor-not-allowed font-semibold"
+              disabled
+            >
+              Checkout Blocked
+            </button>
+            <p className="text-sm text-gray-700">
+              Please contact compliance{verdict.form_required ? ` — Required form: ${verdict.form_required}` : ""}
+            </p>
           </div>
         )}
       </div>

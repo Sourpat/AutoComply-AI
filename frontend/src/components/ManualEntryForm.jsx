@@ -14,20 +14,45 @@ export default function ManualEntryForm({ onResult }) {
     practice_type: "Standard",
     ship_to_state: "",
     purchase_intent: "",
-    quantity: ""
+    quantity: "",
+    controlled_substance_form_uploaded: false,
+    addendum_reference: ""
   });
   const [errors, setErrors] = useState({});
+  const [showAttestationModal, setShowAttestationModal] = useState(false);
+  const [attestationConfirmed, setAttestationConfirmed] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
     setErrors({ ...errors, [name]: "" });
+    setAttestationConfirmed(false);
   };
 
   const validate = () => {
     const newErrors = {};
-    if (!formData.license_type) newErrors.license_type = "License type is required.";
-    if (!formData.practitioner_name) newErrors.practitioner_name = "Name is required.";
+    if (!formData.account_number) newErrors.account_number = "Account number is required.";
+    if (!formData.license_type) {
+      newErrors.license_type =
+        "License type must indicate Practitioner, Hospital, EMS, Researcher, SurgeryCentre, FloridaPractitioner.";
+    } else {
+      const allowedLicenseTypes = [
+        "Practitioner",
+        "Hospital",
+        "EMS",
+        "Researcher",
+        "SurgeryCentre",
+        "FloridaPractitioner"
+      ];
+      const matchesAllowed = allowedLicenseTypes.some((type) =>
+        formData.license_type.toLowerCase().includes(type.toLowerCase())
+      );
+      if (!matchesAllowed) {
+        newErrors.license_type =
+          "License type must indicate Practitioner, Hospital, EMS, Researcher, SurgeryCentre, FloridaPractitioner.";
+      }
+    }
+    if (!formData.practitioner_name) newErrors.practitioner_name = "Practitioner name is required.";
     if (formData.dea_number && !/^[A-Z]{2}[0-9]{7}$/.test(formData.dea_number)) {
       newErrors.dea_number = "DEA number must be format AA1234567.";
     }
@@ -41,22 +66,50 @@ export default function ManualEntryForm({ onResult }) {
     if (!formData.state_permit) newErrors.state_permit = "State permit is required.";
     if (!formData.state_expiry) newErrors.state_expiry = "State expiry date is required.";
     if (!formData.purchase_intent) newErrors.purchase_intent = "Purchase intent is required.";
-    if (formData.purchase_intent === "Testosterone" && (!formData.quantity || Number(formData.quantity) < 10)) {
-      newErrors.quantity = "Quantity must be at least 10 for Testosterone.";
+    if (
+      formData.purchase_intent === "Testosterone" &&
+      (!formData.quantity || Number(formData.quantity) < 10)
+    ) {
+      newErrors.quantity = "Quantity must be at least 10 for Testosterone per controlled substance rule.";
     }
-    if (formData.purchase_intent === "WeightLoss" && (!formData.quantity || Number(formData.quantity) < 3000)) {
-      newErrors.quantity = "Quantity must be at least 3000 for Weight Loss.";
+    if (
+      formData.purchase_intent === "WeightLoss" &&
+      (!formData.quantity || Number(formData.quantity) < 3000)
+    ) {
+      newErrors.quantity = "Quantity must be at least 3000 for Weight Loss per controlled substance rule.";
+    }
+
+    if (["Testosterone", "WeightLoss"].includes(formData.purchase_intent)) {
+      if (!formData.controlled_substance_form_uploaded && !formData.addendum_reference) {
+        newErrors.controlled_substance_form_uploaded =
+          "Controlled substance form upload or addendum reference is required for restricted products.";
+      }
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validate()) return;
+  const isControlledSubstanceScenario = () => {
+    const quantityValue = Number(formData.quantity);
+    const restrictedTypes = ["Testosterone", "WeightLoss"];
+    const isRestrictedLicense = restrictedTypes.some((type) =>
+      formData.license_type.toLowerCase().includes(type.toLowerCase())
+    );
 
+    return (
+      restrictedTypes.includes(formData.purchase_intent) ||
+      (formData.purchase_intent === "Testosterone" && quantityValue >= 10) ||
+      (formData.purchase_intent === "WeightLoss" && quantityValue >= 3000) ||
+      isRestrictedLicense
+    );
+  };
+
+  const submitPayload = async () => {
     const payload = {
       practice_type: formData.practice_type,
+      practitioner_name: formData.practitioner_name,
+      account_number: formData.account_number,
+      license_type: formData.license_type,
       dea_number: formData.dea_number || undefined,
       dea_expiry: formData.dea_expiry || undefined,
       state: formData.state,
@@ -64,11 +117,25 @@ export default function ManualEntryForm({ onResult }) {
       state_expiry: formData.state_expiry,
       ship_to_state: formData.ship_to_state || undefined,
       purchase_intent: formData.purchase_intent,
-      quantity: formData.quantity ? Number(formData.quantity) : undefined
+      quantity: formData.quantity ? Number(formData.quantity) : undefined,
+      controlled_substance_form_uploaded: formData.controlled_substance_form_uploaded,
+      addendum_reference: formData.addendum_reference || undefined
     };
 
     const res = await validateLicenseJSON(payload);
     onResult(res);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validate()) return;
+
+    if (isControlledSubstanceScenario() && !attestationConfirmed) {
+      setShowAttestationModal(true);
+      return;
+    }
+
+    await submitPayload();
   };
 
   return (
@@ -259,12 +326,84 @@ export default function ManualEntryForm({ onResult }) {
         )}
       </div>
 
+      {/* Controlled Substance Form Uploaded */}
+      <div className="flex items-center space-x-2">
+        <input
+          type="checkbox"
+          name="controlled_substance_form_uploaded"
+          checked={formData.controlled_substance_form_uploaded}
+          onChange={(e) =>
+            {
+              setFormData({
+                ...formData,
+                controlled_substance_form_uploaded: e.target.checked
+              });
+              setErrors({ ...errors, controlled_substance_form_uploaded: "" });
+              setAttestationConfirmed(false);
+            }
+          }
+          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+        />
+        <label className="font-medium text-gray-700">Controlled substance form uploaded</label>
+      </div>
+      {errors.controlled_substance_form_uploaded && (
+        <p className="text-red-600 mt-1">{errors.controlled_substance_form_uploaded}</p>
+      )}
+
+      {/* Addendum Reference */}
+      <div>
+        <label className="block font-medium text-gray-700">Addendum Reference</label>
+        <input
+          type="text"
+          name="addendum_reference"
+          value={formData.addendum_reference}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm"
+          placeholder="Upload ID or reference number"
+        />
+      </div>
+
       <button
         type="submit"
         className="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
       >
         Run Compliance Check
       </button>
+
+      {showAttestationModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Controlled Substance Attestation</h3>
+            <p className="text-gray-700 mb-6">
+              By clicking I confirm that this controlled substance purchase is compliant with all applicable laws,
+              regulations, and organizational policies.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700"
+                onClick={() => {
+                  setShowAttestationModal(false);
+                  setAttestationConfirmed(false);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={async () => {
+                  setAttestationConfirmed(true);
+                  setShowAttestationModal(false);
+                  await submitPayload();
+                }}
+              >
+                Confirm & Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }
