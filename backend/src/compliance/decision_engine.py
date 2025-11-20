@@ -1,9 +1,9 @@
 from datetime import date
+from datetime import date
 from pathlib import Path
 from typing import Literal, Optional
 
 import yaml
-
 from pydantic import BaseModel
 
 from src.api.models.compliance_models import (
@@ -12,10 +12,69 @@ from src.api.models.compliance_models import (
     AddendumRequirement,
     OCRExtractedData,
 )
-from src.compliance.license_validator import LicenseValidator
 
 
 RULES_PATH = Path(__file__).parent / "rules" / "controlled_substance_rules.yaml"
+
+
+class ExpiryEvaluation(BaseModel):
+    """
+    Simple, reusable result model for date-based license expiry logic.
+
+    This is intentionally small and composable so it can be used both
+    by the license validator and by reporting / reminders.
+    """
+
+    is_expired: bool
+    days_to_expiry: Optional[int]
+    bucket: Literal["expired", "near_expiry", "active"]
+
+
+def evaluate_expiry(
+    expiry_date: date,
+    today: Optional[date] = None,
+    near_expiry_window_days: int = 30,
+) -> ExpiryEvaluation:
+    """
+    Evaluate a single expiry date into a normalized status.
+
+    Rules:
+    - If expiry_date is in the past:      bucket = "expired"
+    - If expiry_date is within N days:    bucket = "near_expiry"
+    - Otherwise:                          bucket = "active"
+
+    Args:
+        expiry_date: The license expiration date.
+        today:       Date used as "now" (defaults to date.today()).
+        near_expiry_window_days: Threshold for the "near_expiry" bucket.
+
+    Returns:
+        ExpiryEvaluation with flags and bucket.
+    """
+    if today is None:
+        today = date.today()
+
+    delta_days = (expiry_date - today).days
+    is_expired = delta_days < 0
+
+    if is_expired:
+        bucket: Literal["expired", "near_expiry", "active"] = "expired"
+        days_to_expiry: Optional[int] = None
+    elif delta_days <= near_expiry_window_days:
+        bucket = "near_expiry"
+        days_to_expiry = delta_days
+    else:
+        bucket = "active"
+        days_to_expiry = delta_days
+
+    return ExpiryEvaluation(
+        is_expired=is_expired,
+        days_to_expiry=days_to_expiry,
+        bucket=bucket,
+    )
+
+
+from src.compliance.license_validator import LicenseValidator
 
 
 class ComplianceEngine:
@@ -91,60 +150,3 @@ class ComplianceEngine:
             sources=sources,
             metadata=metadata
         )
-
-
-class ExpiryEvaluation(BaseModel):
-    """
-    Simple, reusable result model for date-based license expiry logic.
-
-    This is intentionally small and composable so it can be used both
-    by the license validator and by reporting / reminders.
-    """
-
-    is_expired: bool
-    days_to_expiry: Optional[int]
-    bucket: Literal["expired", "near_expiry", "active"]
-
-
-def evaluate_expiry(
-    expiry_date: date,
-    today: Optional[date] = None,
-    near_expiry_window_days: int = 30,
-) -> ExpiryEvaluation:
-    """
-    Evaluate a single expiry date into a normalized status.
-
-    Rules:
-    - If expiry_date is in the past:      bucket = "expired"
-    - If expiry_date is within N days:    bucket = "near_expiry"
-    - Otherwise:                          bucket = "active"
-
-    Args:
-        expiry_date: The license expiration date.
-        today:       Date used as "now" (defaults to date.today()).
-        near_expiry_window_days: Threshold for the "near_expiry" bucket.
-
-    Returns:
-        ExpiryEvaluation with flags and bucket.
-    """
-    if today is None:
-        today = date.today()
-
-    delta_days = (expiry_date - today).days
-    is_expired = delta_days < 0
-
-    if is_expired:
-        bucket: Literal["expired", "near_expiry", "active"] = "expired"
-        days_to_expiry: Optional[int] = None
-    elif delta_days <= near_expiry_window_days:
-        bucket = "near_expiry"
-        days_to_expiry = delta_days
-    else:
-        bucket = "active"
-        days_to_expiry = delta_days
-
-    return ExpiryEvaluation(
-        is_expired=is_expired,
-        days_to_expiry=days_to_expiry,
-        bucket=bucket,
-    )
