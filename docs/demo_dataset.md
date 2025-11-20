@@ -19,9 +19,9 @@ Includes a set of 5 synthetic practitioner licenses + state permits + checkout s
 3. Checkout button is disabled unless addendum is uploaded (future step).  
 4. In Hospital scenario, state is FL, practice type HospitalPharmacy, weight-loss tweak triggers alert.  
 5. Researcher scenario passes with minimal fields.  
-6. EMS scenario fails quantity threshold.  
+6. EMS scenario fails quantity threshold.
 
 ## Next Steps  
 - Create JSON export of the dataset in `docs/demo_records.json` to import into tests.  
 - Create GitHub Actions workflow to run UI snapshot and API contract tests.  
-- Record a 30-second GIF via “Screenshot” of workflow and attach to README.  
+- Record a 30-second GIF via “Screenshot” of workflow and attach to README.
