@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ./backend
+    container_name: autocomply-backend
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    container_name: autocomply-frontend
+    environment:
+      - VITE_API_BASE=http://backend:8000
+    ports:
+      - "4173:4173"
+    depends_on:
+      - backend
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: autocomply-n8n
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    restart: unless-stopped
+
+volumes:
+  n8n_data:
