@@ -3,6 +3,7 @@ from datetime import datetime, date
 
 from src.api.models.compliance_models import LicenseValidationRequest
 from src.compliance.decision_engine import evaluate_expiry
+from src.rag.retriever import RegulationRetriever
 
 
 class LicenseValidator:
@@ -149,6 +150,36 @@ class LicenseValidator:
                             "reason",
                             (base_reason + " License is expired.").strip(),
                         )
+
+        # --- Attach optional regulatory context (RAG stub) ---
+        # We assume the request model has a `state` field such as "CA".
+        state_code = getattr(payload, "state", None)
+
+        regulatory_context = []
+        if state_code:
+            retriever = RegulationRetriever()
+            state_snippets = retriever.get_context_for_state(state_code=state_code)
+            dea_snippets = retriever.get_dea_baseline_context()
+
+            # Combine and map dataclasses → plain dicts for JSON friendliness
+            combined = list(state_snippets) + list(dea_snippets)
+            regulatory_context = [
+                {
+                    "id": s.id,
+                    "jurisdiction": s.jurisdiction,
+                    "topic": s.topic,
+                    "text": s.text,
+                    "source": s.source,
+                }
+                for s in combined
+            ]
+
+        if isinstance(result, dict):
+            result["regulatory_context"] = regulatory_context
+        else:
+            # Pydantic-style model – set attribute if it exists
+            if hasattr(result, "regulatory_context"):
+                setattr(result, "regulatory_context", regulatory_context)
 
         # ----------------------------------------
         # 4. Checkout gating

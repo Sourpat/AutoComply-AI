@@ -34,3 +34,26 @@ Endpoint used by the React frontend for manual form entry.
   "quantity": 10
 }
 ```
+
+### Response (example)
+
+```json
+{
+  "success": true,
+  "verdict": {
+    "license_id": "CA-12345",
+    "state": "CA",
+    "allow_checkout": true,
+    "reason": "License active and valid for this purchase intent.",
+    "regulatory_context": [
+      {
+        "id": "dea-sched-ii-us",
+        "jurisdiction": "US-DEA",
+        "topic": "Schedule II",
+        "text": "Practitioner must hold a valid DEA registration with authority for Schedule II substances.",
+        "source": "DEA – Controlled Substances Act (summary)"
+      }
+    ]
+  }
+}
+```
