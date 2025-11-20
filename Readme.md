@@ -17,3 +17,16 @@ Secrets required:
 - SSH_PRIVATE_KEY
 
 Refer to the .env.example for local development and override in production environment.
+
+### 🐳 Run backend with Docker (local)
+
+From the project root:
+
+```bash
+cd backend
+docker build -t autocomply-backend .
+docker run -p 8000:8000 --env-file ../.env autocomply-backend
+```
+
+The API will be available at http://localhost:8000.
+Make sure .env contains your AUTOCOMPLY_OPENAI_KEY and AUTOCOMPLY_GEMINI_KEY.
