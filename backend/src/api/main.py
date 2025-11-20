@@ -2,7 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import get_settings
-from src.api.routes.license_validation import router as license_router
+from src.api.routes.license_validation import (
+    router as license_router,
+    singular_router as license_singular_router,
+)
 
 
 def create_app() -> FastAPI:
@@ -29,6 +32,7 @@ def create_app() -> FastAPI:
 
     # ---- ROUTES ----
     app.include_router(license_router, prefix="/api/v1", tags=["Compliance"])
+    app.include_router(license_singular_router, prefix="/api/v1", tags=["Compliance"])
 
     # ---- HEALTH CHECK ----
     @app.get("/health")

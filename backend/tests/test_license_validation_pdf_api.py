@@ -18,7 +18,7 @@ def test_validate_license_pdf_stub_endpoint():
         "file": ("dummy.pdf", fake_pdf_bytes, "application/pdf"),
     }
 
-    response = client.post("/api/v1/licenses/validate-pdf", files=files)
+    response = client.post("/api/v1/license/validate-pdf", files=files)
 
     assert response.status_code == 200
 
