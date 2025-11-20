@@ -1,7 +1,8 @@
 """REST endpoints for license validation flows."""
 import asyncio
+from typing import Optional
 
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, Request
 
 from src.api.models.compliance_models import LicenseValidationRequest, LicenseValidationResponse
 from src.compliance.decision_engine import ComplianceEngine
@@ -9,6 +10,7 @@ from src.utils.events import get_event_publisher
 from src.ocr.extract import extract_license_fields_from_pdf
 
 router = APIRouter(prefix="/licenses", tags=["licenses"])
+singular_router = APIRouter(prefix="/license", tags=["licenses"])
 
 
 @router.get("/{license_id}")
@@ -53,7 +55,7 @@ async def validate_license(payload: LicenseValidationRequest) -> dict:
 
 
 @router.post("/validate-pdf")
-async def validate_license_pdf(file: UploadFile = File(...)):
+async def validate_license_pdf(request: Request):
     """
     Endpoint for PDF-based license validation.
 
@@ -63,7 +65,44 @@ async def validate_license_pdf(file: UploadFile = File(...)):
     - Returns a structured response compatible with the JSON validation endpoint.
     """
 
-    pdf_bytes = await file.read()
+    pdf_bytes = await _extract_file_bytes(request)
+    return await _build_pdf_validation_response(pdf_bytes)
+
+
+@singular_router.post("/validate-pdf")
+async def validate_license_pdf_singular(request: Request):
+    """Fallback parser for environments without python-multipart installed."""
+
+    pdf_bytes = await _extract_file_bytes(request)
+    return await _build_pdf_validation_response(pdf_bytes)
+
+
+async def _extract_file_bytes(request: Request) -> Optional[bytes]:
+    content_type = request.headers.get("content-type", "")
+    if "boundary=" not in content_type:
+        return None
+
+    boundary = content_type.split("boundary=")[-1]
+    delimiter = f"--{boundary}".encode()
+
+    body = await request.body()
+    parts = [part for part in body.split(delimiter) if part.strip() not in (b"", b"--")]
+
+    for part in parts:
+        cleaned = part.strip()
+        if b"\r\n\r\n" not in cleaned:
+            continue
+
+        headers_raw, content = cleaned.split(b"\r\n\r\n", 1)
+        if b"content-disposition" not in headers_raw.lower():
+            continue
+
+        return content.rstrip(b"\r\n--")
+
+    return None
+
+
+async def _build_pdf_validation_response(pdf_bytes: Optional[bytes]):
     if not pdf_bytes:
         return {
             "success": False,
