@@ -8,8 +8,6 @@ on:
 
 jobs:
   deploy:
-    # Only run deploy if all required secrets are configured.
-    if: ${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' && secrets.SERVER_IP != '' && secrets.SERVER_USER != '' && secrets.SSH_PRIVATE_KEY != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -19,6 +17,7 @@ jobs:
         uses: docker/setup-buildx-action@v2
 
       - name: Log in to Docker Hub
+        if: ${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
@@ -26,11 +25,13 @@ jobs:
           logout: true
 
       - name: Build and push Docker image
+        if: ${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}
         run: |
           docker build -t ${{ secrets.DOCKER_USERNAME }}/autocomply-ai:latest backend/
           docker push ${{ secrets.DOCKER_USERNAME }}/autocomply-ai:latest
 
       - name: Deploy to server
+        if: ${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' && secrets.SERVER_IP != '' && secrets.SERVER_USER != '' && secrets.SSH_PRIVATE_KEY != '' }}
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.SERVER_IP }}
