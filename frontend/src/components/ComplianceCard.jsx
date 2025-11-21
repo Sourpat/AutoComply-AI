@@ -11,6 +11,29 @@ import React, { useState, useEffect } from "react";
  * - regulatory context snippets
  * - attestation requirements
  * - local "proceed to checkout" soft gate based on attestation acknowledgement
+ *
+ * Expects a `data` prop shaped like:
+ * {
+ *   success: boolean,
+ *   verdict: {
+ *     allow_checkout: boolean,
+ *     status: string,
+ *     is_expired?: boolean,
+ *     days_to_expiry?: number,
+ *     state?: string,
+ *     state_permit?: string,
+ *     license_id?: string,
+ *     regulatory_context?: Array<{ source?: string; snippet?: string }>,
+ *     attestations_required?: Array<{
+ *       id: string;
+ *       jurisdiction: string;
+ *       scenario: string;
+ *       text: string;
+ *       must_acknowledge: boolean;
+ *     }>
+ *   },
+ *   extracted_fields?: { [key: string]: string | number | null } // optional OCR summary
+ * }
  */
 const ComplianceCard = ({ data }) => {
   if (!data || !data.verdict) {
