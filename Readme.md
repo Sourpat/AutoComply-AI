@@ -74,6 +74,13 @@ These cover:
 - PDF license validation (used by n8n and future uploads)
 - Optional event publishing to n8n for Slack alerts
 
+### 📡 API Reference
+
+For details on the public backend endpoints (JSON validation and PDF
+validation), see:
+
+- [`docs/api_reference.md`](docs/api_reference.md)
+
 ### 🎥 Demo Script
 
 For a step-by-step 5–8 minute walkthrough of the project (manual JSON
