@@ -1,7 +1,7 @@
 from datetime import date
 from datetime import date
 from pathlib import Path
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 import yaml
 from pydantic import BaseModel
@@ -10,6 +10,7 @@ from src.api.models.compliance_models import (
     LicenseValidationRequest,
     ComplianceVerdict,
     AddendumRequirement,
+    AttestationRequirement,
     OCRExtractedData,
 )
 
@@ -134,6 +135,33 @@ class ComplianceEngine:
         metadata = result.get("metadata", {})
         regulatory_context = result.get("regulatory_context")
 
+        # --- Attestation requirements (extensible) ---
+        attestations_required: List[AttestationRequirement] = []
+
+        # Simple starter rule:
+        # If this looks like a telemedicine scenario for a controlled
+        # substance into California, require a Ryan Haight-style attestation.
+        practice_type = (payload.practice_type or "").strip()
+        purchase_intent = (payload.purchase_intent or "").strip()
+        state = (payload.state or "").strip().upper()
+
+        is_telemedicine = practice_type.lower() == "telemedicine" or "telemed" in purchase_intent.lower()
+
+        if is_telemedicine and state == "CA":
+            attestations_required.append(
+                AttestationRequirement(
+                    id="ryan_haight_telemedicine",
+                    jurisdiction="US-FEDERAL",
+                    scenario="telemedicine_schedule_ii_v_remote_sale",
+                    text=(
+                        "I attest that this telemedicine prescription complies with "
+                        "the Ryan Haight Online Pharmacy Consumer Protection Act and "
+                        "all applicable federal and state telemedicine requirements."
+                    ),
+                    must_acknowledge=True,
+                )
+            )
+
         addendum_obj = None
         if addendum:
             addendum_obj = AddendumRequirement(
@@ -148,6 +176,7 @@ class ComplianceEngine:
             form_required=form_required,
             addendum=addendum_obj,
             allow_checkout=allow_checkout,
+            attestations_required=attestations_required,
             sources=sources,
             metadata=metadata,
             regulatory_context=regulatory_context,
