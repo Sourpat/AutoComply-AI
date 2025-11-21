@@ -133,7 +133,8 @@ async def validate_license_pdf(file: UploadFile = File(...)) -> dict:
         practice_type="Standard",
         state="CA",
         state_permit="AUTO-PDF-PERMIT",
-        state_expiry=default_expiry,
+        # Model expects an ISO 8601 string, not a date object
+        state_expiry=default_expiry.isoformat(),
         purchase_intent="GeneralMedicalUse",
         quantity=1,
     )
