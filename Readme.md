@@ -88,6 +88,13 @@ validation, PDF validation, and regulatory context), see:
 
 - [`docs/demo_script_autocomply.md`](docs/demo_script_autocomply.md)
 
+### 🖥️ Frontend Walkthrough
+
+For an overview of the React UI (manual entry form, PDF upload, and
+compliance card), see:
+
+- [`docs/frontend_walkthrough.md`](docs/frontend_walkthrough.md)
+
 ### 📚 Case Study
 
 For a narrative overview that ties AutoComply AI back to a real
