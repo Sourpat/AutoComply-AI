@@ -102,9 +102,9 @@ enterprise controlled substance and license feature, see:
 
 - [`docs/case_study_autocomply.md`](docs/case_study_autocomply.md)
 
-### 🧭 Roadmap
+### 🗺️ Roadmap
 
-The planned evolution of AutoComply AI (OCR, real regulatory RAG,
-attestations, automation, and hardening) is documented in:
+For how AutoComply AI can evolve from the current sandbox into a
+full GenAI-powered compliance co-pilot, see:
 
 - [`docs/roadmap.md`](docs/roadmap.md)

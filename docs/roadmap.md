@@ -1,160 +1,275 @@
 # AutoComply AI – Roadmap
 
-This roadmap outlines how AutoComply AI evolves from the current
-MVP/stubbed implementation into a full GenAI + automation compliance
-assistant for DEA and state license workflows.
+This roadmap describes how AutoComply AI can evolve from its current
+sandbox implementation into a richer, AI-native compliance co-pilot.
+
+The key principles:
+
+- Preserve deterministic, testable core logic.
+- Add AI/OCR/RAG features behind clear, modular interfaces.
+- Keep automation (n8n, Slack, email) opt-in and safe-by-default.
 
 ---
 
-## Phase 0 – Current State (MVP)
+## 0. Current State (Baseline)
 
-Status: ✅ Implemented
+Today, AutoComply AI includes:
 
-- FastAPI backend with:
-  - JSON license validation endpoint (`/api/v1/license/validate/json`)
-  - PDF validation endpoint (`/api/v1/license/validate-pdf`)
-- Shared expiry evaluation (`evaluate_expiry`) wired into the validator.
-- Stub OCR extraction (`extract_license_fields_from_pdf`).
-- In-memory regulatory knowledge base + `RegulationRetriever`.
-- Verdicts include:
-  - `allow_checkout`
-  - `reason`
-  - `regulatory_context` (state + DEA snippets)
-- React frontend with manual entry + compliance card.
-- n8n workflows stubbed:
-  - Email intake → PDF validation → Slack/Airtable
-  - Slack alerts webhook
-  - Renewal reminders (30/7 days)
-- CI pipeline running pytest on every push/PR.
-- Documentation:
-  - Architecture overview
-  - API endpoints
-  - Rules/decision engine explained
-  - Controlled substance flow (derived from Henry Schein work)
-  - Demo script
+- **Backend (FastAPI)**
+  - JSON license validation endpoint
+    - `/api/v1/licenses/validate/license`
+  - PDF license validation endpoint
+    - `/api/v1/licenses/validate-pdf`
+  - Expiry engine (`evaluate_expiry`) with tests
+  - Compliance engine (`ComplianceEngine`) for decisions
+  - Stub OCR pipeline (`StubOcrPipeline`)
+  - Stub regulatory context (`RegulationRetriever` / in-memory snippets)
+  - EventPublisher (NO-OP by default, wired for future n8n/Slack)
 
----
+- **Frontend (React + Vite)**
+  - Manual entry form for license details
+  - PDF upload for scanned/emailed licenses
+  - Compliance card for verdict + regulatory context
 
-## Phase 1 – OCR & Data Extraction
+- **Automation**
+  - EventPublisher stubs ready to connect to n8n workflows
 
-Goal: Replace the PDF stub with real extraction.
+- **Docs**
+  - Case study
+  - Rules/engine explanation
+  - API reference
+  - Frontend walkthrough
+  - Configuration
 
-Planned tasks:
-
-- Integrate `pdf2image` or a suitable PDF → image pipeline.
-- Add an OCR layer using either:
-  - A local OCR engine (e.g., Tesseract), or
-  - A vision LLM (Gemini / GPT-4o) via a thin wrapper.
-- Implement a parser that converts OCR text into:
-  - License number
-  - State
-  - Expiry
-  - Practitioner name
-- Add tests for:
-  - “Happy path” extraction from synthetic PDFs.
-  - Resilience to partial/unclean scans (fallbacks, errors).
-- Update the PDF endpoint to:
-  - Call the real OCR pipeline.
-  - Reuse the same decision engine as the JSON path.
+This is the “Phase 0” functional baseline.
 
 ---
 
-## Phase 2 – Real Regulatory RAG
+## 1. OCR & Document Understanding (Phase 1)
 
-Goal: Attach real, explainable regulatory citations to each verdict.
+### 1.1 Pluggable OCR Providers
 
-Planned tasks:
+Goal: swap the stub pipeline for real OCR while keeping tests deterministic.
 
-- Replace the in-memory KB with a:
-  - Document ingestion pipeline (DEA + state PDFs).
-  - Chunking + embedding step.
-  - Vector store (Pinecone, Chroma, etc.).
-- Implement a `RegulationRetriever` that:
-  - Uses embeddings + metadata (jurisdiction, topic).
-  - Returns top-K relevant snippets for each decision.
-- Extend verdict structure to include:
-  - `regulatory_context` with real snippets + citations (source docs).
-- Add tests to ensure:
-  - At least one relevant snippet is returned for known scenarios.
-  - No crash/failure when the vector store is unavailable
-    (graceful degradation to rules-only behavior).
+Steps:
 
----
+1. Introduce a provider enum / factory for OCR:
+   - `local_tesseract`
+   - `cloud_vision`
+   - `gpt_4o_vision` / `gemini_vision`
+2. Keep `BaseOcrPipeline` as the primary interface.
+3. Implement:
+   - `TesseractOcrPipeline` (local dev)
+   - `LlmVisionOcrPipeline` (OpenAI / Google)
+4. Add configuration:
+   - `AUTOCOMPLY_OCR_PROVIDER`
+   - Related API keys/scopes.
 
-## Phase 3 – Attestation & Form Logic
+### 1.2 Normalization Layer
 
-Goal: Recreate and enhance attestation / addendum behavior.
+Goal: normalize noisy OCR into stable fields.
 
-Planned tasks:
+- Create a `normalize_ocr_fields(raw_ocr_output)` function:
+  - Extract and normalize:
+    - License ID
+    - State
+    - Expiry date
+    - Practitioner / organization name
+  - Handle common OCR artifacts:
+    - Hyphenation, extra spaces, broken dates.
 
-- Model attestation types (e.g., telemedicine / Ryan Haight, state forms).
-- Define when to trigger which attestation modal based on:
-  - Product schedule
-  - State/ship-to
-  - License attributes
-- Add endpoints to:
-  - Retrieve required attestations for a given cart context.
-  - Submit/record attestation decisions.
-- Extend frontend:
-  - Show attestation modals when required.
-  - Display the status of forms/attestations per account.
-- Connect RAG/rules to:
-  - Explain *why* a particular attestation is required.
+- Extend tests with:
+  - Synthetic “noisy” OCR outputs.
+  - Expected normalized fields.
 
 ---
 
-## Phase 4 – Automation & Ops Hardening
+## 2. Regulatory RAG (Phase 2)
 
-Goal: Make AutoComply feel like a real internal product.
+### 2.1 Real Knowledge Store
 
-Planned tasks:
+Goal: move from in-memory snippets to a small but realistic RAG store.
 
-- Finish wiring n8n:
-  - Real mailbox or mock mail service for intake.
-  - Slack workspace integration for alerts.
-  - Airtable (or DB) for license & reminder storage.
-- Add audit trail endpoints:
-  - Record every decision, input, verdict, and context.
-  - Provide basic search/filter for compliance review.
-- Introduce configuration:
-  - Feature flags for OCR/RAG/attestations.
-  - Environment-specific settings (dev/stage/prod).
-- Improve observability:
-  - Structured logging
-  - Basic tracing/metrics hooks (e.g., request counts, error rates)
+Steps:
 
----
+1. Collect a curated set of public documents (or excerpts), such as:
+   - DEA: Controlled Substances Act excerpts
+   - Selected state boards of pharmacy rules (e.g. CA, NY, TX)
+   - Ryan Haight Act summaries
 
-## Phase 5 – Production-Ready Polish
+2. Build a RAG pipeline (local first):
+   - Simple embeddings store using Chroma (local filesystem) or similar.
+   - Chunking with `langchain-text-splitters` (already in `requirements.txt`).
+   - `RegulatoryRagRetriever` interface.
 
-Goal: Make the project deployable and demo-ready for serious review.
+3. Keep `RegulationRetriever` as a high-level abstraction:
+   - Decide internally whether to:
+     - Use the stub in-memory knowledge base, or
+     - Call the RAG pipeline.
 
-Planned tasks:
+### 2.2 Structured Regulatory Context
 
-- Harden security:
-  - Input validation
-  - Authn/Z (even if simple, e.g., API key or basic auth).
-- Performance tuning:
-  - Async handling of heavy OCR/RAG calls.
-  - Caching for repeated license checks.
-- Improve UI:
-  - Polished compliance cards with clear statuses.
-  - Filter/search for past validations.
-- Create sample datasets:
-  - Synthetic licenses
-  - Synthetic controlled substance products
-- Finalize story:
-  - Case study materials
-  - Screenshots and short demo clips
+Goal: make RAG output predictable and safe.
+
+- Define a structured output schema for context items:
+  - `id`, `jurisdiction`, `topic`, `text`, `source`, `confidence`.
+- Use LLMs to “compress + ground” retrieved chunks into:
+  - One or two clear, short explanations per decision.
+- Add tests around:
+  - Presence of `regulatory_context` for key scenarios.
+  - Reasonable caps on number/length of snippets.
 
 ---
 
-## Notes
+## 3. Attestation & Controlled Forms (Phase 3)
 
-This roadmap is deliberately incremental:
+Goal: extend the engine to not just say “allow/deny”, but also
+**“allow if these attestations are completed”**.
 
-- Each phase builds on the current architecture.
-- Contracts (API responses, verdict structure) are kept stable so the
-  frontend and workflows do not need to be rewritten.
-- At any point, you can pause on a phase and still have a coherent demo
-  and portfolio-ready story.
+### 3.1 Attestation Engine
+
+- Introduce an `AttestationRequirement` model:
+  - `id`, `jurisdiction`, `scenario`, `text`, `must_acknowledge`.
+
+- Extend `ComplianceEngine` to:
+  - Detect scenarios requiring an attestation (e.g. telemedicine, specific states).
+  - Attach required attestations to the verdict:
+    - `verdict.attestations_required[]`.
+
+### 3.2 Frontend Integration
+
+- Extend `ComplianceCard` to:
+  - Show “Attestations required” when present.
+  - Provide a CTA to open an attestation modal.
+
+- Create a new endpoint (future):
+  - `POST /api/v1/licenses/attest`
+    - Accepts attestation payload.
+    - Returns updated verdict / audit log entry.
+
+---
+
+## 4. n8n & Automation (Phase 4)
+
+Goal: turn decisions into **real workflows** (still safely demoable).
+
+### 4.1 Webhook Contracts
+
+Define stable webhook payloads for:
+
+- License validation events
+  - `event=license_validation`
+  - `license_id`, `state`, `allow_checkout`, `status`, `days_to_expiry`
+- Attestation completion
+  - `event=attestation_completed`, `attestation_id`, `license_id`
+- Upcoming expiries
+  - `event=license_near_expiry`
+
+Use `EventPublisher.build_license_event(...)` as the contract.
+
+### 4.2 n8n Workflows
+
+Implement n8n workflows (JSON in `n8n/workflows`):
+
+- `email_intake.json`
+  - Email → attachment → `/validate-pdf` → Slack + Airtable.
+
+- `slack_alerts.json`
+  - Webhook → Slack channel with formatted message.
+
+- `renewal_reminders.json`
+  - Scheduled job → soon-expiring licenses → email/SMS.
+
+The backend remains:
+
+- Responsible for decisions.
+- Stateless about workflow timing.
+
+n8n handles:
+
+- Scheduling.
+- Multi-channel notifications.
+- Simple UI automation.
+
+---
+
+## 5. LangChain / LangGraph Integration (Phase 5)
+
+Goal: evolve the internal flow into an **agentic, step-wise graph**.
+
+### 5.1 Internal Graph Model
+
+Map the current flow:
+
+1. Input (JSON or PDF).
+2. OCR (if PDF).
+3. Field normalization.
+4. Regulatory retrieval (stub / RAG).
+5. Decision engine (expiry + rules).
+6. Attestation requirements.
+7. Event publishing.
+
+Implement as a small internal graph:
+
+- Use LangChain / LangGraph primitives for:
+  - Nodes: OCR, Normalize, RAG, Decision, Attestation.
+  - Edges: data passing between nodes.
+
+Maintain:
+
+- The existing FastAPI endpoints as entry points.
+- The same response shapes for verdicts.
+
+### 5.2 Observability & Traces
+
+- Add optional tracing:
+  - Correlation ID per request.
+  - Node-level timing and status.
+- Expose a debug endpoint:
+  - `GET /api/v1/licenses/debug/<trace_id>`
+  - Returns the decision path (for developer demos).
+
+---
+
+## 6. Hardening & Production-Readiness (Phase 6)
+
+Goal: show a plausible path to production.
+
+- Add stricter validation:
+  - More granular error messages on bad inputs.
+  - Clear distinction between 4xx (client) and 5xx (server) errors.
+
+- Security considerations:
+  - No PII logged.
+  - Config-driven toggles for:
+    - Detailed logs vs anonymized logs.
+    - Demo vs production modes.
+
+- Rate limiting (optional future):
+  - Simple middleware for per-IP rate limits.
+
+- Performance:
+  - Basic load tests (e.g., Locust or similar).
+  - Benchmarks for:
+    - JSON-only flows.
+    - PDF + OCR flows.
+    - RAG-augmented decisions.
+
+---
+
+## 7. Portfolio & Demo Positioning
+
+For conversations and demos, the roadmap shows:
+
+- You already built the “Phase 0–1” components and tests.
+- You have a clear, realistic path to:
+  - Real OCR
+  - Real regulatory RAG
+  - Attestation flows
+  - Automation with n8n
+  - Agentic orchestration with LangGraph
+
+This makes AutoComply AI credible as:
+
+> “A GenAI-ready compliance engine modeled on real enterprise work, with
+> a concrete path to production.”
