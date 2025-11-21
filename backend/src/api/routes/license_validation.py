@@ -13,6 +13,7 @@ from src.api.models.compliance_models import (
 )
 from src.compliance.decision_engine import ComplianceEngine
 from src.ocr.extract import extract_text_from_pdf, parse_license_fields_from_text
+from src.rag.regulatory_context import build_regulatory_context
 from src.utils.events import get_event_publisher
 
 router = APIRouter(
@@ -39,7 +40,19 @@ async def validate_license(payload: LicenseValidationRequest) -> dict:
     verdict = engine.evaluate(payload)
     verdict_dict = verdict.dict()
 
-    response: dict = {
+    # --- Attach RAG-style regulatory context for this decision ---
+    try:
+        regulatory_context = build_regulatory_context(
+            state=verdict_dict.get("state") or payload.state,
+            purchase_intent=payload.purchase_intent,
+        )
+    except Exception:
+        # Never break the API on context-building issues; fall back to empty.
+        regulatory_context = []
+
+    verdict_dict["regulatory_context"] = regulatory_context
+
+    response = {
         "success": True,
         "verdict": verdict_dict,
     }
@@ -48,22 +61,17 @@ async def validate_license(payload: LicenseValidationRequest) -> dict:
     publisher = get_event_publisher()
 
     if isinstance(response, dict):
-        v = response.get("verdict") or {}
+        event_verdict = response.get("verdict") or {}
         event_payload = {
             "event": "license_validation",
             "success": bool(response.get("success", True)),
-            "license_id": v.get("license_id"),
-            "state": v.get("state"),
-            "allow_checkout": v.get("allow_checkout"),
+            "license_id": event_verdict.get("license_id"),
+            "state": event_verdict.get("state"),
+            "allow_checkout": event_verdict.get("allow_checkout"),
         }
 
         # Do not block the API on alert errors
-        try:
-            asyncio.create_task(publisher.send_slack_alert(event_payload))
-        except Exception:
-            # In demo/CI, we never want alert failures to break validation.
-            # Logging is handled inside EventPublisher.
-            pass
+        asyncio.create_task(publisher.send_event(event_payload))
 
     return response
 
@@ -157,11 +165,24 @@ async def validate_license_pdf(file: UploadFile = File(...)) -> dict:
     verdict = engine.evaluate(license_payload)
     verdict_dict = verdict.dict()
 
-    return {
+    # --- Attach RAG-style context here as well, using the same helper ---
+    try:
+        regulatory_context = build_regulatory_context(
+            state=verdict_dict.get("state") or license_payload.state,
+            purchase_intent=license_payload.purchase_intent,
+        )
+    except Exception:
+        regulatory_context = []
+
+    verdict_dict["regulatory_context"] = regulatory_context
+
+    response = {
         "success": True,
         "verdict": verdict_dict,
         "extracted_fields": extracted_fields,
     }
+
+    return response
 
 # ---------------------------------------------------------------------------
 # Backwards-compatible export
