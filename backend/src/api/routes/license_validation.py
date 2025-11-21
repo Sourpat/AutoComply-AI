@@ -160,4 +160,46 @@ async def _build_pdf_validation_response(pdf_bytes: Optional[bytes]):
         "verdict": dummy_verdict,
     }
 
+    # --- Fire-and-forget event to n8n / Slack (optional, PDF path) ---
+    publisher = get_event_publisher()
+
+    if isinstance(response, dict):
+        verdict_payload = response.get("verdict") or {}
+
+        event_payload = publisher.build_license_event(
+            success=bool(response.get("success", True)),
+            license_id=verdict_payload.get("license_id"),
+            state=verdict_payload.get("state"),
+            allow_checkout=bool(verdict_payload.get("allow_checkout", False)),
+            extra={
+                "source": "api.v1.license.validate.pdf",
+                "extracted_fields_present": bool(
+                    response.get("extracted_fields")
+                ),
+            },
+        )
+
+        # Synchronous publish hook (currently NO-OP unless configured).
+        try:
+            publisher.publish_license_event(
+                success=event_payload["success"],
+                license_id=event_payload.get("license_id"),
+                state=event_payload.get("state"),
+                allow_checkout=event_payload.get("allow_checkout", False),
+                reason=event_payload.get("reason"),
+                extra=event_payload.get("extra"),
+            )
+        except Exception as exc:  # pragma: no cover - defensive guard
+            logger.warning(
+                "EventPublisher.publish_license_event (PDF) failed: %r", exc
+            )
+
+        # Async Slack stub — safe NO-OP when Slack/n8n is not configured.
+        try:
+            asyncio.create_task(publisher.send_slack_alert(event_payload))
+        except Exception as exc:  # pragma: no cover - defensive guard
+            logger.warning(
+                "EventPublisher.send_slack_alert (PDF) failed: %r", exc
+            )
+
     return response
