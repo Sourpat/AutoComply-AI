@@ -147,3 +147,11 @@ async def validate_license_pdf(file: UploadFile = File(...)) -> dict:
         "verdict": verdict_dict,
         "extracted_fields": extracted_fields,
     }
+
+# ---------------------------------------------------------------------------
+# Backwards-compatible export
+# ---------------------------------------------------------------------------
+# Some parts of the codebase (and tests) still import `singular_router`
+# from this module. We keep that alias pointing at the main router so
+# those imports continue to work without changing behavior.
+singular_router = router
