@@ -80,3 +80,10 @@ For a step-by-step 5–8 minute walkthrough of the project (manual JSON
 validation, PDF validation, and regulatory context), see:
 
 - [`docs/demo_script_autocomply.md`](docs/demo_script_autocomply.md)
+
+### 🧭 Roadmap
+
+The planned evolution of AutoComply AI (OCR, real regulatory RAG,
+attestations, automation, and hardening) is documented in:
+
+- [`docs/roadmap.md`](docs/roadmap.md)
