@@ -31,7 +31,13 @@ async def validate_license(payload: LicenseValidationRequest) -> dict:
     """Validate a license based on JSON/manual input from the frontend."""
     engine = ComplianceEngine()
     verdict = engine.evaluate(payload)
-    verdict_dict = verdict.dict()
+
+    # Pydantic v2 prefers `model_dump()`. For compatibility with
+    # environments that might still be on v1, we fall back to `dict()`.
+    if hasattr(verdict, "model_dump"):
+        verdict_dict = verdict.model_dump()
+    else:  # pragma: no cover - defensive fallback
+        verdict_dict = verdict.dict()
 
     response = {
         "success": True,
