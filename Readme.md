@@ -107,12 +107,12 @@ For an overview of all docs in one place, see:
 
 - [`docs/index.md`](docs/index.md)
 
-### 🎥 Demo Script
+### 🎤 Demo Script
 
-For a step-by-step 5–8 minute walkthrough of the project (manual JSON
-validation, PDF validation, and regulatory context), see:
+For a 3–5 minute guided walk-through you can use in interviews or live
+demos, see:
 
-- [`docs/demo_script_autocomply.md`](docs/demo_script_autocomply.md)
+- [`docs/demo_script.md`](docs/demo_script.md)
 
 ### 🖥️ Frontend Walkthrough
 
