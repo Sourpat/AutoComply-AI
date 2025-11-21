@@ -151,6 +151,50 @@ class EventPublisher:
         #   httpx.post(...)
         return True
 
+    async def send_slack_alert(self, payload: Dict[str, Any]) -> None:
+        """
+        Backwards-compatible async stub used by API routes.
+
+        The JSON license validation endpoint currently does:
+
+            asyncio.create_task(publisher.send_slack_alert(payload))
+
+        This method ensures:
+          - No network calls are made.
+          - The endpoint never crashes due to missing Slack config.
+          - We can later replace this with a real HTTP POST to n8n/Slack.
+
+        Args:
+            payload: Arbitrary dict containing event data. The route
+                     currently passes keys like:
+                       - event
+                       - success
+                       - license_id
+                       - state
+                       - allow_checkout
+        """
+        if not isinstance(payload, dict):
+            logger.warning(
+                "send_slack_alert received non-dict payload: %r",
+                payload,
+            )
+            return
+
+        if not self.config.is_slack_enabled:
+            # NO-OP mode: just log at debug level so tests and local dev
+            # never depend on external services.
+            logger.debug(
+                "Slack alert (NO-OP, Slack disabled). Payload=%s",
+                json.dumps(payload),
+            )
+            return
+
+        # In a future implementation, this is where we'd POST to n8n/Slack.
+        logger.info(
+            "Slack alert stub (would send to n8n/Slack): %s",
+            json.dumps(payload),
+        )
+
 # ---------------------------------------------------------------------------
 # Convenience factory for importing code
 # ---------------------------------------------------------------------------
