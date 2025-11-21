@@ -70,3 +70,27 @@ def extract_license_fields_from_pdf(pdf_bytes: bytes) -> Dict[str, Any]:
     pages = preprocess_pdf(pdf_bytes, max_pages=None)
     pipeline = StubOcrPipeline()
     return pipeline.extract_from_pages(pages)
+
+def extract_text_from_pdf(pdf_bytes: bytes) -> str:
+    """
+    Convenience helper used by the API layer.
+
+    For now this is a lightweight stub:
+    - It accepts raw PDF bytes.
+    - It returns a best-effort text representation so the UI can show
+      an extracted `text_preview`.
+    - It is intentionally forgiving and does NOT perform real PDF parsing.
+
+    If a richer OCR pipeline is introduced (e.g. pdf2image + vision model),
+    this function can delegate to that implementation while keeping the
+    API import stable: `from src.ocr.extract import extract_text_from_pdf`.
+    """
+    if not pdf_bytes:
+        return ""
+
+    # Best-effort decoding – good enough for tests and demo previews.
+    try:
+        return pdf_bytes.decode("utf-8", errors="ignore")
+    except Exception:
+        # Fallback to latin-1 to avoid hard failures on odd byte sequences.
+        return pdf_bytes.decode("latin-1", errors="ignore")
