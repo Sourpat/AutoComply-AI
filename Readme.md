@@ -81,6 +81,13 @@ validation, PDF validation, and regulatory context), see:
 
 - [`docs/demo_script_autocomply.md`](docs/demo_script_autocomply.md)
 
+### 📚 Case Study
+
+For a narrative overview that ties AutoComply AI back to a real
+enterprise controlled substance and license feature, see:
+
+- [`docs/case_study_autocomply.md`](docs/case_study_autocomply.md)
+
 ### 🧭 Roadmap
 
 The planned evolution of AutoComply AI (OCR, real regulatory RAG,
