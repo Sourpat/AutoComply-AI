@@ -61,3 +61,47 @@ async def health() -> dict:
     Simple health check used by smoke tests and deployment probes.
     """
     return {"status": "ok"}
+
+# ---------------------------------------------------------------------------
+# Demo endpoint – expiring licenses for n8n renewal workflow
+# ---------------------------------------------------------------------------
+
+@app.get("/demo/expiring-licenses", tags=["demo"])
+async def get_demo_expiring_licenses():
+    """
+    Demo-only endpoint used by the n8n "Renewal Reminders" workflow.
+
+    Returns a small list of licenses that are "expiring soon" so the
+    workflow can fan out reminder emails.
+
+    In a real system this would query your customer/license store
+    (Airtable, Postgres, JDE, etc.). For now we just return a few
+    hard-coded examples with ISO 8601 dates.
+    """
+    from datetime import date, timedelta
+
+    today = date.today()
+
+    return [
+        {
+            "name": "Dr. John Smith",
+            "email": "john.smith@example.com",
+            "license_id": "CA-CSR-123456",
+            "state": "CA",
+            "state_expiry": (today + timedelta(days=7)).isoformat(),
+        },
+        {
+            "name": "Dr. Priya Rao",
+            "email": "priya.rao@example.com",
+            "license_id": "NY-CSR-998877",
+            "state": "NY",
+            "state_expiry": (today + timedelta(days=14)).isoformat(),
+        },
+        {
+            "name": "Dr. Miguel Alvarez",
+            "email": "miguel.alvarez@example.com",
+            "license_id": "TX-CSR-445566",
+            "state": "TX",
+            "state_expiry": (today + timedelta(days=25)).isoformat(),
+        },
+    ]
