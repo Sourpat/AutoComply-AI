@@ -1,5 +1,3 @@
-// frontend/src/components/ComplianceCard.jsx
-
 import React, { useState, useEffect } from "react";
 
 /**
@@ -11,6 +9,7 @@ import React, { useState, useEffect } from "react";
  * - regulatory context snippets
  * - attestation requirements
  * - local "proceed to checkout" soft gate based on attestation acknowledgement
+ * - extracted fields from uploaded PDF (state / permit / expiry / text preview)
  *
  * Expects a `data` prop shaped like:
  * {
@@ -32,7 +31,14 @@ import React, { useState, useEffect } from "react";
  *       must_acknowledge: boolean;
  *     }>
  *   },
- *   extracted_fields?: { [key: string]: string | number | null } // optional OCR summary
+ *   extracted_fields?: {
+ *     file_name?: string;
+ *     text_preview?: string;
+ *     character_count?: number;
+ *     parsed_state?: string;
+ *     parsed_state_permit?: string;
+ *     parsed_state_expiry?: string;
+ *   }
  * }
  */
 const ComplianceCard = ({ data }) => {
@@ -41,18 +47,23 @@ const ComplianceCard = ({ data }) => {
   }
 
   const verdict = data.verdict;
+
   const allowCheckout = verdict.allow_checkout;
   const status = verdict.status || "Unknown";
   const isExpired = verdict.is_expired;
   const daysToExpiry = verdict.days_to_expiry;
+
   const state = verdict.state || data.state;
-  const statePermit = verdict.state_permit || data.state_permit || data.permit;
-  const licenseId = verdict.license_id || data.license_id;
+  const statePermit =
+    verdict.state_permit || data.state_permit || data.permit || null;
+  const licenseId = verdict.license_id || data.license_id || null;
+
   const regulatoryContext = verdict.regulatory_context || [];
   const attestations = verdict.attestations_required || [];
   const extractedFields = data.extracted_fields || null;
 
-  const hasAttestations = Array.isArray(attestations) && attestations.length > 0;
+  const hasAttestations =
+    Array.isArray(attestations) && attestations.length > 0;
   const attestationCount = hasAttestations ? attestations.length : 0;
 
   // Local "soft gating" state: simulated user acknowledgement of attestations
@@ -66,7 +77,6 @@ const ComplianceCard = ({ data }) => {
   const needsAck = allowCheckout && hasAttestations;
   const canProceed = allowCheckout && (!hasAttestations || attestationsConfirmed);
 
-  // Headline for the section
   const headline = allowCheckout
     ? hasAttestations
       ? "Allowed – attestation required"
@@ -130,273 +140,235 @@ const ComplianceCard = ({ data }) => {
         }`
       : "Required based on the evaluated license, state, and scenario.";
 
+  // Extracted / parsed fields from PDF (if present)
+  const parsedState = extractedFields?.parsed_state || null;
+  const parsedPermit = extractedFields?.parsed_state_permit || null;
+  const parsedExpiry = extractedFields?.parsed_state_expiry || null;
+  const textPreview = extractedFields?.text_preview || "";
+  const fileName = extractedFields?.file_name || "";
+  const charCount = extractedFields?.character_count;
+  const hasParsed = parsedState || parsedPermit || parsedExpiry;
+
   return (
-    <div className="mt-6 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/80">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-slate-900 dark:text-slate-50">
-            Compliance result
-          </h2>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Deterministic decision from the AutoComply AI engine for this
-            license and scenario.
-          </p>
-        </div>
-
-        <div className="flex flex-col items-end gap-2">
-          <div
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${statusPillClasses}`}
-          >
-            <span className={`h-2 w-2 rounded-full ${statusDotClasses}`} />
-            <span>{statusLabel}</span>
-          </div>
-          {typeof daysToExpiry === "number" && !Number.isNaN(daysToExpiry) && (
-            <span className="text-[11px] text-slate-500 dark:text-slate-400">
-              {daysToExpiry < 0
-                ? `Expired ${Math.abs(daysToExpiry)} day${
-                    Math.abs(daysToExpiry) === 1 ? "" : "s"
-                  } ago`
-                : daysToExpiry === 0
-                ? "Expires today"
-                : `Expires in ${daysToExpiry} day${
-                    daysToExpiry === 1 ? "" : "s"
-                  }`}
+    <section className="mt-6 w-full max-w-3xl rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/80">
+      {/* Header: status + primary verdict */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium tracking-tight shadow-sm dark:border-slate-600">
+            <span className={`inline-flex h-2 w-2 rounded-full ${statusDotClasses}`} />
+            <span className={statusPillClasses + " border-none bg-transparent px-0 py-0"}>
+              {statusLabel}
             </span>
+          </div>
+
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+              {headline}
+            </h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+              {headlineDescription}
+            </p>
+          </div>
+
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600 dark:text-slate-300">
+            {state && (
+              <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-1 dark:bg-slate-800/60">
+                <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />
+                State: <span className="ml-1 font-medium">{state}</span>
+              </span>
+            )}
+            {statePermit && (
+              <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-1 dark:bg-slate-800/60">
+                Permit: <span className="ml-1 font-mono text-[11px]">{statePermit}</span>
+              </span>
+            )}
+            {licenseId && (
+              <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-1 dark:bg-slate-800/60">
+                License ID:{" "}
+                <span className="ml-1 font-mono text-[11px]">{licenseId}</span>
+              </span>
+            )}
+            {typeof daysToExpiry === "number" && (
+              <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-1 dark:bg-slate-800/60">
+                {isExpired
+                  ? "Expired"
+                  : daysToExpiry === 0
+                  ? "Expires today"
+                  : `~${daysToExpiry} days to expiry`}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Proceed soft gate */}
+        <div className="flex flex-col items-end gap-2 text-right">
+          <button
+            type="button"
+            className={proceedButtonClasses}
+            disabled={!canProceed}
+          >
+            {proceedLabel}
+          </button>
+          {needsAck && (
+            <label className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500 dark:border-slate-600 dark:bg-slate-900"
+                checked={attestationsConfirmed}
+                onChange={(e) => setAttestationsConfirmed(e.target.checked)}
+              />
+              <span>
+                I confirm that all required attestations below have been reviewed
+                and are accurate.
+              </span>
+            </label>
           )}
         </div>
       </div>
 
-      <p className="mt-3 text-xs text-slate-600 dark:text-slate-300">
-        {headlineDescription}
-      </p>
-
-      {/* Main details */}
-      <div className="mt-4 grid gap-3 rounded-xl bg-slate-50/80 p-3 text-xs dark:bg-slate-800/70">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <DetailItem label="Status" value={status} />
-          <DetailItem
-            label="Allow checkout"
-            value={allowCheckout ? "Yes" : "No"}
-          />
-          <DetailItem label="State" value={state || "—"} />
-          <DetailItem label="State permit" value={statePermit || "—"} />
-          <DetailItem label="License ID" value={licenseId || "—"} />
-          {typeof daysToExpiry === "number" && (
-            <DetailItem
-              label="Days to expiry"
-              value={String(daysToExpiry)}
-              emphasize={daysToExpiry <= 30}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* Attestations section */}
+      {/* Attestations block */}
       {hasAttestations && (
-        <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/80 p-4 dark:border-amber-800 dark:bg-amber-900/20">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-50">
+          <div className="mb-2 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-xs text-amber-800 dark:bg-amber-800/60 dark:text-amber-50">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-[11px] font-semibold text-amber-900 dark:bg-amber-800 dark:text-amber-50">
                 !
               </span>
-              <div className="flex items-center gap-1.5">
-                <div>
-                  <p className="text-xs font-semibold text-amber-900 dark:text-amber-100">
-                    Attestations required
-                  </p>
-                  <p className="text-[11px] text-amber-800/80 dark:text-amber-200/80">
-                    These statements must be acknowledged before proceeding with
-                    controlled-substance checkout.
-                  </p>
-                </div>
-                {/* Tooltip icon explaining "why" */}
-                <button
-                  type="button"
-                  className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-amber-300 text-[10px] font-semibold text-amber-700 dark:border-amber-600 dark:text-amber-100"
-                  title={attestationReasonHint}
-                >
-                  ?
-                </button>
-              </div>
-            </div>
-            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-800/70 dark:text-amber-50">
-              {attestationCount} required
-            </span>
-          </div>
-
-          <div className="space-y-3">
-            {attestations.map((att, idx) => (
-              <div
-                key={`${att.id}-${idx}`}
-                className="rounded-lg bg-white/80 p-3 text-[11px] shadow-sm ring-1 ring-amber-100 dark:bg-amber-950/40 dark:ring-amber-800/70"
-              >
-                <div className="mb-1 flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-900/70 dark:text-amber-100">
-                    {att.jurisdiction || "Jurisdiction"}
-                  </span>
-                  {att.id && (
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono text-slate-600 dark:bg-slate-800 dark:text-slate-200">
-                      {att.id}
-                    </span>
-                  )}
-                  {att.must_acknowledge && (
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-800/80 dark:text-amber-50">
-                      Must acknowledge
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] leading-relaxed text-amber-900 dark:text-amber-50">
-                  {att.text}
+              <div>
+                <p className="text-xs font-semibold tracking-tight">
+                  Attestations required before completing checkout
+                </p>
+                <p className="text-[11px] text-amber-800/80 dark:text-amber-100/80">
+                  {attestationReasonHint}
                 </p>
               </div>
-            ))}
+            </div>
           </div>
+
+          <ul className="mt-3 space-y-2">
+            {attestations.map((att, idx) => (
+              <li
+                key={att.id || idx}
+                className="rounded-lg bg-white/70 p-3 text-[11px] shadow-sm ring-1 ring-amber-100 dark:bg-amber-900/30 dark:ring-amber-800/60"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-[11px] font-semibold">
+                    {att.jurisdiction || "Attestation"}
+                    {att.scenario ? ` · ${att.scenario}` : ""}
+                  </div>
+                  {att.must_acknowledge && (
+                    <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-800 dark:text-amber-50">
+                      Required
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-[11px] leading-snug text-amber-900 dark:text-amber-50">
+                  {att.text}
+                </p>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
-      {/* Soft-gated "Proceed" section (demo only) */}
-      <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-[11px] dark:border-slate-700 dark:bg-slate-800/60">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-              Proceed to checkout (demo)
-            </p>
-            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-              This section simulates how a checkout flow could gate on both the
-              engine&apos;s decision and required attestations. No real
-              transaction is performed.
-            </p>
-          </div>
-          <span className="inline-flex items-center rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-medium text-slate-50 dark:bg-slate-50 dark:text-slate-900">
-            Demo-only
-          </span>
-        </div>
-
-        {needsAck && (
-          <label className="mt-3 flex items-start gap-2 text-[11px] text-slate-700 dark:text-slate-200">
-            <input
-              type="checkbox"
-              className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-amber-600 focus:ring-amber-500 dark:border-slate-500"
-              checked={attestationsConfirmed}
-              onChange={(e) => setAttestationsConfirmed(e.target.checked)}
-            />
-            <span>
-              I have reviewed and acknowledged all required attestation text
-              above for this decision.
-            </span>
-          </label>
-        )}
-
-        <button
-          type="button"
-          disabled={!canProceed}
-          className={`mt-3 ${proceedButtonClasses}`}
-          onClick={() => {
-            if (canProceed) {
-              // Demo-only: in a real integration this would trigger navigation
-              // or emit an event into a workflow tool like n8n.
-              // Keeping a console.log here as a harmless placeholder.
-              // eslint-disable-next-line no-console
-              console.log("Simulated checkout proceed clicked", {
-                allowCheckout,
-                hasAttestations,
-                attestationsConfirmed,
-              });
-            }
-          }}
-        >
-          {proceedLabel}
-        </button>
-
-        {!allowCheckout && (
-          <p className="mt-2 text-[11px] text-rose-700 dark:text-rose-300">
-            The engine has blocked checkout for this scenario. Attestations
-            cannot override a hard deny decision.
-          </p>
-        )}
-
-        {needsAck && !attestationsConfirmed && allowCheckout && (
-          <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">
-            To simulate checkout, confirm that you have reviewed the required
-            attestation statements above.
-          </p>
-        )}
-      </div>
-
       {/* Regulatory context */}
-      {regulatoryContext.length > 0 && (
-        <div className="mt-5">
-          <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-            Regulatory context
-          </h3>
-          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-            Condensed snippets from underlying rules to explain the decision.
-            This is for human understanding, not a substitute for legal advice.
-          </p>
-          <div className="mt-2 space-y-2 text-[11px]">
+      {Array.isArray(regulatoryContext) && regulatoryContext.length > 0 && (
+        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-4 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-100">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold tracking-tight">
+              Why this decision was made
+            </p>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+              Source context (demo)
+            </span>
+          </div>
+          <ul className="space-y-2">
             {regulatoryContext.map((ctx, idx) => (
-              <div
-                key={idx}
-                className="rounded-lg bg-slate-50/80 p-2.5 dark:bg-slate-800/70"
-              >
+              <li key={idx} className="rounded-md bg-white/80 p-3 dark:bg-slate-900/60">
                 {ctx.source && (
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
                     {ctx.source}
                   </p>
                 )}
-                <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-200">
-                  {ctx.snippet || ctx.text || ""}
-                </p>
-              </div>
+                {ctx.snippet && (
+                  <p className="mt-1 text-[11px] leading-snug text-slate-700 dark:text-slate-100">
+                    {ctx.snippet}
+                  </p>
+                )}
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       )}
 
-      {/* Extracted fields (optional, for OCR flows) */}
+      {/* Extracted-from-document block (for PDF uploads) */}
       {extractedFields && (
-        <div className="mt-5">
-          <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-            Extracted from document
-          </h3>
-          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-            Key fields AutoComply AI inferred from the uploaded PDF. These are
-            fed into the same decision engine as manual entries.
-          </p>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">
-            {Object.entries(extractedFields).map(([key, value]) => (
-              <div
-                key={key}
-                className="rounded-lg bg-slate-50/80 p-2 dark:bg-slate-800/70"
-              >
-                <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  {key}
-                </p>
-                <p className="mt-0.5 text-slate-700 dark:text-slate-200">
-                  {String(value ?? "—")}
-                </p>
-              </div>
-            ))}
+        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-100">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold tracking-tight">
+                Extracted from document
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Parsed fields and OCR preview from the uploaded license PDF.
+              </p>
+            </div>
+            <div className="text-right text-[11px] text-slate-500 dark:text-slate-400">
+              {fileName && <p className="truncate max-w-[180px]">{fileName}</p>}
+              {typeof charCount === "number" && (
+                <p>{charCount} characters scanned</p>
+              )}
+            </div>
           </div>
+
+          {hasParsed && (
+            <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+              {parsedState && (
+                <div className="rounded-lg bg-white/80 p-3 text-[11px] shadow-sm dark:bg-slate-900/60">
+                  <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Parsed state
+                  </dt>
+                  <dd className="mt-1 text-sm font-medium text-slate-900 dark:text-slate-50">
+                    {parsedState}
+                  </dd>
+                </div>
+              )}
+              {parsedPermit && (
+                <div className="rounded-lg bg-white/80 p-3 text-[11px] shadow-sm dark:bg-slate-900/60">
+                  <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Parsed permit / license
+                  </dt>
+                  <dd className="mt-1 font-mono text-[11px] text-slate-900 dark:text-slate-50">
+                    {parsedPermit}
+                  </dd>
+                </div>
+              )}
+              {parsedExpiry && (
+                <div className="rounded-lg bg-white/80 p-3 text-[11px] shadow-sm dark:bg-slate-900/60">
+                  <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Parsed expiry
+                  </dt>
+                  <dd className="mt-1 text-sm font-medium text-slate-900 dark:text-slate-50">
+                    {parsedExpiry}
+                  </dd>
+                </div>
+              )}
+            </dl>
+          )}
+
+          {textPreview && (
+            <div className="mt-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                OCR text preview
+              </p>
+              <p className="mt-1 max-h-40 overflow-auto rounded-lg bg-white/80 p-3 text-[11px] leading-snug text-slate-800 shadow-inner dark:bg-slate-900/70 dark:text-slate-100">
+                {textPreview}
+              </p>
+            </div>
+          )}
         </div>
       )}
-    </div>
-  );
-};
-
-const DetailItem = ({ label, value, emphasize = false }) => {
-  const valueClasses = emphasize
-    ? "text-xs font-semibold text-amber-800 dark:text-amber-200"
-    : "text-xs text-slate-800 dark:text-slate-100";
-
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-        {label}
-      </span>
-      <span className={valueClasses}>{value ?? "—"}</span>
-    </div>
+    </section>
   );
 };
 
