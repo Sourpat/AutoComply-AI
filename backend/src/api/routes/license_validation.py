@@ -1,5 +1,6 @@
 """REST endpoints for license validation flows."""
 import asyncio
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Request
@@ -8,6 +9,8 @@ from src.api.models.compliance_models import LicenseValidationRequest, LicenseVa
 from src.compliance.decision_engine import ComplianceEngine
 from src.utils.events import get_event_publisher
 from src.ocr.extract import extract_license_fields_from_pdf
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/licenses", tags=["licenses"])
 singular_router = APIRouter(prefix="/license", tags=["licenses"])
@@ -35,21 +38,41 @@ async def validate_license(payload: LicenseValidationRequest) -> dict:
         "verdict": verdict_dict,
     }
 
-    # --- Fire-and-forget event to n8n (optional) ---
+    # --- Fire-and-forget event to n8n / Slack (optional) ---
     publisher = get_event_publisher()
 
     if isinstance(response, dict):
-        verdict = response.get("verdict") or {}
-        payload = {
-            "event": "license_validation",
-            "success": bool(response.get("success", True)),
-            "license_id": verdict.get("license_id"),
-            "state": verdict.get("state"),
-            "allow_checkout": verdict.get("allow_checkout"),
-        }
+        verdict_payload = response.get("verdict") or {}
 
-        # Do not block the API on alert errors
-        asyncio.create_task(publisher.send_slack_alert(payload))
+        # Build a normalized event payload using the publisher helper.
+        event_payload = publisher.build_license_event(
+            success=bool(response.get("success", True)),
+            license_id=verdict_payload.get("license_id"),
+            state=verdict_payload.get("state"),
+            allow_checkout=bool(verdict_payload.get("allow_checkout", False)),
+            extra={"source": "api.v1.license.validate.json"},
+        )
+
+        # Synchronous publish hook (currently NO-OP unless configured).
+        try:
+            publisher.publish_license_event(
+                success=event_payload["success"],
+                license_id=event_payload.get("license_id"),
+                state=event_payload.get("state"),
+                allow_checkout=event_payload.get("allow_checkout", False),
+                reason=event_payload.get("reason"),
+                extra=event_payload.get("extra"),
+            )
+        except Exception as exc:  # pragma: no cover - defensive guard
+            # Do not break the API if automation fails.
+            logger.warning("EventPublisher.publish_license_event failed: %r", exc)
+
+        # Async Slack stub — uses the same payload, but is safe NO-OP when
+        # Slack/n8n is not configured.
+        try:
+            asyncio.create_task(publisher.send_slack_alert(event_payload))
+        except Exception as exc:  # pragma: no cover - defensive guard
+            logger.warning("EventPublisher.send_slack_alert failed: %r", exc)
 
     return response
 
