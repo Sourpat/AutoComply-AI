@@ -12,7 +12,7 @@ from src.api.models.compliance_models import (
     LicenseValidationResponse,
 )
 from src.compliance.decision_engine import ComplianceEngine
-from src.ocr.extract import extract_text_from_pdf
+from src.ocr.extract import extract_text_from_pdf, parse_license_fields_from_text
 from src.utils.events import get_event_publisher
 
 router = APIRouter(
@@ -76,15 +76,13 @@ async def validate_license_pdf(file: UploadFile = File(...)) -> dict:
     """
     Validate a license based on an uploaded PDF.
 
-    For now this endpoint:
+    Pipeline:
     - Uses the OCR stub to extract raw text from the PDF.
-    - Builds a best-effort LicenseValidationRequest with safe defaults.
+    - Parses the text for likely state / permit / expiry fields.
+    - Falls back to safe defaults if parsing fails.
     - Runs the same ComplianceEngine used by the JSON/manual path.
     - Returns the engine verdict plus an `extracted_fields` block
       that the frontend can show under “Extracted from document”.
-
-    This keeps the pipeline realistic for demos without requiring
-    a fully production OCR/NLP stack.
     """
     if not file:
         raise HTTPException(status_code=400, detail="PDF file is required.")
@@ -116,25 +114,41 @@ async def validate_license_pdf(file: UploadFile = File(...)) -> dict:
         text_preview = text_preview[:400] + "…"
 
     # Minimal extracted info we expose to the frontend.
-    extracted_fields = {
+    extracted_fields: dict = {
         "file_name": file.filename or "uploaded.pdf",
         "text_preview": text_preview or "[no text extracted]",
         "character_count": len(raw_text or ""),
     }
 
-    # --- Build a safe default LicenseValidationRequest ---
-    # For now we do not attempt full field parsing from the PDF.
-    # Instead we route everything through the same engine using
-    # deterministic, demo-friendly defaults.
-    today = date.today()
-    default_expiry = today + timedelta(days=365)
+    # --- Parse fields from OCR text (best-effort) -----------------------
+    parsed = parse_license_fields_from_text(raw_text or "")
 
+    # Defaults if parsing fails
+    today = date.today()
+    default_expiry_iso = (today + timedelta(days=365)).isoformat()
+
+    parsed_state = parsed.get("state") or "CA"
+    parsed_permit = (
+        parsed.get("state_permit")
+        or parsed.get("license_id")
+        or "AUTO-PDF-PERMIT"
+    )
+    parsed_expiry = parsed.get("state_expiry") or default_expiry_iso
+
+    extracted_fields.update(
+        {
+            "parsed_state": parsed_state,
+            "parsed_state_permit": parsed_permit,
+            "parsed_state_expiry": parsed_expiry,
+        }
+    )
+
+    # --- Build LicenseValidationRequest with parsed fields --------------
     license_payload = LicenseValidationRequest(
         practice_type="Standard",
-        state="CA",
-        state_permit="AUTO-PDF-PERMIT",
-        # Model expects an ISO 8601 string, not a date object
-        state_expiry=default_expiry.isoformat(),
+        state=parsed_state,
+        state_permit=parsed_permit,
+        state_expiry=parsed_expiry,
         purchase_intent="GeneralMedicalUse",
         quantity=1,
     )
