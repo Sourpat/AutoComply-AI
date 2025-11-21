@@ -150,3 +150,28 @@ class EventPublisher:
         # Placeholder for future HTTP call:
         #   httpx.post(...)
         return True
+
+# ---------------------------------------------------------------------------
+# Convenience factory for importing code
+# ---------------------------------------------------------------------------
+
+# Module-level singleton so callers can simply do:
+#   from src.utils.events import get_event_publisher
+#   publisher = get_event_publisher()
+# without worrying about config wiring.
+_publisher_instance: Optional[EventPublisher] = None
+
+
+def get_event_publisher() -> EventPublisher:
+    """
+    Return a shared EventPublisher instance.
+
+    This keeps the import pattern used in the API routes and tests
+    (`from src.utils.events import get_event_publisher`) working,
+    while still allowing tests to inject custom configs by directly
+    instantiating EventPublisher/EventPublisherConfig when needed.
+    """
+    global _publisher_instance
+    if _publisher_instance is None:
+        _publisher_instance = EventPublisher()
+    return _publisher_instance
