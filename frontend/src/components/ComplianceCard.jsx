@@ -1,4 +1,6 @@
-import React from "react";
+// frontend/src/components/ComplianceCard.jsx
+
+import React, { useState, useEffect } from "react";
 
 /**
  * ComplianceCard
@@ -7,30 +9,8 @@ import React from "react";
  * - allow/deny checkout
  * - expiry status / days to expiry
  * - regulatory context snippets
- * - (new) attestation requirements
- *
- * Expects a `data` prop shaped like:
- * {
- *   success: boolean,
- *   verdict: {
- *     allow_checkout: boolean,
- *     status: string,
- *     is_expired?: boolean,
- *     days_to_expiry?: number,
- *     state?: string,
- *     state_permit?: string,
- *     license_id?: string,
- *     regulatory_context?: Array<{ source?: string; snippet?: string }>,
- *     attestations_required?: Array<{
- *       id: string;
- *       jurisdiction: string;
- *       scenario: string;
- *       text: string;
- *       must_acknowledge: boolean;
- *     }>
- *   },
- *   extracted_fields?: { ... } // optional OCR summary
- * }
+ * - attestation requirements
+ * - local "proceed to checkout" soft gate based on attestation acknowledgement
  */
 const ComplianceCard = ({ data }) => {
   if (!data || !data.verdict) {
@@ -50,12 +30,34 @@ const ComplianceCard = ({ data }) => {
   const extractedFields = data.extracted_fields || null;
 
   const hasAttestations = Array.isArray(attestations) && attestations.length > 0;
+  const attestationCount = hasAttestations ? attestations.length : 0;
 
+  // Local "soft gating" state: simulated user acknowledgement of attestations
+  const [attestationsConfirmed, setAttestationsConfirmed] = useState(false);
+
+  // Reset acknowledgement when the decision changes (new license, new verdict, etc.)
+  useEffect(() => {
+    setAttestationsConfirmed(false);
+  }, [licenseId, allowCheckout, attestationCount]);
+
+  const needsAck = allowCheckout && hasAttestations;
+  const canProceed = allowCheckout && (!hasAttestations || attestationsConfirmed);
+
+  // Headline for the section
   const headline = allowCheckout
     ? hasAttestations
       ? "Allowed – attestation required"
       : "Allowed for checkout"
     : "Checkout blocked";
+
+  // Status pill text (short but expressive)
+  const statusLabel = !allowCheckout
+    ? "Blocked"
+    : hasAttestations
+    ? attestationCount === 1
+      ? "Allowed · 1 attestation pending"
+      : `Allowed · ${attestationCount} attestations pending`
+    : "Allowed · No attestations";
 
   const headlineDescription = (() => {
     if (!allowCheckout) {
@@ -79,6 +81,32 @@ const ComplianceCard = ({ data }) => {
       : "bg-emerald-500"
     : "bg-rose-500";
 
+  const proceedButtonClasses = canProceed
+    ? "inline-flex items-center justify-center rounded-full px-3.5 py-1.5 text-xs font-semibold shadow-sm bg-slate-900 text-slate-50 hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200 transition-colors"
+    : "inline-flex items-center justify-center rounded-full px-3.5 py-1.5 text-xs font-semibold shadow-sm bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400 cursor-not-allowed";
+
+  const proceedLabel = (() => {
+    if (!allowCheckout) {
+      return "Checkout blocked by engine";
+    }
+    if (hasAttestations && !attestationsConfirmed) {
+      return "Acknowledge attestations to proceed";
+    }
+    return "Proceed to checkout (simulated)";
+  })();
+
+  // Simple tooltip text for "why is attestation required?"
+  const attestationReasonHint =
+    hasAttestations && attestations[0]
+      ? `Required because this scenario matches: ${
+          attestations[0].scenario || "a regulated telemedicine/licensing rule"
+        }${
+          attestations[0].jurisdiction
+            ? ` (${attestations[0].jurisdiction})`
+            : ""
+        }`
+      : "Required based on the evaluated license, state, and scenario.";
+
   return (
     <div className="mt-6 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/80">
       {/* Header */}
@@ -98,7 +126,7 @@ const ComplianceCard = ({ data }) => {
             className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${statusPillClasses}`}
           >
             <span className={`h-2 w-2 rounded-full ${statusDotClasses}`} />
-            <span>{headline}</span>
+            <span>{statusLabel}</span>
           </div>
           {typeof daysToExpiry === "number" && !Number.isNaN(daysToExpiry) && (
             <span className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -149,18 +177,28 @@ const ComplianceCard = ({ data }) => {
               <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-xs text-amber-800 dark:bg-amber-800/60 dark:text-amber-50">
                 !
               </span>
-              <div>
-                <p className="text-xs font-semibold text-amber-900 dark:text-amber-100">
-                  Attestations required
-                </p>
-                <p className="text-[11px] text-amber-800/80 dark:text-amber-200/80">
-                  These statements must be acknowledged before proceeding with
-                  controlled-substance checkout.
-                </p>
+              <div className="flex items-center gap-1.5">
+                <div>
+                  <p className="text-xs font-semibold text-amber-900 dark:text-amber-100">
+                    Attestations required
+                  </p>
+                  <p className="text-[11px] text-amber-800/80 dark:text-amber-200/80">
+                    These statements must be acknowledged before proceeding with
+                    controlled-substance checkout.
+                  </p>
+                </div>
+                {/* Tooltip icon explaining "why" */}
+                <button
+                  type="button"
+                  className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-amber-300 text-[10px] font-semibold text-amber-700 dark:border-amber-600 dark:text-amber-100"
+                  title={attestationReasonHint}
+                >
+                  ?
+                </button>
               </div>
             </div>
             <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-800/70 dark:text-amber-50">
-              {attestations.length} required
+              {attestationCount} required
             </span>
           </div>
 
@@ -193,6 +231,75 @@ const ComplianceCard = ({ data }) => {
           </div>
         </div>
       )}
+
+      {/* Soft-gated "Proceed" section (demo only) */}
+      <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-[11px] dark:border-slate-700 dark:bg-slate-800/60">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+              Proceed to checkout (demo)
+            </p>
+            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+              This section simulates how a checkout flow could gate on both the
+              engine&apos;s decision and required attestations. No real
+              transaction is performed.
+            </p>
+          </div>
+          <span className="inline-flex items-center rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-medium text-slate-50 dark:bg-slate-50 dark:text-slate-900">
+            Demo-only
+          </span>
+        </div>
+
+        {needsAck && (
+          <label className="mt-3 flex items-start gap-2 text-[11px] text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-amber-600 focus:ring-amber-500 dark:border-slate-500"
+              checked={attestationsConfirmed}
+              onChange={(e) => setAttestationsConfirmed(e.target.checked)}
+            />
+            <span>
+              I have reviewed and acknowledged all required attestation text
+              above for this decision.
+            </span>
+          </label>
+        )}
+
+        <button
+          type="button"
+          disabled={!canProceed}
+          className={`mt-3 ${proceedButtonClasses}`}
+          onClick={() => {
+            if (canProceed) {
+              // Demo-only: in a real integration this would trigger navigation
+              // or emit an event into a workflow tool like n8n.
+              // Keeping a console.log here as a harmless placeholder.
+              // eslint-disable-next-line no-console
+              console.log("Simulated checkout proceed clicked", {
+                allowCheckout,
+                hasAttestations,
+                attestationsConfirmed,
+              });
+            }
+          }}
+        >
+          {proceedLabel}
+        </button>
+
+        {!allowCheckout && (
+          <p className="mt-2 text-[11px] text-rose-700 dark:text-rose-300">
+            The engine has blocked checkout for this scenario. Attestations
+            cannot override a hard deny decision.
+          </p>
+        )}
+
+        {needsAck && !attestationsConfirmed && allowCheckout && (
+          <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">
+            To simulate checkout, confirm that you have reviewed the required
+            attestation statements above.
+          </p>
+        )}
+      </div>
 
       {/* Regulatory context */}
       {regulatoryContext.length > 0 && (
