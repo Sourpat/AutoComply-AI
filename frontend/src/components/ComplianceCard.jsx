@@ -10,7 +10,7 @@ import React, { useState, useEffect } from "react";
  * - expiry status / days to expiry
  * - regulatory context snippets
  * - attestation requirements
- * - (new) local "proceed to checkout" soft gate based on attestation acknowledgement
+ * - local "proceed to checkout" soft gate based on attestation acknowledgement
  *
  * Expects a `data` prop shaped like:
  * {
@@ -32,7 +32,7 @@ import React, { useState, useEffect } from "react";
  *       must_acknowledge: boolean;
  *     }>
  *   },
- *   extracted_fields?: { ... } // optional OCR summary
+ *   extracted_fields?: { [key: string]: string | number | null } // optional OCR summary
  * }
  */
 const ComplianceCard = ({ data }) => {
@@ -53,6 +53,7 @@ const ComplianceCard = ({ data }) => {
   const extractedFields = data.extracted_fields || null;
 
   const hasAttestations = Array.isArray(attestations) && attestations.length > 0;
+  const attestationCount = hasAttestations ? attestations.length : 0;
 
   // Local "soft gating" state: simulated user acknowledgement of attestations
   const [attestationsConfirmed, setAttestationsConfirmed] = useState(false);
@@ -60,16 +61,26 @@ const ComplianceCard = ({ data }) => {
   // Reset acknowledgement when the decision changes (new license, new verdict, etc.)
   useEffect(() => {
     setAttestationsConfirmed(false);
-  }, [licenseId, allowCheckout, attestations.length]);
+  }, [licenseId, allowCheckout, attestationCount]);
 
   const needsAck = allowCheckout && hasAttestations;
   const canProceed = allowCheckout && (!hasAttestations || attestationsConfirmed);
 
+  // Headline for the section
   const headline = allowCheckout
     ? hasAttestations
       ? "Allowed – attestation required"
       : "Allowed for checkout"
     : "Checkout blocked";
+
+  // Status pill text (short but expressive)
+  const statusLabel = !allowCheckout
+    ? "Blocked"
+    : hasAttestations
+    ? attestationCount === 1
+      ? "Allowed · 1 attestation pending"
+      : `Allowed · ${attestationCount} attestations pending`
+    : "Allowed · No attestations";
 
   const headlineDescription = (() => {
     if (!allowCheckout) {
@@ -107,6 +118,18 @@ const ComplianceCard = ({ data }) => {
     return "Proceed to checkout (simulated)";
   })();
 
+  // Simple tooltip text for "why is attestation required?"
+  const attestationReasonHint =
+    hasAttestations && attestations[0]
+      ? `Required because this scenario matches: ${
+          attestations[0].scenario || "a regulated telemedicine/licensing rule"
+        }${
+          attestations[0].jurisdiction
+            ? ` (${attestations[0].jurisdiction})`
+            : ""
+        }`
+      : "Required based on the evaluated license, state, and scenario.";
+
   return (
     <div className="mt-6 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/80">
       {/* Header */}
@@ -126,7 +149,7 @@ const ComplianceCard = ({ data }) => {
             className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${statusPillClasses}`}
           >
             <span className={`h-2 w-2 rounded-full ${statusDotClasses}`} />
-            <span>{headline}</span>
+            <span>{statusLabel}</span>
           </div>
           {typeof daysToExpiry === "number" && !Number.isNaN(daysToExpiry) && (
             <span className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -177,18 +200,28 @@ const ComplianceCard = ({ data }) => {
               <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-xs text-amber-800 dark:bg-amber-800/60 dark:text-amber-50">
                 !
               </span>
-              <div>
-                <p className="text-xs font-semibold text-amber-900 dark:text-amber-100">
-                  Attestations required
-                </p>
-                <p className="text-[11px] text-amber-800/80 dark:text-amber-200/80">
-                  These statements must be acknowledged before proceeding with
-                  controlled-substance checkout.
-                </p>
+              <div className="flex items-center gap-1.5">
+                <div>
+                  <p className="text-xs font-semibold text-amber-900 dark:text-amber-100">
+                    Attestations required
+                  </p>
+                  <p className="text-[11px] text-amber-800/80 dark:text-amber-200/80">
+                    These statements must be acknowledged before proceeding with
+                    controlled-substance checkout.
+                  </p>
+                </div>
+                {/* Tooltip icon explaining "why" */}
+                <button
+                  type="button"
+                  className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-amber-300 text-[10px] font-semibold text-amber-700 dark:border-amber-600 dark:text-amber-100"
+                  title={attestationReasonHint}
+                >
+                  ?
+                </button>
               </div>
             </div>
             <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-800/70 dark:text-amber-50">
-              {attestations.length} required
+              {attestationCount} required
             </span>
           </div>
 
