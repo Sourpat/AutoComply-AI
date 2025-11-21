@@ -1,5 +1,5 @@
 from typing import List, Optional, Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ----------------------------
@@ -58,6 +58,52 @@ class AddendumRequirement(BaseModel):
 
 
 # ----------------------------
+# Attestation Requirements
+# ----------------------------
+
+class AttestationRequirement(BaseModel):
+    """
+    Describes a compliance attestation that must be acknowledged
+    before proceeding with controlled-substance checkout.
+    """
+
+    id: str = Field(
+        ...,
+        description=(
+            "Stable identifier for this attestation, e.g. "
+            "'ryan_haight_telemedicine'."
+        ),
+    )
+    jurisdiction: str = Field(
+        ...,
+        description=(
+            "Jurisdiction or rule family this attestation is tied to, "
+            "e.g. 'US-FEDERAL' or 'US-CA'."
+        ),
+    )
+    scenario: str = Field(
+        ...,
+        description=(
+            "Short machine-readable description of when this attestation "
+            "applies, e.g. 'telemedicine_schedule_ii_v_remote_sale'."
+        ),
+    )
+    text: str = Field(
+        ...,
+        description=(
+            "Human-readable attestation text that can be displayed in the UI."
+        ),
+    )
+    must_acknowledge: bool = Field(
+        default=True,
+        description=(
+            "Whether the user must actively acknowledge this attestation "
+            "before checkout is allowed to proceed."
+        ),
+    )
+
+
+# ----------------------------
 # Compliance Verdict (Engine Output)
 # ----------------------------
 
@@ -67,6 +113,14 @@ class ComplianceVerdict(BaseModel):
     form_required: Optional[str] = None
     addendum: Optional[AddendumRequirement] = None
     allow_checkout: bool
+    attestations_required: List[AttestationRequirement] = Field(
+        default_factory=list,
+        description=(
+            "List of attestation requirements that must be completed or "
+            "acknowledged for this decision. Empty if no additional "
+            "attestations are required."
+        ),
+    )
     sources: Optional[List[str]] = None  # from RAG
     metadata: Optional[dict] = None      # optional debugging info
     regulatory_context: Optional[List[dict]] = None
