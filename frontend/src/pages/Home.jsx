@@ -3,6 +3,7 @@ import UploadBox from "../components/UploadBox";
 import ManualEntryForm from "../components/ManualEntryForm";
 import ComplianceCard from "../components/ComplianceCard";
 import AboutAutoComply from "../components/AboutAutoComply";
+import ProfileLinksBar from "../components/ProfileLinksBar";
 import { validateLicenseJSON } from "../services/api";
 
 export default function Home() {
@@ -177,12 +178,14 @@ export default function Home() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
+    <main className="mx-auto max-w-3xl space-y-6 px-6 py-10">
+      <ProfileLinksBar />
+
       <div>
         <h1 className="text-3xl font-bold text-gray-900">
           AutoComply AI – License Compliance Checker
         </h1>
-        <p className="text-gray-600 mt-2">
+        <p className="mt-2 text-gray-600">
           {mode === "upload"
             ? "Upload a practitioner’s DEA or State license PDF to instantly validate compliance."
             : "Use manual entry to input license information and run the compliance check."}
@@ -196,13 +199,13 @@ export default function Home() {
         <div className="flex space-x-4">
           <button
             onClick={() => resetMode("upload")}
-            className={`px-4 py-2 rounded-lg ${mode==="upload" ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800"}`}
+            className={`rounded-lg px-4 py-2 ${mode==="upload" ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800"}`}
           >
             Upload PDF
           </button>
           <button
             onClick={() => resetMode("manual")}
-            className={`px-4 py-2 rounded-lg ${mode==="manual" ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800"}`}
+            className={`rounded-lg px-4 py-2 ${mode==="manual" ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800"}`}
           >
             Manual Entry
           </button>
@@ -233,6 +236,6 @@ export default function Home() {
           </div>
         )}
       </div>
-    </div>
+    </main>
   );
 }

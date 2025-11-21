@@ -1,3 +1,25 @@
+<p align="center">
+  <strong>AutoComply AI</strong><br/>
+  DEA &amp; State License Compliance Co-Pilot
+</p>
+
+<p align="center">
+  <a href="https://github.com/Sourpat/AutoComply-AI/actions" target="_blank">
+    <img src="https://img.shields.io/github/actions/workflow/status/Sourpat/AutoComply-AI/ci.yml?label=CI&style=flat-square" alt="CI Status" />
+  </a>
+  <img src="https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/frontend-React%20%2B%20Vite-61DAFB?style=flat-square" alt="React + Vite" />
+  <img src="https://img.shields.io/badge/automation-n8n-orange?style=flat-square" alt="n8n" />
+</p>
+
+<p align="center">
+  <a href="https://www.linkedin.com/in/sourabh-patil1995/">LinkedIn</a>
+  &nbsp;•&nbsp;
+  <a href="https://sourpat.github.io/sourabh-portfolio/">Portfolio</a>
+</p>
+
+---
+
 # AutoComply-AI
 
 ## 🚀 Deployment & CI/CD
@@ -81,6 +103,10 @@ validation), see:
 
 - [`docs/api_reference.md`](docs/api_reference.md)
 
+For an overview of all docs in one place, see:
+
+- [`docs/index.md`](docs/index.md)
+
 ### 🎥 Demo Script
 
 For a step-by-step 5–8 minute walkthrough of the project (manual JSON
@@ -108,3 +134,12 @@ For how AutoComply AI can evolve from the current sandbox into a
 full GenAI-powered compliance co-pilot, see:
 
 - [`docs/roadmap.md`](docs/roadmap.md)
+
+## 🔗 Project Links
+
+- GitHub repository: this project
+- Live demo (frontend): _[add URL once deployed via Vercel]_
+- API base (backend): _[add URL once deployed via Render/Fly.io]_
+- Author:
+  - LinkedIn: <https://www.linkedin.com/in/sourabh-patil1995/>
+  - Portfolio: <https://sourpat.github.io/sourabh-portfolio/>
