@@ -1,82 +1,100 @@
 {
-  "name": "AutoComply - License Email Intake",
-  "active": false,
+  "name": "AutoComply – Email Intake (PDF Licenses)",
   "nodes": [
     {
-      "id": "1",
-      "name": "IMAP Email",
+      "id": "IMAPTrigger",
+      "name": "Watch License Inbox",
       "type": "n8n-nodes-base.imapEmail",
       "typeVersion": 1,
-      "position": [300, 300],
+      "position": [260, 260],
       "parameters": {
-        "mailbox": "INBOX",
+        "box": "INBOX",
         "downloadAttachments": true,
-        "additionalFields": {
-          "fromEmail": "contains:@customer-domain.com",
-          "subject": "contains:license renewal"
-        }
+        "ignoreSslIssues": false
       }
     },
     {
-      "id": "2",
-      "name": "HTTP - Validate PDF",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 2,
-      "position": [600, 300],
-      "parameters": {
-        "method": "POST",
-        "url": "http://backend:8000/api/v1/license/validate-pdf",
-        "jsonParameters": true,
-        "options": {},
-        "bodyParametersJson": "={ \"filename\": $json[\"attachment\"][0][\"fileName\"], \"file_url\": $json[\"attachment\"][0][\"fileId\"] }"
-      }
-    },
-    {
-      "id": "3",
-      "name": "Slack Alert",
-      "type": "n8n-nodes-base.slack",
+      "id": "FilterAttachments",
+      "name": "Filter PDF Attachments",
+      "type": "n8n-nodes-base.itemLists",
       "typeVersion": 1,
-      "position": [900, 300],
+      "position": [540, 260],
       "parameters": {
-        "resource": "message",
-        "operation": "post",
-        "channel": "#license-alerts",
-        "text": "={{`License check result for ` + $json[\"license_id\"] + `: ` + $json[\"verdict\"][\"status\"]}}"
+        "operation": "filter",
+        "rules": {
+          "rules": [
+            {
+              "value1": "={{$json[\"binary\"] && $json[\"binary\"].data && $json[\"binary\"].data.fileName && $json[\"binary\"].data.fileName.endsWith('.pdf')}}",
+              "operation": "boolean"
+            }
+          ]
+        }
       }
     },
     {
-      "id": "4",
-      "name": "Airtable Upsert",
-      "type": "n8n-nodes-base.airtable",
-      "typeVersion": 2,
-      "position": [900, 500],
+      "id": "HTTPValidatePDF",
+      "name": "Call AutoComply PDF API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [840, 260],
       "parameters": {
-        "operation": "upsert",
-        "application": "YOUR_BASE_ID",
-        "table": "Licenses",
-        "updateKey": "license_id",
-        "options": {},
-        "fields": {
-          "license_id": "={{$json[\"license_id\"]}}",
-          "practitioner": "={{$json[\"practitioner_name\"]}}",
-          "state": "={{$json[\"state\"]}}",
-          "expiry": "={{$json[\"expiry\"]}}",
-          "status": "={{$json[\"verdict\"][\"status\"]}}"
+        "url": "https://your-backend-host/api/v1/license/validate-pdf",
+        "method": "POST",
+        "sendBinaryData": true,
+        "binaryPropertyName": "data",
+        "options": {
+          "bodyContentType": "multipart-form-data"
         }
+      }
+    },
+    {
+      "id": "ForwardSummary",
+      "name": "Forward Summary Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1140, 260],
+      "parameters": {
+        "subject": "AutoComply – License Validation Result",
+        "toEmail": "compliance-team@example.com",
+        "text": "License validation result:\\nState: {{$json[\"body\"][\"verdict\"][\"state\"]}}\\nAllow checkout: {{$json[\"body\"][\"verdict\"][\"allow_checkout\"]}}\\nStatus: {{$json[\"body\"][\"verdict\"][\"status\"]}}"
       }
     }
   ],
   "connections": {
-    "HTTP - Validate PDF": {
+    "Watch License Inbox": {
       "main": [
-        [{ "node": "Slack Alert", "type": "main", "index": 0 },
-         { "node": "Airtable Upsert", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Filter PDF Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "IMAP Email": {
+    "Filter PDF Attachments": {
       "main": [
-        [{ "node": "HTTP - Validate PDF", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Call AutoComply PDF API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call AutoComply PDF API": {
+      "main": [
+        [
+          {
+            "node": "Forward Summary Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
-  }
+  },
+  "settings": {},
+  "version": 2
 }

@@ -1,77 +1,70 @@
 {
-  "name": "AutoComply - Renewal Reminders (30 & 7 days)",
-  "active": false,
+  "name": "AutoComply – Renewal Reminders",
   "nodes": [
     {
-      "id": "1",
-      "name": "Daily Trigger",
+      "id": "Cron",
+      "name": "Daily at 09:00",
       "type": "n8n-nodes-base.cron",
       "typeVersion": 1,
-      "position": [250, 300],
+      "position": [260, 260],
       "parameters": {
         "triggerTimes": [
           {
-            "hour": 6,
+            "hour": 9,
             "minute": 0
           }
         ]
       }
     },
     {
-      "id": "2",
-      "name": "Fetch Licenses from Airtable",
-      "type": "n8n-nodes-base.airtable",
-      "typeVersion": 2,
-      "position": [500, 300],
+      "id": "FetchExpiringLicenses",
+      "name": "Fetch Expiring Licenses",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [540, 260],
       "parameters": {
-        "operation": "list",
-        "application": "YOUR_BASE_ID",
-        "table": "Licenses",
-        "additionalOptions": {
-          "filterByFormula": "OR({DaysToExpiry} = 30, {DaysToExpiry} = 7)"
-        }
+        "url": "https://your-backend-host/demo/expiring-licenses",
+        "method": "GET",
+        "responseFormat": "json"
       }
     },
     {
-      "id": "3",
+      "id": "SendReminderEmail",
       "name": "Send Reminder Email",
       "type": "n8n-nodes-base.emailSend",
-      "typeVersion": 2,
-      "position": [800, 280],
-      "parameters": {
-        "fromEmail": "licenses@autocomply.ai",
-        "toEmail": "={{$json[\"ReminderEmail\"]}}",
-        "subject": "={{`License renewal in ` + $json[\"DaysToExpiry\"] + ` day(s)`}}",
-        "text": "={{`Hello,\\n\\nYour license ${$json[\"license_id\"]} for ${$json[\"Practitioner\"]} will expire on ${$json[\"Expiry\"]}.\\n\\nPlease renew to avoid disruption of controlled substance ordering.\\n\\n– AutoComply AI`}}"
-      }
-    },
-    {
-      "id": "4",
-      "name": "Slack Summary",
-      "type": "n8n-nodes-base.slack",
       "typeVersion": 1,
-      "position": [800, 420],
+      "position": [840, 260],
       "parameters": {
-        "resource": "message",
-        "operation": "post",
-        "channel": "#license-alerts",
-        "text": "={{`Sent renewal reminder for license ${$json[\"license_id\"]} (${ $json[\"DaysToExpiry\"] } days remaining).`}}"
+        "toEmail": "{{$json[\"email\"] || \"practitioner@example.com\"}}",
+        "subject": "AutoComply – License Renewal Reminder",
+        "text": "Hi {{$json[\"name\"] || \"Doctor\"}},\\n\\nYour license {{$json[\"license_id\"] || \"[unknown]\"}} in {{$json[\"state\"] || \"[state]\"}} is expiring on {{$json[\"state_expiry\"] || \"[date]\"}}.\\n\\nPlease renew to avoid checkout disruptions."
       }
     }
   ],
   "connections": {
-    "Daily Trigger": {
-      "main": [
-        [{ "node": "Fetch Licenses from Airtable", "type": "main", "index": 0 }]
-      ]
-    },
-    "Fetch Licenses from Airtable": {
+    "Daily at 09:00": {
       "main": [
         [
-          { "node": "Send Reminder Email", "type": "main", "index": 0 },
-          { "node": "Slack Summary", "type": "main", "index": 0 }
+          {
+            "node": "Fetch Expiring Licenses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Expiring Licenses": {
+      "main": [
+        [
+          {
+            "node": "Send Reminder Email",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     }
-  }
+  },
+  "settings": {},
+  "version": 2
 }

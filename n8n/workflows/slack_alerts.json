@@ -1,40 +1,70 @@
 {
-  "name": "AutoComply - Slack Alerts Webhook",
-  "active": false,
+  "name": "AutoComply – Slack Alerts",
   "nodes": [
     {
-      "id": "1",
-      "name": "Incoming Webhook",
+      "id": "Webhook",
+      "name": "License Event Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [300, 300],
+      "position": [280, 300],
       "parameters": {
         "httpMethod": "POST",
-        "path": "autocomply/slack-alert",
+        "path": "autocomply/license-events",
         "responseMode": "onReceived",
-        "responseData": "default",
-        "options": {}
+        "options": {
+          "responseCode": 200,
+          "responseContentType": "application/json"
+        }
       }
     },
     {
-      "id": "2",
-      "name": "Slack - Post Message",
+      "id": "SlackMessage",
+      "name": "Post to Slack #license-alerts",
       "type": "n8n-nodes-base.slack",
       "typeVersion": 1,
-      "position": [650, 300],
+      "position": [700, 300],
       "parameters": {
         "resource": "message",
         "operation": "post",
         "channel": "#license-alerts",
-        "text": "={{$json[\"text\"] || (`License ${$json[\"license_id\"]} → ${$json[\"status\"]}`)}}"
+        "text": "🔎 AutoComply event: {{$json[\"event\"] || \"license_validation\"}}\\nState: {{$json[\"state\"] || \"N/A\"}}\\nAllow checkout: {{$json[\"allow_checkout\"]}}\\nSuccess: {{$json[\"success\"]}}"
+      }
+    },
+    {
+      "id": "ReturnJson",
+      "name": "Return JSON",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [980, 300],
+      "parameters": {
+        "responseBody": "{\"ok\": true}"
       }
     }
   ],
   "connections": {
-    "Incoming Webhook": {
+    "License Event Webhook": {
       "main": [
-        [{ "node": "Slack - Post Message", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Post to Slack #license-alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Slack #license-alerts": {
+      "main": [
+        [
+          {
+            "node": "Return JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
-  }
+  },
+  "settings": {},
+  "version": 2
 }
