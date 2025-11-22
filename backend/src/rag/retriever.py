@@ -1,3 +1,30 @@
+"""RAG retrieval layer for AutoComply AI.
+
+This module is intentionally lightweight and framework-agnostic so that it can be
+plugged into either:
+
+- a plain FastAPI route (current setup), or
+- a LangChain / LangGraph style orchestration graph in the future.
+
+High-level responsibilities:
+- Load a small set of regulatory “documents” (state rules, DEA snippets, use-case
+  explanations) via the loader.
+- Use a simple embedding + similarity search strategy to retrieve the most relevant
+  snippets for a given (state, purchase_intent) query.
+- Return a normalized list of context items shaped like:
+
+    {
+        "jurisdiction": "US-CA",
+        "source": "State rules",
+        "snippet": "...short explanation text..."
+    }
+
+The tests around regulatory context treat this retriever as a deterministic,
+non-LLM stub. That keeps the pipeline stable and makes it easy to later swap
+the internals for a vector database or a LangChain retriever without changing
+the public interface.
+"""
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -86,13 +113,17 @@ class Retriever:
 
 
 class RegulationRetriever:
-    """
-    Minimal, in-memory 'retriever' for regulatory snippets.
+    """Small, testable retriever for regulatory snippets.
 
-    This is NOT a full vector / embedding-based retriever yet.
-    It exists to:
-      - Demonstrate how regulatory context would be fetched.
-      - Provide something concrete to attach to decisions and tests.
+    The intent is to encapsulate:
+
+    - how we turn (state, purchase_intent, maybe license metadata) into a query
+    - how we select the top N relevant “regulatory context” snippets
+    - how we normalize them into the dictionary shape expected by the API layer.
+
+    In a LangGraph setup, this class can be wrapped as a node/step without changing
+    its public methods; the graph would simply call `retrieve(...)` with the same
+    arguments used by the current FastAPI route.
     """
 
     def get_context_for_state(
