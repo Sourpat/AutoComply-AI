@@ -149,6 +149,7 @@ class LicenseValidationRequest(BaseModel):
 class LicenseValidationResponse(BaseModel):
     success: bool
     verdict: ComplianceVerdict
+    explanation: Optional[str] = None
 
 
 class RegulatoryContextRequest(BaseModel):

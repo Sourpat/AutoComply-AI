@@ -16,6 +16,7 @@ from src.api.models.compliance_models import (
 from src.compliance.decision_engine import ComplianceEngine
 from src.ocr.extract import extract_text_from_pdf, parse_license_fields_from_text
 from src.rag.retriever import RegulationRetriever, build_regulatory_context
+from src.rag.responder import explain_verdict_with_context
 from src.utils.events import get_event_publisher
 
 router = APIRouter(
@@ -104,9 +105,15 @@ async def validate_license(payload: LicenseValidationRequest) -> dict:
 
     verdict_dict["regulatory_context"] = normalized_context
 
+    explanation = explain_verdict_with_context(
+        verdict_dict,
+        regulatory_context=normalized_context,
+    )
+
     response = {
         "success": True,
         "verdict": verdict_dict,
+        "explanation": explanation,
     }
 
     # --- Fire-and-forget event to n8n (optional) ---
