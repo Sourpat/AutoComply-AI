@@ -10,6 +10,7 @@ import ExplainRulePanel from "../components/ExplainRulePanel";
 import { ApiDiagnosticsPanel } from "../components/ApiDiagnosticsPanel";
 import { OhioTdddSandbox } from "../components/OhioTdddSandbox";
 import { PractitionerCsfSandbox } from "../components/PractitionerCsfSandbox";
+import { HospitalCsfSandbox } from "../components/HospitalCsfSandbox";
 import { ComplianceCoverageTable } from "../components/ComplianceCoverageTable";
 import { validateLicenseJSON, explainRule } from "../services/api";
 
@@ -209,6 +210,7 @@ const Home = () => {
               <ComplianceCoverageTable />
               <OhioTdddSandbox />
               <PractitionerCsfSandbox />
+              <HospitalCsfSandbox />
             </div>
           </section>
         </div>

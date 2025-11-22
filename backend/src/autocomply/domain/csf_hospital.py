@@ -26,20 +26,20 @@ class HospitalCsfForm(BaseModel):
     """
 
     # Facility / pharmacy identity
-    facility_name: str = Field(..., min_length=1)
+    facility_name: str = Field(...)
     facility_type: HospitalFacilityType
     account_number: Optional[str] = None
 
     # Pharmacy licensing
-    pharmacy_license_number: str = Field(..., min_length=1)
-    dea_number: str = Field(..., min_length=1)
+    pharmacy_license_number: str = Field(...)
+    dea_number: str = Field(...)
 
     # Pharmacist-in-charge / contact
-    pharmacist_in_charge_name: str = Field(..., min_length=1)
+    pharmacist_in_charge_name: str = Field(...)
     pharmacist_contact_phone: Optional[str] = None
 
     # Jurisdiction context
-    ship_to_state: str = Field(..., min_length=2, max_length=2)
+    ship_to_state: str = Field(..., max_length=2)
 
     # Attestation checkbox – required to ship
     attestation_accepted: bool = Field(
