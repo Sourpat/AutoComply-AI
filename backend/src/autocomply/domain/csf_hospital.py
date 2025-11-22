@@ -117,3 +117,60 @@ def evaluate_hospital_csf(form: HospitalCsfForm) -> HospitalCsfDecision:
         ),
         missing_fields=[],
     )
+
+
+def describe_hospital_csf_decision(
+    form: HospitalCsfForm,
+    decision: HospitalCsfDecision,
+) -> str:
+    """
+    Deterministic explanation for the Hospital CSF decision.
+    Useful for logs, audits, or as a base layer for Codex.
+    """
+    lines: List[str] = []
+
+    # 1. Decision summary
+    if decision.status == CsDecisionStatus.OK_TO_SHIP:
+        lines.append("Decision: Order is allowed to proceed (ok_to_ship).")
+    elif decision.status == CsDecisionStatus.BLOCKED:
+        lines.append(
+            "Decision: Order is blocked until required information is provided."
+        )
+    else:
+        lines.append(
+            "Decision: Order requires manual review by a compliance specialist."
+        )
+
+    # 2. Facility context
+    lines.append(
+        f"Facility: {form.facility_name or '[missing]'} "
+        f"({form.facility_type.value}), ship-to state: {form.ship_to_state or '[missing]'}."
+    )
+
+    # 3. Licensing & pharmacist details
+    lines.append(
+        "Pharmacy licensing and responsible pharmacist: "
+        f"pharmacy_license_number={form.pharmacy_license_number or '[missing]'}, "
+        f"dea_number={form.dea_number or '[missing]'}, "
+        f"pharmacist_in_charge_name={form.pharmacist_in_charge_name or '[missing]'}."
+    )
+
+    # 4. Attestation
+    if form.attestation_accepted:
+        lines.append(
+            "Attestation: The facility has accepted the controlled substances attestation clause."
+        )
+    else:
+        lines.append(
+            "Attestation: The facility has NOT accepted the controlled substances attestation clause."
+        )
+
+    # 5. Missing fields
+    if decision.missing_fields:
+        lines.append(
+            "The engine identified the following missing or incomplete fields: "
+            + ", ".join(decision.missing_fields)
+            + "."
+        )
+
+    return "\n".join(lines)
