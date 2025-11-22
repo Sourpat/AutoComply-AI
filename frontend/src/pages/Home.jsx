@@ -5,7 +5,7 @@ import UploadBox from "../components/UploadBox";
 import ComplianceCard from "../components/ComplianceCard";
 import ManualEntryForm from "../components/ManualEntryForm";
 import ScenarioLibrary from "../components/ScenarioLibrary";
-import { validateLicenseJSON } from "../services/api";
+import { validateLicenseJSON, explainRule } from "../services/api";
 
 const Home = () => {
   const [result, setResult] = useState(null);
@@ -13,6 +13,9 @@ const Home = () => {
   const [errors, setErrors] = useState();
   const [isLoading, setIsLoading] = useState(false);
   const [lastScenarioId, setLastScenarioId] = useState(null);
+  const [ruleExplanation, setRuleExplanation] = useState(null);
+  const [explainLoading, setExplainLoading] = useState(false);
+  const [explainError, setExplainError] = useState(null);
 
   const handleResult = (data) => {
     setResult(data);
@@ -31,6 +34,8 @@ const Home = () => {
     setIsLoading(true);
     setLastScenarioId(scenarioId);
     setErrors(undefined);
+    setRuleExplanation(null);
+    setExplainError(null);
 
     try {
       const res = await validateLicenseJSON(payload);
@@ -56,6 +61,36 @@ const Home = () => {
     result?.verdict?.attestations_required?.length || 0;
   const hasAttestations = attestationCount > 0;
   const allowCheckout = result?.verdict?.allow_checkout;
+
+  const handleExplainRule = async () => {
+    try {
+      const state = formValues.state;
+      const purchaseIntent = formValues.purchase_intent;
+
+      if (!state || !purchaseIntent) {
+        setExplainError(
+          "State and purchase intent are required to explain this decision."
+        );
+        return;
+      }
+
+      setExplainLoading(true);
+      setExplainError(null);
+
+      const payload = {
+        state,
+        purchase_intent: purchaseIntent,
+      };
+
+      const data = await explainRule(payload);
+      setRuleExplanation(data);
+    } catch (err) {
+      setExplainError(err?.message || "Unable to fetch rule explanation.");
+      setRuleExplanation(null);
+    } finally {
+      setExplainLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 dark:bg-slate-950 dark:text-slate-50">
@@ -154,7 +189,13 @@ const Home = () => {
 
           {/* Right: Result */}
           <section>
-            <ComplianceCard data={result} />
+            <ComplianceCard
+              data={result}
+              onExplainRule={handleExplainRule}
+              ruleExplanation={ruleExplanation}
+              explainLoading={explainLoading}
+              explainError={explainError}
+            />
           </section>
         </div>
       </div>
