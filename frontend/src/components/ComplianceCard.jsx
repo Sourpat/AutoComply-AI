@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { explainRule } from "../services/api";
 
 /**
  * ComplianceCard
@@ -42,7 +41,13 @@ import { explainRule } from "../services/api";
  *   }
  * }
  */
-const ComplianceCard = ({ data }) => {
+const ComplianceCard = ({
+  data,
+  onExplainRule,
+  ruleExplanation,
+  explainLoading,
+  explainError,
+}) => {
   if (!data || !data.verdict) {
     return null;
   }
@@ -73,43 +78,10 @@ const ComplianceCard = ({ data }) => {
   // Local "soft gating" state: simulated user acknowledgement of attestations
   const [attestationsConfirmed, setAttestationsConfirmed] = useState(false);
 
-  // Local RAG rule explanation state
-  const [ruleExplainItems, setRuleExplainItems] = useState([]);
-  const [ruleExplainLoading, setRuleExplainLoading] = useState(false);
-  const [ruleExplainError, setRuleExplainError] = useState("");
-
   // Reset acknowledgement when the decision changes (new license, new verdict, etc.)
   useEffect(() => {
     setAttestationsConfirmed(false);
-
-    // Reset rule explanation when the underlying scenario changes
-    setRuleExplainItems([]);
-    setRuleExplainError("");
-    setRuleExplainLoading(false);
   }, [licenseId, allowCheckout, attestationCount, state, purchaseIntent]);
-
-  const handleExplainRuleClick = async () => {
-    if (!state || !purchaseIntent) {
-      return;
-    }
-
-    try {
-      setRuleExplainError("");
-      setRuleExplainLoading(true);
-
-      const result = await explainRule({
-        state,
-        purchase_intent: purchaseIntent,
-      });
-
-      const items = Array.isArray(result.items) ? result.items : [];
-      setRuleExplainItems(items);
-    } catch (err) {
-      setRuleExplainError("Could not load rule explanation.");
-    } finally {
-      setRuleExplainLoading(false);
-    }
-  };
 
   const needsAck = allowCheckout && hasAttestations;
   const canProceed = allowCheckout && (!hasAttestations || attestationsConfirmed);
@@ -239,6 +211,16 @@ const ComplianceCard = ({ data }) => {
 
         {/* Proceed soft gate */}
         <div className="flex flex-col items-end gap-2 text-right">
+          {onExplainRule && (
+            <button
+              type="button"
+              onClick={onExplainRule}
+              className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+              disabled={explainLoading}
+            >
+              {explainLoading ? "Explaining…" : "Why this decision?"}
+            </button>
+          )}
           <button
             type="button"
             className={proceedButtonClasses}
@@ -308,6 +290,51 @@ const ComplianceCard = ({ data }) => {
         </div>
       )}
 
+      {(ruleExplanation || explainError) && (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-xs dark:border-slate-700 dark:bg-slate-900/60">
+          <p className="mb-1 text-[11px] font-semibold text-slate-900 dark:text-slate-50">
+            Explanation from AutoComply AI (demo)
+          </p>
+
+          {explainError && (
+            <p className="text-[11px] text-rose-600 dark:text-rose-400">
+              {explainError}
+            </p>
+          )}
+
+          {!explainError && ruleExplanation && (
+            <>
+              {ruleExplanation.state && (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Jurisdiction: {ruleExplanation.state}
+                </p>
+              )}
+              {Array.isArray(ruleExplanation.items) && ruleExplanation.items.length > 0 ? (
+                <ul className="mt-1 space-y-1">
+                  {ruleExplanation.items.map((item, idx) => (
+                    <li
+                      key={idx}
+                      className="rounded-lg bg-slate-900/90 p-2 text-[11px] leading-snug text-slate-100"
+                    >
+                      <div className="mb-0.5 text-[10px] uppercase tracking-wide text-slate-300">
+                        {item.jurisdiction || "Regulatory context"}
+                        {item.source ? ` • ${item.source}` : ""}
+                      </div>
+                      <p>{item.snippet || item.text}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  No additional explanation items were returned, but the decision
+                  remains driven by the same rules engine and RAG context.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* Regulatory context */}
       {Array.isArray(regulatoryContext) && regulatoryContext.length > 0 && (
         <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-4 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-100">
@@ -325,41 +352,6 @@ const ComplianceCard = ({ data }) => {
                 Why this decision?
               </div>
               <p>{regulatoryExplanation}</p>
-            </div>
-          )}
-          {state && purchaseIntent && (
-            <div className="mt-3 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleExplainRuleClick}
-                className="inline-flex items-center rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
-                disabled={ruleExplainLoading}
-              >
-                {ruleExplainLoading ? "Fetching rule explanation…" : "Explain this rule"}
-              </button>
-              {ruleExplainError && (
-                <span className="text-xs text-rose-500">
-                  {ruleExplainError}
-                </span>
-              )}
-            </div>
-          )}
-
-          {ruleExplainItems.length > 0 && (
-            <div className="mt-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
-              <div className="mb-1 font-semibold">
-                Underlying regulatory context (RAG)
-              </div>
-              <ul className="list-disc space-y-1 pl-4">
-                {ruleExplainItems.map((item, idx) => (
-                  <li key={idx}>
-                    <span className="font-semibold">
-                      {item.jurisdiction || "Unknown jurisdiction"}:
-                    </span>{" "}
-                    {item.snippet || ""}
-                  </li>
-                ))}
-              </ul>
             </div>
           )}
           <ul className="space-y-2">
