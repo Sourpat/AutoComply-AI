@@ -71,8 +71,11 @@ COMPLIANCE_ARTIFACTS: List[ComplianceArtifact] = [
         jurisdiction="US-Federal/General",
         artifact_type=ArtifactType.CONTROLLED_SUBSTANCE_FORM,
         source_document="/mnt/data/Online Controlled Substance Form - Surgery Center form.pdf",
-        engine_status=ArtifactStatus.RAW_DOCUMENT,
-        notes="Surgery center CSF; not yet modeled.",
+        engine_status=ArtifactStatus.MODELLED,
+        notes=(
+            "Surgery Center CSF modeled in csf_surgery_center.py with evaluation logic "
+            "for facility license, DEA, medical director, and attestation."
+        ),
     ),
     ComplianceArtifact(
         id="csf_ems",
@@ -80,8 +83,11 @@ COMPLIANCE_ARTIFACTS: List[ComplianceArtifact] = [
         jurisdiction="US-Federal/General",
         artifact_type=ArtifactType.CONTROLLED_SUBSTANCE_FORM,
         source_document="/mnt/data/Online Controlled Substance Form - EMS form.pdf",
-        engine_status=ArtifactStatus.RAW_DOCUMENT,
-        notes="EMS CSF; not yet modeled.",
+        engine_status=ArtifactStatus.MODELLED,
+        notes=(
+            "EMS CSF modeled in csf_ems.py with evaluation logic for service identity, "
+            "agency license, medical director, and attestation."
+        ),
     ),
     ComplianceArtifact(
         id="csf_researcher",
