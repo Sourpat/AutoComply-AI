@@ -4,12 +4,52 @@ import React, { useState } from "react";
 import UploadBox from "../components/UploadBox";
 import ComplianceCard from "../components/ComplianceCard";
 import ManualEntryForm from "../components/ManualEntryForm";
+import ScenarioLibrary from "../components/ScenarioLibrary";
+import { validateLicenseJSON } from "../services/api";
 
 const Home = () => {
   const [result, setResult] = useState(null);
+  const [formValues, setFormValues] = useState({});
+  const [errors, setErrors] = useState();
+  const [isLoading, setIsLoading] = useState(false);
+  const [lastScenarioId, setLastScenarioId] = useState(null);
 
   const handleResult = (data) => {
     setResult(data);
+  };
+
+  const handleManualChange = (event) => {
+    const { name, value, type, checked } = event.target;
+
+    setFormValues((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  const handleValidatePayload = async (payload, scenarioId = null) => {
+    setIsLoading(true);
+    setLastScenarioId(scenarioId);
+    setErrors(undefined);
+
+    try {
+      const res = await validateLicenseJSON(payload);
+      setResult(res);
+      setErrors(res?.errors ?? undefined);
+    } finally {
+      setIsLoading(false);
+      setLastScenarioId(null);
+    }
+  };
+
+  const handleManualSubmit = async (event) => {
+    event.preventDefault();
+    await handleValidatePayload(formValues);
+  };
+
+  const handleRunScenarioFromLibrary = async (scenario) => {
+    if (!scenario?.payload) return;
+    await handleValidatePayload(scenario.payload, scenario.id || null);
   };
 
   const attestationCount =
@@ -92,7 +132,17 @@ const Home = () => {
               <div className="space-y-4">
                 <UploadBox onResult={handleResult} />
                 <div className="h-px bg-slate-100 dark:bg-slate-700" />
-                <ManualEntryForm onResult={handleResult} />
+                <ScenarioLibrary
+                  onRunScenario={handleRunScenarioFromLibrary}
+                  isRunning={isLoading && lastScenarioId !== null}
+                />
+                <ManualEntryForm
+                  formValues={formValues}
+                  onChange={handleManualChange}
+                  onSubmit={handleManualSubmit}
+                  isLoading={isLoading}
+                  errors={errors}
+                />
               </div>
             </div>
 
