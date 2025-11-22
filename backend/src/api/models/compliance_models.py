@@ -194,11 +194,15 @@ class RegulatoryContextItem(BaseModel):
 
 class RegulatoryContextResponse(BaseModel):
     """
-    Response shape for the rules/context preview endpoint.
+    Response shape for endpoints that expose regulatory context / rules
+    based on a state + purchase-intent combination.
 
-    This keeps the payload intentionally generic so it can wrap whatever
-    structure the RAG pipeline returns (jurisdiction, source, snippet, etc.).
+    `state` and `purchase_intent` are optional so that callers like the
+    simple rules preview endpoint can omit them if they want.
     """
 
     success: bool
     items: List[Dict[str, Any]]
+    state: Optional[str] = None
+    purchase_intent: Optional[str] = None
+    context: List[Dict[str, Any]] = Field(default_factory=list)

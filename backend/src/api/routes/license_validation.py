@@ -350,7 +350,10 @@ async def explain_rule(payload: RegulatoryContextRequest) -> dict:
 
     return {
         "success": True,
+        "state": payload.state,
+        "purchase_intent": payload.purchase_intent,
         "items": context_items,
+        "context": context_items,
     }
 
 
