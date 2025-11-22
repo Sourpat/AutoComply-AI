@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -105,3 +107,19 @@ async def get_demo_expiring_licenses():
             "state_expiry": (today + timedelta(days=25)).isoformat(),
         },
     ]
+
+
+@app.get("/health", tags=["meta"])
+async def health_check() -> dict:
+    """
+    Lightweight healthcheck for uptime monitors and deployment platforms.
+
+    Returns a simple JSON payload that indicates the service is up,
+    along with a UTC timestamp. This endpoint does not call any external
+    systems, the LLM, or the RAG pipeline.
+    """
+    return {
+        "status": "ok",
+        "service": "autocomply-ai",
+        "time": datetime.utcnow().isoformat() + "Z",
+    }
