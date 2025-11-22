@@ -228,13 +228,16 @@ async def validate_license_pdf(file: UploadFile = File(...)) -> dict:
     verdict = engine.evaluate(license_payload)
     verdict_dict = verdict.dict()
 
-    # --- Attach RAG-style context here as well, using the same helper ---
+    # --- Attach RAG-style regulatory context for this PDF-based decision ---
+    state_code = verdict_dict.get("state") or license_payload.state
+
     try:
         regulatory_context = build_regulatory_context(
-            state=verdict_dict.get("state") or license_payload.state,
+            state=state_code,
             purchase_intent=license_payload.purchase_intent,
         )
     except Exception:
+        # Never break the API on context-building issues; fall back to empty.
         regulatory_context = []
 
     verdict_dict["regulatory_context"] = regulatory_context
