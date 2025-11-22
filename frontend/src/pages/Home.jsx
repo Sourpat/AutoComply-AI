@@ -5,6 +5,7 @@ import UploadBox from "../components/UploadBox";
 import ComplianceCard from "../components/ComplianceCard";
 import ManualEntryForm from "../components/ManualEntryForm";
 import ScenarioLibrary from "../components/ScenarioLibrary";
+import DemoScenariosBar from "../components/DemoScenariosBar";
 import { validateLicenseJSON, explainRule } from "../services/api";
 
 const Home = () => {
@@ -139,6 +140,7 @@ const Home = () => {
         <div className="grid gap-6 md:grid-cols-2 md:items-start">
           {/* Left: Input / forms */}
           <section className="space-y-4">
+            <DemoScenariosBar />
             <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/80">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div>
