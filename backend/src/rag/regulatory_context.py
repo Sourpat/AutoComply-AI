@@ -128,6 +128,7 @@ def build_regulatory_context(
                 "ship-to alignment for controlled substances, including the "
                 "status and expiry date of the practitioner’s state permit."
             ),
+            "jurisdiction": f"US-{state.upper()}" if state else None,
         }
     )
 
@@ -137,24 +138,26 @@ def build_regulatory_context(
         None,
     )
     if dea_rule is not None:
-        snippets.append(
-            {
-                "source": f"{dea_rule['jurisdiction']} – {dea_rule['topic']}",
-                "snippet": f"DEA: {dea_rule['text']}",
-            }
-        )
+            snippets.append(
+                {
+                    "source": f"{dea_rule['jurisdiction']} – {dea_rule['topic']}",
+                    "snippet": f"DEA: {dea_rule['text']}",
+                    "jurisdiction": "US-DEA",
+                }
+            )
     else:
         # Fallback text, should not normally be hit
-        snippets.append(
-            {
-                "source": "Federal / DEA – Controlled substances (demo)",
-                "snippet": (
-                    "DEA rules for controlled substances require an active "
-                    "federal registration and appropriate state authority "
-                    "for the ship-to location."
-                ),
-            }
-        )
+            snippets.append(
+                {
+                    "source": "Federal / DEA – Controlled substances (demo)",
+                    "snippet": (
+                        "DEA rules for controlled substances require an active "
+                        "federal registration and appropriate state authority "
+                        "for the ship-to location."
+                    ),
+                    "jurisdiction": "US-DEA",
+                }
+            )
 
     # 3) Scenario / purchase-intent framing (e.g., telemedicine)
     if purchase_intent:
@@ -179,6 +182,7 @@ def build_regulatory_context(
             {
                 "source": "Use-case context (demo)",
                 "snippet": base_text,
+                "jurisdiction": f"US-{state.upper()}" if state else None,
             }
         )
 

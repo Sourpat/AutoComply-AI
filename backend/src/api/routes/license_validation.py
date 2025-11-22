@@ -15,7 +15,7 @@ from src.api.models.compliance_models import (
 )
 from src.compliance.decision_engine import ComplianceEngine
 from src.ocr.extract import extract_text_from_pdf, parse_license_fields_from_text
-from src.rag.regulatory_context import build_regulatory_context
+from src.rag.retriever import RegulationRetriever, build_regulatory_context
 from src.utils.events import get_event_publisher
 
 router = APIRouter(
@@ -251,6 +251,44 @@ async def validate_license_pdf(file: UploadFile = File(...)) -> dict:
     }
 
     return response
+
+
+@router.post(
+    "/debug/regulatory-context",
+    summary="Debug regulatory context for a given state and purchase intent",
+)
+async def debug_regulatory_context(payload: LicenseValidationRequest) -> dict:
+    """
+    Debug-only endpoint that exposes:
+    - the raw RAG retrieval hits from RegulationRetriever
+    - the normalized regulatory_context that the engine uses in verdicts
+
+    This is meant for demos and troubleshooting and should not be used
+    as a customer-facing API.
+    """
+    retriever = RegulationRetriever()
+
+    # Raw hits from the retriever (e.g., Pinecone/Chroma in a future version)
+    raw_hits = retriever.retrieve(
+        state=payload.state,
+        purchase_intent=payload.purchase_intent,
+    )
+
+    # Normalized context using the same helper wiring used by the main endpoint
+    normalized_context = build_regulatory_context(
+        state=payload.state,
+        purchase_intent=payload.purchase_intent,
+    )
+
+    return {
+        "success": True,
+        "input": {
+            "state": payload.state,
+            "purchase_intent": payload.purchase_intent,
+        },
+        "raw_retrieval": raw_hits,
+        "normalized_context": normalized_context,
+    }
 
 
 @router.post(

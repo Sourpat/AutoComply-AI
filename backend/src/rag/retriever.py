@@ -5,8 +5,13 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from src.rag.embedder import Embedder
-from src.rag.knowledge_base import RegulationSnippet, get_snippets_for_jurisdiction
+from src.rag.knowledge_base import (
+    RegulationSnippet,
+    get_snippets_for_jurisdiction,
+    list_all_snippets,
+)
 from src.rag.loader import DocumentLoader
+from src.rag.regulatory_context import build_regulatory_context
 
 
 class Retriever:
@@ -112,3 +117,39 @@ class RegulationRetriever:
         Fetch baseline DEA-level context (e.g. Schedule II–V rules).
         """
         return get_snippets_for_jurisdiction(jurisdiction="US-DEA", topic=topic)
+
+    def retrieve(
+        self,
+        state: Optional[str] = None,
+        purchase_intent: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Return a list of raw retrieval hits for the given inputs.
+
+        This is intentionally simple and deterministic for tests/demos.
+        """
+        hits: List[RegulationSnippet] = []
+
+        if state:
+            hits.extend(self.get_context_for_state(state_code=state))
+
+        hits.extend(self.get_dea_baseline_context())
+
+        if purchase_intent and purchase_intent.lower().startswith("tele"):
+            tele_snippets = [
+                s
+                for s in list_all_snippets()
+                if s.topic.lower() == "telemedicine"
+            ]
+            hits.extend(tele_snippets)
+
+        return [
+            {
+                "id": s.id,
+                "jurisdiction": s.jurisdiction,
+                "topic": s.topic,
+                "text": s.text,
+                "source": s.source,
+            }
+            for s in hits
+        ]
