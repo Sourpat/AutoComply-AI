@@ -1,0 +1,118 @@
+from enum import Enum
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
+
+
+class PractitionerFacilityType(str, Enum):
+    INDIVIDUAL = "individual_practitioner"
+    GROUP_PRACTICE = "group_practice"
+    CLINIC = "clinic"
+    DENTAL_PRACTICE = "dental_practice"
+    OTHER = "other"
+
+
+class CsDecisionStatus(str, Enum):
+    OK_TO_SHIP = "ok_to_ship"
+    BLOCKED = "blocked"
+    MANUAL_REVIEW = "manual_review"
+
+
+class PractitionerCsfForm(BaseModel):
+    """
+    Normalized representation of the Practitioner Controlled Substance Form
+    (online CSF – Practitioner).
+
+    This is intentionally generic; we can refine field names as we line up
+    against the exact PDF sections.
+    """
+
+    # Basic account / facility identity
+    facility_name: str = Field(...)
+    facility_type: PractitionerFacilityType
+    account_number: Optional[str] = None
+
+    # Practitioner identity / licensing
+    practitioner_name: str = Field(...)
+    state_license_number: str = Field(...)
+    dea_number: str = Field(...)
+
+    # Shipping / jurisdiction context (for state addendums later)
+    ship_to_state: str = Field(..., min_length=2, max_length=2)  # e.g. "OH", "FL"
+
+    # Attestation checkbox – “I confirm info is true and I will comply…”
+    attestation_accepted: bool = Field(
+        default=False,
+        description="True if the practitioner checked/accepted the attestation clause.",
+    )
+
+    # Free-text notes if needed (internal use)
+    internal_notes: Optional[str] = None
+
+
+class PractitionerCsfDecision(BaseModel):
+    """
+    Output of the practitioner CSF decision logic.
+    """
+
+    status: CsDecisionStatus
+    reason: str
+    missing_fields: List[str] = Field(default_factory=list)
+
+
+def evaluate_practitioner_csf(form: PractitionerCsfForm) -> PractitionerCsfDecision:
+    """
+    First-pass decision logic for Practitioner CSF.
+
+    Conservative approach:
+    - Require practitioner_name, facility_name, state_license_number, dea_number, ship_to_state.
+    - Require attestation_accepted to allow shipping.
+    - Return BLOCKED when core fields are missing or attestation not accepted.
+    - Use MANUAL_REVIEW only for edge cases we don't confidently automate yet.
+    """
+    missing: List[str] = []
+
+    # Required identity/licensing fields
+    if not form.facility_name.strip():
+        missing.append("facility_name")
+    if not form.practitioner_name.strip():
+        missing.append("practitioner_name")
+    if not form.state_license_number.strip():
+        missing.append("state_license_number")
+    if not form.dea_number.strip():
+        missing.append("dea_number")
+    if not form.ship_to_state.strip():
+        missing.append("ship_to_state")
+
+    # If anything essential missing → blocked
+    if missing:
+        return PractitionerCsfDecision(
+            status=CsDecisionStatus.BLOCKED,
+            reason=(
+                "Practitioner CSF is missing required identity/licensing fields: "
+                + ", ".join(missing)
+            ),
+            missing_fields=missing,
+        )
+
+    # Attestation must be accepted
+    if not form.attestation_accepted:
+        return PractitionerCsfDecision(
+            status=CsDecisionStatus.BLOCKED,
+            reason=(
+                "Practitioner has not accepted the controlled substances attestation. "
+                "The attestation clause must be acknowledged before controlled substances "
+                "can be shipped."
+            ),
+            missing_fields=["attestation_accepted"],
+        )
+
+    # Everything minimal is present
+    return PractitionerCsfDecision(
+        status=CsDecisionStatus.OK_TO_SHIP,
+        reason=(
+            "All required practitioner, facility, and licensing details are present and "
+            "the attestation has been accepted. Practitioner CSF is approved to proceed."
+        ),
+        missing_fields=[],
+    )
