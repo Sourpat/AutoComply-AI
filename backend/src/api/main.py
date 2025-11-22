@@ -54,17 +54,6 @@ async def validate_license_pdf_compat(file: UploadFile = File(...)) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Health endpoint for smoke tests and uptime checks
-# ---------------------------------------------------------------------------
-
-@app.get("/health", tags=["meta"])
-async def health() -> dict:
-    """
-    Simple health check used by smoke tests and deployment probes.
-    """
-    return {"status": "ok"}
-
-# ---------------------------------------------------------------------------
 # Demo endpoint – expiring licenses for n8n renewal workflow
 # ---------------------------------------------------------------------------
 
