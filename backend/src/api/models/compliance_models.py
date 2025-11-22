@@ -194,14 +194,11 @@ class RegulatoryContextItem(BaseModel):
 
 class RegulatoryContextResponse(BaseModel):
     """
-    Response envelope for the 'explain rule' endpoint.
-    Mirrors what we attach inside `verdict.regulatory_context`,
-    but wrapped with echo of the original query.
+    Response shape for the rules/context preview endpoint.
+
+    This keeps the payload intentionally generic so it can wrap whatever
+    structure the RAG pipeline returns (jurisdiction, source, snippet, etc.).
     """
 
-    state: str
-    purchase_intent: str
-    context: List[RegulatoryContextItem] = Field(
-        default_factory=list,
-        description="Ordered list of rule snippets and citations that informed this decision.",
-    )
+    success: bool
+    items: List[Dict[str, Any]]
