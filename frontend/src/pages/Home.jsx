@@ -9,6 +9,7 @@ import DemoScenariosBar from "../components/DemoScenariosBar";
 import ExplainRulePanel from "../components/ExplainRulePanel";
 import { ApiDiagnosticsPanel } from "../components/ApiDiagnosticsPanel";
 import { OhioTdddSandbox } from "../components/OhioTdddSandbox";
+import { ComplianceCoverageTable } from "../components/ComplianceCoverageTable";
 import { validateLicenseJSON, explainRule } from "../services/api";
 
 const Home = () => {
@@ -204,6 +205,7 @@ const Home = () => {
             <ExplainRulePanel />
             <div className="mt-4 space-y-4">
               <ApiDiagnosticsPanel />
+              <ComplianceCoverageTable />
               <OhioTdddSandbox />
             </div>
           </section>
