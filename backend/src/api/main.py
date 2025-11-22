@@ -7,6 +7,7 @@ from datetime import datetime
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.api.routes.csf_practitioner import router as csf_practitioner_router
 from src.api.routes.compliance_artifacts import router as compliance_router
 from src.api.routes.license_validation import router as license_router
 from src.api.routes.ohio_tddd import router as ohio_tddd_router
@@ -40,6 +41,7 @@ app.add_middleware(
 app.include_router(license_router)
 app.include_router(ohio_tddd_router)
 app.include_router(compliance_router)
+app.include_router(csf_practitioner_router)
 
 # Compatibility endpoint for older/tests path:
 # Tests expect: POST /api/v1/license/validate-pdf (singular "license")

@@ -38,7 +38,7 @@ class PractitionerCsfForm(BaseModel):
     dea_number: str = Field(...)
 
     # Shipping / jurisdiction context (for state addendums later)
-    ship_to_state: str = Field(..., min_length=2, max_length=2)  # e.g. "OH", "FL"
+    ship_to_state: str = Field(..., max_length=2)  # e.g. "OH", "FL"
 
     # Attestation checkbox – “I confirm info is true and I will comply…”
     attestation_accepted: bool = Field(

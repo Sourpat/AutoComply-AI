@@ -47,8 +47,11 @@ COMPLIANCE_ARTIFACTS: List[ComplianceArtifact] = [
         jurisdiction="US-Federal/General",
         artifact_type=ArtifactType.CONTROLLED_SUBSTANCE_FORM,
         source_document="/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf",
-        engine_status=ArtifactStatus.MODELLED,
-        notes="Practitioner CSF modeled in csf_practitioner.py with evaluation logic.",
+        engine_status=ArtifactStatus.UI_SANDBOX,
+        notes=(
+            "Practitioner CSF modeled in csf_practitioner.py with /csf/practitioner/"
+            "evaluate and sandbox UI."
+        ),
     ),
     ComplianceArtifact(
         id="csf_hospital",
