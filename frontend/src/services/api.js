@@ -52,17 +52,28 @@ async function handleResponse(res) {
   return await res.json();
 }
 
-export async function explainRule(payload) {
-  const response = await fetch(`${API_BASE}/api/v1/licenses/explain-rule`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
+export async function explainRule({ state, purchase_intent }) {
+  const payload = {
+    state,
+    purchase_intent,
+  };
+
+  const response = await fetch(
+    `${API_BASE}/api/v1/licenses/explain-rule`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }
+  );
 
   if (!response.ok) {
-    throw new Error("Failed to explain rule");
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      `Failed to explain rule (${response.status}): ${text || "no response body"}`
+    );
   }
 
   return response.json();
