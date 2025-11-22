@@ -10,8 +10,8 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from src.api.models.compliance_models import (
     LicenseValidationRequest,
     LicenseValidationResponse,
-    RegulatoryContextRequest,
     RegulatoryContextResponse,
+    RegulatoryContextRequest,
 )
 from src.compliance.decision_engine import ComplianceEngine
 from src.ocr.extract import extract_text_from_pdf, parse_license_fields_from_text
@@ -349,9 +349,40 @@ async def explain_rule(payload: RegulatoryContextRequest) -> dict:
         )
 
     return {
+        "success": True,
         "state": payload.state,
         "purchase_intent": payload.purchase_intent,
+        "items": context_items,
         "context": context_items,
+    }
+
+
+@router.get(
+    "/rules/context",
+    response_model=RegulatoryContextResponse,
+    summary="Preview regulatory context (RAG snippets) for a given state and scenario",
+)
+async def get_regulatory_context(state: str, purchase_intent: str) -> dict:
+    """
+    Return only the regulatory_context snippets for a given
+    state + purchase_intent combination.
+    This endpoint:
+    - calls the same RAG helper used by the main decision engine
+    - never raises on retrieval errors (it just returns an empty list)
+    - is ideal for UI 'peek' features or debugging which rules were consulted.
+    """
+
+    try:
+        context = build_regulatory_context(
+            state=state,
+            purchase_intent=purchase_intent,
+        )
+    except Exception:
+        context = []
+
+    return {
+        "success": True,
+        "items": context,
     }
 
 # ---------------------------------------------------------------------------
