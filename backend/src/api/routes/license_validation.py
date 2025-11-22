@@ -70,8 +70,21 @@ async def validate_license(payload: LicenseValidationRequest) -> dict:
             "allow_checkout": event_verdict.get("allow_checkout"),
         }
 
-        # Do not block the API on alert errors
-        asyncio.create_task(publisher.send_event(event_payload))
+        # Do not block the API on alert errors.
+        # Be defensive: support either `send_event` (new) or `send_slack_alert` (older stub),
+        # and no-op if neither exists.
+        send_coro = None
+        if hasattr(publisher, "send_event"):
+            send_coro = getattr(publisher, "send_event")
+        elif hasattr(publisher, "send_slack_alert"):
+            send_coro = getattr(publisher, "send_slack_alert")
+
+        if callable(send_coro):
+            try:
+                asyncio.create_task(send_coro(event_payload))
+            except Exception:
+                # Never let event errors impact the main API flow.
+                pass
 
     return response
 
