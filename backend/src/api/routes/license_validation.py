@@ -10,6 +10,8 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from src.api.models.compliance_models import (
     LicenseValidationRequest,
     LicenseValidationResponse,
+    RegulatoryContextRequest,
+    RegulatoryContextResponse,
 )
 from src.compliance.decision_engine import ComplianceEngine
 from src.ocr.extract import extract_text_from_pdf, parse_license_fields_from_text
@@ -249,6 +251,63 @@ async def validate_license_pdf(file: UploadFile = File(...)) -> dict:
     }
 
     return response
+
+
+@router.post(
+    "/explain-rule",
+    response_model=RegulatoryContextResponse,
+    summary="Explain the regulatory rules for a given state + scenario",
+)
+async def explain_rule(payload: RegulatoryContextRequest) -> dict:
+    """
+    Lightweight RAG-powered helper endpoint.
+
+    Given a state and a purchase intent (scenario), returns the
+    regulatory context snippets that inform the decision engine.
+
+    This is ideal for:
+      - "Why is this blocked?"
+      - "Show me the rule behind this decision."
+    """
+    try:
+        raw_context = build_regulatory_context(
+            state=payload.state,
+            purchase_intent=payload.purchase_intent,
+        )
+    except Exception:
+        # Never break the explainer on RAG issues; fall back to empty list.
+        raw_context = []
+
+    context_items: list[dict] = []
+
+    for item in raw_context or []:
+        # Handle both dicts and simple objects from the retriever layer.
+        if isinstance(item, dict):
+            jurisdiction = item.get("jurisdiction")
+            snippet = item.get("snippet") or item.get("text") or ""
+            source = item.get("source") or ""
+        else:
+            jurisdiction = getattr(item, "jurisdiction", None)
+            snippet = getattr(item, "snippet", "") or getattr(item, "text", "")
+            source = getattr(item, "source", "")
+
+        if not snippet:
+            # Skip empty snippets to avoid noisy entries.
+            continue
+
+        context_items.append(
+            {
+                "jurisdiction": jurisdiction,
+                "snippet": snippet,
+                "source": source,
+            }
+        )
+
+    return {
+        "state": payload.state,
+        "purchase_intent": payload.purchase_intent,
+        "context": context_items,
+    }
 
 # ---------------------------------------------------------------------------
 # Backwards-compatible export
