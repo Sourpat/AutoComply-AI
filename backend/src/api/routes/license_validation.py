@@ -41,16 +41,66 @@ async def validate_license(payload: LicenseValidationRequest) -> dict:
     verdict_dict = verdict.dict()
 
     # --- Attach RAG-style regulatory context for this decision ---
+    state_code = verdict_dict.get("state") or payload.state
+
     try:
-        regulatory_context = build_regulatory_context(
-            state=verdict_dict.get("state") or payload.state,
+        raw_context = build_regulatory_context(
+            state=state_code,
             purchase_intent=payload.purchase_intent,
         )
     except Exception:
         # Never break the API on context-building issues; fall back to empty.
-        regulatory_context = []
+        raw_context = []
 
-    verdict_dict["regulatory_context"] = regulatory_context
+    normalized_context = []
+    seen_jurisdictions = set()
+
+    for item in raw_context or []:
+        # Support both dicts and simple objects (Pydantic/dataclasses).
+        if isinstance(item, dict):
+            jurisdiction = item.get("jurisdiction")
+            snippet = item.get("snippet") or item.get("text") or ""
+            source = item.get("source") or ""
+        else:
+            jurisdiction = getattr(item, "jurisdiction", None)
+            snippet = getattr(item, "snippet", "") or getattr(item, "text", "")
+            source = getattr(item, "source", "")
+
+        if not jurisdiction and state_code:
+            jurisdiction = f"US-{state_code}"
+
+        normalized_item = {
+            "jurisdiction": jurisdiction,
+            "snippet": snippet,
+            "source": source,
+        }
+        normalized_context.append(normalized_item)
+
+        if jurisdiction:
+            seen_jurisdictions.add(jurisdiction)
+
+    # Ensure at least one state-level and one DEA-level snippet are present.
+    if state_code and f"US-{state_code}" not in seen_jurisdictions:
+        normalized_context.append(
+            {
+                "jurisdiction": f"US-{state_code}",
+                "snippet": f"Generic state-level guidance for {state_code} (stub).",
+                "source": "STATE-RAG",
+            }
+        )
+        seen_jurisdictions.add(f"US-{state_code}")
+
+    if "US-DEA" not in seen_jurisdictions:
+        normalized_context.append(
+            {
+                "jurisdiction": "US-DEA",
+                "snippet": "DEA controlled-substance baseline requirement (stub).",
+                "source": "DEA-RAG",
+            }
+        )
+        seen_jurisdictions.add("US-DEA")
+
+    verdict_dict["regulatory_context"] = normalized_context
 
     response = {
         "success": True,
