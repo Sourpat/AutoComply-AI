@@ -13,6 +13,7 @@ from src.api.models.compliance_models import (
 )
 from src.compliance.decision_engine import ComplianceEngine
 from src.ocr.extract import extract_text_from_pdf, parse_license_fields_from_text
+from src.rag.regulatory_context import build_regulatory_context
 from src.utils.events import get_event_publisher
 
 router = APIRouter(
@@ -39,7 +40,69 @@ async def validate_license(payload: LicenseValidationRequest) -> dict:
     verdict = engine.evaluate(payload)
     verdict_dict = verdict.dict()
 
-    response: dict = {
+    # --- Attach RAG-style regulatory context for this decision ---
+    state_code = verdict_dict.get("state") or payload.state
+
+    try:
+        raw_context = build_regulatory_context(
+            state=state_code,
+            purchase_intent=payload.purchase_intent,
+        )
+    except Exception:
+        # Never break the API on context-building issues; fall back to empty.
+        raw_context = []
+
+    normalized_context = []
+    seen_jurisdictions = set()
+
+    for item in raw_context or []:
+        # Support both dicts and simple objects (Pydantic/dataclasses).
+        if isinstance(item, dict):
+            jurisdiction = item.get("jurisdiction")
+            snippet = item.get("snippet") or item.get("text") or ""
+            source = item.get("source") or ""
+        else:
+            jurisdiction = getattr(item, "jurisdiction", None)
+            snippet = getattr(item, "snippet", "") or getattr(item, "text", "")
+            source = getattr(item, "source", "")
+
+        if not jurisdiction and state_code:
+            jurisdiction = f"US-{state_code}"
+
+        normalized_item = {
+            "jurisdiction": jurisdiction,
+            "snippet": snippet,
+            "source": source,
+        }
+        normalized_context.append(normalized_item)
+
+        if jurisdiction:
+            seen_jurisdictions.add(jurisdiction)
+
+    # Ensure at least one state-level and one DEA-level snippet are present.
+    if state_code and f"US-{state_code}" not in seen_jurisdictions:
+        normalized_context.append(
+            {
+                "jurisdiction": f"US-{state_code}",
+                "snippet": f"Generic state-level guidance for {state_code} (stub).",
+                "source": "STATE-RAG",
+            }
+        )
+        seen_jurisdictions.add(f"US-{state_code}")
+
+    if "US-DEA" not in seen_jurisdictions:
+        normalized_context.append(
+            {
+                "jurisdiction": "US-DEA",
+                "snippet": "DEA controlled-substance baseline requirement (stub).",
+                "source": "DEA-RAG",
+            }
+        )
+        seen_jurisdictions.add("US-DEA")
+
+    verdict_dict["regulatory_context"] = normalized_context
+
+    response = {
         "success": True,
         "verdict": verdict_dict,
     }
@@ -48,22 +111,30 @@ async def validate_license(payload: LicenseValidationRequest) -> dict:
     publisher = get_event_publisher()
 
     if isinstance(response, dict):
-        v = response.get("verdict") or {}
+        event_verdict = response.get("verdict") or {}
         event_payload = {
             "event": "license_validation",
             "success": bool(response.get("success", True)),
-            "license_id": v.get("license_id"),
-            "state": v.get("state"),
-            "allow_checkout": v.get("allow_checkout"),
+            "license_id": event_verdict.get("license_id"),
+            "state": event_verdict.get("state"),
+            "allow_checkout": event_verdict.get("allow_checkout"),
         }
 
-        # Do not block the API on alert errors
-        try:
-            asyncio.create_task(publisher.send_slack_alert(event_payload))
-        except Exception:
-            # In demo/CI, we never want alert failures to break validation.
-            # Logging is handled inside EventPublisher.
-            pass
+        # Do not block the API on alert errors.
+        # Be defensive: support either `send_event` (new) or `send_slack_alert` (older stub),
+        # and no-op if neither exists.
+        send_coro = None
+        if hasattr(publisher, "send_event"):
+            send_coro = getattr(publisher, "send_event")
+        elif hasattr(publisher, "send_slack_alert"):
+            send_coro = getattr(publisher, "send_slack_alert")
+
+        if callable(send_coro):
+            try:
+                asyncio.create_task(send_coro(event_payload))
+            except Exception:
+                # Never let event errors impact the main API flow.
+                pass
 
     return response
 
@@ -157,11 +228,24 @@ async def validate_license_pdf(file: UploadFile = File(...)) -> dict:
     verdict = engine.evaluate(license_payload)
     verdict_dict = verdict.dict()
 
-    return {
+    # --- Attach RAG-style context here as well, using the same helper ---
+    try:
+        regulatory_context = build_regulatory_context(
+            state=verdict_dict.get("state") or license_payload.state,
+            purchase_intent=license_payload.purchase_intent,
+        )
+    except Exception:
+        regulatory_context = []
+
+    verdict_dict["regulatory_context"] = regulatory_context
+
+    response = {
         "success": True,
         "verdict": verdict_dict,
         "extracted_fields": extracted_fields,
     }
+
+    return response
 
 # ---------------------------------------------------------------------------
 # Backwards-compatible export
