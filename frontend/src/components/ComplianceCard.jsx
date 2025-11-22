@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { explainRule } from "../services/api";
 
 /**
  * ComplianceCard
@@ -57,6 +58,7 @@ const ComplianceCard = ({ data }) => {
   const statePermit =
     verdict.state_permit || data.state_permit || data.permit || null;
   const licenseId = verdict.license_id || data.license_id || null;
+  const purchaseIntent = verdict.purchase_intent || data.purchase_intent || null;
 
   const regulatoryContext = verdict.regulatory_context || [];
   const regulatoryExplanation =
@@ -71,10 +73,43 @@ const ComplianceCard = ({ data }) => {
   // Local "soft gating" state: simulated user acknowledgement of attestations
   const [attestationsConfirmed, setAttestationsConfirmed] = useState(false);
 
+  // Local RAG rule explanation state
+  const [ruleExplainItems, setRuleExplainItems] = useState([]);
+  const [ruleExplainLoading, setRuleExplainLoading] = useState(false);
+  const [ruleExplainError, setRuleExplainError] = useState("");
+
   // Reset acknowledgement when the decision changes (new license, new verdict, etc.)
   useEffect(() => {
     setAttestationsConfirmed(false);
-  }, [licenseId, allowCheckout, attestationCount]);
+
+    // Reset rule explanation when the underlying scenario changes
+    setRuleExplainItems([]);
+    setRuleExplainError("");
+    setRuleExplainLoading(false);
+  }, [licenseId, allowCheckout, attestationCount, state, purchaseIntent]);
+
+  const handleExplainRuleClick = async () => {
+    if (!state || !purchaseIntent) {
+      return;
+    }
+
+    try {
+      setRuleExplainError("");
+      setRuleExplainLoading(true);
+
+      const result = await explainRule({
+        state,
+        purchase_intent: purchaseIntent,
+      });
+
+      const items = Array.isArray(result.items) ? result.items : [];
+      setRuleExplainItems(items);
+    } catch (err) {
+      setRuleExplainError("Could not load rule explanation.");
+    } finally {
+      setRuleExplainLoading(false);
+    }
+  };
 
   const needsAck = allowCheckout && hasAttestations;
   const canProceed = allowCheckout && (!hasAttestations || attestationsConfirmed);
@@ -290,6 +325,41 @@ const ComplianceCard = ({ data }) => {
                 Why this decision?
               </div>
               <p>{regulatoryExplanation}</p>
+            </div>
+          )}
+          {state && purchaseIntent && (
+            <div className="mt-3 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleExplainRuleClick}
+                className="inline-flex items-center rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+                disabled={ruleExplainLoading}
+              >
+                {ruleExplainLoading ? "Fetching rule explanation…" : "Explain this rule"}
+              </button>
+              {ruleExplainError && (
+                <span className="text-xs text-rose-500">
+                  {ruleExplainError}
+                </span>
+              )}
+            </div>
+          )}
+
+          {ruleExplainItems.length > 0 && (
+            <div className="mt-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
+              <div className="mb-1 font-semibold">
+                Underlying regulatory context (RAG)
+              </div>
+              <ul className="list-disc space-y-1 pl-4">
+                {ruleExplainItems.map((item, idx) => (
+                  <li key={idx}>
+                    <span className="font-semibold">
+                      {item.jurisdiction || "Unknown jurisdiction"}:
+                    </span>{" "}
+                    {item.snippet || ""}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
           <ul className="space-y-2">

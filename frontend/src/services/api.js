@@ -32,6 +32,20 @@ export async function validateLicensePDF(file) {
   return handleResponse(res);
 }
 
+export async function explainRule(payload) {
+  const response = await fetch(`${API_BASE}/api/v1/licenses/explain-rule`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch rule explanation");
+  }
+
+  return response.json();
+}
+
 async function handleResponse(res) {
   if (!res.ok) {
     let msg = "Something went wrong.";
