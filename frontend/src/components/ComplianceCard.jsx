@@ -59,6 +59,8 @@ const ComplianceCard = ({ data }) => {
   const licenseId = verdict.license_id || data.license_id || null;
 
   const regulatoryContext = verdict.regulatory_context || [];
+  const regulatoryExplanation =
+    verdict.regulatory_explanation || verdict.explanation || "";
   const attestations = verdict.attestations_required || [];
   const extractedFields = data.extracted_fields || null;
 
@@ -282,6 +284,14 @@ const ComplianceCard = ({ data }) => {
               Source context (demo)
             </span>
           </div>
+          {regulatoryExplanation && (
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
+              <div className="mb-1 font-semibold text-slate-900 dark:text-slate-100">
+                Why this decision?
+              </div>
+              <p>{regulatoryExplanation}</p>
+            </div>
+          )}
           <ul className="space-y-2">
             {regulatoryContext.map((ctx, idx) => (
               <li key={idx} className="rounded-md bg-white/80 p-3 dark:bg-slate-900/60">
