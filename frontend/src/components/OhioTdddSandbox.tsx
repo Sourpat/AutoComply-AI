@@ -217,6 +217,28 @@ export function OhioTdddSandbox() {
                 </ul>
               </div>
             )}
+
+            {/* NEW: Ask Codex to explain */}
+            <div className="mt-3 flex items-center justify-between">
+              <button
+                type="button"
+                className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50"
+                onClick={() => {
+                  // This is the hook Codex listens to.
+                  // Your extension / devtools can watch for this pattern.
+                  console.log("CODEX_COMMAND: explain_ohio_tddd_decision", {
+                    form,
+                    decision,
+                    source_document: "/mnt/data/Ohio TDDD.html",
+                  });
+                }}
+              >
+                Ask Codex to explain decision
+              </button>
+              <span className="text-[10px] text-gray-400">
+                Uses Ohio TDDD rules to generate a narrative explanation.
+              </span>
+            </div>
           </div>
         )}
       </div>
