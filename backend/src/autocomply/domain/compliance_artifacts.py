@@ -59,8 +59,11 @@ COMPLIANCE_ARTIFACTS: List[ComplianceArtifact] = [
         jurisdiction="US-Federal/General",
         artifact_type=ArtifactType.CONTROLLED_SUBSTANCE_FORM,
         source_document="/mnt/data/Online Controlled Substance Form - Hospital Pharmacy.pdf",
-        engine_status=ArtifactStatus.RAW_DOCUMENT,
-        notes="Hospital pharmacy CSF; not yet modeled.",
+        engine_status=ArtifactStatus.MODELLED,
+        notes=(
+            "Hospital CSF modeled in csf_hospital.py with evaluation logic "
+            "for facility, pharmacy licensing, DEA, and attestation."
+        ),
     ),
     ComplianceArtifact(
         id="csf_surgery_center",
