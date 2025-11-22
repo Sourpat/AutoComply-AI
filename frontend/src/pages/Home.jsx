@@ -6,6 +6,7 @@ import ComplianceCard from "../components/ComplianceCard";
 import ManualEntryForm from "../components/ManualEntryForm";
 import ScenarioLibrary from "../components/ScenarioLibrary";
 import DemoScenariosBar from "../components/DemoScenariosBar";
+import ExplainRulePanel from "../components/ExplainRulePanel";
 import { validateLicenseJSON, explainRule } from "../services/api";
 
 const Home = () => {
@@ -198,6 +199,7 @@ const Home = () => {
               explainLoading={explainLoading}
               explainError={explainError}
             />
+            <ExplainRulePanel />
           </section>
         </div>
       </div>
