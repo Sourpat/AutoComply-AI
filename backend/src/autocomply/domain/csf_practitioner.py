@@ -116,3 +116,60 @@ def evaluate_practitioner_csf(form: PractitionerCsfForm) -> PractitionerCsfDecis
         ),
         missing_fields=[],
     )
+
+
+def describe_practitioner_csf_decision(
+    form: PractitionerCsfForm, decision: PractitionerCsfDecision
+) -> str:
+    """
+    Deterministic explanation for the Practitioner CSF decision.
+    Codex can use this as a base, or you can expose it via API/logs.
+    """
+
+    lines: List[str] = []
+
+    # 1. Decision summary
+    if decision.status == CsDecisionStatus.OK_TO_SHIP:
+        lines.append("Decision: Order is allowed to proceed (ok_to_ship).")
+    elif decision.status == CsDecisionStatus.BLOCKED:
+        lines.append(
+            "Decision: Order is blocked until required information is provided."
+        )
+    else:
+        lines.append(
+            "Decision: Order requires manual review by a compliance specialist."
+        )
+
+    # 2. Facility + context
+    lines.append(
+        f"Facility: {form.facility_name or '[missing]'} "
+        f"({form.facility_type.value}), ship-to state: {form.ship_to_state or '[missing]'}."
+    )
+
+    # 3. Practitioner + licensing
+    lines.append(
+        "Practitioner and licensing details: "
+        f"name={form.practitioner_name or '[missing]'}, "
+        f"state_license_number={form.state_license_number or '[missing]'}, "
+        f"dea_number={form.dea_number or '[missing]'}."
+    )
+
+    # 4. Attestation
+    if form.attestation_accepted:
+        lines.append(
+            "Attestation: Practitioner has accepted the controlled substances attestation clause."
+        )
+    else:
+        lines.append(
+            "Attestation: Practitioner has NOT accepted the controlled substances attestation clause."
+        )
+
+    # 5. Missing fields
+    if decision.missing_fields:
+        lines.append(
+            "The engine identified the following missing or incomplete fields: "
+            + ", ".join(decision.missing_fields)
+            + "."
+        )
+
+    return "\n".join(lines)
