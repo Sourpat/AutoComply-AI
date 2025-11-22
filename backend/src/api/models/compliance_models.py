@@ -1,4 +1,4 @@
-from typing import List, Optional, Literal
+from typing import Any, Dict, List, Optional, Literal
 from pydantic import BaseModel, Field
 
 
@@ -149,3 +149,58 @@ class LicenseValidationRequest(BaseModel):
 class LicenseValidationResponse(BaseModel):
     success: bool
     verdict: ComplianceVerdict
+
+
+class RegulatoryContextRequest(BaseModel):
+    """
+    Request payload for the 'explain rule' endpoint.
+
+    Allows the frontend (or a CLI) to ask:
+      "Given this state + scenario, what rules were considered?"
+    """
+
+    state: str = Field(
+        ...,
+        description="Two-letter state code, e.g. 'CA', 'TX', 'FL'.",
+        min_length=2,
+        max_length=2,
+    )
+    purchase_intent: str = Field(
+        ...,
+        description="Scenario/intent key, e.g. 'GeneralMedicalUse', 'TelemedicineCS'.",
+    )
+
+
+class RegulatoryContextItem(BaseModel):
+    """
+    Single RAG context item returned by the regulatory explainer.
+    Kept intentionally simple and JSON-friendly.
+    """
+
+    jurisdiction: Optional[str] = Field(
+        default=None,
+        description="Jurisdiction code such as 'US-CA' or 'US-DEA'.",
+    )
+    snippet: str = Field(
+        ...,
+        description="Short rule/extract explaining the decision.",
+    )
+    source: Optional[str] = Field(
+        default=None,
+        description="Optional source label, e.g. 'CA-BOP', 'DEA-RAG', 'INTERNAL-POLICY'.",
+    )
+
+
+class RegulatoryContextResponse(BaseModel):
+    """
+    Response envelope for the 'explain rule' endpoint.
+    Mirrors what we attach inside `verdict.regulatory_context`,
+    but wrapped with echo of the original query.
+    """
+
+    state: str
+    purchase_intent: str
+    context: List[RegulatoryContextItem] = Field(
+        default_factory=list,
+        description="Ordered list of rule snippets and citations that informed this decision.",
+    )
