@@ -95,8 +95,11 @@ COMPLIANCE_ARTIFACTS: List[ComplianceArtifact] = [
         jurisdiction="US-Federal/General",
         artifact_type=ArtifactType.CONTROLLED_SUBSTANCE_FORM,
         source_document="/mnt/data/Online Controlled Substance Form - Researcher form.pdf",
-        engine_status=ArtifactStatus.RAW_DOCUMENT,
-        notes="Researcher CSF; not yet modeled.",
+        engine_status=ArtifactStatus.UI_SANDBOX,
+        notes=(
+            "Researcher CSF modeled in csf_researcher.py with "
+            "/csf/researcher/evaluate and sandbox UI."
+        ),
     ),
     # 3) Addendums bundle
     ComplianceArtifact(
