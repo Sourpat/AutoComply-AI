@@ -334,6 +334,7 @@ export function PractitionerCsfSandbox() {
         onSelectedItemsChange={setControlledSubstances}
         title="Controlled Substances for this Practitioner CSF"
         compact
+        accountNumber={form.accountNumber ?? undefined}
       />
     </section>
   );

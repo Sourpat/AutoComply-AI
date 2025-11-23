@@ -23,3 +23,26 @@ export async function searchControlledSubstances(
 
   return resp.json();
 }
+
+export async function getControlledSubstancesHistory(
+  accountNumber: string
+): Promise<ControlledSubstanceItem[]> {
+  if (!accountNumber) {
+    return [];
+  }
+
+  const params = new URLSearchParams();
+  params.set("account_number", accountNumber);
+
+  const resp = await fetch(
+    `${API_BASE}/controlled-substances/history?${params.toString()}`
+  );
+
+  if (!resp.ok) {
+    throw new Error(
+      `Controlled substances history failed with status ${resp.status}`
+    );
+  }
+
+  return resp.json();
+}
