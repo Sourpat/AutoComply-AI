@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from src.autocomply.domain.ohio_tddd import (
     OhioTdddDecision,
     OhioTdddForm,
-    evaluate_ohio_tddd_attestation,
+    evaluate_ohio_tddd as evaluate_ohio_tddd_engine,
 )
 
 router = APIRouter(
@@ -15,7 +15,7 @@ router = APIRouter(
 @router.post("/evaluate", response_model=OhioTdddDecision)
 async def evaluate_ohio_tddd(form: OhioTdddForm) -> OhioTdddDecision:
     """
-    Evaluate an Ohio TDDD attestation form and return the decision.
+    Evaluate an Ohio TDDD application and return the decision.
     """
-    decision = evaluate_ohio_tddd_attestation(form)
+    decision = evaluate_ohio_tddd_engine(form)
     return decision
