@@ -96,8 +96,8 @@ def evaluate_practitioner_csf(form: PractitionerCsfForm) -> PractitionerCsfDecis
         return PractitionerCsfDecision(
             status=CsDecisionStatus.BLOCKED,
             reason=(
-                "Practitioner CSF is missing required identity/licensing fields: "
-                + ", ".join(missing)
+                "Practitioner CSF is missing required facility/practitioner/licensing "
+                "fields: " + ", ".join(missing)
             ),
             missing_fields=missing,
         )
@@ -108,18 +108,42 @@ def evaluate_practitioner_csf(form: PractitionerCsfForm) -> PractitionerCsfDecis
             status=CsDecisionStatus.BLOCKED,
             reason=(
                 "Practitioner has not accepted the controlled substances attestation. "
-                "The attestation clause must be acknowledged before controlled substances "
-                "can be shipped."
+                "The attestation clause must be acknowledged before controlled "
+                "substances can be shipped."
             ),
             missing_fields=["attestation_accepted"],
         )
 
-    # Everything minimal is present
+    # --- NEW: item-aware rule layer ---
+    # Treat DEA Schedule II items shipped to FL as higher risk → manual review.
+    ship_state = (form.ship_to_state or "").upper()
+
+    high_risk_items = [
+        item
+        for item in form.controlled_substances
+        if (item.dea_schedule or "").upper() in {"II", "CII"}
+    ]
+
+    if high_risk_items and ship_state == "FL":
+        example_names = ", ".join(item.name for item in high_risk_items[:3])
+        return PractitionerCsfDecision(
+            status=CsDecisionStatus.MANUAL_REVIEW,
+            reason=(
+                "CSF includes high-risk Schedule II controlled substances for "
+                "ship-to state FL. Example item(s): "
+                f"{example_names}. Requires manual compliance review per FL "
+                "controlled substances addendum."
+            ),
+            missing_fields=[],
+        )
+
+    # Default happy-path: all fields present, attestation accepted,
+    # and no item-level rules triggered.
     return PractitionerCsfDecision(
         status=CsDecisionStatus.OK_TO_SHIP,
         reason=(
-            "All required practitioner, facility, and licensing details are present and "
-            "the attestation has been accepted. Practitioner CSF is approved to proceed."
+            "All required facility, practitioner, licensing, jurisdiction, and "
+            "attestation details are present. Practitioner CSF is approved to proceed."
         ),
         missing_fields=[],
     )
