@@ -6,6 +6,8 @@ import {
   PractitionerFacilityType,
 } from "../domain/csfPractitioner";
 import { evaluatePractitionerCsf } from "../api/csfPractitionerClient";
+import { ControlledSubstanceItem } from "../domain/controlledSubstances";
+import { ControlledSubstancesSearchSection } from "./ControlledSubstancesSearchSection";
 
 const initialForm: PractitionerCsfFormData = {
   facilityName: "",
@@ -24,6 +26,9 @@ export function PractitionerCsfSandbox() {
   const [decision, setDecision] = useState<PractitionerCsfDecision | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [controlledSubstances, setControlledSubstances] = useState<
+    ControlledSubstanceItem[]
+  >([]);
 
   const onChange = (field: keyof PractitionerCsfFormData, value: any) => {
     setForm((prev) => ({
@@ -263,6 +268,14 @@ export function PractitionerCsfSandbox() {
           </div>
         )}
       </div>
+
+      {/* Controlled substances search */}
+      <ControlledSubstancesSearchSection
+        selectedItems={controlledSubstances}
+        onSelectedItemsChange={setControlledSubstances}
+        title="Controlled Substances for this Practitioner CSF"
+        compact
+      />
     </section>
   );
 }
