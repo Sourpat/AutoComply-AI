@@ -3,6 +3,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from autocomply.domain.controlled_substances import ControlledSubstanceItem
 from autocomply.domain.csf_practitioner import CsDecisionStatus
 
 
@@ -49,6 +50,11 @@ class EmsCsfForm(BaseModel):
     attestation_accepted: bool = Field(
         default=False,
         description="True if the service accepted the CSF attestation clause.",
+    )
+
+    controlled_substances: List[ControlledSubstanceItem] = Field(
+        default_factory=list,
+        description=("Controlled substance items associated with this EMS CSF."),
     )
 
     # Internal notes
@@ -100,6 +106,27 @@ def evaluate_ems_csf(form: EmsCsfForm) -> EmsCsfDecision:
                 "substances can be shipped."
             ),
             missing_fields=["attestation_accepted"],
+        )
+
+    # --- NEW: item-aware rule layer ---
+    ship_state = (form.ship_to_state or "").upper()
+    high_risk_items = [
+        item
+        for item in form.controlled_substances
+        if (item.dea_schedule or "").upper() in {"II", "CII"}
+    ]
+
+    if high_risk_items and ship_state == "FL":
+        example_names = ", ".join(item.name for item in high_risk_items[:3])
+        return EmsCsfDecision(
+            status=CsDecisionStatus.MANUAL_REVIEW,
+            reason=(
+                "EMS CSF includes high-risk Schedule II controlled substances "
+                "for ship-to state FL. Example item(s): "
+                f"{example_names}. Requires manual compliance review per FL "
+                "controlled substances addendum."
+            ),
+            missing_fields=[],
         )
 
     return EmsCsfDecision(
