@@ -79,3 +79,22 @@ def search_controlled_substances(query: str, limit: int = 10) -> List[Controlled
         if q in item.name.lower() or (item.ndc and q in item.ndc.lower())
     ]
     return filtered[:limit]
+
+
+def get_recent_controlled_substances_for_account(
+    account_number: str,
+    limit: int = 10,
+) -> List[ControlledSubstanceItem]:
+    """
+    Stubbed account-level history for controlled substances.
+
+    In a real system this would query order history / CSF history for the given
+    account and return the most commonly or most recently ordered controlled
+    substance items.
+
+    For now, we return a stable subset of the mock catalog so the UI can show
+    a realistic "Recent for this account" section.
+    """
+    # For the sandbox, we ignore account_number and just return the first N
+    # items from the mock list.
+    return MOCK_CONTROLLED_SUBSTANCES[:limit]

@@ -1,13 +1,17 @@
 // src/components/ControlledSubstancesSearchSection.tsx
 import { useEffect, useState } from "react";
 import { ControlledSubstanceItem } from "../domain/controlledSubstances";
-import { searchControlledSubstances } from "../api/controlledSubstancesClient";
+import {
+  getControlledSubstancesHistory,
+  searchControlledSubstances,
+} from "../api/controlledSubstancesClient";
 
 interface Props {
   selectedItems: ControlledSubstanceItem[];
   onSelectedItemsChange: (items: ControlledSubstanceItem[]) => void;
   title?: string;
   compact?: boolean;
+  accountNumber?: string | null;
 }
 
 export function ControlledSubstancesSearchSection({
@@ -15,11 +19,50 @@ export function ControlledSubstancesSearchSection({
   onSelectedItemsChange,
   title = "Controlled Substances for this request",
   compact = false,
+  accountNumber,
 }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ControlledSubstanceItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recentItems, setRecentItems] = useState<ControlledSubstanceItem[]>([]);
+  const [recentError, setRecentError] = useState<string | null>(null);
+  const [isLoadingRecent, setIsLoadingRecent] = useState(false);
+
+  // Load per-account recent items when an account number is available
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!accountNumber) {
+      setRecentItems([]);
+      setRecentError(null);
+      setIsLoadingRecent(false);
+      return;
+    }
+
+    setIsLoadingRecent(true);
+    setRecentError(null);
+
+    (async () => {
+      try {
+        const data = await getControlledSubstancesHistory(accountNumber);
+        if (cancelled) return;
+        setRecentItems(data);
+      } catch (err: any) {
+        if (cancelled) return;
+        setRecentError(
+          err?.message ?? "Failed to load recent controlled substances."
+        );
+      } finally {
+        if (cancelled) return;
+        setIsLoadingRecent(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accountNumber]);
 
   // Simple debounce for "auto-search as you type"
   useEffect(() => {
@@ -81,6 +124,63 @@ export function ControlledSubstancesSearchSection({
           </p>
         </div>
       </header>
+
+      {/* Recent items for account */}
+      {accountNumber && (
+        <div className="mb-3">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-[11px] font-medium text-gray-700">
+              Recent for account {accountNumber}
+            </span>
+            {isLoadingRecent && (
+              <span className="text-[10px] text-gray-500">Loading…</span>
+            )}
+          </div>
+
+          {recentError && (
+            <div className="mb-1 rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700">
+              {recentError}
+            </div>
+          )}
+
+          {!recentError && !isLoadingRecent && recentItems.length === 0 && (
+            <div className="text-[11px] text-gray-400">
+              No recent controlled substances found for this account.
+            </div>
+          )}
+
+          {recentItems.length > 0 && (
+            <ul className="divide-y divide-gray-100 rounded-md border border-gray-100 bg-gray-50">
+              {recentItems.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex items-center justify-between px-2 py-1"
+                >
+                  <div className="flex flex-col">
+                    <span className="text-[11px] font-medium text-gray-900">
+                      {item.name}
+                    </span>
+                    <span className="text-[10px] text-gray-500">
+                      {item.ndc ? `NDC: ${item.ndc}` : "NDC: —"} ·{" "}
+                      {item.strength || "Strength: —"} ·{" "}
+                      {item.dea_schedule
+                        ? `DEA schedule ${item.dea_schedule}`
+                        : "DEA schedule: —"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => addItem(item)}
+                    className="ml-2 rounded-md bg-white px-2 py-0.5 text-[10px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50"
+                  >
+                    Add
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="mb-3 flex items-center gap-2">
         <input

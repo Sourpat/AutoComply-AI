@@ -31,3 +31,21 @@ def test_controlled_substances_search_filters_by_ndc():
 
     data = resp.json()
     assert any(item["ndc"] == "12345-6789-01" for item in data)
+
+
+def test_controlled_substances_history_requires_account_number():
+    resp = client.get("/controlled-substances/history")
+    assert resp.status_code == 422  # missing required query param
+
+
+def test_controlled_substances_history_returns_items_for_account():
+    resp = client.get(
+        "/controlled-substances/history",
+        params={"account_number": "ACC-123"},
+    )
+    assert resp.status_code == 200
+
+    data = resp.json()
+    assert len(data) >= 1
+    assert "id" in data[0]
+    assert "name" in data[0]

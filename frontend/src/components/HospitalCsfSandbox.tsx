@@ -358,6 +358,7 @@ export function HospitalCsfSandbox() {
         onSelectedItemsChange={setControlledSubstances}
         title="Controlled Substances for this Hospital CSF"
         compact
+        accountNumber={form.accountNumber ?? undefined}
       />
     </section>
   );
