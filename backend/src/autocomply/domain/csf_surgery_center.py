@@ -61,6 +61,13 @@ class SurgeryCenterCsfDecision(BaseModel):
     status: CsDecisionStatus
     reason: str
     missing_fields: List[str] = Field(default_factory=list)
+    regulatory_references: List[str] = Field(
+        default_factory=list,
+        description=(
+            "IDs of compliance artifacts (e.g. csf_fl_addendum) that directly "
+            "informed this decision."
+        ),
+    )
 
 
 def evaluate_surgery_center_csf(form: SurgeryCenterCsfForm) -> SurgeryCenterCsfDecision:
@@ -125,6 +132,7 @@ def evaluate_surgery_center_csf(form: SurgeryCenterCsfForm) -> SurgeryCenterCsfD
                 "Florida Controlled Substances Addendum (csf_fl_addendum)."
             ),
             missing_fields=[],
+            regulatory_references=["csf_fl_addendum"],
         )
 
     return SurgeryCenterCsfDecision(

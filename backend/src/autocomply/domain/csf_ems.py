@@ -65,6 +65,13 @@ class EmsCsfDecision(BaseModel):
     status: CsDecisionStatus
     reason: str
     missing_fields: List[str] = Field(default_factory=list)
+    regulatory_references: List[str] = Field(
+        default_factory=list,
+        description=(
+            "IDs of compliance artifacts (e.g. csf_fl_addendum) that directly "
+            "informed this decision."
+        ),
+    )
 
 
 def evaluate_ems_csf(form: EmsCsfForm) -> EmsCsfDecision:
@@ -127,6 +134,7 @@ def evaluate_ems_csf(form: EmsCsfForm) -> EmsCsfDecision:
                 "Florida Controlled Substances Addendum (csf_fl_addendum)."
             ),
             missing_fields=[],
+            regulatory_references=["csf_fl_addendum"],
         )
 
     return EmsCsfDecision(
