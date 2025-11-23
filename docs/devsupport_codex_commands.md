@@ -202,6 +202,30 @@ Analogous commands exist for:
 Each uses the corresponding CSF PDF under /mnt/data/... as
 source_document.
 
+### 3.3 RAG example selection
+
+When a user clicks a “Quick example” chip in the RAG playground:
+
+```ts
+console.log("CODEX_COMMAND: rag_example_selected", {
+  example_id: example.id,
+  label: example.label,
+  question: example.question,
+});
+```
+
+Intent: Record that a predefined RAG scenario was chosen.
+
+Payload:
+
+- example_id: Stable ID for the scenario (e.g., "fl_schedule_ii_practitioner").
+- label: Human label shown in the UI.
+- question: Full question text prefilled into the RAG input.
+
+A DevSupport agent can use example_id to route to a canned workflow
+(e.g., also auto-selecting the right regulatory artifacts) or to replay
+specific demonstration scenarios.
+
 ## 4. Ohio TDDD Commands
 
 The Ohio TDDD sandbox can emit logs such as:

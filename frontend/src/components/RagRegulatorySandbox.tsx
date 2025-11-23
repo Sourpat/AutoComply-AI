@@ -8,6 +8,39 @@ import {
 
 type Mode = "idle" | "loading" | "done" | "error";
 
+type RagExample = {
+  id: string;
+  label: string;
+  question: string;
+};
+
+const RAG_EXAMPLES: RagExample[] = [
+  {
+    id: "fl_schedule_ii_practitioner",
+    label: "FL Schedule II – Practitioner",
+    question:
+      "Explain why a Florida practitioner prescribing a Schedule II opioid might be flagged for manual review in the CSF workflow.",
+  },
+  {
+    id: "hospital_vs_practitioner",
+    label: "Hospital vs Practitioner CSF",
+    question:
+      "Compare how the practitioner CSF and hospital CSF treat controlled substances in Florida, especially for Schedule II drugs.",
+  },
+  {
+    id: "ohio_tddd_out_of_state",
+    label: "Ohio TDDD – Out-of-state shipping",
+    question:
+      "Explain how Ohio TDDD rules treat an account that tries to ship controlled substances into Ohio from an out-of-state facility.",
+  },
+  {
+    id: "manual_review_playbook",
+    label: "Manual review playbook",
+    question:
+      "Provide a concise playbook for the manual review queue when CSF submissions are flagged, focusing on what reviewers should validate.",
+  },
+];
+
 export function RagRegulatorySandbox() {
   const [question, setQuestion] = useState(
     "Explain why a practitioner CSF with Florida ship-to and Schedule II items requires manual review."
@@ -41,6 +74,16 @@ export function RagRegulatorySandbox() {
   const [answer, setAnswer] = useState<string | null>(null);
   const [artifactsUsed, setArtifactsUsed] = useState<string[]>([]);
   const [debug, setDebug] = useState<Record<string, unknown>>({});
+
+  const handleExampleClick = (example: RagExample) => {
+    setQuestion(example.question);
+
+    console.log("CODEX_COMMAND: rag_example_selected", {
+      example_id: example.id,
+      label: example.label,
+      question: example.question,
+    });
+  };
 
   const loadArtifacts = async () => {
     try {
@@ -134,6 +177,21 @@ export function RagRegulatorySandbox() {
           <label className="mb-1 block text-[11px] font-medium text-gray-700">
             Question
           </label>
+          <div className="mb-2">
+            <p className="text-[10px] text-gray-500">Quick examples:</p>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {RAG_EXAMPLES.map((example) => (
+                <button
+                  key={example.id}
+                  type="button"
+                  onClick={() => handleExampleClick(example)}
+                  className="rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
+                >
+                  {example.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
