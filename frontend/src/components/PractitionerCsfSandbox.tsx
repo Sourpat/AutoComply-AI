@@ -15,6 +15,7 @@ import {
 import { callRegulatoryRag } from "../api/ragRegulatoryClient";
 import { ControlledSubstancesPanel } from "./ControlledSubstancesPanel";
 import type { ControlledSubstance } from "../api/controlledSubstancesClient";
+import { SourceDocumentChip } from "./SourceDocumentChip";
 
 const initialForm: PractitionerCsfFormData = {
   facilityName: "",
@@ -153,13 +154,19 @@ export function PractitionerCsfSandbox() {
             Test practitioner controlled substance forms end-to-end.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={reset}
-          className="text-[10px] text-gray-500 hover:underline"
-        >
-          Reset
-        </button>
+        <div className="flex items-center gap-2">
+          <SourceDocumentChip
+            label="Practitioner CSF PDF"
+            url="/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf"
+          />
+          <button
+            type="button"
+            onClick={reset}
+            className="text-[10px] text-gray-500 hover:underline"
+          >
+            Reset
+          </button>
+        </div>
       </header>
 
       <div className="grid gap-3 md:grid-cols-2">

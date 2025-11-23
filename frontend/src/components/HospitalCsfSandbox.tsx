@@ -15,6 +15,7 @@ import {
 import { callRegulatoryRag } from "../api/ragRegulatoryClient";
 import { ControlledSubstancesPanel } from "./ControlledSubstancesPanel";
 import type { ControlledSubstance } from "../api/controlledSubstancesClient";
+import { SourceDocumentChip } from "./SourceDocumentChip";
 
 const initialForm: HospitalCsfFormData = {
   facilityName: "",
@@ -155,13 +156,19 @@ export function HospitalCsfSandbox() {
             explain.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={reset}
-          className="text-[10px] text-gray-500 hover:underline"
-        >
-          Reset
-        </button>
+        <div className="flex items-center gap-2">
+          <SourceDocumentChip
+            label="Hospital CSF PDF"
+            url="/mnt/data/Online Controlled Substance Form - Hospital Pharmacy.pdf"
+          />
+          <button
+            type="button"
+            onClick={reset}
+            className="text-[10px] text-gray-500 hover:underline"
+          >
+            Reset
+          </button>
+        </div>
       </header>
 
       <div className="grid gap-3 md:grid-cols-2">
