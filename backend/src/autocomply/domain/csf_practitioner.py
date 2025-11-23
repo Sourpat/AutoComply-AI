@@ -7,7 +7,7 @@ from autocomply.domain.controlled_substances import ControlledSubstanceItem
 
 
 class PractitionerFacilityType(str, Enum):
-    INDIVIDUAL = "individual_practitioner"
+    INDIVIDUAL_PRACTITIONER = "individual_practitioner"
     GROUP_PRACTICE = "group_practice"
     CLINIC = "clinic"
     DENTAL_PRACTICE = "dental_practice"
@@ -22,25 +22,21 @@ class CsDecisionStatus(str, Enum):
 
 class PractitionerCsfForm(BaseModel):
     """
-    Normalized representation of the Practitioner Controlled Substance Form
-    (online CSF – Practitioner).
-
-    This is intentionally generic; we can refine field names as we line up
-    against the exact PDF sections.
+    Normalized representation of the Practitioner Controlled Substance Form.
     """
 
     # Basic account / facility identity
-    facility_name: str = Field(..., min_length=1)
+    facility_name: str
     facility_type: PractitionerFacilityType
     account_number: Optional[str] = None
 
     # Practitioner identity / licensing
-    practitioner_name: str = Field(..., min_length=1)
-    state_license_number: str = Field(..., min_length=1)
-    dea_number: str = Field(..., min_length=1)
+    practitioner_name: str
+    state_license_number: str
+    dea_number: str
 
     # Shipping / jurisdiction context (for state addendums later)
-    ship_to_state: str = Field(..., min_length=2, max_length=2)  # e.g. "OH", "FL"
+    ship_to_state: str
 
     # Attestation checkbox – “I confirm info is true and I will comply…”
     attestation_accepted: bool = Field(
