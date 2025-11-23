@@ -75,6 +75,7 @@ def test_ems_csf_schedule_ii_in_florida_triggers_manual_review():
     assert decision.status == CsDecisionStatus.MANUAL_REVIEW
     assert "fl" in decision.reason.lower()
     assert "schedule" in decision.reason.lower()
+    assert decision.regulatory_references == ["csf_fl_addendum"]
 
 
 def test_ems_csf_schedule_ii_non_florida_still_ok_to_ship():
