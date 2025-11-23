@@ -10,6 +10,7 @@ class ArtifactType(str, Enum):
     FORM = "form"
     ADDENDUM = "addendum"
     GUIDANCE = "guidance"
+    PDMA_SAMPLE_POLICY = "pdma_sample_policy"
 
 
 class ArtifactStatus(str, Enum):
@@ -212,5 +213,17 @@ COMPLIANCE_ARTIFACTS: List[ComplianceArtifact] = [
         source_document="/mnt/data/FLORIDA TEST.pdf",
         engine_status=ArtifactStatus.RAW_DOCUMENT,
         notes="Placeholder for Florida-specific controlled substance logic.",
+    ),
+    ComplianceArtifact(
+        id="pdma_sample_eligibility",
+        name="PDMA Sample Eligibility Policy (Demo)",
+        jurisdiction="US",
+        artifact_type=ArtifactType.PDMA_SAMPLE_POLICY,
+        source_document="/mnt/data/FLORIDA TEST.pdf",
+        engine_status=ArtifactStatus.API_EXPOSED,
+        notes=(
+            "Demo PDMA-style sample policy used by the pdma_sample engine and "
+            "regulatory explanation endpoints."
+        ),
     ),
 ]
