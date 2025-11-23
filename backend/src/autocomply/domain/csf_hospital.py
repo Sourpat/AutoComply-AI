@@ -113,6 +113,7 @@ def evaluate_hospital_csf(form: HospitalCsfForm) -> HospitalCsfDecision:
                 + ", ".join(missing)
             ),
             missing_fields=missing,
+            regulatory_references=["csf_hospital_form"],
         )
 
     if not form.attestation_accepted:
@@ -124,6 +125,7 @@ def evaluate_hospital_csf(form: HospitalCsfForm) -> HospitalCsfDecision:
                 "substances can be shipped."
             ),
             missing_fields=["attestation_accepted"],
+            regulatory_references=["csf_hospital_form"],
         )
 
     # --- NEW: item-aware rule layer ---
@@ -145,7 +147,7 @@ def evaluate_hospital_csf(form: HospitalCsfForm) -> HospitalCsfDecision:
                 "Florida Controlled Substances Addendum (csf_fl_addendum)."
             ),
             missing_fields=[],
-            regulatory_references=["csf_fl_addendum"],
+            regulatory_references=["csf_hospital_form", "csf_fl_addendum"],
         )
 
     return HospitalCsfDecision(
@@ -155,6 +157,7 @@ def evaluate_hospital_csf(form: HospitalCsfForm) -> HospitalCsfDecision:
             "details are present. Hospital CSF is approved to proceed."
         ),
         missing_fields=[],
+        regulatory_references=["csf_hospital_form"],
     )
 
 

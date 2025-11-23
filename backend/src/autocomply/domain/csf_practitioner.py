@@ -107,6 +107,7 @@ def evaluate_practitioner_csf(form: PractitionerCsfForm) -> PractitionerCsfDecis
                 "fields: " + ", ".join(missing)
             ),
             missing_fields=missing,
+            regulatory_references=["csf_practitioner_form"],
         )
 
     # Attestation must be accepted
@@ -119,6 +120,7 @@ def evaluate_practitioner_csf(form: PractitionerCsfForm) -> PractitionerCsfDecis
                 "substances can be shipped."
             ),
             missing_fields=["attestation_accepted"],
+            regulatory_references=["csf_practitioner_form"],
         )
 
     # --- NEW: item-aware rule layer ---
@@ -142,7 +144,7 @@ def evaluate_practitioner_csf(form: PractitionerCsfForm) -> PractitionerCsfDecis
                 "Florida Controlled Substances Addendum (csf_fl_addendum)."
             ),
             missing_fields=[],
-            regulatory_references=["csf_fl_addendum"],
+            regulatory_references=["csf_practitioner_form", "csf_fl_addendum"],
         )
 
     # Default happy-path: all fields present, attestation accepted,
@@ -154,6 +156,7 @@ def evaluate_practitioner_csf(form: PractitionerCsfForm) -> PractitionerCsfDecis
             "attestation details are present. Practitioner CSF is approved to proceed."
         ),
         missing_fields=[],
+        regulatory_references=["csf_practitioner_form"],
     )
 
 

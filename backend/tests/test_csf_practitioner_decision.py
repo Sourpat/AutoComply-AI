@@ -30,6 +30,7 @@ def test_practitioner_csf_ok_to_ship_when_all_required_fields_and_attestation():
 
     assert decision.status == CsDecisionStatus.OK_TO_SHIP
     assert decision.missing_fields == []
+    assert decision.regulatory_references == ["csf_practitioner_form"]
 
 
 def test_practitioner_csf_blocked_when_core_fields_missing():
@@ -46,6 +47,7 @@ def test_practitioner_csf_blocked_when_core_fields_missing():
     assert "practitioner_name" in decision.missing_fields
     assert "state_license_number" in decision.missing_fields
     assert "dea_number" in decision.missing_fields
+    assert decision.regulatory_references == ["csf_practitioner_form"]
 
 
 def test_practitioner_csf_blocked_when_attestation_not_accepted():
@@ -55,6 +57,7 @@ def test_practitioner_csf_blocked_when_attestation_not_accepted():
     assert decision.status == CsDecisionStatus.BLOCKED
     assert "attestation_accepted" in decision.missing_fields
     assert "attestation" in decision.reason.lower()
+    assert decision.regulatory_references == ["csf_practitioner_form"]
 
 
 def test_practitioner_csf_schedule_ii_in_florida_triggers_manual_review():
@@ -77,7 +80,10 @@ def test_practitioner_csf_schedule_ii_in_florida_triggers_manual_review():
     assert decision.status == CsDecisionStatus.MANUAL_REVIEW
     assert "schedule" in decision.reason.lower()
     assert "fl" in decision.reason.lower()
-    assert decision.regulatory_references == ["csf_fl_addendum"]
+    assert decision.regulatory_references == [
+        "csf_practitioner_form",
+        "csf_fl_addendum",
+    ]
 
 
 def test_practitioner_csf_schedule_ii_non_florida_still_ok_to_ship():
@@ -98,3 +104,4 @@ def test_practitioner_csf_schedule_ii_non_florida_still_ok_to_ship():
     decision: PractitionerCsfDecision = evaluate_practitioner_csf(form)
 
     assert decision.status == CsDecisionStatus.OK_TO_SHIP
+    assert decision.regulatory_references == ["csf_practitioner_form"]

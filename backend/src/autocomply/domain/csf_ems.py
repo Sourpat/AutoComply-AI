@@ -102,6 +102,7 @@ def evaluate_ems_csf(form: EmsCsfForm) -> EmsCsfDecision:
                 + ", ".join(missing)
             ),
             missing_fields=missing,
+            regulatory_references=["csf_ems_form"],
         )
 
     if not form.attestation_accepted:
@@ -113,6 +114,7 @@ def evaluate_ems_csf(form: EmsCsfForm) -> EmsCsfDecision:
                 "substances can be shipped."
             ),
             missing_fields=["attestation_accepted"],
+            regulatory_references=["csf_ems_form"],
         )
 
     # --- NEW: item-aware rule layer ---
@@ -134,7 +136,7 @@ def evaluate_ems_csf(form: EmsCsfForm) -> EmsCsfDecision:
                 "Florida Controlled Substances Addendum (csf_fl_addendum)."
             ),
             missing_fields=[],
-            regulatory_references=["csf_fl_addendum"],
+            regulatory_references=["csf_ems_form", "csf_fl_addendum"],
         )
 
     return EmsCsfDecision(
@@ -144,4 +146,5 @@ def evaluate_ems_csf(form: EmsCsfForm) -> EmsCsfDecision:
             "are present. EMS CSF is approved to proceed."
         ),
         missing_fields=[],
+        regulatory_references=["csf_ems_form"],
     )

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 class ArtifactType(str, Enum):
     STATE_ATTESTATION = "state_attestation"
     CONTROLLED_SUBSTANCE_FORM = "controlled_substance_form"
+    FORM = "form"
     ADDENDUM = "addendum"
     GUIDANCE = "guidance"
 
@@ -14,6 +15,7 @@ class ArtifactType(str, Enum):
 class ArtifactStatus(str, Enum):
     RAW_DOCUMENT = "raw_document"  # just PDF/HTML
     MODELLED = "modelled"  # domain model exists
+    MODELED_RULES = "modeled_rules"  # rules codified against the form
     API_EXPOSED = "api_exposed"  # endpoint exists
     UI_SANDBOX = "ui_sandbox"  # there is a sandbox panel
     FULL_LOOP = "full_loop"  # model + API + UI + Codex explain
@@ -113,6 +115,66 @@ COMPLIANCE_ARTIFACTS: List[ComplianceArtifact] = [
         notes=(
             "Researcher CSF modeled in csf_researcher.py with "
             "/csf/researcher/evaluate and sandbox UI."
+        ),
+    ),
+    ComplianceArtifact(
+        id="csf_practitioner_form",
+        name="Controlled Substance Form – Practitioner (Standard)",
+        jurisdiction="US-Multi",
+        artifact_type=ArtifactType.FORM,
+        source_document="/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf",
+        engine_status=ArtifactStatus.MODELED_RULES,
+        notes=(
+            "Primary practitioner controlled substance form used to drive "
+            "practitioner CSF engine rules."
+        ),
+    ),
+    ComplianceArtifact(
+        id="csf_hospital_form",
+        name="Controlled Substance Form – Hospital Pharmacy",
+        jurisdiction="US-Multi",
+        artifact_type=ArtifactType.FORM,
+        source_document="/mnt/data/Online Controlled Substance Form - Hospital Pharmacy.pdf",
+        engine_status=ArtifactStatus.MODELED_RULES,
+        notes=(
+            "Primary hospital pharmacy controlled substance form used to drive "
+            "hospital CSF engine rules."
+        ),
+    ),
+    ComplianceArtifact(
+        id="csf_surgery_center_form",
+        name="Controlled Substance Form – Surgery Center",
+        jurisdiction="US-Multi",
+        artifact_type=ArtifactType.FORM,
+        source_document="/mnt/data/Online Controlled Substance Form - Surgery Center form.pdf",
+        engine_status=ArtifactStatus.MODELED_RULES,
+        notes=(
+            "Primary surgery center controlled substance form used to drive "
+            "surgery center CSF engine rules."
+        ),
+    ),
+    ComplianceArtifact(
+        id="csf_researcher_form",
+        name="Controlled Substance Form – Researcher",
+        jurisdiction="US-Multi",
+        artifact_type=ArtifactType.FORM,
+        source_document="/mnt/data/Online Controlled Substance Form - Researcher form.pdf",
+        engine_status=ArtifactStatus.MODELED_RULES,
+        notes=(
+            "Primary researcher controlled substance form used to drive "
+            "researcher CSF engine rules."
+        ),
+    ),
+    ComplianceArtifact(
+        id="csf_ems_form",
+        name="Controlled Substance Form – EMS",
+        jurisdiction="US-Multi",
+        artifact_type=ArtifactType.FORM,
+        source_document="/mnt/data/Online Controlled Substance Form - EMS form.pdf",
+        engine_status=ArtifactStatus.MODELED_RULES,
+        notes=(
+            "Primary EMS controlled substance form used to drive "
+            "EMS CSF engine rules."
         ),
     ),
     # 3) Addendums bundle
