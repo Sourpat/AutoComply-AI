@@ -18,6 +18,7 @@ import { RagRegulatorySandbox } from "../components/RagRegulatorySandbox";
 import { ComplianceCoverageTable } from "../components/ComplianceCoverageTable";
 import { RegulatoryFlowsPanel } from "../components/RegulatoryFlowsPanel";
 import { PdmaSampleSandbox } from "../components/PdmaSampleSandbox";
+import { VerificationQueuePanel } from "../components/VerificationQueuePanel";
 import { validateLicenseJSON, explainRule } from "../services/api";
 
 const Home = () => {
@@ -215,6 +216,7 @@ const Home = () => {
               <ApiDiagnosticsPanel />
               <RegulatoryFlowsPanel />
               <DecisionHistoryPanel />
+              <VerificationQueuePanel />
               <ComplianceCoverageTable />
               <section className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
                 <header className="mb-4 flex items-center justify-between">
