@@ -1,184 +1,208 @@
 # AutoComply AI
 
-AutoComply AI is a modular compliance engine that simulates how a real e-commerce platform would validate licenses and controlled-substance eligibility at checkout.
+> A regulatory copilot playground for controlled substances and drug distribution flows.  
+> Built with FastAPI + React, RAG, multi-agent architecture, and DevSupport tooling.
 
-It combines:
+AutoComply AI simulates a realistic compliance environment where:
 
-- A deterministic rules engine (expiry windows, state checks, purchase intent)
-- PDF/OCR stubs to extract basic signals from uploaded license documents
-- A RAG-style regulatory context layer, wired for LangChain-style evolution
-- A clean React frontend that feels like a “compliance cockpit”
-- Optional event publishing hooks for n8n / workflow automation
-
-> **Interview framing:**  
-> This repo shows how you would take a fuzzy, high-risk business problem (“are we allowed to ship this controlled product to this customer?”) and turn it into a deterministic, testable decision service with explainability.
+- Deterministic engines (CSF + Ohio TDDD) make **hard regulatory decisions**,
+- A **RAG pipeline** explains those decisions using real documents (PDF/HTML) under `/mnt/data/...`,
+- A **multi-agent** layer (DevSupport / Regulatory Explainer / Form Copilot) can sit on top,
+- A React frontend exposes **sandbox UIs** for demos and interviews,
+- **DevSupport affordances** (CODEX logs, DevSupport console, copy-cURL, health chip) make debugging and orchestration easy.
 
 ---
 
-## High-level architecture
+## 🔍 What this project demonstrates
 
-**Backend (FastAPI, Python)** – `/backend`
+**Regulatory engines**
 
-- `src/api/main.py`  
-  - Wires up versioned routes under `/api/v1/licenses/...`
-  - Central FastAPI app used by both tests and frontend
-- `src/api/routes/license_validation.py`  
-  - JSON/manual endpoint: `/api/v1/licenses/validate/license`
-  - PDF endpoint: `/api/v1/license/validate-pdf`
-  - RAG “rule explanation” endpoint: `/api/v1/licenses/explain-rule`
-- `src/compliance/decision_engine.py`  
-  - Encapsulates the core decisioning and expiry rules
-- `src/compliance/license_validator.py`  
-  - Specialised helpers to interpret expiry windows, “near expiry” logic, etc.
-- `src/rag/*`  
-  - `loader.py`, `embedder.py`, `retriever.py` – minimal RAG-style pipeline, currently using in-memory/demo data but structured to be swapped to LangChain/LangGraph later
-- `src/ocr/*`  
-  - `preprocess.py`, `extract.py` – stub OCR pipeline for PDFs
-- `src/utils/logger.py`  
-  - Centralised JSON logger for structured logs
-- `src/utils/events.py`
-  - EventPublisher stub wired from the API (for n8n / Slack etc. later)
+- CSF decision engines:
+  - Practitioner
+  - Hospital Pharmacy
+  - Researcher
+  - Surgery Center
+  - EMS
+- Ohio TDDD decision engine:
+  - Eligibility & explanation for Ohio drug distribution rules
 
-**Frontend (React + Vite + Tailwind)** – `/frontend`
+**RAG over real documents**
 
-- `src/pages/Home.jsx`  
-  - Main experience: upload PDF or enter license details manually
-- `src/components/UploadBox.jsx`  
-  - File upload box for PDF license docs
-- `src/components/ComplianceCard.jsx`  
-  - Shows engine verdict (allow/deny), expiry status, regulatory context, attestations, and a soft-gated “Proceed to checkout” button
-  - “Why this decision?” button calls the `/explain-rule` endpoint and renders an explanation block
-- `src/services/api.js`  
-  - Tiny API client: `validateLicenseJson`, `uploadPdf`, `explainRule`, etc.
+All regulatory context is grounded in real documents mounted under `/mnt/data/...`, for example:
 
-**Automation / workflows**
+- `/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf`
+- `/mnt/data/Online Controlled Substance Form - Hospital Pharmacy.pdf`
+- `/mnt/data/Online Controlled Substance Form - Surgery Center form.pdf`
+- `/mnt/data/Online Controlled Substance Form - Researcher form.pdf`
+- `/mnt/data/Online Controlled Substance Form - EMS form.pdf`
+- `/mnt/data/FLORIDA TEST.pdf`
+- `/mnt/data/addendums.pdf`
+- `/mnt/data/Ohio TDDD.html`
+- `/mnt/data/Controlledsubstance_userflow.png`
+- `/mnt/data/Controlled_Substances_Form_Flow_Updated.png`
 
-- `n8n/workflows/*.json`  
-  - Placeholders showing how events from `EventPublisher` could be consumed by n8n flows (Slack alerts, renewal reminders, etc.)
+Wherever these appear (backend responses, UI links, `CODEX_COMMAND` logs, tools) they are treated as **URLs** – the runtime transforms `/mnt/data/...` into real, fetchable URLs.
 
----
+**Multi-agent architecture**
 
-## Key backend flows
+- DevSupport agent – debugs decisions, tests, and outages.
+- Regulatory Explainer agent – answers “why did we block this?” using RAG.
+- Form Copilot agent – guides users through CSF / Ohio forms and catches issues early.
 
-### 1. Manual license validation (JSON flow)
+**DevSupport tooling**
 
-Endpoint: `POST /api/v1/licenses/validate/license`
-
-1. Frontend sends a JSON payload (state, state_expiry, purchase_intent, quantity, etc.).
-2. API builds a `LicenseValidationRequest` and calls `ComplianceEngine.evaluate()`.
-3. Decision engine returns a `LicenseValidationVerdict`:
-   - `allow_checkout` (boolean)
-   - `status` (`"active"`, `"near_expiry"`, `"expired"`, etc.)
-   - `days_to_expiry`, `is_expired`
-   - Attestation requirements (if any)
-4. RAG pipeline is invoked to attach a `regulatory_context` list:
-   - Jurisdictions like `US-CA`, `US-DEA`
-   - Short snippets explaining what was considered
-5. API wraps this in `{ success: true, verdict: {...} }` and returns to the frontend.
-6. In parallel, an event is emitted via `EventPublisher` (stubbed) for downstream workflows.
-
-### 2. PDF license validation (OCR + rules)
-
-Endpoint: `POST /api/v1/license/validate-pdf`
-
-1. User uploads a PDF (e.g., state license document).
-2. `extract_text_from_pdf` (stub) returns raw text; we expose a safe `text_preview` and basic metadata.
-3. Backend builds a default `LicenseValidationRequest` (today + 1 year, CA, etc.) as a demo.
-4. Same decision engine + RAG pipeline are executed.
-5. Response includes:
-   - `verdict`: full decision object
-   - `extracted_fields`: PDF file name, preview, character counts
-
-### 3. “Why this decision?” explanation
-
-Endpoint: `POST /api/v1/licenses/explain-rule`
-
-1. Frontend sends a minimal payload: `{ "state": "CA", "purchase_intent": "GeneralMedicalUse" }`.
-2. RAG layer returns one or more context items:
-   - `jurisdiction` (e.g., `US-CA`)
-   - `source` (e.g., “Use-case context (demo)”)
-   - `snippet` – human-readable explanation
-3. Frontend renders this under the verdict to make the decision explainable, not a black box.
+- `CODEX_COMMAND` log protocol (structured logs for every key action).
+- In-app **DevSupport Log Panel** to view those events live.
+- **Copy cURL** buttons for every evaluate / explain / RAG call.
+- **API status chip** that pings `/health` and logs `check_api_health`.
+- n8n workflow blueprints for:
+  - DevSupport webhook,
+  - RegOps daily digest,
+  - Form escalation.
 
 ---
 
-## Frontend experience
+## 🧱 Architecture at a glance
 
-- **Upload license PDF** or **enter details manually**.
-- See:
-  - Allow / Block outcome
-  - Expiry label and days to expiry
-  - Regulatory context chips
-  - Attestation chips with a checkbox and soft-gated “Proceed to checkout” button
-- Click **“Why this decision?”** to fetch RAG-based explanation text.
+**Backend (FastAPI)**
+
+- `GET /health` – health check.
+- CSF decision engines:
+  - `POST /csf/practitioner/evaluate`
+  - `POST /csf/hospital/evaluate`
+  - `POST /csf/researcher/evaluate`
+  - `POST /csf/surgery-center/evaluate`
+  - `POST /csf/ems/evaluate`
+- CSF explain:
+  - `POST /csf/explain`
+- Ohio TDDD:
+  - `POST /ohio-tddd/evaluate`
+  - `POST /ohio-tddd/explain`
+- Compliance artifacts registry:
+  - `GET /compliance/artifacts` → maps flows to `/mnt/data/...` documents
+- Controlled substances:
+  - `GET /controlled-substances/search`
+  - `GET /controlled-substances/history`
+- RAG regulatory explain:
+  - `POST /rag/regulatory-explain`
+
+**Frontend (React)**
+
+- **CSF sandboxes** for all form types:
+  - Form editor, Evaluate, Explain, Deep RAG explain
+  - Controlled Substances panel (search + history)
+  - Quick example scenarios (FL Schedule II, OH Schedule II, etc.)
+  - Source document chip → opens `/mnt/data/...` PDFs
+- **Ohio TDDD sandbox** with its own examples and HTML doc:
+  - `"/mnt/data/Ohio TDDD.html"`
+- **RAG playground**:
+  - Browses compliance artifacts
+  - “View document” links use `artifact.source_document` (a `/mnt/data/...` URL)
+  - Quick RAG examples (“Hospital vs Practitioner CSF”, “Out-of-state Ohio shipping”, etc.)
+- **Regulatory Flows panel**:
+  - Links to:
+    - `/mnt/data/Controlledsubstance_userflow.png`
+    - `/mnt/data/Controlled_Substances_Form_Flow_Updated.png`
+  - Each click logs `open_regulatory_flow_diagram`
+- **DevSupport console**:
+  - Toggle button in header (`DevSupport`)
+  - Live view of all `CODEX_COMMAND` events
+  - Expand/collapse payloads, copy JSON
 
 ---
 
-## Running locally
+## ▶️ Running the project
 
 ### Backend
 
+From `backend/`:
+
 ```bash
-cd backend
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
-
 pip install -r requirements.txt
+uvicorn src.api.main:app --reload
+```
 
-# Run FastAPI app
-uvicorn src.api.main:app --reload --port 8000
+By default, the backend exposes FastAPI routes at something like:
 
-Frontend
-cd frontend
-npm install
-npm run dev
+```
+http://127.0.0.1:8000/health
 
+http://127.0.0.1:8000/csf/practitioner/evaluate
 
-By default, the frontend expects VITE_API_BASE to point to the backend:
+etc.
+```
 
-# Example: in a .env file in /frontend
-VITE_API_BASE=http://localhost:8000
+Run tests:
 
-Tests & CI
-
-Test suite lives under /backend/tests.
-
-GitHub Actions pipeline:
-
-Installs backend dependencies
-
-Runs pytest
-
-(Optionally) builds Docker images / deploys if secrets are configured
-
-Run tests locally:
-
+```bash
 cd backend
 pytest
+```
 
-Future evolution (LangChain / LangGraph ready)
+### Frontend
 
-The RAG layer is intentionally small and modular:
+From `frontend/`:
 
-loader.py – where documents are loaded from (files, API, DB…)
+Set `VITE_API_BASE` in your `.env` (or via command line):
 
-embedder.py – embedding strategy (currently stubbed to keep infra light)
+```
+VITE_API_BASE=http://127.0.0.1:8000
+```
 
-retriever.py – how we select relevant context for a given state + scenario
+Install & run:
 
-You can swap these into a LangChain or LangGraph pipeline with minimal refactoring:
-the API surface already treats it as a pluggable provider.
+```bash
+npm install
+npm run dev
+```
 
-How to talk about this in interviews
-
-Business story:
-Controlled-substance checkout is high-risk and requires license validation, expiry checks, and jurisdictional logic across states + DEA. AutoComply AI simulates that decision engine in a clean, testable way.
-
-Tech story:
-FastAPI backend, modular rules engine, OCR stub, and RAG explanation layer, all wrapped with tests and CI. React frontend gives a realistic UX so stakeholders can “feel” how compliance behaves before productionizing.
-
-AI story:
-RAG isn’t making the final decision, it’s explaining it. The actual allow/deny is deterministic; AI/RAG is used to generate human-readable context and “why” text, which is a safer and more auditable pattern for compliance.
-
+Open the app (usually http://localhost:5173) to access all sandboxes and tools.
 
 ---
+
+## 🧪 How to demo quickly
+
+A few “talk-track ready” flows:
+
+1. **Practitioner FL Schedule II**
+
+   - Open the Practitioner CSF sandbox.
+   - Click a FL Schedule II example chip to prefill the form.
+   - Click Evaluate CSF, then Explain decision.
+   - Run Deep RAG Explain to see a narrative explanation grounded in the practitioner CSF PDF.
+   - Click the Practitioner CSF PDF chip to open:
+     - `/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf`
+   - Open the DevSupport panel to show:
+     - `explain_csf_practitioner_decision`
+     - `rag_regulatory_explain_practitioner`
+     - `copy_curl` events.
+
+2. **Ohio TDDD – Out-of-state shipping**
+
+   - Open the Ohio TDDD sandbox.
+   - Choose the “Out-of-state shipping” example.
+   - Evaluate and explain.
+   - Open the Ohio doc:
+     - `/mnt/data/Ohio TDDD.html`
+   - Show the associated `CODEX_COMMAND` logs and copy-cURL for `/ohio-tddd/evaluate` and `/ohio-tddd/explain`.
+
+3. **RAG Playground – Hospital vs Practitioner**
+
+   - Open the RAG Regulatory playground.
+   - Select relevant CSF artifacts (practitioner + hospital).
+   - Click the “Hospital vs Practitioner CSF” quick example.
+   - Run RAG explain.
+   - Use View document links to open `/mnt/data/...` PDFs.
+
+---
+
+## 📚 Deeper docs
+
+For more detail, see the docs under `docs/`:
+
+- `docs/project_overview.md` – high-level narrative of the whole system.
+- `docs/devsupport_codex_commands.md` – full `CODEX_COMMAND` catalog.
+- `docs/multi_agent_architecture.md` – multi-agent design + orchestration.
+- `docs/n8n_workflow_blueprints.md` – how to wire this into n8n (DevSupport webhook, RegOps digest, escalation flows).
