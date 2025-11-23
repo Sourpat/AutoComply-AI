@@ -350,3 +350,29 @@ A typical DevSupport workflow over logs:
 This doc should be kept up to date as new CODEX_COMMAND names are added, so
 that any DevSupport or orchestration layer always has a single source of truth
 for how to interpret them.
+
+## 8. Regulatory flow diagrams
+
+When a user opens one of the controlled substances flow diagrams:
+
+```ts
+emitCodexCommand("open_regulatory_flow_diagram", {
+  flow_id: flow.id,
+  label: flow.label,
+  description: flow.description,
+  url: flow.url, // e.g. "/mnt/data/Controlled_Substances_Form_Flow_Updated.png"
+});
+```
+
+Intent: Record that a specific regulatory flow diagram was opened.
+
+Payload:
+
+- flow_id: Stable ID for the diagram.
+- label: Human-friendly label.
+- description: Optional explanation of the diagram.
+- url: The /mnt/data/... path for the PNG file.
+
+DevSupport agents or n8n workflows should treat url as a standard URL string
+and pass it directly into any document/image-opening tools. The runtime will
+transform /mnt/data/... into an actual accessible URL.
