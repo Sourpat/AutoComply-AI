@@ -119,6 +119,27 @@ def evaluate_hospital_csf(form: HospitalCsfForm) -> HospitalCsfDecision:
             missing_fields=["attestation_accepted"],
         )
 
+    # --- NEW: item-aware rule layer ---
+    ship_state = (form.ship_to_state or "").upper()
+    high_risk_items = [
+        item
+        for item in form.controlled_substances
+        if (item.dea_schedule or "").upper() in {"II", "CII"}
+    ]
+
+    if high_risk_items and ship_state == "FL":
+        example_names = ", ".join(item.name for item in high_risk_items[:3])
+        return HospitalCsfDecision(
+            status=CsDecisionStatus.MANUAL_REVIEW,
+            reason=(
+                "Hospital CSF includes high-risk Schedule II controlled substances "
+                "for ship-to state FL. Example item(s): "
+                f"{example_names}. Requires manual compliance review per FL "
+                "controlled substances addendum."
+            ),
+            missing_fields=[],
+        )
+
     return HospitalCsfDecision(
         status=CsDecisionStatus.OK_TO_SHIP,
         reason=(

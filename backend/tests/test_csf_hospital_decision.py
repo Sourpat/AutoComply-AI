@@ -4,6 +4,7 @@ from autocomply.domain.csf_hospital import (
     HospitalFacilityType,
     evaluate_hospital_csf,
 )
+from autocomply.domain.controlled_substances import ControlledSubstanceItem
 from autocomply.domain.csf_practitioner import CsDecisionStatus
 
 
@@ -57,3 +58,41 @@ def test_hospital_csf_blocked_when_attestation_not_accepted():
     assert decision.status == CsDecisionStatus.BLOCKED
     assert "attestation_accepted" in decision.missing_fields
     assert "attestation" in decision.reason.lower()
+
+
+def test_hospital_csf_schedule_ii_in_florida_triggers_manual_review():
+    form = make_base_form(ship_to_state="FL")
+    form.controlled_substances = [
+        ControlledSubstanceItem(
+            id="cs-oxy-5mg-tab",
+            name="Oxycodone 5 mg tablet",
+            ndc="12345-6789-01",
+            strength="5 mg",
+            dosage_form="tablet",
+            dea_schedule="II",
+        )
+    ]
+
+    decision = evaluate_hospital_csf(form)
+
+    assert decision.status == CsDecisionStatus.MANUAL_REVIEW
+    assert "fl" in decision.reason.lower()
+    assert "schedule" in decision.reason.lower()
+
+
+def test_hospital_csf_schedule_ii_non_florida_still_ok_to_ship():
+    form = make_base_form(ship_to_state="OH")
+    form.controlled_substances = [
+        ControlledSubstanceItem(
+            id="cs-oxy-5mg-tab",
+            name="Oxycodone 5 mg tablet",
+            ndc="12345-6789-01",
+            strength="5 mg",
+            dosage_form="tablet",
+            dea_schedule="II",
+        )
+    ]
+
+    decision = evaluate_hospital_csf(form)
+
+    assert decision.status == CsDecisionStatus.OK_TO_SHIP
