@@ -14,6 +14,7 @@ import {
   fetchComplianceArtifacts,
   type ComplianceArtifact,
 } from "../api/complianceArtifactsClient";
+import { callRegulatoryRag } from "../api/ragRegulatoryClient";
 
 const initialForm: HospitalCsfFormData = {
   facilityName: "",
@@ -44,6 +45,9 @@ export function HospitalCsfSandbox() {
   >([]);
   const [isLoadingRegulatory, setIsLoadingRegulatory] = useState(false);
   const [regulatoryError, setRegulatoryError] = useState<string | null>(null);
+  const [ragAnswer, setRagAnswer] = useState<string | null>(null);
+  const [isRagLoading, setIsRagLoading] = useState(false);
+  const [ragError, setRagError] = useState<string | null>(null);
 
   const onChange = (field: keyof HospitalCsfFormData, value: any) => {
     setForm((prev) => ({
@@ -57,6 +61,10 @@ export function HospitalCsfSandbox() {
     setIsLoading(true);
     setError(null);
     setDecision(null);
+    setExplanation(null);
+    setExplainError(null);
+    setRagAnswer(null);
+    setRagError(null);
 
     try {
       const result = await evaluateHospitalCsf({
@@ -79,6 +87,10 @@ export function HospitalCsfSandbox() {
     setExplanation(null);
     setExplainError(null);
     setIsExplaining(false);
+
+    setRagAnswer(null);
+    setRagError(null);
+    setIsRagLoading(false);
 
     setRegulatoryArtifacts([]);
     setRegulatoryError(null);
@@ -380,6 +392,77 @@ export function HospitalCsfSandbox() {
               {explanation && (
                 <pre className="whitespace-pre-wrap rounded-md bg-white px-2 py-2 text-[11px] text-gray-800 ring-1 ring-gray-200">
                   {explanation}
+                </pre>
+              )}
+            </div>
+
+            {/* NEW: Deep RAG explain via /rag/regulatory-explain */}
+            <div className="mt-3 space-y-1 border-t border-gray-200 pt-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-gray-700">
+                  Deep RAG explain (experimental)
+                </span>
+                {isRagLoading && (
+                  <span className="text-[10px] text-gray-400">Running RAG…</span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                disabled={isRagLoading || !decision}
+                className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={async () => {
+                  if (!decision) return;
+
+                  setIsRagLoading(true);
+                  setRagError(null);
+                  setRagAnswer(null);
+
+                  const question =
+                    "Explain this hospital controlled substance form decision using the referenced regulatory artifacts. " +
+                    "Focus on why the status is '" +
+                    decision.status +
+                    "' and how the hospital CSF form and any state addendums apply.";
+
+                  try {
+                    const res = await callRegulatoryRag({
+                      question,
+                      regulatory_references: decision.regulatory_references ?? [],
+                      decision,
+                    });
+
+                    setRagAnswer(res.answer);
+
+                    // Optional: log a Codex command for DevSupport
+                    console.log(
+                      "CODEX_COMMAND: rag_regulatory_explain_hospital",
+                      {
+                        question,
+                        regulatory_references: decision.regulatory_references ?? [],
+                        decision,
+                      }
+                    );
+                  } catch (err: any) {
+                    setRagError(
+                      err?.message ?? "Failed to call RAG explain for this decision."
+                    );
+                  } finally {
+                    setIsRagLoading(false);
+                  }
+                }}
+              >
+                {isRagLoading ? "Running RAG…" : "Deep RAG explain"}
+              </button>
+
+              {ragError && (
+                <div className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700">
+                  {ragError}
+                </div>
+              )}
+
+              {ragAnswer && (
+                <pre className="whitespace-pre-wrap rounded-md bg-white px-2 py-2 text-[11px] text-gray-800 ring-1 ring-gray-200">
+                  {ragAnswer}
                 </pre>
               )}
             </div>
