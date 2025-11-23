@@ -20,6 +20,7 @@ import {
 import { callRegulatoryRag } from "../api/ragRegulatoryClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
+import { emitCodexCommand } from "../utils/codexLogger";
 
 type OhioExample = {
   id: string;
@@ -95,7 +96,7 @@ export function OhioTdddSandbox() {
 
     setForm(nextForm);
 
-    console.log("CODEX_COMMAND: ohio_tddd_example_selected", {
+    emitCodexCommand("ohio_tddd_example_selected", {
       example_id: example.id,
       label: example.label,
       form: nextForm,
@@ -160,7 +161,7 @@ export function OhioTdddSandbox() {
       const res = await explainOhioTdddDecision(summary);
       setExplanation(res.explanation);
 
-      console.log("CODEX_COMMAND: explain_ohio_tddd_decision", {
+      emitCodexCommand("explain_ohio_tddd_decision", {
         decision: summary,
         source_document: "/mnt/data/Ohio TDDD.html",
       });
@@ -439,7 +440,7 @@ export function OhioTdddSandbox() {
                   setRagAnswer(res.answer);
 
                   // Optional: log a Codex command for DevSupport
-                  console.log("CODEX_COMMAND: rag_regulatory_explain_ohio_tddd", {
+                  emitCodexCommand("rag_regulatory_explain_ohio_tddd", {
                     question,
                     regulatory_references: decision.regulatory_references ?? [],
                     decision,

@@ -1,5 +1,6 @@
 // src/components/CopyCurlButton.tsx
 import React from "react";
+import { emitCodexCommand } from "../utils/codexLogger";
 
 const API_BASE =
   (import.meta as any).env?.VITE_API_BASE || "";
@@ -48,7 +49,7 @@ export function CopyCurlButton({
   const handleClick = async () => {
     const curl = buildCurlCommand(endpoint, method, body);
 
-    console.log("CODEX_COMMAND: copy_curl", {
+    emitCodexCommand("copy_curl", {
       endpoint: `${API_BASE}${endpoint}`,
       method,
       body,

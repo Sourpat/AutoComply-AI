@@ -1,3 +1,4 @@
+import { emitCodexCommand } from "../utils/codexLogger";
 import { useEffect, useState } from "react";
 
 const API_BASE =
@@ -28,7 +29,7 @@ export function ApiStatusChip() {
       setLastChecked(new Date());
 
       // Optional Codex log so DevSupport can see when UI checked health
-      console.log("CODEX_COMMAND: check_api_health", {
+      emitCodexCommand("check_api_health", {
         api_base: API_BASE,
         status_after_check: status,
         last_checked_at: new Date().toISOString(),
