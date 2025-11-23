@@ -19,6 +19,7 @@ import {
 } from "../api/complianceArtifactsClient";
 import { callRegulatoryRag } from "../api/ragRegulatoryClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
+import { CopyCurlButton } from "./CopyCurlButton";
 
 type OhioExample = {
   id: string;
@@ -139,6 +140,37 @@ export function OhioTdddSandbox() {
     setRegulatoryArtifacts([]);
     setRegulatoryError(null);
     setIsLoadingRegulatory(false);
+  };
+
+  const handleExplain = async () => {
+    if (!decision) return;
+
+    setIsExplaining(true);
+    setExplainError(null);
+    setExplanation(null);
+
+    const summary: OhioTdddDecisionSummary = {
+      status: decision.status,
+      reason: decision.reason,
+      missing_fields: decision.missing_fields ?? [],
+      regulatory_references: decision.regulatory_references ?? [],
+    };
+
+    try {
+      const res = await explainOhioTdddDecision(summary);
+      setExplanation(res.explanation);
+
+      console.log("CODEX_COMMAND: explain_ohio_tddd_decision", {
+        decision: summary,
+        source_document: "/mnt/data/Ohio TDDD.html",
+      });
+    } catch (err: any) {
+      setExplainError(
+        err?.message ?? "Failed to generate Ohio TDDD decision explanation"
+      );
+    } finally {
+      setIsExplaining(false);
+    }
   };
 
   // Load regulatory artifacts when decision has references
@@ -287,13 +319,22 @@ export function OhioTdddSandbox() {
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="rounded-md bg-gray-900 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isLoading ? "Evaluating…" : "Evaluate"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="rounded-md bg-blue-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isLoading ? "Evaluating…" : "Evaluate Ohio TDDD"}
+            </button>
+
+            <CopyCurlButton
+              label="Copy cURL (evaluate)"
+              endpoint="/ohio-tddd/evaluate"
+              body={form}
+              disabled={isLoading}
+            />
+          </div>
         </div>
       </form>
 
@@ -329,47 +370,23 @@ export function OhioTdddSandbox() {
 
           {/* Explain via /ohio-tddd/explain */}
           <div className="mt-3 space-y-1">
-            <button
-              type="button"
-              disabled={isExplaining}
-              className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-              onClick={async () => {
-                setIsExplaining(true);
-                setExplainError(null);
-                setExplanation(null);
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={isExplaining}
+                className="rounded-md bg-slate-700 px-3 py-1 text-[11px] font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                onClick={handleExplain}
+              >
+                {isExplaining ? "Explaining…" : "Explain decision"}
+              </button>
 
-                const summary: OhioTdddDecisionSummary = {
-                  status: decision.status,
-                  reason: decision.reason,
-                  missing_fields: decision.missing_fields ?? [],
-                  regulatory_references:
-                    decision.regulatory_references ?? [],
-                };
-
-                try {
-                  const res = await explainOhioTdddDecision(summary);
-                  setExplanation(res.explanation);
-
-                  // Optional: emit Codex command log
-                  console.log(
-                    "CODEX_COMMAND: explain_ohio_tddd_decision",
-                    {
-                      decision: summary,
-                      source_document: "/mnt/data/Ohio TDDD.html",
-                    }
-                  );
-                } catch (err: any) {
-                  setExplainError(
-                    err?.message ??
-                      "Failed to generate Ohio TDDD decision explanation"
-                  );
-                } finally {
-                  setIsExplaining(false);
-                }
-              }}
-            >
-              {isExplaining ? "Explaining…" : "Explain decision"}
-            </button>
+              <CopyCurlButton
+                label="Copy cURL (explain)"
+                endpoint="/ohio-tddd/explain"
+                body={{ decision }}
+                disabled={isExplaining}
+              />
+            </div>
 
             {explainError && (
               <div className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700">
