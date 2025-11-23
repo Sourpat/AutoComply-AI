@@ -13,6 +13,7 @@ import { OhioTdddSandbox } from "../components/OhioTdddSandbox";
 import { PractitionerCsfSandbox } from "../components/PractitionerCsfSandbox";
 import { HospitalCsfSandbox } from "../components/HospitalCsfSandbox";
 import { ResearcherCsfSandbox } from "../components/ResearcherCsfSandbox";
+import { RagRegulatorySandbox } from "../components/RagRegulatorySandbox";
 import { ComplianceCoverageTable } from "../components/ComplianceCoverageTable";
 import { validateLicenseJSON, explainRule } from "../services/api";
 
@@ -232,6 +233,7 @@ const Home = () => {
 
                 <div className="mt-4 grid gap-4 md:grid-cols-3">
                   <OhioTdddSandbox />
+                  <RagRegulatorySandbox />
                   {/* room for future tiles (e.g., e222 / Prop65 / EUA, etc.) */}
                 </div>
               </section>
