@@ -5,6 +5,8 @@ import {
   HospitalCsfFormData,
   HospitalFacilityType,
 } from "../domain/csfHospital";
+import { ControlledSubstanceItem } from "../domain/controlledSubstances";
+import { ControlledSubstancesSearchSection } from "./ControlledSubstancesSearchSection";
 import { evaluateHospitalCsf } from "../api/csfHospitalClient";
 
 const initialForm: HospitalCsfFormData = {
@@ -25,6 +27,9 @@ export function HospitalCsfSandbox() {
   const [decision, setDecision] = useState<HospitalCsfDecision | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [controlledSubstances, setControlledSubstances] = useState<
+    ControlledSubstanceItem[]
+  >([]);
 
   const onChange = (field: keyof HospitalCsfFormData, value: any) => {
     setForm((prev) => ({
@@ -40,7 +45,10 @@ export function HospitalCsfSandbox() {
     setDecision(null);
 
     try {
-      const result = await evaluateHospitalCsf(form);
+      const result = await evaluateHospitalCsf({
+        ...form,
+        controlledSubstances,
+      });
       setDecision(result);
     } catch (err: any) {
       setError(err?.message ?? "Failed to evaluate Hospital CSF");
@@ -53,6 +61,7 @@ export function HospitalCsfSandbox() {
     setForm(initialForm);
     setDecision(null);
     setError(null);
+    setControlledSubstances([]);
   };
 
   return (
@@ -273,6 +282,7 @@ export function HospitalCsfSandbox() {
                     {
                       form,
                       decision,
+                      controlled_substances: controlledSubstances,
                       source_document:
                         "/mnt/data/Online Controlled Substance Form - Hospital Pharmacy.pdf",
                     }
@@ -288,6 +298,14 @@ export function HospitalCsfSandbox() {
           </div>
         )}
       </div>
+
+      {/* NEW: Controlled Substances search & selection */}
+      <ControlledSubstancesSearchSection
+        selectedItems={controlledSubstances}
+        onSelectedItemsChange={setControlledSubstances}
+        title="Controlled Substances for this Hospital CSF"
+        compact
+      />
     </section>
   );
 }

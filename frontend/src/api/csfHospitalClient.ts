@@ -27,6 +27,9 @@ export async function evaluateHospitalCsf(
       ship_to_state: form.shipToState,
       attestation_accepted: form.attestationAccepted,
       internal_notes: form.internalNotes ?? null,
+
+      // NEW
+      controlled_substances: form.controlledSubstances ?? [],
     }),
   });
 

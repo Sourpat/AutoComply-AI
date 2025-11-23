@@ -5,6 +5,8 @@ import {
   ResearcherCsfDecision,
   ResearcherCsfFormData,
 } from "../domain/csfResearcher";
+import { ControlledSubstanceItem } from "../domain/controlledSubstances";
+import { ControlledSubstancesSearchSection } from "./ControlledSubstancesSearchSection";
 import { evaluateResearcherCsf } from "../api/csfResearcherClient";
 
 const initialForm: ResearcherCsfFormData = {
@@ -26,6 +28,9 @@ export function ResearcherCsfSandbox() {
   const [decision, setDecision] = useState<ResearcherCsfDecision | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [controlledSubstances, setControlledSubstances] = useState<
+    ControlledSubstanceItem[]
+  >([]);
 
   const onChange = (field: keyof ResearcherCsfFormData, value: any) => {
     setForm((prev) => ({
@@ -41,7 +46,10 @@ export function ResearcherCsfSandbox() {
     setDecision(null);
 
     try {
-      const result = await evaluateResearcherCsf(form);
+      const result = await evaluateResearcherCsf({
+        ...form,
+        controlledSubstances,
+      });
       setDecision(result);
     } catch (err: any) {
       setError(err?.message ?? "Failed to evaluate Researcher CSF");
@@ -54,6 +62,7 @@ export function ResearcherCsfSandbox() {
     setForm(initialForm);
     setDecision(null);
     setError(null);
+    setControlledSubstances([]);
   };
 
   return (
@@ -284,6 +293,7 @@ export function ResearcherCsfSandbox() {
                     {
                       form,
                       decision,
+                      controlled_substances: controlledSubstances,
                       source_document:
                         "/mnt/data/Online Controlled Substance Form - Researcher form.pdf",
                     }
@@ -299,6 +309,14 @@ export function ResearcherCsfSandbox() {
           </div>
         )}
       </div>
+
+      {/* NEW: Controlled Substances search & selection */}
+      <ControlledSubstancesSearchSection
+        selectedItems={controlledSubstances}
+        onSelectedItemsChange={setControlledSubstances}
+        title="Controlled Substances for this Researcher CSF"
+        compact
+      />
     </section>
   );
 }

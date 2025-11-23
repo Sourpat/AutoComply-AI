@@ -1,4 +1,5 @@
 // src/domain/csfResearcher.ts
+import { ControlledSubstanceItem } from "./controlledSubstances";
 
 export type ResearchFacilityType =
   | "university"
@@ -24,6 +25,9 @@ export interface ResearcherCsfFormData {
   attestationAccepted: boolean;
 
   internalNotes?: string | null;
+
+  // NEW: attached controlled substances
+  controlledSubstances?: ControlledSubstanceItem[];
 }
 
 export type ResearcherCsfDecisionStatus =

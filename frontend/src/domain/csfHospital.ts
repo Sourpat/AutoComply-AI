@@ -1,4 +1,5 @@
 // src/domain/csfHospital.ts
+import { ControlledSubstanceItem } from "./controlledSubstances";
 
 export type HospitalFacilityType =
   | "hospital"
@@ -23,6 +24,9 @@ export interface HospitalCsfFormData {
   attestationAccepted: boolean;
 
   internalNotes?: string | null;
+
+  // NEW: attached controlled substances
+  controlledSubstances?: ControlledSubstanceItem[];
 }
 
 export type HospitalCsfDecisionStatus =

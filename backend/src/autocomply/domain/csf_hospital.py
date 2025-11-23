@@ -3,6 +3,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from autocomply.domain.controlled_substances import ControlledSubstanceItem
 # Reuse the same decision status enum as Practitioner CSF to keep things consistent.
 from autocomply.domain.csf_practitioner import CsDecisionStatus
 
@@ -47,6 +48,15 @@ class HospitalCsfForm(BaseModel):
         description=(
             "True if the pharmacist-in-charge/facility has accepted the "
             "controlled substances attestation clause."
+        ),
+    )
+
+    # NEW: attached controlled substances for this form
+    controlled_substances: List[ControlledSubstanceItem] = Field(
+        default_factory=list,
+        description=(
+            "Controlled substance items associated with this Hospital CSF. "
+            "Populated from the Controlled Substances search UI."
         ),
     )
 
@@ -172,5 +182,14 @@ def describe_hospital_csf_decision(
             + ", ".join(decision.missing_fields)
             + "."
         )
+
+    if form.controlled_substances:
+        lines.append(
+            f"Attached controlled substance items: {len(form.controlled_substances)} item(s)."
+        )
+        example_names = [item.name for item in form.controlled_substances[:3]]
+        lines.append("Examples: " + ", ".join(example_names) + ".")
+    else:
+        lines.append("No controlled substance items were attached to this CSF.")
 
     return "\n".join(lines)
