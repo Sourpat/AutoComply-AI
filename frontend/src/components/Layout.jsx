@@ -2,21 +2,19 @@ import { ApiStatusChip } from "./ApiStatusChip";
 
 export default function Layout({ children }) {
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-900">
-      {/* Simple top bar */}
-      <header className="w-full bg-white shadow-sm py-4 mb-8">
-        <div className="max-w-5xl mx-auto flex items-center justify-between px-6">
-          <h1 className="text-2xl font-bold tracking-tight text-gray-800">
+    <div className="min-h-screen bg-slate-50 text-[11px] text-gray-900">
+      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold tracking-wide text-gray-900">
             AutoComply AI
-          </h1>
-          <ApiStatusChip />
+          </span>
+          <span className="text-[10px] text-gray-400">CSF + Ohio TDDD Sandbox</span>
         </div>
+
+        <ApiStatusChip />
       </header>
 
-      {/* Main content */}
-      <main className="max-w-5xl mx-auto px-6 pb-12">
-        {children}
-      </main>
+      <main className="max-w-5xl mx-auto px-6 pb-12">{children}</main>
     </div>
   );
 }
