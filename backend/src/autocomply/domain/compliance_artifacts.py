@@ -8,6 +8,7 @@ class ArtifactType(str, Enum):
     STATE_ATTESTATION = "state_attestation"
     CONTROLLED_SUBSTANCE_FORM = "controlled_substance_form"
     ADDENDUM = "addendum"
+    GUIDANCE = "guidance"
 
 
 class ArtifactStatus(str, Enum):
@@ -39,6 +40,19 @@ COMPLIANCE_ARTIFACTS: List[ComplianceArtifact] = [
         source_document="/mnt/data/Ohio TDDD.html",
         engine_status=ArtifactStatus.FULL_LOOP,
         notes="Modeled in ohio_tddd.py with /ohio-tddd/evaluate + sandbox + Codex explanation.",
+    ),
+    ComplianceArtifact(
+        id="ohio_tddd_registration",
+        name="Ohio TDDD – Terminal Distributor of Dangerous Drugs Guidance",
+        jurisdiction="US-OH",
+        artifact_type=ArtifactType.GUIDANCE,
+        source_document="/mnt/data/Ohio TDDD.html",  # local path -> will be turned into URL
+        engine_status=ArtifactStatus.RAW_DOCUMENT,
+        notes=(
+            "Primary reference for Ohio TDDD registration rules used by the "
+            "ohio_tddd engine. Includes eligibility, license types, and "
+            "operational requirements."
+        ),
     ),
     # 2) Controlled Substance Forms – Practitioner, Hospital, Surgery, EMS, Researcher
     ComplianceArtifact(

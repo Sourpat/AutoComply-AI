@@ -40,6 +40,13 @@ class OhioTdddDecision(BaseModel):
     status: DecisionStatus
     reason: str
     missing_fields: List[str] = Field(default_factory=list)
+    regulatory_references: List[str] = Field(
+        default_factory=list,
+        description=(
+            "IDs of compliance artifacts (e.g. ohio_tddd_registration) that "
+            "directly informed this decision."
+        ),
+    )
 
 
 def evaluate_ohio_tddd_attestation(form: OhioTdddForm) -> OhioTdddDecision:
@@ -70,6 +77,7 @@ def evaluate_ohio_tddd_attestation(form: OhioTdddForm) -> OhioTdddDecision:
                     "identity fields are missing: " + ", ".join(missing)
                 ),
                 missing_fields=missing,
+                regulatory_references=["ohio_tddd_registration"],
             )
 
         return OhioTdddDecision(
@@ -79,6 +87,7 @@ def evaluate_ohio_tddd_attestation(form: OhioTdddForm) -> OhioTdddDecision:
                 "and provided minimum practitioner details."
             ),
             missing_fields=[],
+            regulatory_references=["ohio_tddd_registration"],
         )
 
     # Path 2: Customer is licensed or applying (subject to TDDD)
@@ -104,6 +113,7 @@ def evaluate_ohio_tddd_attestation(form: OhioTdddForm) -> OhioTdddDecision:
                     + ", ".join(missing)
                 ),
                 missing_fields=missing,
+                regulatory_references=["ohio_tddd_registration"],
             )
 
         return OhioTdddDecision(
@@ -113,6 +123,7 @@ def evaluate_ohio_tddd_attestation(form: OhioTdddForm) -> OhioTdddDecision:
                 "TDDD license details."
             ),
             missing_fields=[],
+            regulatory_references=["ohio_tddd_registration"],
         )
 
     # Fallback (should never happen if enum is used correctly)
@@ -120,4 +131,5 @@ def evaluate_ohio_tddd_attestation(form: OhioTdddForm) -> OhioTdddDecision:
         status=DecisionStatus.MANUAL_REVIEW,
         reason="Unable to classify Ohio TDDD response; unexpected customer_response value.",
         missing_fields=missing,
+        regulatory_references=["ohio_tddd_registration"],
     )
