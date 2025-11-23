@@ -8,6 +8,9 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.routes.compliance_artifacts import router as compliance_router
+from src.api.routes.controlled_substances import (
+    router as controlled_substances_router,
+)
 from src.api.routes.csf_hospital import router as csf_hospital_router
 from src.api.routes.csf_practitioner import router as csf_practitioner_router
 from src.api.routes.csf_researcher import router as csf_researcher_router
@@ -46,6 +49,7 @@ app.include_router(compliance_router)
 app.include_router(csf_practitioner_router)
 app.include_router(csf_hospital_router)
 app.include_router(csf_researcher_router)
+app.include_router(controlled_substances_router)
 
 # Compatibility endpoint for older/tests path:
 # Tests expect: POST /api/v1/license/validate-pdf (singular "license")
