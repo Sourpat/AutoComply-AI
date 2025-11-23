@@ -8,6 +8,7 @@ import ScenarioLibrary from "../components/ScenarioLibrary";
 import DemoScenariosBar from "../components/DemoScenariosBar";
 import ExplainRulePanel from "../components/ExplainRulePanel";
 import { ApiDiagnosticsPanel } from "../components/ApiDiagnosticsPanel";
+import { ApiStatusChip } from "../components/ApiStatusChip";
 import { OhioTdddSandbox } from "../components/OhioTdddSandbox";
 import { PractitionerCsfSandbox } from "../components/PractitionerCsfSandbox";
 import { HospitalCsfSandbox } from "../components/HospitalCsfSandbox";
@@ -209,10 +210,31 @@ const Home = () => {
             <div className="mt-4 space-y-4">
               <ApiDiagnosticsPanel />
               <ComplianceCoverageTable />
-              <OhioTdddSandbox />
-              <PractitionerCsfSandbox />
-              <HospitalCsfSandbox />
-              <ResearcherCsfSandbox />
+              <section className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
+                <header className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      AutoComply AI – Regulatory Sandbox
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Controlled Substances &amp; Ohio TDDD · Engine + Explain +
+                      Coverage
+                    </p>
+                  </div>
+                  <ApiStatusChip />
+                </header>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <PractitionerCsfSandbox />
+                  <HospitalCsfSandbox />
+                  <ResearcherCsfSandbox />
+                </div>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-3">
+                  <OhioTdddSandbox />
+                  {/* room for future tiles (e.g., e222 / Prop65 / EUA, etc.) */}
+                </div>
+              </section>
             </div>
           </section>
         </div>

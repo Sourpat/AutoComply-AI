@@ -1,6 +1,7 @@
-import { OhioTdddDecision, OhioTdddFormData } from "../domain/ohioTddd";
+import { OhioTdddFormData, OhioTdddDecision } from "../domain/ohioTddd";
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE || "";
+const API_BASE =
+  (import.meta as any).env?.VITE_API_BASE || "";
 
 export async function evaluateOhioTddd(
   form: OhioTdddFormData
@@ -11,17 +12,17 @@ export async function evaluateOhioTddd(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      customer_response: form.customerResponse,
-      practitioner_name: form.practitionerName,
-      state_board_license_number: form.stateBoardLicenseNumber,
-      tddd_license_number: form.tdddLicenseNumber ?? null,
-      dea_number: form.deaNumber ?? null,
-      tddd_license_category: form.tdddLicenseCategory ?? null,
+      business_name: form.businessName,
+      license_type: form.licenseType,
+      license_number: form.licenseNumber,
+      ship_to_state: form.shipToState,
     }),
   });
 
   if (!resp.ok) {
-    throw new Error(`Ohio TDDD evaluation failed with status ${resp.status}`);
+    throw new Error(
+      `Ohio TDDD evaluation failed with status ${resp.status}`
+    );
   }
 
   return resp.json();
