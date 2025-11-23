@@ -104,14 +104,30 @@ COMPLIANCE_ARTIFACTS: List[ComplianceArtifact] = [
     # 3) Addendums bundle
     ComplianceArtifact(
         id="csf_addendums",
-        name="Controlled Substance Form – Addendums",
-        jurisdiction="US-Multi-state",
+        name="Controlled Substance Forms – Multi-state Addendums",
+        jurisdiction="US-Multi",
         artifact_type=ArtifactType.ADDENDUM,
         source_document="/mnt/data/addendums.pdf",
         engine_status=ArtifactStatus.RAW_DOCUMENT,
-        notes="Addendums referenced by CSFs; future work to link state-specific rules.",
+        notes=(
+            "Bundle of state-specific CSF addendums. Florida-specific content is "
+            "also represented explicitly via csf_fl_addendum."
+        ),
     ),
-    # 4) Florida specific test doc (if you later want FL-specific rules)
+    ComplianceArtifact(
+        id="csf_fl_addendum",
+        name="Controlled Substance Form – Florida Addendum",
+        jurisdiction="US-FL",
+        artifact_type=ArtifactType.ADDENDUM,
+        source_document="/mnt/data/FLORIDA TEST.pdf",
+        engine_status=ArtifactStatus.RAW_DOCUMENT,
+        notes=(
+            "Florida-specific controlled substances addendum for CSF flows. "
+            "Item-aware engine rules that send Schedule II controlled substances "
+            "shipping to FL to manual_review are derived from this artifact."
+        ),
+    ),
+    # Florida-specific placeholder doc (legacy/testing)
     ComplianceArtifact(
         id="florida_test",
         name="Florida Controlled Substance Test Doc",
