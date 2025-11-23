@@ -17,6 +17,7 @@ import { ControlledSubstancesPanel } from "./ControlledSubstancesPanel";
 import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
+import { emitCodexCommand } from "../utils/codexLogger";
 
 type HospitalExample = {
   id: string;
@@ -80,7 +81,7 @@ export function HospitalCsfSandbox() {
 
     setForm(nextForm);
 
-    console.log("CODEX_COMMAND: csf_hospital_example_selected", {
+    emitCodexCommand("csf_hospital_example_selected", {
       example_id: example.id,
       label: example.label,
       form: nextForm,
@@ -514,8 +515,8 @@ export function HospitalCsfSandbox() {
                         setRagAnswer(res.answer);
 
                         // Optional: log a Codex command for DevSupport
-                        console.log(
-                          "CODEX_COMMAND: rag_regulatory_explain_hospital",
+                        emitCodexCommand(
+                          "rag_regulatory_explain_hospital",
                           {
                             question,
                             regulatory_references:
@@ -606,8 +607,8 @@ export function HospitalCsfSandbox() {
                     type="button"
                     className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50"
                     onClick={() => {
-                      console.log(
-                        "CODEX_COMMAND: explain_csf_hospital_decision",
+                      emitCodexCommand(
+                        "explain_csf_hospital_decision",
                         {
                           form,
                           decision,

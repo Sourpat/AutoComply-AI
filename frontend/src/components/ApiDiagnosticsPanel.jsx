@@ -1,3 +1,4 @@
+import { emitCodexCommand } from "../utils/codexLogger";
 import { useApiHealth } from "../hooks/useApiHealth";
 
 const API_BASE = import.meta?.env?.VITE_API_BASE || "";
@@ -18,7 +19,7 @@ export function ApiDiagnosticsPanel() {
     lastChecked != null ? lastChecked.toLocaleString() : "Not checked yet";
 
   const runCodexDiagnostics = () => {
-    console.log("CODEX_COMMAND: diagnose_api_health");
+    emitCodexCommand("diagnose_api_health", null);
   };
 
   return (

@@ -6,6 +6,7 @@ import {
   type ComplianceArtifact,
 } from "../api/complianceArtifactsClient";
 import { CopyCurlButton } from "./CopyCurlButton";
+import { emitCodexCommand } from "../utils/codexLogger";
 
 type Mode = "idle" | "loading" | "done" | "error";
 
@@ -88,7 +89,7 @@ export function RagRegulatorySandbox() {
   const handleExampleClick = (example: RagExample) => {
     setQuestion(example.question);
 
-    console.log("CODEX_COMMAND: rag_example_selected", {
+    emitCodexCommand("rag_example_selected", {
       example_id: example.id,
       label: example.label,
       question: example.question,
@@ -145,7 +146,7 @@ export function RagRegulatorySandbox() {
       setDebug(res.debug ?? {});
       setMode("done");
 
-      console.log("CODEX_COMMAND: rag_regulatory_explain", {
+      emitCodexCommand("rag_regulatory_explain", {
         question: question.trim(),
         regulatory_references: selectedRefs,
         decision,
@@ -269,7 +270,7 @@ export function RagRegulatorySandbox() {
                           rel="noreferrer"
                           className="inline-flex items-center rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
                           onClick={() => {
-                            console.log("CODEX_COMMAND: open_regulatory_source_document", {
+                            emitCodexCommand("open_regulatory_source_document", {
                               artifact_id: art.id,
                               artifact_name: art.name,
                               url: art.source_document,

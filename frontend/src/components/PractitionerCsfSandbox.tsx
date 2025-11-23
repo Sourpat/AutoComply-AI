@@ -17,6 +17,7 @@ import { ControlledSubstancesPanel } from "./ControlledSubstancesPanel";
 import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
+import { emitCodexCommand } from "../utils/codexLogger";
 
 type PractitionerExample = {
   id: string;
@@ -126,7 +127,7 @@ export function PractitionerCsfSandbox() {
       setControlledSubstances(example.controlledSubstances);
     }
 
-    console.log("CODEX_COMMAND: csf_practitioner_example_selected", {
+    emitCodexCommand("csf_practitioner_example_selected", {
       example_id: example.id,
       label: example.label,
       description: example.description,
@@ -542,8 +543,8 @@ export function PractitionerCsfSandbox() {
                         setRagAnswer(res.answer);
 
                         // Optional: log a Codex command for DevSupport
-                        console.log(
-                          "CODEX_COMMAND: rag_regulatory_explain_practitioner",
+                        emitCodexCommand(
+                          "rag_regulatory_explain_practitioner",
                           {
                             question,
                             regulatory_references: decision.regulatory_references ?? [],
@@ -631,8 +632,8 @@ export function PractitionerCsfSandbox() {
                     type="button"
                     className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50"
                     onClick={() => {
-                      console.log(
-                        "CODEX_COMMAND: explain_csf_practitioner_decision",
+                      emitCodexCommand(
+                        "explain_csf_practitioner_decision",
                         {
                           form,
                           decision,

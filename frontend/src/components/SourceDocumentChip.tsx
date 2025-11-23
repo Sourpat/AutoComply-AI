@@ -1,3 +1,5 @@
+import { emitCodexCommand } from "../utils/codexLogger";
+
 // src/components/SourceDocumentChip.tsx
 interface SourceDocumentChipProps {
   label?: string;
@@ -12,7 +14,7 @@ export function SourceDocumentChip({ label, url }: SourceDocumentChipProps) {
       rel="noreferrer"
       className="inline-flex items-center gap-1 rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
       onClick={() => {
-        console.log("CODEX_COMMAND: open_regulatory_source_document", {
+        emitCodexCommand("open_regulatory_source_document", {
           label: label ?? "Source document",
           url,
         });
