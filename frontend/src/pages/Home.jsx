@@ -9,6 +9,7 @@ import DemoScenariosBar from "../components/DemoScenariosBar";
 import ExplainRulePanel from "../components/ExplainRulePanel";
 import { ApiDiagnosticsPanel } from "../components/ApiDiagnosticsPanel";
 import { ApiStatusChip } from "../components/ApiStatusChip";
+import { DecisionHistoryPanel } from "../components/DecisionHistoryPanel";
 import { OhioTdddSandbox } from "../components/OhioTdddSandbox";
 import { PractitionerCsfSandbox } from "../components/PractitionerCsfSandbox";
 import { HospitalCsfSandbox } from "../components/HospitalCsfSandbox";
@@ -213,6 +214,7 @@ const Home = () => {
             <div className="mt-4 space-y-4">
               <ApiDiagnosticsPanel />
               <RegulatoryFlowsPanel />
+              <DecisionHistoryPanel />
               <ComplianceCoverageTable />
               <section className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
                 <header className="mb-4 flex items-center justify-between">
