@@ -121,8 +121,8 @@ def evaluate_surgery_center_csf(form: SurgeryCenterCsfForm) -> SurgeryCenterCsfD
             reason=(
                 "Surgery Center CSF includes high-risk Schedule II controlled substances "
                 "for ship-to state FL. Example item(s): "
-                f"{example_names}. Requires manual compliance review per FL "
-                "controlled substances addendum."
+                f"{example_names}. Requires manual compliance review per "
+                "Florida Controlled Substances Addendum (csf_fl_addendum)."
             ),
             missing_fields=[],
         )

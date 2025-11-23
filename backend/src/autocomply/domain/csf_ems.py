@@ -123,8 +123,8 @@ def evaluate_ems_csf(form: EmsCsfForm) -> EmsCsfDecision:
             reason=(
                 "EMS CSF includes high-risk Schedule II controlled substances "
                 "for ship-to state FL. Example item(s): "
-                f"{example_names}. Requires manual compliance review per FL "
-                "controlled substances addendum."
+                f"{example_names}. Requires manual compliance review per "
+                "Florida Controlled Substances Addendum (csf_fl_addendum)."
             ),
             missing_fields=[],
         )
