@@ -1,0 +1,328 @@
+# AutoComply AI – DevSupport & `CODEX_COMMAND` Log Catalog
+
+AutoComply AI emits structured console logs prefixed with
+`CODEX_COMMAND:`. These logs are designed so that:
+
+- A **DevSupport AI agent** (or any log consumer) can read them,
+- Understand exactly **what UI action happened**,
+- And re-create or deepen the analysis using tools:
+  - HTTP calls to the backend,
+  - RAG over regulatory documents,
+  - Direct access to uploaded files via `/mnt/data/...` paths.
+
+This document lists the current `CODEX_COMMAND` names, their payloads, and
+how they should be interpreted.
+
+---
+
+## 1. General Logging Pattern
+
+All commands follow this basic pattern:
+
+```ts
+console.log("CODEX_COMMAND: <command_name>", {
+  // structured JSON payload
+  // e.g. form, decision, explanation, controlled_substances, source_document
+});
+```
+
+An external DevSupport agent can:
+
+- Parse logs looking for lines that start with CODEX_COMMAND:.
+- Use <command_name> to decide which workflow to run.
+- Use the JSON payload to:
+  - Reconstruct form submissions,
+  - Re-call /csf/.../evaluate or /ohio-tddd/evaluate,
+  - Call /csf/explain or /ohio-tddd/explain,
+  - Call /rag/regulatory-explain,
+  - Open source documents using url fields that point to /mnt/data/....
+
+Important: When a command includes a source_document or url such as
+"/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf",
+you should pass that local path as the url directly to your tools.
+The runtime will transform this local path into a real URL.
+
+Example tool call (pseudocode):
+
+```json
+{
+  "tool": "open_document",
+  "args": {
+    "url": "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf"
+  }
+}
+```
+
+## 2. CSF Decision & Explain Commands
+
+These commands are emitted from the CSF sandboxes (Practitioner, Hospital,
+Researcher, Surgery Center, EMS).
+
+### 2.1 Practitioner CSF
+
+```ts
+console.log("CODEX_COMMAND: explain_csf_practitioner_decision", {
+  form,
+  decision,
+  explanation,
+  controlled_substances: controlledSubstances,
+  source_document:
+    "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf",
+});
+```
+
+Intent: Explain a practitioner CSF decision with full context.
+
+Payload:
+
+- form: JSON submitted to /csf/practitioner/evaluate.
+- decision: Engine result from the evaluate API.
+- explanation: Optional csf/explain text, if already retrieved.
+- controlled_substances: List of selected controlled substances from the
+  Controlled Substances panel.
+- source_document: Main practitioner CSF PDF under /mnt/data/....
+
+Recommended DevSupport agent flow:
+
+- If needed, re-call /csf/practitioner/evaluate with form.
+- Call /csf/explain with decision.
+- Optionally call /rag/regulatory-explain using:
+  - decision,
+  - regulatory_references from the decision,
+  - source_document as a url to load the PDF.
+
+### 2.2 Hospital CSF
+
+```ts
+console.log("CODEX_COMMAND: explain_csf_hospital_decision", {
+  form,
+  decision,
+  explanation,
+  controlled_substances: controlledSubstances,
+  source_document:
+    "/mnt/data/Online Controlled Substance Form - Hospital Pharmacy.pdf",
+});
+```
+
+Same structure and intent as Practitioner, but for:
+
+- Endpoint: /csf/hospital/evaluate
+- Source doc: Hospital Pharmacy CSF PDF.
+
+### 2.3 Researcher CSF
+
+```ts
+console.log("CODEX_COMMAND: explain_csf_researcher_decision", {
+  form,
+  decision,
+  explanation,
+  controlled_substances: controlledSubstances,
+  source_document:
+    "/mnt/data/Online Controlled Substance Form - Researcher form.pdf",
+});
+```
+
+Source doc is the Researcher CSF PDF.
+
+### 2.4 Surgery Center CSF
+
+```ts
+console.log("CODEX_COMMAND: explain_csf_surgery_center_decision", {
+  form,
+  decision,
+  explanation,
+  controlled_substances: controlledSubstances,
+  source_document:
+    "/mnt/data/Online Controlled Substance Form - Surgery Center form.pdf",
+});
+```
+
+Source doc is the Surgery Center CSF PDF.
+
+### 2.5 EMS CSF
+
+```ts
+console.log("CODEX_COMMAND: explain_csf_ems_decision", {
+  form,
+  decision,
+  explanation,
+  controlled_substances: controlledSubstances,
+  source_document: "/mnt/data/Online Controlled Substance Form - EMS form.pdf",
+});
+```
+
+Source doc is the EMS CSF PDF.
+
+## 3. RAG Regulatory Explain Commands
+
+When the user triggers a deep RAG explanation (e.g., from the
+Practitioner sandbox or the RAG playground), the UI emits commands like:
+
+### 3.1 Practitioner RAG Explain
+
+```ts
+console.log("CODEX_COMMAND: rag_regulatory_explain_practitioner", {
+  question,
+  regulatory_references: decision.regulatory_references ?? [],
+  decision,
+  controlled_substances: controlledSubstances,
+  source_document:
+    "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf",
+});
+```
+
+Intent: Ask the RAG pipeline to explain a practitioner decision in a
+more narrative, document-grounded way.
+
+Payload:
+
+- question: The user’s free-text question.
+- regulatory_references: IDs from the engine decision.
+- decision: The full engine decision JSON.
+- controlled_substances: Extra context from the Controlled Substances panel.
+- source_document: The main CSF PDF path under /mnt/data/....
+
+Agents can call:
+
+- /rag/regulatory-explain with:
+  - question,
+  - regulatory_references,
+  - decision.
+- And/or directly load source_document using a tool like open_document.
+
+### 3.2 Other CSF Types
+
+Analogous commands exist for:
+
+- rag_regulatory_explain_hospital
+- rag_regulatory_explain_researcher
+- rag_regulatory_explain_surgery_center
+- rag_regulatory_explain_ems
+
+Each uses the corresponding CSF PDF under /mnt/data/... as
+source_document.
+
+## 4. Ohio TDDD Commands
+
+The Ohio TDDD sandbox can emit logs such as:
+
+```ts
+console.log("CODEX_COMMAND: explain_ohio_tddd_decision", {
+  form,
+  decision,
+  explanation,
+  source_document: "/mnt/data/Ohio TDDD.html",
+});
+```
+
+Intent: Explain an Ohio TDDD decision.
+
+Payload:
+
+- form: JSON submitted to /ohio-tddd/evaluate.
+- decision: Engine decision.
+- explanation: Optional text returned by /ohio-tddd/explain.
+- source_document: The main Ohio TDDD HTML document (under /mnt/data/...).
+
+Agents can:
+
+- Re-call /ohio-tddd/evaluate.
+- Call /ohio-tddd/explain.
+- Open /mnt/data/Ohio TDDD.html as url and optionally apply RAG.
+
+## 5. Health & Infrastructure Commands
+
+### 5.1 API Health Check
+
+From the API status chip:
+
+```ts
+console.log("CODEX_COMMAND: check_api_health", {
+  api_base: API_BASE,
+  status_after_check: status,
+  last_checked_at: new Date().toISOString(),
+});
+```
+
+Intent: Record that the UI checked backend health.
+
+Payload:
+
+- api_base: The base URL used by the frontend.
+- status_after_check: "online" | "offline" | "checking" | "idle".
+- last_checked_at: ISO datetime of the check.
+
+A DevSupport agent can:
+
+- Cross-check /health in real time.
+- Correlate outages with failed evaluations or RAG calls.
+
+## 6. Source Document Open Commands
+
+From the RAG coverage list and sandbox “View source document” chips:
+
+### 6.1 Coverage Artifacts
+
+```ts
+console.log("CODEX_COMMAND: open_regulatory_source_document", {
+  artifact_id: artifact.id,
+  artifact_name: artifact.name,
+  url: artifact.source_document, // example: "/mnt/data/FLORIDA TEST.pdf"
+});
+```
+
+### 6.2 Sandbox Headers
+
+```ts
+console.log("CODEX_COMMAND: open_regulatory_source_document", {
+  label: "Practitioner CSF PDF",
+  url: "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf",
+});
+```
+
+Intent: User clicked a “View document” chip or link.
+
+Payload:
+
+- artifact_id / artifact_name or label (for context).
+- url: Always a /mnt/data/... path.
+
+Usage: Pass url directly as the url field to any document-opening tool.
+The environment will transform /mnt/data/... into an actual URL.
+
+Example:
+
+```json
+{
+  "tool": "open_document",
+  "args": {
+    "url": "/mnt/data/addendums.pdf"
+  }
+}
+```
+
+## 7. How a DevSupport Agent Should Use These Commands
+
+A typical DevSupport workflow over logs:
+
+1. Ingest logs from browser console / log stream.
+2. Filter entries that start with CODEX_COMMAND:.
+3. Pattern-match command_name:
+   - explain_csf_* → form/decision debugging workflow.
+   - rag_regulatory_explain_* → RAG debugging workflow.
+   - explain_ohio_tddd_decision → Ohio-specific workflow.
+   - check_api_health → infra insight.
+   - open_regulatory_source_document → document navigation context.
+4. Use the payload to:
+   - Resubmit forms to /csf/.../evaluate or /ohio-tddd/evaluate.
+   - Call /csf/explain or /ohio-tddd/explain.
+   - Call /rag/regulatory-explain.
+   - Open /mnt/data/... docs via url.
+5. Respond with:
+   - A grounded explanation (for dev or compliance),
+   - Suggested new tests,
+   - Or a pointer to the exact PDF/HTML section.
+
+This doc should be kept up to date as new CODEX_COMMAND names are added, so
+that any DevSupport or orchestration layer always has a single source of truth
+for how to interpret them.
