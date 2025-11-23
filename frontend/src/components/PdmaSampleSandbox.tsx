@@ -216,6 +216,31 @@ export function PdmaSampleSandbox() {
         verdict: data,
         source_document: PDMA_SOURCE_DOCUMENT,
       });
+
+      // Snapshot decision into backend history (best-effort, non-blocking)
+      try {
+        await fetch(`${API_BASE}/decisions/history`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            engine_family: "pdma",
+            decision_type: "pdma_sample",
+            status: data.status,
+            jurisdiction: form.prescriber_state,
+            regulatory_reference_ids:
+              data.regulatory_references?.map((r) => r.id) ?? [],
+            source_documents:
+              data.regulatory_references?.map((r) => r.source_document) ??
+              [PDMA_SOURCE_DOCUMENT],
+            payload: {
+              form,
+              verdict: data,
+            },
+          }),
+        });
+      } catch (err) {
+        console.error("Failed to snapshot PDMA decision history", err);
+      }
     } catch (err) {
       console.error(err);
       // you can add a simple error toast/inline message if desired
