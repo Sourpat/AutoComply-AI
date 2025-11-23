@@ -1,5 +1,7 @@
 // src/domain/csfPractitioner.ts
 
+import { ControlledSubstanceItem } from "./controlledSubstances";
+
 export type PractitionerFacilityType =
   | "individual_practitioner"
   | "group_practice"
@@ -21,6 +23,9 @@ export interface PractitionerCsfFormData {
   attestationAccepted: boolean;
 
   internalNotes?: string | null;
+
+  // Controlled substance items attached to this CSF
+  controlledSubstances?: ControlledSubstanceItem[];
 }
 
 export type PractitionerCsfDecisionStatus =
