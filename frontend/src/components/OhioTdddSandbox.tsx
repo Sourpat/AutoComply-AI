@@ -140,7 +140,8 @@ export function OhioTdddSandbox() {
           </h2>
           <p className="text-[11px] text-gray-500">
             Explore how the Ohio TDDD engine evaluates applications and ties
-            them to regulatory guidance.
+            them to regulatory guidance. Try changing the ship-to state to a
+            non-OH value (e.g., PA) to see a manual review scenario.
           </p>
         </div>
       </header>

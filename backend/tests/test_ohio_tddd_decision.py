@@ -1,52 +1,51 @@
-from src.autocomply.domain.ohio_tddd import (
-    DecisionStatus,
-    OhioTdddCustomerResponse,
+from autocomply.domain.ohio_tddd import (
+    OhioTdddDecisionStatus,
     OhioTdddForm,
-    evaluate_ohio_tddd_attestation,
+    evaluate_ohio_tddd,
 )
 
 
-def test_exempt_with_minimum_details_ok():
-    form = OhioTdddForm(
-        customer_response=OhioTdddCustomerResponse.EXEMPT,
-        practitioner_name="Test Practitioner",
-        state_board_license_number="12345",
+def make_base_form(**overrides) -> OhioTdddForm:
+    data = {
+        "business_name": "Example Dental Clinic",
+        "license_type": "clinic",
+        "license_number": "TDDD-123456",
+        "ship_to_state": "OH",
+    }
+    data.update(overrides)
+    return OhioTdddForm(**data)
+
+
+def test_ohio_tddd_out_of_state_requires_manual_review():
+    form = make_base_form(
+        ship_to_state="PA",  # non-OH
     )
 
-    decision = evaluate_ohio_tddd_attestation(form)
+    decision = evaluate_ohio_tddd(form)
 
-    assert decision.status == DecisionStatus.OK_TO_SHIP
-    assert decision.missing_fields == []
+    assert decision.status == OhioTdddDecisionStatus.MANUAL_REVIEW
+    assert "ship-to state" in decision.reason.lower()
+    assert "manual review" in decision.reason.lower()
+    assert "pa" in decision.reason.lower()
     assert decision.regulatory_references == ["ohio_tddd_registration"]
 
 
-def test_exempt_missing_identity_goes_to_manual_review():
-    form = OhioTdddForm(
-        customer_response=OhioTdddCustomerResponse.EXEMPT,
-        practitioner_name="",
-        state_board_license_number="",
-    )
+def test_ohio_tddd_valid_in_state_application_approved():
+    form = make_base_form(ship_to_state="OH")
 
-    decision = evaluate_ohio_tddd_attestation(form)
+    decision = evaluate_ohio_tddd(form)
 
-    assert decision.status == DecisionStatus.MANUAL_REVIEW
-    assert "practitioner_name" in decision.missing_fields
-    assert "state_board_license_number" in decision.missing_fields
+    assert decision.status == OhioTdddDecisionStatus.APPROVED
+    assert "application meets current in-state registration rules" in decision.reason.lower()
     assert decision.regulatory_references == ["ohio_tddd_registration"]
 
 
-def test_subject_to_tddd_missing_license_blocks():
-    form = OhioTdddForm(
-        customer_response=OhioTdddCustomerResponse.LICENSED_OR_APPLYING,
-        practitioner_name="Test Practitioner",
-        state_board_license_number="12345",
-        tddd_license_number="",  # missing
-        tddd_license_category="",  # missing
-    )
+def test_ohio_tddd_missing_fields_blocked():
+    form = make_base_form(business_name="", license_number="")
 
-    decision = evaluate_ohio_tddd_attestation(form)
+    decision = evaluate_ohio_tddd(form)
 
-    assert decision.status == DecisionStatus.BLOCKED
-    assert "tddd_license_number" in decision.missing_fields
-    assert "tddd_license_category" in decision.missing_fields
+    assert decision.status == OhioTdddDecisionStatus.BLOCKED
+    assert "business_name" in decision.missing_fields
+    assert "license_number" in decision.missing_fields
     assert decision.regulatory_references == ["ohio_tddd_registration"]
