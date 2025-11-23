@@ -32,6 +32,7 @@ def test_researcher_csf_ok_to_ship_when_required_fields_and_attestation():
 
     assert decision.status == CsDecisionStatus.OK_TO_SHIP
     assert decision.missing_fields == []
+    assert decision.regulatory_references == ["csf_researcher_form"]
 
 
 def test_researcher_csf_blocked_when_core_fields_missing():
@@ -48,6 +49,7 @@ def test_researcher_csf_blocked_when_core_fields_missing():
     assert "principal_investigator_name" in decision.missing_fields
     assert "protocol_or_study_id" in decision.missing_fields
     assert "ship_to_state" in decision.missing_fields
+    assert decision.regulatory_references == ["csf_researcher_form"]
 
 
 def test_researcher_csf_blocked_when_attestation_not_accepted():
@@ -57,6 +59,7 @@ def test_researcher_csf_blocked_when_attestation_not_accepted():
     assert decision.status == CsDecisionStatus.BLOCKED
     assert "attestation_accepted" in decision.missing_fields
     assert "attestation" in decision.reason.lower()
+    assert decision.regulatory_references == ["csf_researcher_form"]
 
 
 def test_researcher_csf_schedule_ii_in_florida_triggers_manual_review():
@@ -77,7 +80,10 @@ def test_researcher_csf_schedule_ii_in_florida_triggers_manual_review():
     assert decision.status == CsDecisionStatus.MANUAL_REVIEW
     assert "fl" in decision.reason.lower()
     assert "schedule" in decision.reason.lower()
-    assert decision.regulatory_references == ["csf_fl_addendum"]
+    assert decision.regulatory_references == [
+        "csf_researcher_form",
+        "csf_fl_addendum",
+    ]
 
 
 def test_researcher_csf_schedule_ii_non_florida_still_ok_to_ship():
@@ -96,3 +102,4 @@ def test_researcher_csf_schedule_ii_non_florida_still_ok_to_ship():
     decision = evaluate_researcher_csf(form)
 
     assert decision.status == CsDecisionStatus.OK_TO_SHIP
+    assert decision.regulatory_references == ["csf_researcher_form"]

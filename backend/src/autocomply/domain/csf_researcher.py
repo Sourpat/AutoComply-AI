@@ -107,6 +107,7 @@ def evaluate_researcher_csf(form: ResearcherCsfForm) -> ResearcherCsfDecision:
                 + ", ".join(missing)
             ),
             missing_fields=missing,
+            regulatory_references=["csf_researcher_form"],
         )
 
     if not form.attestation_accepted:
@@ -118,6 +119,7 @@ def evaluate_researcher_csf(form: ResearcherCsfForm) -> ResearcherCsfDecision:
                 "substances can be shipped."
             ),
             missing_fields=["attestation_accepted"],
+            regulatory_references=["csf_researcher_form"],
         )
 
     # --- NEW: item-aware rule layer ---
@@ -139,7 +141,7 @@ def evaluate_researcher_csf(form: ResearcherCsfForm) -> ResearcherCsfDecision:
                 "Florida Controlled Substances Addendum (csf_fl_addendum)."
             ),
             missing_fields=[],
-            regulatory_references=["csf_fl_addendum"],
+            regulatory_references=["csf_researcher_form", "csf_fl_addendum"],
         )
 
     return ResearcherCsfDecision(
@@ -149,6 +151,7 @@ def evaluate_researcher_csf(form: ResearcherCsfForm) -> ResearcherCsfDecision:
             "details are present. Researcher CSF is approved to proceed."
         ),
         missing_fields=[],
+        regulatory_references=["csf_researcher_form"],
     )
 
 
