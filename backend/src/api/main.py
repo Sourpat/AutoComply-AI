@@ -18,6 +18,7 @@ from src.api.routes.csf_researcher import router as csf_researcher_router
 from src.api.routes.license_validation import router as license_router
 from src.api.routes.ohio_tddd import router as ohio_tddd_router
 from src.api.routes.ohio_tddd_explain import router as ohio_tddd_explain_router
+from src.api.routes.pdma_sample import router as pdma_sample_router
 from src.api.routes.rag_regulatory import router as rag_regulatory_router
 from src.api.routes import license_validation as license_validation_module
 
@@ -56,6 +57,7 @@ app.include_router(csf_researcher_router)
 app.include_router(controlled_substances_router)
 app.include_router(csf_explain_router)
 app.include_router(rag_regulatory_router)
+app.include_router(pdma_sample_router)
 
 # Compatibility endpoint for older/tests path:
 # Tests expect: POST /api/v1/license/validate-pdf (singular "license")
