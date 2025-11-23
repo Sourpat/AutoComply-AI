@@ -44,7 +44,10 @@ export function PractitionerCsfSandbox() {
     setDecision(null);
 
     try {
-      const result = await evaluatePractitionerCsf(form);
+      const result = await evaluatePractitionerCsf({
+        ...form,
+        controlledSubstances,
+      });
       setDecision(result);
     } catch (err: any) {
       setError(err?.message ?? "Failed to evaluate Practitioner CSF");
@@ -254,6 +257,7 @@ export function PractitionerCsfSandbox() {
                   console.log("CODEX_COMMAND: explain_csf_practitioner_decision", {
                     form,
                     decision,
+                    controlled_substances: controlledSubstances,
                     source_document:
                       "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf",
                   });

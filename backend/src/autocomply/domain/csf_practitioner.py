@@ -3,6 +3,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from autocomply.domain.controlled_substances import ControlledSubstanceItem
+
 
 class PractitionerFacilityType(str, Enum):
     INDIVIDUAL = "individual_practitioner"
@@ -28,22 +30,31 @@ class PractitionerCsfForm(BaseModel):
     """
 
     # Basic account / facility identity
-    facility_name: str = Field(...)
+    facility_name: str = Field(..., min_length=1)
     facility_type: PractitionerFacilityType
     account_number: Optional[str] = None
 
     # Practitioner identity / licensing
-    practitioner_name: str = Field(...)
-    state_license_number: str = Field(...)
-    dea_number: str = Field(...)
+    practitioner_name: str = Field(..., min_length=1)
+    state_license_number: str = Field(..., min_length=1)
+    dea_number: str = Field(..., min_length=1)
 
     # Shipping / jurisdiction context (for state addendums later)
-    ship_to_state: str = Field(..., max_length=2)  # e.g. "OH", "FL"
+    ship_to_state: str = Field(..., min_length=2, max_length=2)  # e.g. "OH", "FL"
 
     # Attestation checkbox – “I confirm info is true and I will comply…”
     attestation_accepted: bool = Field(
         default=False,
         description="True if the practitioner checked/accepted the attestation clause.",
+    )
+
+    # Controlled substance items attached to this CSF
+    controlled_substances: List[ControlledSubstanceItem] = Field(
+        default_factory=list,
+        description=(
+            "Controlled substance items associated with this CSF. "
+            "Populated from the Controlled Substances search UI."
+        ),
     )
 
     # Free-text notes if needed (internal use)
@@ -171,5 +182,16 @@ def describe_practitioner_csf_decision(
             + ", ".join(decision.missing_fields)
             + "."
         )
+
+    # 6. Attached controlled substances
+    if form.controlled_substances:
+        lines.append(
+            f"Attached controlled substance items: {len(form.controlled_substances)} "
+            "item(s) included with this CSF."
+        )
+        names = [item.name for item in form.controlled_substances[:3]]
+        lines.append("Examples: " + ", ".join(names) + ".")
+    else:
+        lines.append("No controlled substance items were attached to this CSF.")
 
     return "\n".join(lines)

@@ -26,6 +26,9 @@ export async function evaluatePractitionerCsf(
       ship_to_state: form.shipToState,
       attestation_accepted: form.attestationAccepted,
       internal_notes: form.internalNotes ?? null,
+
+      // Controlled substances attached to the form
+      controlled_substances: form.controlledSubstances ?? [],
     }),
   });
 
