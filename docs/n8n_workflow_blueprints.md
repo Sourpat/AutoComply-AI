@@ -1,360 +1,199 @@
-# AutoComply AI – n8n Workflow Blueprints
+# n8n Workflow Blueprints – AutoComply AI
 
-This document describes how to integrate AutoComply AI with **n8n**
-(or similar low/no-code orchestrators) to create:
+This doc describes how to wire AutoComply AI into **n8n** to support:
 
-1. A **DevSupport Copilot** that reacts to `CODEX_COMMAND` logs,
-2. A **RegOps Daily Digest** for compliance / leadership,
-3. (Optional) A **Form Copilot escalation** flow for tricky CSF / Ohio cases.
+1. DevSupport debugging (`codex_dev_support_webhook`)
+2. Regulatory operations digest (`regops_daily_digest`)
+3. Form / case escalation (`form_copilot_escalation`)
 
-The goal is to make it straightforward to show how the existing APIs,
-`CODEX_COMMAND` logs, and `/mnt/data/...` regulatory documents can be
-orchestrated into production-ready workflows.
+All workflows assume:
 
-> Wherever this document references a local file like  
-> `"/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf"`,  
-> you should pass that **exact path** as the `url` field into your tools or
-> HTTP nodes. The runtime will transform `/mnt/data/...` into a real URL.
+- Backend base URL = `API_BASE` (e.g. `https://autocomply-api.example.com`)
+- `/mnt/data/...` document paths are treated as URLs by the runtime.
 
 ---
 
-## 1. DevSupport Copilot – `codex_dev_support_webhook`
+## 1. `codex_dev_support_webhook`
 
-### 1.1 Purpose
+**Goal:** Receive `CODEX_COMMAND` events, enrich them with engine/RAG calls, and send a DevSupport summary to Slack/Teams/email.
 
-Consume `CODEX_COMMAND` events from the frontend and:
+### Trigger
 
-- Classify what kind of event it is,
-- Optionally call AutoComply APIs to re-evaluate or explain decisions,
-- Summarise the situation with an LLM prompt,
-- Notify a Dev / SRE / RegOps Slack channel or email.
-
-This provides a thin “DevSupport Copilot” on top of the existing system.
-
-### 1.2 Trigger
-
-**Trigger node: HTTP Webhook**
-
-- Method: `POST`
-- Path: `/codex/devsupport`
-- Expected body shape:
+- **Webhook node** in n8n:
+  - Method: `POST`
+  - Path: `/codex/devsupport`
+  - Body: `application/json` containing at least:
 
 ```json
 {
   "command": "explain_csf_practitioner_decision",
   "payload": {
-    "form": { "..." : "..." },
-    "decision": { "..." : "..." },
-    "explanation": null,
-    "controlled_substances": [ /* optional */ ],
+    "form": { "...": "..." },
+    "decision": { "...": "..." },
+    "explanation": "short explanation",
     "source_document": "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf"
   }
 }
 ```
 
-The frontend can post this from the browser or via a log-forwarder that
-translates console logs into HTTP calls.
+You can send this from:
 
-1.3 Intent Router
+- A log shipper,
+- Another service,
+- Or just test manually via Copy cURL.
 
-Node: Switch / IF (command type)
+### Nodes
 
-If command starts with explain_csf_ → route to CSF DevSupport branch.
+1. **Webhook (trigger)**
+   - Receives the CODEX_COMMAND event.
 
-If command is explain_ohio_tddd_decision → route to Ohio DevSupport.
+2. **Function: classify event**
+   - Decide which engine family is involved (csf, ohio_tddd, pdma) based on command.
 
-If command starts with rag_regulatory_explain_ → route to RAG DevSupport.
+3. **HTTP Request: call explain API (optional)**
+   - If the event doesn’t already contain a detailed explanation, call:
+     - `/csf/explain`
+     - `/ohio-tddd/explain`
+     - `/pdma-sample/explain`
 
-Otherwise → route to a generic “log only” branch.
+4. **HTTP Request: RAG regulatory explain (optional)**
+   - For deeper context, call:
 
-1.4 CSF DevSupport Branch
-
-Nodes:
-
-HTTP Node – Re-evaluate CSF (optional)
-
-Method: POST
-
-URL: {{$env.API_BASE}}/csf/practitioner/evaluate
-
-Body: {{$json.payload.form}}
-
-HTTP Node – Explain CSF
-
-Method: POST
-
-URL: {{$env.API_BASE}}/csf/explain
-
-Body:
+```
+POST API_BASE/rag/regulatory-explain
+Content-Type: application/json
 
 {
-  "decision": "{{$json.payload.decision}}"
+  "question": "Explain this decision for DevSupport, referencing the relevant policy.",
+  "decision": { ... },
+  "regulatory_references": ["pdma_sample_eligibility"]
 }
+```
 
+5. **HTTP Request: fetch artifacts (optional)**
+   - Call `GET API_BASE/compliance/artifacts` to attach artifact metadata.
 
-LLM Node – Summarise Issue
+6. **LLM node: summarize for DevSupport**
+   - Prompt: “You are a DevSupport assistant. Summarise why this decision was made, what rules fired, and link to any useful documents. Use the /mnt/data/... URLs as-is.”
 
-Prompt includes:
+7. **Slack / Teams / Email node**
+   - Deliver summary to a #autocomply-devsupport or similar channel.
 
-The original command and payload,
+## 2. `regops_daily_digest`
 
-The fresh evaluate and explain responses,
+**Goal:** Nightly summary of interesting decisions and patterns for Regulatory Ops.
 
-Any controlled_substances,
+### Trigger
 
-The source_document path treated as url, e.g.:
+- **Cron node**
+  - Every day at e.g. 06:00.
 
-The main source document is at:
-{{ $json.payload.source_document }}
+### Nodes
 
-Treat this path as a URL (the runtime will resolve /mnt/data/...).
-If needed, you may request tools to open this URL for deeper context.
+1. **Cron (trigger)**
 
+2. **HTTP Request: health & basic info**
+   - `GET API_BASE/health`
+   - `GET API_BASE/compliance/artifacts`
 
-Slack / Email Node – Notify Devs
+3. **HTTP Request: log store / CODEX feed**
+   - Query a log source (e.g., your logging system or a previous n8n workflow) for recent CODEX_COMMAND events:
+     - `evaluate_csf_*`
+     - `evaluate_ohio_tddd`
+     - `evaluate_pdma_sample`
+     - `rag_regulatory_explain_*`
 
-Message template example:
+4. **Function: aggregate**
+   - Count by:
+     - engine family,
+     - status (allowed, blocked, manual_review),
+     - jurisdiction (FL, OH, etc.),
+     - artifact IDs.
 
-CSF DevSupport Alert – explain_csf_practitioner_decision
-Account: {{ $json.payload.form.account_number }}
-Ship-to: {{ $json.payload.form.ship_to_state }}
-Decision: {{ $node["Explain CSF"].json.status }}
+5. **LLM node: generate digest**
+   - Input:
+     - Aggregated stats,
+     - Example events (anonymised),
+     - Artifact list (including /mnt/data/...).
+   - Output:
+     - Short narrative:
+       - “Yesterday we saw 12 blocked PDMA samples (all government accounts).”
+       - “Ohio TDDD decisions involving out-of-state shipping are trending up.”
+       - “Key artifacts referenced: Ohio TDDD HTML, PDMA policy PDF.”
 
-Summary: {{ $node["LLM Summarise Issue"].json.text }}
+6. **Email / Slack node**
+   - Subject: “AutoComply AI – Regulatory Daily Digest”
+   - Include links to:
+     - RAG sandbox,
+     - Specific /mnt/data/... docs (rendered as URLs by runtime).
 
-Source document: {{ $json.payload.source_document }}
+## 3. `form_copilot_escalation`
 
-1.5 Ohio DevSupport Branch
+**Goal:** When users are stuck or see confusing results in the UI, escalate to a human with full context.
 
-Similar to CSF but using:
+### Trigger
 
-POST {{$env.API_BASE}}/ohio-tddd/evaluate
+- UI or an internal service calls an n8n webhook with:
 
-POST {{$env.API_BASE}}/ohio-tddd/explain
-
-source_document: "/mnt/data/Ohio TDDD.html"
-
-2. RegOps Daily Digest – regops_daily_digest
-2.1 Purpose
-
-Once per day, compile:
-
-Health of the API,
-
-Current compliance artifacts and their source documents,
-
-Optional highlights from recent CODEX_COMMAND events (if stored),
-
-A short LLM-generated summary for compliance / leadership.
-
-2.2 Trigger
-
-Trigger node: Cron
-
-Schedule: daily at 08:00 (local time).
-
-2.3 Health Check
-
-HTTP Node – Check API Health
-
-Method: GET
-
-URL: {{$env.API_BASE}}/health
-
-Record status + latency as workflow data.
-
-2.4 Compliance Artifacts Snapshot
-
-HTTP Node – Fetch compliance artifacts
-
-Method: GET
-
-URL: {{$env.API_BASE}}/compliance/artifacts
-
-Resulting artifacts include fields like:
-
+```json
 {
-  "id": "csf_practitioner_standard",
-  "name": "Standard Practitioner CSF",
-  "jurisdiction": "US",
-  "artifact_type": "controlled_substance_form",
-  "source_document": "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf"
-}
-
-2.5 Optional – Load Recent CODEX_COMMAND Events
-
-If you ship logs to a DB or log service (e.g. Postgres, Loki, Datadog), add
-a node to fetch the last 24h of CODEX_COMMAND entries:
-
-Filter by command containing explain_csf_, explain_ohio_tddd_,
-or rag_regulatory_explain_.
-
-2.6 LLM Summary Node
-
-LLM Node – Build Daily Digest
-
-Prompt outline:
-
-Include:
-
-Health result from /health,
-
-Artifact list from /compliance/artifacts (IDs, names, source_document),
-
-Any notable CODEX_COMMAND patterns (e.g. frequent manual_review).
-
-Ask the model to produce:
-
-A 5–10 bullet summary for leadership,
-
-2–3 concrete follow-ups for Dev/RegOps,
-
-Include the /mnt/data/... paths as-is when referencing documents.
-
-Example prompt snippet:
-
-You are generating a daily RegOps digest for AutoComply AI.
-
-1) API health:
-   - {{ $node["Check API Health"].json }}
-
-2) Current compliance artifacts:
-   - {{ $node["Fetch compliance artifacts"].json }}
-
-3) Recent dev-support events (if any):
-   - {{ $node["Fetch CODEX events"].json || "none" }}
-
-Important:
-- When you mention documents, use the `source_document` value exactly
-  as given, such as `/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf`.
-- These paths will be resolved to real URLs by the runtime.
-
-2.7 Delivery
-
-Slack / Email Node – Send Digest
-
-Subject: AutoComply AI – RegOps Daily Digest
-
-Body includes the LLM summary and a raw JSON attachment if desired.
-
-3. Form Copilot Escalation – form_copilot_escalation
-3.1 Purpose
-
-When users are stuck on a CSF or Ohio form (e.g., repeated blocked /
-manual_review outcomes), escalate to a human + AI review:
-
-Capture the scenario,
-
-Ask an LLM to propose a clearer explanation and remediation,
-
-Notify a support/clinical team.
-
-3.2 Trigger
-
-This can be driven from the UI via a dedicated endpoint:
-
-Trigger node: HTTP Webhook
-
-Method: POST
-
-Path: /codex/form-escalation
-
-Body example:
-
-{
-  "form_type": "csf_practitioner",
+  "form_type": "pdma_sample",
   "form": { "...": "..." },
   "decision": { "...": "..." },
-  "user_question": "I don't understand why I'm blocked.",
-  "source_document": "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf"
+  "user_question": "Why is this blocked?",
+  "source_document": "/mnt/data/FLORIDA TEST.pdf",
+  "regulatory_references": ["pdma_sample_eligibility"]
 }
+```
 
-3.3 Workflow
+### Nodes
 
-Nodes:
+1. **Webhook (trigger)**
 
-Optional Re-evaluate / Explain
+2. **Function: normalise input**
+   - Attach timestamp, environment (prod/stage), and user metadata as needed.
 
-Same as DevSupport, using /csf/.../evaluate + /csf/explain or
-/ohio-tddd/evaluate + /ohio-tddd/explain.
+3. **HTTP Request: RAG explain**
+   - `POST API_BASE/rag/regulatory-explain` with the user’s question.
 
-LLM Node – Draft Escalation Summary
+4. **LLM node: “escalation pack”**
+   - Prompt the LLM to generate:
+     - Subject line,
+     - Short summary,
+     - Bullet points:
+       - Key facts about the form,
+       - Engine verdict & reasons,
+       - RAG explanation,
+       - Links to /mnt/data/... docs.
 
-Prompt:
+5. **Create ticket / send email**
+   - JIRA / ServiceNow / shared mailbox:
+     - Attach JSON payload,
+     - Attach LLM-generated summary,
+     - Include URLs for:
+       - RAG playground,
+       - Relevant /mnt/data/... documents.
 
-The user is stuck filling a {{ $json.form_type }} form.
+## 4. Notes on /mnt/data/... URLs
 
-- Form payload:
-  {{ $json.form }}
+Across all workflows:
 
-- Decision:
-  {{ $json.decision }}
+- Treat `source_document` and artifact `source_document` fields as URLs.
+- Example values:
+  - `/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf`
+  - `/mnt/data/Online Controlled Substance Form - Hospital Pharmacy.pdf`
+  - `/mnt/data/Online Controlled Substance Form - Surgery Center form.pdf`
+  - `/mnt/data/Online Controlled Substance Form - Researcher form.pdf`
+  - `/mnt/data/Online Controlled Substance Form - EMS form.pdf`
+  - `/mnt/data/FLORIDA TEST.pdf`
+  - `/mnt/data/addendums.pdf`
+  - `/mnt/data/Ohio TDDD.html`
+  - `/mnt/data/Controlledsubstance_userflow.png`
+  - `/mnt/data/Controlled_Substances_Form_Flow_Updated.png`
 
-- User question:
-  "{{ $json.user_question }}"
+The environment will transform these into actual accessible URLs. n8n does not
+need any special handling beyond passing them into HTTP or browser tools.
 
-- Main source document:
-  {{ $json.source_document }}
-
-Please:
-1) Explain the decision in clear, non-technical terms.
-2) List what the user likely needs to change or provide.
-3) Provide a short note for the internal support/clinical team.
-
-Use the source_document path as a URL reference, without changing it.
-
-
-Slack / Email Node – Notify Support
-
-Send to a support group, including:
-
-The user’s question,
-
-The AI summary,
-
-Direct reference to the source_document path under /mnt/data/....
-
-4. Notes on /mnt/data/... Paths in n8n
-
-Throughout these blueprints, any value like:
-
-/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf
-
-/mnt/data/Online Controlled Substance Form - Hospital Pharmacy.pdf
-
-/mnt/data/Online Controlled Substance Form - Surgery Center form.pdf
-
-/mnt/data/Online Controlled Substance Form - Researcher form.pdf
-
-/mnt/data/Online Controlled Substance Form - EMS form.pdf
-
-/mnt/data/FLORIDA TEST.pdf
-
-/mnt/data/addendums.pdf
-
-/mnt/data/Ohio TDDD.html
-
-/mnt/data/Controlled_Substances_Form_Flow_Updated.png
-
-should be treated as a URL string in your n8n nodes and LLM prompts.
-
-Examples:
-
-In an HTTP node that fetches a document for further processing:
-
-{
-  "method": "GET",
-  "url": "={{$json.source_document}}"
-}
-
-
-In an LLM prompt, always include the raw path so downstream tools can
-open it:
-
-The key regulatory document is at:
-{{ $json.source_document }}
-(this will be resolved from /mnt/data/... to a real URL).
-
-
-This keeps the UI, DevSupport workflows, and RAG pipelines all
-aligned on a single, stable document addressing scheme.
+These blueprints make it straightforward to hook AutoComply AI into real
+DevSupport and RegOps workflows, using the same engines, RAG endpoint, and
+document store that power the React sandboxes.
