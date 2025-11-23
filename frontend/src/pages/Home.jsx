@@ -16,6 +16,7 @@ import { ResearcherCsfSandbox } from "../components/ResearcherCsfSandbox";
 import { RagRegulatorySandbox } from "../components/RagRegulatorySandbox";
 import { ComplianceCoverageTable } from "../components/ComplianceCoverageTable";
 import { RegulatoryFlowsPanel } from "../components/RegulatoryFlowsPanel";
+import { PdmaSampleSandbox } from "../components/PdmaSampleSandbox";
 import { validateLicenseJSON, explainRule } from "../services/api";
 
 const Home = () => {
@@ -220,8 +221,8 @@ const Home = () => {
                       AutoComply AI – Regulatory Sandbox
                     </h3>
                     <p className="text-[11px] text-slate-500">
-                      Controlled Substances &amp; Ohio TDDD · Engine + Explain +
-                      Coverage
+                      Controlled Substances, Ohio TDDD &amp; PDMA · Engine +
+                      Explain + Coverage
                     </p>
                   </div>
                   <ApiStatusChip />
@@ -235,8 +236,8 @@ const Home = () => {
 
                 <div className="mt-4 grid gap-4 md:grid-cols-3">
                   <OhioTdddSandbox />
+                  <PdmaSampleSandbox />
                   <RagRegulatorySandbox />
-                  {/* room for future tiles (e.g., e222 / Prop65 / EUA, etc.) */}
                 </div>
               </section>
             </div>
