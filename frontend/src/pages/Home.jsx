@@ -15,6 +15,7 @@ import { HospitalCsfSandbox } from "../components/HospitalCsfSandbox";
 import { ResearcherCsfSandbox } from "../components/ResearcherCsfSandbox";
 import { RagRegulatorySandbox } from "../components/RagRegulatorySandbox";
 import { ComplianceCoverageTable } from "../components/ComplianceCoverageTable";
+import { RegulatoryFlowsPanel } from "../components/RegulatoryFlowsPanel";
 import { validateLicenseJSON, explainRule } from "../services/api";
 
 const Home = () => {
@@ -210,6 +211,7 @@ const Home = () => {
             <ExplainRulePanel />
             <div className="mt-4 space-y-4">
               <ApiDiagnosticsPanel />
+              <RegulatoryFlowsPanel />
               <ComplianceCoverageTable />
               <section className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
                 <header className="mb-4 flex items-center justify-between">
