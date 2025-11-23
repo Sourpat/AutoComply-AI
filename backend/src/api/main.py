@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.api.routes.compliance_artifacts import router as compliance_router
 from src.api.routes.csf_hospital import router as csf_hospital_router
 from src.api.routes.csf_practitioner import router as csf_practitioner_router
+from src.api.routes.csf_researcher import router as csf_researcher_router
 from src.api.routes.license_validation import router as license_router
 from src.api.routes.ohio_tddd import router as ohio_tddd_router
 from src.api.routes import license_validation as license_validation_module
@@ -44,6 +45,7 @@ app.include_router(ohio_tddd_router)
 app.include_router(compliance_router)
 app.include_router(csf_practitioner_router)
 app.include_router(csf_hospital_router)
+app.include_router(csf_researcher_router)
 
 # Compatibility endpoint for older/tests path:
 # Tests expect: POST /api/v1/license/validate-pdf (singular "license")
