@@ -17,6 +17,69 @@ import { ControlledSubstancesPanel } from "./ControlledSubstancesPanel";
 import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 
+type PractitionerExample = {
+  id: string;
+  label: string;
+  description?: string;
+  overrides: Partial<PractitionerCsfFormData>;
+  controlledSubstances?: ControlledSubstance[];
+};
+
+const PRACTITIONER_EXAMPLES: PractitionerExample[] = [
+  {
+    id: "fl_schedule_ii_new_practice",
+    label: "FL – New practice, Schedule II",
+    description:
+      "Florida dental practice requesting Oxycodone Schedule II with incomplete license history.",
+    overrides: {
+      facilityName: "Sunrise Dental Practice",
+      facilityType: "dental_practice",
+      accountNumber: "ACC-123",
+      practitionerName: "Dr. Jane Example",
+      stateLicenseNumber: "FL-DENT-12345",
+      deaNumber: "DEA1234567",
+      shipToState: "FL",
+      attestationAccepted: true,
+    },
+    controlledSubstances: [
+      {
+        id: "cs_oxycodone_5mg_tab",
+        name: "Oxycodone 5 mg tablet",
+        strength: "5",
+        unit: "mg",
+        schedule: "II",
+        dea_code: "9143",
+      },
+    ],
+  },
+  {
+    id: "oh_schedule_ii_clean_history",
+    label: "OH – Clean history, Schedule II",
+    description:
+      "Ohio practice with prior Schedule II history and fully populated licenses.",
+    overrides: {
+      facilityName: "Buckeye Dental Clinic",
+      facilityType: "dental_practice",
+      accountNumber: "ACC-123",
+      practitionerName: "Dr. John Example",
+      stateLicenseNumber: "OH-DENT-67890",
+      deaNumber: "DEA7654321",
+      shipToState: "OH",
+      attestationAccepted: true,
+    },
+    controlledSubstances: [
+      {
+        id: "cs_hydrocodone_10_325_tab",
+        name: "Hydrocodone/Acetaminophen 10mg/325mg tablet",
+        strength: "10/325",
+        unit: "mg",
+        schedule: "II",
+        dea_code: "9193",
+      },
+    ],
+  },
+];
+
 const initialForm: PractitionerCsfFormData = {
   facilityName: "",
   facilityType: "dental_practice",
@@ -48,6 +111,30 @@ export function PractitionerCsfSandbox() {
   const [ragAnswer, setRagAnswer] = useState<string | null>(null);
   const [isRagLoading, setIsRagLoading] = useState(false);
   const [ragError, setRagError] = useState<string | null>(null);
+
+  function applyPractitionerExample(example: PractitionerExample) {
+    const nextForm = {
+      ...initialForm,
+      ...form,
+      ...example.overrides,
+    };
+
+    setForm(nextForm);
+
+    if (example.controlledSubstances) {
+      setControlledSubstances(example.controlledSubstances);
+    }
+
+    console.log("CODEX_COMMAND: csf_practitioner_example_selected", {
+      example_id: example.id,
+      label: example.label,
+      description: example.description,
+      form: nextForm,
+      controlled_substances: example.controlledSubstances ?? [],
+      source_document:
+        "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf",
+    });
+  }
 
   const onChange = (field: keyof PractitionerCsfFormData, value: any) => {
     setForm((prev) => ({
@@ -145,7 +232,7 @@ export function PractitionerCsfSandbox() {
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-3 text-[11px] shadow-sm">
-      <header className="mb-2 flex items-center justify-between">
+      <header className="mb-2 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-700">
             Practitioner CSF Sandbox
@@ -153,6 +240,19 @@ export function PractitionerCsfSandbox() {
           <p className="text-[10px] text-gray-500">
             Test practitioner controlled substance forms end-to-end.
           </p>
+
+          <div className="mt-1 flex flex-wrap gap-1">
+            {PRACTITIONER_EXAMPLES.map((ex) => (
+              <button
+                key={ex.id}
+                type="button"
+                onClick={() => applyPractitionerExample(ex)}
+                className="rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
+              >
+                {ex.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <SourceDocumentChip
