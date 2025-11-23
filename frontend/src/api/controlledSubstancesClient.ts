@@ -1,48 +1,68 @@
 // src/api/controlledSubstancesClient.ts
-import { ControlledSubstanceItem } from "../domain/controlledSubstances";
 
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || "";
 
+export interface ControlledSubstance {
+  id: string;
+  name: string;
+  strength?: string;
+  unit?: string;
+  schedule?: string;
+  dea_code?: string;
+  // Backwards-compatible fields that may be returned by existing endpoints
+  ndc?: string | null;
+  dosage_form?: string | null;
+  dea_schedule?: string | null;
+}
+
+export interface ControlledSubstanceHistoryItem extends ControlledSubstance {
+  last_ordered_at?: string;
+  account_number?: string;
+}
+
 export async function searchControlledSubstances(
   query: string
-): Promise<ControlledSubstanceItem[]> {
-  const params = new URLSearchParams();
-  if (query) {
-    params.set("q", query);
-  }
+): Promise<ControlledSubstance[]> {
+  if (!query.trim()) return [];
 
   const resp = await fetch(
-    `${API_BASE}/controlled-substances/search?${params.toString()}`
+    `${API_BASE}/controlled-substances/search?q=${encodeURIComponent(query)}`,
+    {
+      method: "GET",
+    }
   );
 
   if (!resp.ok) {
     throw new Error(
-      `Controlled substances search failed with status ${resp.status}`
+      `/controlled-substances/search failed with status ${resp.status}`
     );
   }
 
   return resp.json();
 }
 
-export async function getControlledSubstancesHistory(
+export async function fetchControlledSubstancesHistory(
   accountNumber: string
-): Promise<ControlledSubstanceItem[]> {
-  if (!accountNumber) {
-    return [];
-  }
-
-  const params = new URLSearchParams();
-  params.set("account_number", accountNumber);
+): Promise<ControlledSubstanceHistoryItem[]> {
+  if (!accountNumber.trim()) return [];
 
   const resp = await fetch(
-    `${API_BASE}/controlled-substances/history?${params.toString()}`
+    `${API_BASE}/controlled-substances/history?account_number=${encodeURIComponent(
+      accountNumber
+    )}`,
+    {
+      method: "GET",
+    }
   );
 
   if (!resp.ok) {
     throw new Error(
-      `Controlled substances history failed with status ${resp.status}`
+      `/controlled-substances/history failed with status ${resp.status}`
     );
   }
 
   return resp.json();
 }
+
+// Legacy alias to preserve existing consumers
+export const getControlledSubstancesHistory = fetchControlledSubstancesHistory;

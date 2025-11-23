@@ -6,8 +6,6 @@ import {
   PractitionerFacilityType,
 } from "../domain/csfPractitioner";
 import { evaluatePractitionerCsf } from "../api/csfPractitionerClient";
-import { ControlledSubstanceItem } from "../domain/controlledSubstances";
-import { ControlledSubstancesSearchSection } from "./ControlledSubstancesSearchSection";
 import { explainCsfDecision } from "../api/csfExplainClient";
 import type { CsfDecisionSummary } from "../api/csfExplainClient";
 import {
@@ -15,6 +13,8 @@ import {
   type ComplianceArtifact,
 } from "../api/complianceArtifactsClient";
 import { callRegulatoryRag } from "../api/ragRegulatoryClient";
+import { ControlledSubstancesPanel } from "./ControlledSubstancesPanel";
+import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 
 const initialForm: PractitionerCsfFormData = {
   facilityName: "",
@@ -34,7 +34,7 @@ export function PractitionerCsfSandbox() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [controlledSubstances, setControlledSubstances] = useState<
-    ControlledSubstanceItem[]
+    ControlledSubstance[]
   >([]);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [isExplaining, setIsExplaining] = useState(false);
@@ -68,7 +68,6 @@ export function PractitionerCsfSandbox() {
     try {
       const result = await evaluatePractitionerCsf({
         ...form,
-        controlledSubstances,
       });
       setDecision(result);
     } catch (err: any) {
@@ -144,390 +143,397 @@ export function PractitionerCsfSandbox() {
   }, [decision]);
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-4 text-sm shadow-sm">
-      <header className="mb-3 flex items-center justify-between">
+    <section className="rounded-xl border border-gray-200 bg-white p-3 text-[11px] shadow-sm">
+      <header className="mb-2 flex items-center justify-between">
         <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+          <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-700">
             Practitioner CSF Sandbox
           </h2>
-          <p className="text-[11px] text-gray-500">
-            Evaluate Practitioner Controlled Substance Forms using engine rules.
+          <p className="text-[10px] text-gray-500">
+            Test practitioner controlled substance forms end-to-end.
           </p>
         </div>
         <button
           type="button"
           onClick={reset}
-          className="text-[11px] text-gray-500 hover:underline"
+          className="text-[10px] text-gray-500 hover:underline"
         >
           Reset
         </button>
       </header>
 
-      <form onSubmit={onSubmit} className="space-y-3">
-        {/* Facility info */}
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">
-              Facility name
-            </label>
-            <input
-              type="text"
-              value={form.facilityName}
-              onChange={(e) => onChange("facilityName", e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">
-              Facility type
-            </label>
-            <select
-              value={form.facilityType}
-              onChange={(e) =>
-                onChange("facilityType", e.target.value as PractitionerFacilityType)
-              }
-              className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
-            >
-              <option value="dental_practice">Dental practice</option>
-              <option value="individual_practitioner">Individual practitioner</option>
-              <option value="group_practice">Group practice</option>
-              <option value="clinic">Clinic</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-        </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {/* Left: form + results */}
+        <div className="space-y-3">
+          <form onSubmit={onSubmit} className="space-y-3">
+            {/* Facility info */}
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">
+                  Facility name
+                </label>
+                <input
+                  type="text"
+                  value={form.facilityName}
+                  onChange={(e) => onChange("facilityName", e.target.value)}
+                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">
+                  Facility type
+                </label>
+                <select
+                  value={form.facilityType}
+                  onChange={(e) =>
+                    onChange("facilityType", e.target.value as PractitionerFacilityType)
+                  }
+                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
+                >
+                  <option value="dental_practice">Dental practice</option>
+                  <option value="individual_practitioner">Individual practitioner</option>
+                  <option value="group_practice">Group practice</option>
+                  <option value="clinic">Clinic</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
 
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">
-              Account #
-            </label>
-            <input
-              type="text"
-              value={form.accountNumber ?? ""}
-              onChange={(e) => onChange("accountNumber", e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">
-              Ship-to state
-            </label>
-            <input
-              type="text"
-              value={form.shipToState}
-              onChange={(e) => onChange("shipToState", e.target.value.toUpperCase())}
-              maxLength={2}
-              className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs uppercase"
-            />
-          </div>
-          <div className="flex items-end">
-            <label className="inline-flex items-center gap-2 text-xs text-gray-700">
-              <input
-                type="checkbox"
-                checked={form.attestationAccepted}
-                onChange={(e) =>
-                  onChange("attestationAccepted", e.target.checked)
-                }
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">
+                  Account #
+                </label>
+                <input
+                  type="text"
+                  value={form.accountNumber ?? ""}
+                  onChange={(e) => onChange("accountNumber", e.target.value)}
+                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">
+                  Ship-to state
+                </label>
+                <input
+                  type="text"
+                  value={form.shipToState}
+                  onChange={(e) => onChange("shipToState", e.target.value.toUpperCase())}
+                  maxLength={2}
+                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs uppercase"
+                />
+              </div>
+              <div className="flex items-end">
+                <label className="inline-flex items-center gap-2 text-xs text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={form.attestationAccepted}
+                    onChange={(e) =>
+                      onChange("attestationAccepted", e.target.checked)
+                    }
+                  />
+                  <span>I accept the CSF attestation clause</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Practitioner & licensing */}
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">
+                  Practitioner name
+                </label>
+                <input
+                  type="text"
+                  value={form.practitionerName}
+                  onChange={(e) => onChange("practitionerName", e.target.value)}
+                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">
+                  State license #
+                </label>
+                <input
+                  type="text"
+                  value={form.stateLicenseNumber}
+                  onChange={(e) => onChange("stateLicenseNumber", e.target.value)}
+                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">
+                  DEA #
+                </label>
+                <input
+                  type="text"
+                  value={form.deaNumber}
+                  onChange={(e) => onChange("deaNumber", e.target.value)}
+                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Internal notes */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700">
+                Internal notes (optional)
+              </label>
+              <textarea
+                value={form.internalNotes ?? ""}
+                onChange={(e) => onChange("internalNotes", e.target.value)}
+                className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
+                rows={2}
               />
-              <span>I accept the CSF attestation clause</span>
-            </label>
-          </div>
-        </div>
-
-        {/* Practitioner & licensing */}
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">
-              Practitioner name
-            </label>
-            <input
-              type="text"
-              value={form.practitionerName}
-              onChange={(e) => onChange("practitionerName", e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">
-              State license #
-            </label>
-            <input
-              type="text"
-              value={form.stateLicenseNumber}
-              onChange={(e) => onChange("stateLicenseNumber", e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">
-              DEA #
-            </label>
-            <input
-              type="text"
-              value={form.deaNumber}
-              onChange={(e) => onChange("deaNumber", e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
-            />
-          </div>
-        </div>
-
-        {/* Internal notes */}
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-700">
-            Internal notes (optional)
-          </label>
-          <textarea
-            value={form.internalNotes ?? ""}
-            onChange={(e) => onChange("internalNotes", e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
-            rows={2}
-          />
-        </div>
-
-        <div className="mt-2 flex items-center gap-2">
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isLoading ? "Evaluating…" : "Evaluate Practitioner CSF"}
-          </button>
-        </div>
-      </form>
-
-      {/* Result & error */}
-      <div className="mt-4 space-y-2 text-xs">
-        {error && (
-          <div className="rounded-md bg-red-50 px-2 py-1 text-red-700">
-            {error}
-          </div>
-        )}
-
-        {decision && (
-          <div className="rounded-md bg-gray-50 px-3 py-2">
-            <div className="mb-1 flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">
-                Decision
-              </span>
-              <span className="rounded-full bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white">
-                {decision.status}
-              </span>
             </div>
-            <p className="text-[11px] text-gray-800">{decision.reason}</p>
 
-            {decision.missing_fields.length > 0 && (
-              <div className="mt-2">
-                <div className="text-[11px] font-medium text-gray-700">
-                  Missing fields
-                </div>
-                <ul className="list-inside list-disc text-[11px] text-gray-700">
-                  {decision.missing_fields.map((f) => (
-                    <li key={f}>{f}</li>
-                  ))}
-                </ul>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isLoading ? "Evaluating…" : "Evaluate Practitioner CSF"}
+              </button>
+            </div>
+          </form>
+
+          {/* Result & error */}
+          <div className="space-y-2 text-xs">
+            {error && (
+              <div className="rounded-md bg-red-50 px-2 py-1 text-red-700">
+                {error}
               </div>
             )}
 
-            {/* Explain decision via /csf/explain */}
-            <div className="mt-3 space-y-1">
-              <button
-                type="button"
-                disabled={isExplaining}
-                className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                onClick={async () => {
-                  if (!decision) return;
-                  setIsExplaining(true);
-                  setExplainError(null);
-
-                  const summary: CsfDecisionSummary = {
-                    status: decision.status,
-                    reason: decision.reason,
-                    missing_fields: decision.missing_fields ?? [],
-                    regulatory_references: decision.regulatory_references ?? [],
-                  };
-
-                  try {
-                    const res = await explainCsfDecision("practitioner", summary);
-                    setExplanation(res.explanation);
-                  } catch (err: any) {
-                    setExplainError(
-                      err?.message ?? "Failed to generate CSF decision explanation"
-                    );
-                  } finally {
-                    setIsExplaining(false);
-                  }
-                }}
-              >
-                {isExplaining ? "Explaining…" : "Explain decision"}
-              </button>
-
-              {explainError && (
-                <div className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700">
-                  {explainError}
-                </div>
-              )}
-
-            {explanation && (
-              <pre className="whitespace-pre-wrap rounded-md bg-white px-2 py-2 text-[11px] text-gray-800 ring-1 ring-gray-200">
-                {explanation}
-              </pre>
-            )}
-          </div>
-
-            {/* NEW: Deep RAG explain via /rag/regulatory-explain */}
-            <div className="mt-3 space-y-1 border-t border-gray-200 pt-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-gray-700">
-                  Deep RAG explain (experimental)
-                </span>
-                {isRagLoading && (
-                  <span className="text-[10px] text-gray-400">Running RAG…</span>
-                )}
-              </div>
-
-              <button
-                type="button"
-                disabled={isRagLoading || !decision}
-                className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                onClick={async () => {
-                  if (!decision) return;
-
-                  setIsRagLoading(true);
-                  setRagError(null);
-                  setRagAnswer(null);
-
-                  const question =
-                    "Explain this practitioner controlled substance form decision using the referenced regulatory artifacts. " +
-                    "Focus on why the status is '" +
-                    decision.status +
-                    "' and how the Florida addendum or base form apply, if relevant.";
-
-                  try {
-                    const res = await callRegulatoryRag({
-                      question,
-                      regulatory_references: decision.regulatory_references ?? [],
-                      decision,
-                    });
-
-                    setRagAnswer(res.answer);
-
-                    // Optional: log a Codex command for DevSupport
-                    console.log(
-                      "CODEX_COMMAND: rag_regulatory_explain_practitioner",
-                      {
-                        question,
-                        regulatory_references: decision.regulatory_references ?? [],
-                        decision,
-                      }
-                    );
-                  } catch (err: any) {
-                    setRagError(
-                      err?.message ?? "Failed to call RAG explain for this decision."
-                    );
-                  } finally {
-                    setIsRagLoading(false);
-                  }
-                }}
-              >
-                {isRagLoading ? "Running RAG…" : "Deep RAG explain"}
-              </button>
-
-              {ragError && (
-                <div className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700">
-                  {ragError}
-                </div>
-              )}
-
-              {ragAnswer && (
-                <pre className="whitespace-pre-wrap rounded-md bg-white px-2 py-2 text-[11px] text-gray-800 ring-1 ring-gray-200">
-                  {ragAnswer}
-                </pre>
-              )}
-            </div>
-
-            {/* Regulatory basis pills */}
-            {decision.regulatory_references?.length > 0 && (
-              <div className="mt-3 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-gray-700">
-                    Regulatory basis
+            {decision && (
+              <div className="rounded-md bg-gray-50 px-3 py-2">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+                    Decision
                   </span>
-                  {isLoadingRegulatory && (
-                    <span className="text-[10px] text-gray-400">Loading…</span>
-                  )}
+                  <span className="rounded-full bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white">
+                    {decision.status}
+                  </span>
                 </div>
+                <p className="text-[11px] text-gray-800">{decision.reason}</p>
 
-                {regulatoryError && (
-                  <div className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700">
-                    {regulatoryError}
+                {decision.missing_fields.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-[11px] font-medium text-gray-700">
+                      Missing fields
+                    </div>
+                    <ul className="list-inside list-disc text-[11px] text-gray-700">
+                      {decision.missing_fields.map((f) => (
+                        <li key={f}>{f}</li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 
-                {!regulatoryError &&
-                  regulatoryArtifacts.length === 0 &&
-                  !isLoadingRegulatory && (
-                    <div className="text-[11px] text-gray-400">
-                      No matching artifacts found for:{" "}
-                      {decision.regulatory_references.join(", ")}.
+                {/* Explain decision via /csf/explain */}
+                <div className="mt-3 space-y-1">
+                  <button
+                    type="button"
+                    disabled={isExplaining}
+                    className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={async () => {
+                      if (!decision) return;
+                      setIsExplaining(true);
+                      setExplainError(null);
+
+                      const summary: CsfDecisionSummary = {
+                        status: decision.status,
+                        reason: decision.reason,
+                        missing_fields: decision.missing_fields ?? [],
+                        regulatory_references: decision.regulatory_references ?? [],
+                      };
+
+                      try {
+                        const res = await explainCsfDecision("practitioner", summary);
+                        setExplanation(res.explanation);
+                      } catch (err: any) {
+                        setExplainError(
+                          err?.message ?? "Failed to generate CSF decision explanation"
+                        );
+                      } finally {
+                        setIsExplaining(false);
+                      }
+                    }}
+                  >
+                    {isExplaining ? "Explaining…" : "Explain decision"}
+                  </button>
+
+                  {explainError && (
+                    <div className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700">
+                      {explainError}
                     </div>
                   )}
 
-                {regulatoryArtifacts.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {regulatoryArtifacts.map((art) => (
-                      <span
-                        key={art.id}
-                        className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-800 ring-1 ring-indigo-100"
-                      >
-                        <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
-                        <span>{art.name}</span>
-                        <span className="text-[9px] text-indigo-500">
-                          [{art.jurisdiction}]
-                        </span>
-                        {art.source_document && (
-                          <span className="text-[9px] text-indigo-400">({art.id})</span>
-                        )}
+                  {explanation && (
+                    <pre className="whitespace-pre-wrap rounded-md bg-white px-2 py-2 text-[11px] text-gray-800 ring-1 ring-gray-200">
+                      {explanation}
+                    </pre>
+                  )}
+                </div>
+
+                {/* NEW: Deep RAG explain via /rag/regulatory-explain */}
+                <div className="mt-3 space-y-1 border-t border-gray-200 pt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-gray-700">
+                      Deep RAG explain (experimental)
+                    </span>
+                    {isRagLoading && (
+                      <span className="text-[10px] text-gray-400">Running RAG…</span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isRagLoading || !decision}
+                    className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={async () => {
+                      if (!decision) return;
+
+                      setIsRagLoading(true);
+                      setRagError(null);
+                      setRagAnswer(null);
+
+                      const question =
+                        "Explain this practitioner controlled substance form decision using the referenced regulatory artifacts. " +
+                        "Focus on why the status is '" +
+                        decision.status +
+                        "' and how the Florida addendum or base form apply, if relevant.";
+
+                      try {
+                        const res = await callRegulatoryRag({
+                          question,
+                          regulatory_references: decision.regulatory_references ?? [],
+                          decision,
+                        });
+
+                        setRagAnswer(res.answer);
+
+                        // Optional: log a Codex command for DevSupport
+                        console.log(
+                          "CODEX_COMMAND: rag_regulatory_explain_practitioner",
+                          {
+                            question,
+                            regulatory_references: decision.regulatory_references ?? [],
+                            decision,
+                            controlled_substances: controlledSubstances,
+                          }
+                        );
+                      } catch (err: any) {
+                        setRagError(
+                          err?.message ?? "Failed to call RAG explain for this decision."
+                        );
+                      } finally {
+                        setIsRagLoading(false);
+                      }
+                    }}
+                  >
+                    {isRagLoading ? "Running RAG…" : "Deep RAG explain"}
+                  </button>
+
+                  {ragError && (
+                    <div className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700">
+                      {ragError}
+                    </div>
+                  )}
+
+                  {ragAnswer && (
+                    <pre className="whitespace-pre-wrap rounded-md bg-white px-2 py-2 text-[11px] text-gray-800 ring-1 ring-gray-200">
+                      {ragAnswer}
+                    </pre>
+                  )}
+                </div>
+
+                {/* Regulatory basis pills */}
+                {decision.regulatory_references?.length > 0 && (
+                  <div className="mt-3 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-gray-700">
+                        Regulatory basis
                       </span>
-                    ))}
+                      {isLoadingRegulatory && (
+                        <span className="text-[10px] text-gray-400">Loading…</span>
+                      )}
+                    </div>
+
+                    {regulatoryError && (
+                      <div className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700">
+                        {regulatoryError}
+                      </div>
+                    )}
+
+                    {!regulatoryError &&
+                      regulatoryArtifacts.length === 0 &&
+                      !isLoadingRegulatory && (
+                        <div className="text-[11px] text-gray-400">
+                          No matching artifacts found for:{" "}
+                          {decision.regulatory_references.join(", ")}.
+                        </div>
+                      )}
+
+                    {regulatoryArtifacts.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {regulatoryArtifacts.map((art) => (
+                          <span
+                            key={art.id}
+                            className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-800 ring-1 ring-indigo-100"
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
+                            <span>{art.name}</span>
+                            <span className="text-[9px] text-indigo-500">
+                              [{art.jurisdiction}]
+                            </span>
+                            {art.source_document && (
+                              <span className="text-[9px] text-indigo-400">({art.id})</span>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
+
+                {/* Hook for Codex in a later step */}
+                <div className="mt-3 flex items-center justify-between">
+                  <button
+                    type="button"
+                    className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50"
+                    onClick={() => {
+                      console.log(
+                        "CODEX_COMMAND: explain_csf_practitioner_decision",
+                        {
+                          form,
+                          decision,
+                          controlled_substances: controlledSubstances,
+                          source_document:
+                            "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf",
+                        }
+                      );
+                    }}
+                  >
+                    Ask Codex to explain decision
+                  </button>
+                  <span className="text-[10px] text-gray-400">
+                    Future: narrative explanation for support/compliance.
+                  </span>
+                </div>
               </div>
             )}
-
-            {/* Hook for Codex in a later step */}
-            <div className="mt-3 flex items-center justify-between">
-              <button
-                type="button"
-                className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50"
-                onClick={() => {
-                  console.log("CODEX_COMMAND: explain_csf_practitioner_decision", {
-                    form,
-                    decision,
-                    controlled_substances: controlledSubstances,
-                    source_document:
-                      "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf",
-                  });
-                }}
-              >
-                Ask Codex to explain decision
-              </button>
-              <span className="text-[10px] text-gray-400">
-                Future: narrative explanation for support/compliance.
-              </span>
-            </div>
           </div>
-        )}
-      </div>
+        </div>
 
-      {/* Controlled substances search */}
-      <ControlledSubstancesSearchSection
-        selectedItems={controlledSubstances}
-        onSelectedItemsChange={setControlledSubstances}
-        title="Controlled Substances for this Practitioner CSF"
-        compact
-        accountNumber={form.accountNumber ?? undefined}
-      />
+        {/* Right: Controlled Substances panel */}
+        <ControlledSubstancesPanel
+          accountNumber={form.accountNumber ?? ""}
+          value={controlledSubstances}
+          onChange={setControlledSubstances}
+        />
+      </div>
     </section>
   );
 }
