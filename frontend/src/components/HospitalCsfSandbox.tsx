@@ -16,6 +16,7 @@ import { callRegulatoryRag } from "../api/ragRegulatoryClient";
 import { ControlledSubstancesPanel } from "./ControlledSubstancesPanel";
 import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
+import { CopyCurlButton } from "./CopyCurlButton";
 
 type HospitalExample = {
   id: string;
@@ -133,6 +134,31 @@ export function HospitalCsfSandbox() {
     setRegulatoryArtifacts([]);
     setRegulatoryError(null);
     setIsLoadingRegulatory(false);
+  };
+
+  const handleExplain = async () => {
+    if (!decision) return;
+
+    setIsExplaining(true);
+    setExplainError(null);
+
+    const summary: CsfDecisionSummary = {
+      status: decision.status,
+      reason: decision.reason,
+      missing_fields: decision.missing_fields ?? [],
+      regulatory_references: decision.regulatory_references ?? [],
+    };
+
+    try {
+      const res = await explainCsfDecision("hospital", summary);
+      setExplanation(res.explanation);
+    } catch (err: any) {
+      setExplainError(
+        err?.message ?? "Failed to generate CSF decision explanation"
+      );
+    } finally {
+      setIsExplaining(false);
+    }
   };
 
   useEffect(() => {
@@ -371,10 +397,17 @@ export function HospitalCsfSandbox() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-md bg-blue-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
                 {isLoading ? "Evaluating…" : "Evaluate Hospital CSF"}
               </button>
+
+              <CopyCurlButton
+                label="Copy cURL (evaluate)"
+                endpoint="/csf/hospital/evaluate"
+                body={form}
+                disabled={isLoading}
+              />
             </div>
           </form>
 
@@ -412,36 +445,23 @@ export function HospitalCsfSandbox() {
                 )}
 
                 <div className="mt-3 space-y-1">
-                  <button
-                    type="button"
-                    disabled={isExplaining}
-                    className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    onClick={async () => {
-                      if (!decision) return;
-                      setIsExplaining(true);
-                      setExplainError(null);
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isExplaining}
+                      className="rounded-md bg-slate-700 px-3 py-1 text-[11px] font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                      onClick={handleExplain}
+                    >
+                      {isExplaining ? "Explaining…" : "Explain decision"}
+                    </button>
 
-                      const summary: CsfDecisionSummary = {
-                        status: decision.status,
-                        reason: decision.reason,
-                        missing_fields: decision.missing_fields ?? [],
-                        regulatory_references: decision.regulatory_references ?? [],
-                      };
-
-                      try {
-                        const res = await explainCsfDecision("hospital", summary);
-                        setExplanation(res.explanation);
-                      } catch (err: any) {
-                        setExplainError(
-                          err?.message ?? "Failed to generate CSF decision explanation"
-                        );
-                      } finally {
-                        setIsExplaining(false);
-                      }
-                    }}
-                  >
-                    {isExplaining ? "Explaining…" : "Explain decision"}
-                  </button>
+                    <CopyCurlButton
+                      label="Copy cURL (explain)"
+                      endpoint="/csf/explain"
+                      body={{ decision }}
+                      disabled={isExplaining}
+                    />
+                  </div>
 
                   {explainError && (
                     <div className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700">

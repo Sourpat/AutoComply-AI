@@ -5,6 +5,7 @@ import {
   fetchComplianceArtifacts,
   type ComplianceArtifact,
 } from "../api/complianceArtifactsClient";
+import { CopyCurlButton } from "./CopyCurlButton";
 
 type Mode = "idle" | "loading" | "done" | "error";
 
@@ -74,6 +75,15 @@ export function RagRegulatorySandbox() {
   const [answer, setAnswer] = useState<string | null>(null);
   const [artifactsUsed, setArtifactsUsed] = useState<string[]>([]);
   const [debug, setDebug] = useState<Record<string, unknown>>({});
+
+  let decisionPayload: unknown = undefined;
+  if (decisionJson.trim()) {
+    try {
+      decisionPayload = JSON.parse(decisionJson);
+    } catch (err) {
+      decisionPayload = undefined;
+    }
+  }
 
   const handleExampleClick = (example: RagExample) => {
     setQuestion(example.question);
@@ -303,6 +313,17 @@ export function RagRegulatorySandbox() {
             >
               {mode === "loading" ? "Running RAG…" : "Run RAG explain"}
             </button>
+            <CopyCurlButton
+              label="Copy cURL (RAG explain)"
+              endpoint="/rag/regulatory-explain"
+              body={{
+                question,
+                regulatory_references: selectedRefs,
+                decision: decisionPayload,
+              }}
+              disabled={!question.trim()}
+              size="sm"
+            />
             <button
               type="button"
               onClick={reset}
