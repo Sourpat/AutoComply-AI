@@ -17,6 +17,26 @@ import { ControlledSubstancesPanel } from "./ControlledSubstancesPanel";
 import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 
+type HospitalExample = {
+  id: string;
+  label: string;
+  overrides: Partial<HospitalCsfFormData>;
+};
+
+const HOSPITAL_EXAMPLES: HospitalExample[] = [
+  {
+    id: "fl_level1_trauma_schedule_ii",
+    label: "FL – Level 1 trauma, Schedule II",
+    overrides: {
+      facilityName: "Sunrise Regional Medical Center",
+      facilityType: "hospital",
+      accountNumber: "ACC-HOSP-001",
+      shipToState: "FL",
+      attestationAccepted: true,
+    },
+  },
+];
+
 const initialForm: HospitalCsfFormData = {
   facilityName: "",
   facilityType: "hospital",
@@ -49,6 +69,24 @@ export function HospitalCsfSandbox() {
   const [ragAnswer, setRagAnswer] = useState<string | null>(null);
   const [isRagLoading, setIsRagLoading] = useState(false);
   const [ragError, setRagError] = useState<string | null>(null);
+
+  function applyHospitalExample(example: HospitalExample) {
+    const nextForm = {
+      ...initialForm,
+      ...form,
+      ...example.overrides,
+    };
+
+    setForm(nextForm);
+
+    console.log("CODEX_COMMAND: csf_hospital_example_selected", {
+      example_id: example.id,
+      label: example.label,
+      form: nextForm,
+      source_document:
+        "/mnt/data/Online Controlled Substance Form - Hospital Pharmacy.pdf",
+    });
+  }
 
   const onChange = (field: keyof HospitalCsfFormData, value: any) => {
     setForm((prev) => ({
@@ -146,7 +184,7 @@ export function HospitalCsfSandbox() {
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-3 text-[11px] shadow-sm">
-      <header className="mb-2 flex items-center justify-between">
+      <header className="mb-2 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-700">
             Hospital CSF Sandbox
@@ -155,6 +193,19 @@ export function HospitalCsfSandbox() {
             Test hospital controlled substance forms with live decision and RAG
             explain.
           </p>
+
+          <div className="mt-1 flex flex-wrap gap-1">
+            {HOSPITAL_EXAMPLES.map((ex) => (
+              <button
+                key={ex.id}
+                type="button"
+                onClick={() => applyHospitalExample(ex)}
+                className="rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
+              >
+                {ex.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <SourceDocumentChip

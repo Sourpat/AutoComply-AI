@@ -17,6 +17,26 @@ import { ControlledSubstancesPanel } from "./ControlledSubstancesPanel";
 import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 
+type ResearcherExample = {
+  id: string;
+  label: string;
+  overrides: Partial<ResearcherCsfFormData>;
+};
+
+const RESEARCHER_EXAMPLES: ResearcherExample[] = [
+  {
+    id: "phase_ii_opioid_study_fl",
+    label: "FL – Phase II opioid study",
+    overrides: {
+      institutionName: "Sunrise Clinical Research Unit",
+      accountNumber: "ACC-RES-001",
+      shipToState: "FL",
+      attestationAccepted: true,
+      protocolOrStudyId: "PROTO-OPIOID-22",
+    },
+  },
+];
+
 const initialForm: ResearcherCsfFormData = {
   institutionName: "",
   facilityType: "university",
@@ -50,6 +70,24 @@ export function ResearcherCsfSandbox() {
   const [ragAnswer, setRagAnswer] = useState<string | null>(null);
   const [isRagLoading, setIsRagLoading] = useState(false);
   const [ragError, setRagError] = useState<string | null>(null);
+
+  function applyResearcherExample(example: ResearcherExample) {
+    const nextForm = {
+      ...initialForm,
+      ...form,
+      ...example.overrides,
+    };
+
+    setForm(nextForm);
+
+    console.log("CODEX_COMMAND: csf_researcher_example_selected", {
+      example_id: example.id,
+      label: example.label,
+      form: nextForm,
+      source_document:
+        "/mnt/data/Online Controlled Substance Form - Researcher form.pdf",
+    });
+  }
 
   const onChange = (field: keyof ResearcherCsfFormData, value: any) => {
     setForm((prev) => ({
@@ -147,7 +185,7 @@ export function ResearcherCsfSandbox() {
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-3 text-[11px] shadow-sm">
-      <header className="mb-2 flex items-center justify-between">
+      <header className="mb-2 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-700">
             Researcher CSF Sandbox
@@ -155,6 +193,19 @@ export function ResearcherCsfSandbox() {
           <p className="text-[10px] text-gray-500">
             Test researcher controlled substance forms with study/protocol context.
           </p>
+
+          <div className="mt-1 flex flex-wrap gap-1">
+            {RESEARCHER_EXAMPLES.map((ex) => (
+              <button
+                key={ex.id}
+                type="button"
+                onClick={() => applyResearcherExample(ex)}
+                className="rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
+              >
+                {ex.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <SourceDocumentChip

@@ -20,6 +20,35 @@ import {
 import { callRegulatoryRag } from "../api/ragRegulatoryClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 
+type OhioExample = {
+  id: string;
+  label: string;
+  overrides: Partial<OhioTdddFormData>;
+};
+
+const OHIO_EXAMPLES: OhioExample[] = [
+  {
+    id: "oh_in_state_pharmacy",
+    label: "OH – In-state pharmacy",
+    overrides: {
+      businessName: "Buckeye Pharmacy",
+      licenseType: "pharmacy",
+      licenseNumber: "TDDD-987654",
+      shipToState: "OH",
+    },
+  },
+  {
+    id: "oh_out_of_state_shipping",
+    label: "OH – Out-of-state shipping",
+    overrides: {
+      businessName: "Out-of-State Pharmacy",
+      licenseType: "pharmacy",
+      licenseNumber: "TDDD-654321",
+      shipToState: "OH",
+    },
+  },
+];
+
 const initialForm: OhioTdddFormData = {
   businessName: "Example Dental Clinic",
   licenseType: "clinic",
@@ -55,6 +84,23 @@ export function OhioTdddSandbox() {
   >([]);
   const [isLoadingRegulatory, setIsLoadingRegulatory] = useState(false);
   const [regulatoryError, setRegulatoryError] = useState<string | null>(null);
+
+  function applyOhioExample(example: OhioExample) {
+    const nextForm = {
+      ...initialForm,
+      ...form,
+      ...example.overrides,
+    } as OhioTdddFormData;
+
+    setForm(nextForm);
+
+    console.log("CODEX_COMMAND: ohio_tddd_example_selected", {
+      example_id: example.id,
+      label: example.label,
+      form: nextForm,
+      source_document: "/mnt/data/Ohio TDDD.html",
+    });
+  }
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -143,7 +189,7 @@ export function OhioTdddSandbox() {
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-3 text-[11px] shadow-sm">
-      <header className="mb-3 flex items-center justify-between">
+      <header className="mb-3 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-700">
             Ohio TDDD Sandbox
@@ -153,6 +199,19 @@ export function OhioTdddSandbox() {
             them to regulatory guidance. Try changing the ship-to state to a
             non-OH value (e.g., PA) to see a manual review scenario.
           </p>
+
+          <div className="mt-1 flex flex-wrap gap-1">
+            {OHIO_EXAMPLES.map((ex) => (
+              <button
+                key={ex.id}
+                type="button"
+                onClick={() => applyOhioExample(ex)}
+                className="rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
+              >
+                {ex.label}
+              </button>
+            ))}
+          </div>
         </div>
         <SourceDocumentChip label="Ohio TDDD HTML" url="/mnt/data/Ohio TDDD.html" />
       </header>
