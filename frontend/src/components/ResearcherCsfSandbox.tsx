@@ -8,6 +8,8 @@ import {
 import { ControlledSubstanceItem } from "../domain/controlledSubstances";
 import { ControlledSubstancesSearchSection } from "./ControlledSubstancesSearchSection";
 import { evaluateResearcherCsf } from "../api/csfResearcherClient";
+import { explainCsfDecision } from "../api/csfExplainClient";
+import type { CsfDecisionSummary } from "../api/csfExplainClient";
 
 const initialForm: ResearcherCsfFormData = {
   institutionName: "",
@@ -31,6 +33,9 @@ export function ResearcherCsfSandbox() {
   const [controlledSubstances, setControlledSubstances] = useState<
     ControlledSubstanceItem[]
   >([]);
+  const [explanation, setExplanation] = useState<string | null>(null);
+  const [isExplaining, setIsExplaining] = useState(false);
+  const [explainError, setExplainError] = useState<string | null>(null);
 
   const onChange = (field: keyof ResearcherCsfFormData, value: any) => {
     setForm((prev) => ({
@@ -63,6 +68,9 @@ export function ResearcherCsfSandbox() {
     setDecision(null);
     setError(null);
     setControlledSubstances([]);
+    setExplanation(null);
+    setExplainError(null);
+    setIsExplaining(false);
   };
 
   return (
@@ -281,6 +289,51 @@ export function ResearcherCsfSandbox() {
                 </ul>
               </div>
             )}
+
+            <div className="mt-3 space-y-1">
+              <button
+                type="button"
+                disabled={isExplaining}
+                className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={async () => {
+                  if (!decision) return;
+                  setIsExplaining(true);
+                  setExplainError(null);
+
+                  const summary: CsfDecisionSummary = {
+                    status: decision.status,
+                    reason: decision.reason,
+                    missing_fields: decision.missing_fields ?? [],
+                    regulatory_references: decision.regulatory_references ?? [],
+                  };
+
+                  try {
+                    const res = await explainCsfDecision("researcher", summary);
+                    setExplanation(res.explanation);
+                  } catch (err: any) {
+                    setExplainError(
+                      err?.message ?? "Failed to generate CSF decision explanation"
+                    );
+                  } finally {
+                    setIsExplaining(false);
+                  }
+                }}
+              >
+                {isExplaining ? "Explaining…" : "Explain decision"}
+              </button>
+
+              {explainError && (
+                <div className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700">
+                  {explainError}
+                </div>
+              )}
+
+              {explanation && (
+                <pre className="whitespace-pre-wrap rounded-md bg-white px-2 py-2 text-[11px] text-gray-800 ring-1 ring-gray-200">
+                  {explanation}
+                </pre>
+              )}
+            </div>
 
             {/* Codex hook */}
             <div className="mt-3 flex items-center justify-between">

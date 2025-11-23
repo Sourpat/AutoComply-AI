@@ -37,4 +37,5 @@ export interface PractitionerCsfDecision {
   status: PractitionerCsfDecisionStatus;
   reason: string;
   missing_fields: string[];
+  regulatory_references: string[];
 }
