@@ -38,4 +38,5 @@ export interface HospitalCsfDecision {
   status: HospitalCsfDecisionStatus;
   reason: string;
   missing_fields: string[];
+  regulatory_references: string[];
 }

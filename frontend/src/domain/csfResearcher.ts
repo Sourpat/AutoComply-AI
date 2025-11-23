@@ -39,4 +39,5 @@ export interface ResearcherCsfDecision {
   status: ResearcherCsfDecisionStatus;
   reason: string;
   missing_fields: string[];
+  regulatory_references: string[];
 }
