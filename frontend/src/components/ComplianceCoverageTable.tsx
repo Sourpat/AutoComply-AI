@@ -1,47 +1,49 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  ArtifactStatus,
-  ComplianceArtifact,
-} from "../domain/complianceArtifacts";
-import { fetchComplianceArtifacts } from "../api/complianceArtifactsClient";
+  fetchComplianceArtifacts,
+  type ArtifactEngineStatus,
+  type ComplianceArtifact,
+} from "../api/complianceArtifactsClient";
 
-function statusLabel(status: ArtifactStatus): string {
+const statusLabel = (status: ArtifactEngineStatus): string => {
   switch (status) {
-    case "raw_document":
+    case "RAW_DOCUMENT":
       return "Raw document only";
-    case "modelled":
-      return "Modelled (no API)";
-    case "api_exposed":
-      return "API available";
-    case "ui_sandbox":
-      return "UI sandbox";
-    case "full_loop":
-      return "Full loop (UI + API + Codex)";
+    case "MODELED_RULES":
+      return "Modeled rules";
+    case "PARTIALLY_MODELED":
+      return "Partially modeled";
     default:
-      return status;
+      return status
+        .split("_")
+        .map((part) => part.toLowerCase())
+        .join(" ");
   }
-}
+};
 
-function statusBadgeClass(status: ArtifactStatus): string {
+const statusBadgeClass = (status: ArtifactEngineStatus): string => {
   switch (status) {
-    case "full_loop":
-      return "bg-green-100 text-green-800 border-green-200";
-    case "ui_sandbox":
-    case "api_exposed":
+    case "MODELED_RULES":
       return "bg-blue-100 text-blue-800 border-blue-200";
-    case "modelled":
+    case "PARTIALLY_MODELED":
       return "bg-yellow-100 text-yellow-800 border-yellow-200";
-    case "raw_document":
+    case "RAW_DOCUMENT":
     default:
       return "bg-gray-100 text-gray-800 border-gray-200";
   }
-}
+};
+
+const formatArtifactType = (value: string): string =>
+  value
+    .split("_")
+    .map((part) => part.toLowerCase())
+    .join(" ");
 
 export function ComplianceCoverageTable() {
   const [artifacts, setArtifacts] = useState<ComplianceArtifact[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<ArtifactStatus | "all">("all");
+  const [filter, setFilter] = useState<ArtifactEngineStatus | "all">("all");
 
   useEffect(() => {
     let isMounted = true;
@@ -67,10 +69,19 @@ export function ComplianceCoverageTable() {
     };
   }, []);
 
-  const filtered =
-    filter === "all"
-      ? artifacts
-      : artifacts.filter((a) => a.engine_status === filter);
+  const statusOptions = useMemo(() => {
+    const unique = new Set<ArtifactEngineStatus>();
+    artifacts.forEach((a) => unique.add(a.engine_status));
+    return Array.from(unique);
+  }, [artifacts]);
+
+  const filtered = useMemo(
+    () =>
+      filter === "all"
+        ? artifacts
+        : artifacts.filter((a) => a.engine_status === filter),
+    [artifacts, filter]
+  );
 
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-4 text-sm shadow-sm">
@@ -90,14 +101,16 @@ export function ComplianceCoverageTable() {
           <select
             className="rounded-md border border-gray-300 bg-white px-2 py-1 text-[11px]"
             value={filter}
-            onChange={(e) => setFilter(e.target.value as ArtifactStatus | "all")}
+            onChange={(e) =>
+              setFilter(e.target.value as ArtifactEngineStatus | "all")
+            }
           >
             <option value="all">All</option>
-            <option value="full_loop">Full loop</option>
-            <option value="ui_sandbox">UI sandbox</option>
-            <option value="api_exposed">API exposed</option>
-            <option value="modelled">Modelled</option>
-            <option value="raw_document">Raw document</option>
+            {statusOptions.map((opt) => (
+              <option key={opt} value={opt}>
+                {statusLabel(opt)}
+              </option>
+            ))}
           </select>
         </div>
       </header>
@@ -138,7 +151,7 @@ export function ComplianceCoverageTable() {
                     {a.name}
                   </td>
                   <td className="px-2 py-1 align-top text-gray-700">
-                    {a.artifact_type.replace(/_/g, " ")}
+                    {formatArtifactType(a.artifact_type)}
                   </td>
                   <td className="px-2 py-1 align-top">
                     <span

@@ -1,5 +1,5 @@
 // src/components/ResearcherCsfSandbox.tsx
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import {
   ResearchFacilityType,
   ResearcherCsfDecision,
@@ -10,6 +10,10 @@ import { ControlledSubstancesSearchSection } from "./ControlledSubstancesSearchS
 import { evaluateResearcherCsf } from "../api/csfResearcherClient";
 import { explainCsfDecision } from "../api/csfExplainClient";
 import type { CsfDecisionSummary } from "../api/csfExplainClient";
+import {
+  fetchComplianceArtifacts,
+  type ComplianceArtifact,
+} from "../api/complianceArtifactsClient";
 
 const initialForm: ResearcherCsfFormData = {
   institutionName: "",
@@ -36,6 +40,11 @@ export function ResearcherCsfSandbox() {
   const [explanation, setExplanation] = useState<string | null>(null);
   const [isExplaining, setIsExplaining] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
+  const [regulatoryArtifacts, setRegulatoryArtifacts] = useState<
+    ComplianceArtifact[]
+  >([]);
+  const [isLoadingRegulatory, setIsLoadingRegulatory] = useState(false);
+  const [regulatoryError, setRegulatoryError] = useState<string | null>(null);
 
   const onChange = (field: keyof ResearcherCsfFormData, value: any) => {
     setForm((prev) => ({
@@ -71,7 +80,58 @@ export function ResearcherCsfSandbox() {
     setExplanation(null);
     setExplainError(null);
     setIsExplaining(false);
+
+    setRegulatoryArtifacts([]);
+    setRegulatoryError(null);
+    setIsLoadingRegulatory(false);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!decision || !decision.regulatory_references?.length) {
+      setRegulatoryArtifacts([]);
+      setRegulatoryError(null);
+      setIsLoadingRegulatory(false);
+      return;
+    }
+
+    const refs = decision.regulatory_references;
+
+    setIsLoadingRegulatory(true);
+    setRegulatoryError(null);
+
+    (async () => {
+      try {
+        const all = await fetchComplianceArtifacts();
+        if (cancelled) return;
+
+        const byId = new Map(all.map((a) => [a.id, a]));
+        const relevant: ComplianceArtifact[] = [];
+
+        for (const id of refs) {
+          const art = byId.get(id);
+          if (art) {
+            relevant.push(art);
+          }
+        }
+
+        setRegulatoryArtifacts(relevant);
+      } catch (err: any) {
+        if (cancelled) return;
+        setRegulatoryError(
+          err?.message ?? "Failed to load regulatory artifacts for this decision."
+        );
+      } finally {
+        if (cancelled) return;
+        setIsLoadingRegulatory(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [decision]);
 
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-4 text-sm shadow-sm">
@@ -334,6 +394,55 @@ export function ResearcherCsfSandbox() {
                 </pre>
               )}
             </div>
+
+            {/* Regulatory basis pills */}
+            {decision.regulatory_references?.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-gray-700">
+                    Regulatory basis
+                  </span>
+                  {isLoadingRegulatory && (
+                    <span className="text-[10px] text-gray-400">Loading…</span>
+                  )}
+                </div>
+
+                {regulatoryError && (
+                  <div className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700">
+                    {regulatoryError}
+                  </div>
+                )}
+
+                {!regulatoryError &&
+                  regulatoryArtifacts.length === 0 &&
+                  !isLoadingRegulatory && (
+                    <div className="text-[11px] text-gray-400">
+                      No matching artifacts found for:{" "}
+                      {decision.regulatory_references.join(", ")}.
+                    </div>
+                  )}
+
+                {regulatoryArtifacts.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {regulatoryArtifacts.map((art) => (
+                      <span
+                        key={art.id}
+                        className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-800 ring-1 ring-indigo-100"
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
+                        <span>{art.name}</span>
+                        <span className="text-[9px] text-indigo-500">
+                          [{art.jurisdiction}]
+                        </span>
+                        {art.source_document && (
+                          <span className="text-[9px] text-indigo-400">({art.id})</span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Codex hook */}
             <div className="mt-3 flex items-center justify-between">
