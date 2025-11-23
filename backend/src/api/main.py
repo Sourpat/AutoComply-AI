@@ -17,6 +17,7 @@ from src.api.routes.csf_practitioner import router as csf_practitioner_router
 from src.api.routes.csf_researcher import router as csf_researcher_router
 from src.api.routes.license_validation import router as license_router
 from src.api.routes.ohio_tddd import router as ohio_tddd_router
+from src.api.routes.ohio_tddd_explain import router as ohio_tddd_explain_router
 from src.api.routes import license_validation as license_validation_module
 
 app = FastAPI(
@@ -46,6 +47,7 @@ app.add_middleware(
 #   /api/v1/licenses/...
 app.include_router(license_router)
 app.include_router(ohio_tddd_router)
+app.include_router(ohio_tddd_explain_router)
 app.include_router(compliance_router)
 app.include_router(csf_practitioner_router)
 app.include_router(csf_hospital_router)

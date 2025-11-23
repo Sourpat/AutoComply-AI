@@ -10,10 +10,15 @@ class OhioTdddCustomerResponse(str, Enum):
     # You can refine these labels later when we have exact text
 
 
-class DecisionStatus(str, Enum):
+class OhioTdddDecisionStatus(str, Enum):
+    APPROVED = "approved"
     OK_TO_SHIP = "ok_to_ship"
     BLOCKED = "blocked"
     MANUAL_REVIEW = "manual_review"
+
+
+# Legacy alias kept for backward compatibility
+DecisionStatus = OhioTdddDecisionStatus
 
 
 class OhioTdddForm(BaseModel):
