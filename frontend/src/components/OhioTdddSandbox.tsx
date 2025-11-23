@@ -18,6 +18,7 @@ import {
   type ComplianceArtifact,
 } from "../api/complianceArtifactsClient";
 import { callRegulatoryRag } from "../api/ragRegulatoryClient";
+import { SourceDocumentChip } from "./SourceDocumentChip";
 
 const initialForm: OhioTdddFormData = {
   businessName: "Example Dental Clinic",
@@ -153,6 +154,7 @@ export function OhioTdddSandbox() {
             non-OH value (e.g., PA) to see a manual review scenario.
           </p>
         </div>
+        <SourceDocumentChip label="Ohio TDDD HTML" url="/mnt/data/Ohio TDDD.html" />
       </header>
 
       <form onSubmit={onSubmit} className="space-y-3">

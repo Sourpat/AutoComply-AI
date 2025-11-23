@@ -169,27 +169,50 @@ export function RagRegulatorySandbox() {
               {availableArtifacts.map((art) => {
                 const checked = selectedRefs.includes(art.id);
                 return (
-                  <label
+                  <div
                     key={art.id}
-                    className="flex cursor-pointer items-start gap-2 rounded-md px-1 py-0.5 hover:bg-gray-100"
+                    className="flex items-start justify-between gap-2 rounded-md border border-gray-200 bg-white px-2 py-1.5"
                   >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleRef(art.id)}
-                      className="mt-0.5 h-3 w-3"
-                    />
-                    <div className="flex flex-col">
-                      <span className="text-[11px] font-medium text-gray-800">
-                        {art.name}
-                      </span>
-                      <span className="text-[10px] text-gray-500">
-                        id: <code className="font-mono">{art.id}</code> ·{" "}
-                        {art.jurisdiction} ·{" "}
-                        {art.artifact_type ?? "ARTIFACT"}
-                      </span>
+                    <label className="flex cursor-pointer items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleRef(art.id)}
+                        className="mt-0.5 h-3 w-3"
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-[11px] font-medium text-gray-800">
+                          {art.id}
+                        </span>
+                        <span className="text-[10px] text-gray-500">{art.name}</span>
+                        {!!art.jurisdiction && (
+                          <span className="text-[10px] text-gray-400">
+                            {art.jurisdiction} · {art.artifact_type}
+                          </span>
+                        )}
+                      </div>
+                    </label>
+
+                    <div className="flex flex-col items-end gap-1">
+                      {art.source_document && (
+                        <a
+                          href={art.source_document}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
+                          onClick={() => {
+                            console.log("CODEX_COMMAND: open_regulatory_source_document", {
+                              artifact_id: art.id,
+                              artifact_name: art.name,
+                              url: art.source_document,
+                            });
+                          }}
+                        >
+                          View document
+                        </a>
+                      )}
                     </div>
-                  </label>
+                  </div>
                 );
               })}
             </div>
