@@ -217,9 +217,11 @@ export function PdmaSampleSandbox() {
         source_document: PDMA_SOURCE_DOCUMENT,
       });
 
-      // Snapshot decision into backend history (best-effort, non-blocking)
+      // --- NEW: snapshot decision into history and create verification if needed ---
+      let snapshotId: string | undefined;
+
       try {
-        await fetch(`${API_BASE}/decisions/history`, {
+        const snapResp = await fetch(`${API_BASE}/decisions/history`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -238,9 +240,56 @@ export function PdmaSampleSandbox() {
             },
           }),
         });
+
+        if (snapResp.ok) {
+          const snapBody = await snapResp.json();
+          snapshotId = (snapBody as any).id;
+        }
       } catch (err) {
         console.error("Failed to snapshot PDMA decision history", err);
       }
+
+      // Create verification request when decision is NOT eligible
+      if (data.status !== "eligible") {
+        try {
+          await fetch(`${API_BASE}/verifications/submit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              engine_family: "pdma",
+              decision_type: "pdma_sample",
+              jurisdiction: form.prescriber_state,
+              reason_for_review:
+                data.status === "manual_review"
+                  ? "manual_review"
+                  : "ineligible_pdma_sample",
+              decision_snapshot_id: snapshotId,
+              regulatory_reference_ids:
+                data.regulatory_references?.map((r) => r.id) ?? [],
+              source_documents:
+                data.regulatory_references?.map((r) => r.source_document) ??
+                [PDMA_SOURCE_DOCUMENT],
+              user_question: null,
+              channel: "web_sandbox",
+              payload: {
+                form,
+                verdict: data,
+              },
+            }),
+          });
+
+          emitCodexCommand("verification_request_created", {
+            engine_family: "pdma",
+            decision_type: "pdma_sample",
+            status: data.status,
+            decision_snapshot_id: snapshotId,
+            source_document: PDMA_SOURCE_DOCUMENT,
+          });
+        } catch (err) {
+          console.error("Failed to submit PDMA verification request", err);
+        }
+      }
+      // --- END NEW ---
     } catch (err) {
       console.error(err);
       // you can add a simple error toast/inline message if desired
