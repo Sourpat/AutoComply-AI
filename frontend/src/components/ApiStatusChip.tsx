@@ -1,71 +1,79 @@
-import { emitCodexCommand } from "../utils/codexLogger";
 import { useEffect, useState } from "react";
+import { emitCodexCommand } from "../utils/codexLogger";
 
-const API_BASE =
-  (import.meta as any).env?.VITE_API_BASE || "";
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || "";
 
-type Status = "idle" | "checking" | "online" | "offline";
+type ApiStatus = "unknown" | "online" | "offline";
 
 export function ApiStatusChip() {
-  const [status, setStatus] = useState<Status>("idle");
-  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const [status, setStatus] = useState<ApiStatus>("unknown");
+  const [lastChecked, setLastChecked] = useState<string | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
 
   const checkHealth = async () => {
-    setStatus("checking");
+    if (!API_BASE) {
+      // No API base configured – treat as unknown but don't spam logs.
+      setStatus("unknown");
+      return;
+    }
+
+    setIsChecking(true);
     try {
-      const resp = await fetch(`${API_BASE}/health`, {
-        method: "GET",
-      });
+      const resp = await fetch(`${API_BASE}/health`);
+      const ok = resp.ok;
+      setStatus(ok ? "online" : "offline");
+      setLastChecked(new Date().toLocaleTimeString());
 
-      if (resp.ok) {
-        setStatus("online");
-      } else {
-        setStatus("offline");
-      }
+      emitCodexCommand("api_health_checked", {
+        ok,
+        status: ok ? "online" : "offline",
+      });
     } catch (err) {
-      console.error("Health check failed", err);
+      console.error("API health check failed", err);
       setStatus("offline");
-    } finally {
-      setLastChecked(new Date());
-
-      // Optional Codex log so DevSupport can see when UI checked health
-      emitCodexCommand("check_api_health", {
-        api_base: API_BASE,
-        status_after_check: status,
-        last_checked_at: new Date().toISOString(),
+      setLastChecked(new Date().toLocaleTimeString());
+      emitCodexCommand("api_health_checked", {
+        ok: false,
+        status: "offline",
       });
+    } finally {
+      setIsChecking(false);
     }
   };
 
   useEffect(() => {
-    // Run once on mount
-    void checkHealth();
+    // initial check on mount
+    checkHealth();
+
+    // optional: re-check every 60s
+    const id = window.setInterval(checkHealth, 60_000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const label =
-    status === "online"
-      ? "API online"
-      : status === "offline"
-      ? "API offline"
-      : status === "checking"
-      ? "Checking API…"
-      : "API status";
+  let label = "API status: unknown";
+  let classes =
+    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]";
 
-  const colorClasses =
-    status === "online"
-      ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-      : status === "offline"
-      ? "bg-red-50 text-red-700 ring-red-200"
-      : "bg-gray-50 text-gray-600 ring-gray-200";
+  if (status === "online") {
+    label = "API online";
+    classes += " border-emerald-300 bg-emerald-50 text-emerald-800";
+  } else if (status === "offline") {
+    label = "API offline";
+    classes += " border-rose-300 bg-rose-50 text-rose-800";
+  } else {
+    classes += " border-slate-300 bg-slate-50 text-slate-600";
+  }
 
   return (
     <button
       type="button"
       onClick={checkHealth}
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-medium shadow-sm ring-1 ${colorClasses}`}
+      className={`${classes} hover:brightness-105 disabled:opacity-60`}
+      disabled={isChecking || !API_BASE}
       title={
         lastChecked
-          ? `Last checked at ${lastChecked.toLocaleTimeString()} (click to refresh)`
+          ? `Last checked at ${lastChecked}`
           : "Click to check API health"
       }
     >
@@ -74,11 +82,11 @@ export function ApiStatusChip() {
           status === "online"
             ? "bg-emerald-500"
             : status === "offline"
-            ? "bg-red-500"
-            : "bg-gray-400"
+            ? "bg-rose-500"
+            : "bg-slate-400"
         }`}
       />
-      <span>{label}</span>
+      <span>{isChecking ? "Checking…" : label}</span>
     </button>
   );
 }
