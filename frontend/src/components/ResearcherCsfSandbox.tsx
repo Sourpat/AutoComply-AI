@@ -19,6 +19,8 @@ import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { emitCodexCommand } from "../utils/codexLogger";
 
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || "";
+
 type ResearcherExample = {
   id: string;
   label: string;
@@ -72,6 +74,13 @@ export function ResearcherCsfSandbox() {
   const [ragAnswer, setRagAnswer] = useState<string | null>(null);
   const [isRagLoading, setIsRagLoading] = useState(false);
   const [ragError, setRagError] = useState<string | null>(null);
+
+  // ---- Researcher CSF Form Copilot state ----
+  const [copilotLoading, setCopilotLoading] = useState(false);
+  const [copilotDecision, setCopilotDecision] = useState<any | null>(null);
+  const [copilotExplanation, setCopilotExplanation] =
+    useState<string | null>(null);
+  const [copilotError, setCopilotError] = useState<string | null>(null);
 
   function applyResearcherExample(example: ResearcherExample) {
     const nextForm = {
@@ -160,6 +169,80 @@ export function ResearcherCsfSandbox() {
       );
     } finally {
       setIsExplaining(false);
+    }
+  };
+
+  const runResearcherCsfCopilot = async () => {
+    if (!API_BASE) return;
+
+    setCopilotLoading(true);
+    setCopilotError(null);
+    setCopilotExplanation(null);
+    setCopilotDecision(null);
+
+    try {
+      const evalResp = await fetch(`${API_BASE}/csf/researcher/evaluate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+
+      if (!evalResp.ok) {
+        throw new Error(`Researcher CSF evaluate failed: ${evalResp.status}`);
+      }
+
+      const evalJson = await evalResp.json();
+      const decision =
+        (evalJson.decision as any) ??
+        (evalJson.verdict as any) ??
+        evalJson;
+
+      setCopilotDecision(decision);
+
+      emitCodexCommand("csf_researcher_form_copilot_run", {
+        engine_family: "csf",
+        decision_type: "csf_researcher",
+        outcome: decision.outcome ?? decision.status ?? "unknown",
+      });
+
+      const ragResp = await fetch(`${API_BASE}/rag/regulatory-explain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question:
+            "Explain for a verification specialist what this Researcher CSF decision means, including what research/teaching licenses, DEA research registrations, or protocol documentation are required for controlled-substance supply. Be concise and actionable.",
+          decision,
+          regulatory_references: [],
+        }),
+      });
+
+      if (!ragResp.ok) {
+        throw new Error(`RAG explain failed: ${ragResp.status}`);
+      }
+
+      const ragJson = await ragResp.json();
+      const answer =
+        (ragJson.answer as string) ??
+        (ragJson.text as string) ??
+        JSON.stringify(ragJson, null, 2);
+
+      setCopilotExplanation(answer);
+
+      emitCodexCommand("csf_researcher_form_copilot_complete", {
+        engine_family: "csf",
+        decision_type: "csf_researcher",
+        outcome: decision.outcome ?? decision.status ?? "unknown",
+      });
+    } catch (err: any) {
+      console.error(err);
+      setCopilotError(
+        "Researcher CSF Copilot could not run. Check the console or try again."
+      );
+      emitCodexCommand("csf_researcher_form_copilot_error", {
+        message: String(err?.message || err),
+      });
+    } finally {
+      setCopilotLoading(false);
     }
   };
 
@@ -632,6 +715,74 @@ export function ResearcherCsfSandbox() {
                     Future: narrative explanation for researcher CSF decisions.
                   </span>
                 </div>
+
+                {/* ---- Researcher CSF Form Copilot (beta) ---- */}
+                <section className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+                  <header className="mb-2 flex items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-[11px] font-semibold text-slate-800">
+                        Researcher CSF Copilot (beta)
+                      </h3>
+                      <p className="text-[10px] text-slate-500">
+                        Runs the Researcher CSF engine and asks the regulatory RAG
+                        service to explain the decision and research/teaching license
+                        requirements.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={runResearcherCsfCopilot}
+                      disabled={copilotLoading || !API_BASE}
+                      className="h-7 rounded-md bg-slate-900 px-3 text-[11px] font-medium text-slate-50 hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      {copilotLoading ? "Checking…" : "Check & Explain"}
+                    </button>
+                  </header>
+
+                  {copilotError && (
+                    <p className="mb-1 text-[10px] text-rose-600">{copilotError}</p>
+                  )}
+
+                  {copilotDecision && (
+                    <div className="mb-1 rounded-md bg-slate-50 p-2 text-[10px] text-slate-800">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-slate-700">
+                          Decision outcome:
+                        </span>
+                        <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[9px] font-medium text-slate-50">
+                          {copilotDecision.outcome ??
+                            copilotDecision.status ??
+                            "See details below"}
+                        </span>
+                      </div>
+                      {copilotDecision.reason && (
+                        <p className="text-[10px] text-slate-600">
+                          Reason: {String(copilotDecision.reason)}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {copilotExplanation && (
+                    <div className="mt-1 rounded-md bg-slate-50 p-2 text-[10px] leading-snug text-slate-800">
+                      <div className="mb-1 text-[10px] font-semibold text-slate-700">
+                        Copilot explanation
+                      </div>
+                      <p className="whitespace-pre-wrap">{copilotExplanation}</p>
+                    </div>
+                  )}
+
+                  {!copilotDecision &&
+                    !copilotExplanation &&
+                    !copilotLoading &&
+                    !copilotError && (
+                      <p className="text-[10px] text-slate-400">
+                        Use <span className="font-semibold">“Check &amp; Explain”</span>{" "}
+                        to get a summarized view of the Researcher CSF decision and what
+                        research/teaching licenses or protocols are required.
+                      </p>
+                    )}
+                </section>
               </div>
             )}
           </div>
