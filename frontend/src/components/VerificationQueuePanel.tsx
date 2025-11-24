@@ -22,6 +22,8 @@ type VerificationRequest = {
 export function VerificationQueuePanel() {
   const [items, setItems] = useState<VerificationRequest[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [ragLoadingId, setRagLoadingId] = useState<string | null>(null);
+  const [ragAnswers, setRagAnswers] = useState<Record<string, string>>({});
 
   const loadQueue = async () => {
     setIsLoading(true);
@@ -54,6 +56,57 @@ export function VerificationQueuePanel() {
       decision_type: req.decision_type,
       source_document: doc, // /mnt/data/... path, treated as URL by runtime
     });
+  };
+
+  const explainRequestWithRag = async (req: VerificationRequest) => {
+    if (!req) return;
+    const decision =
+      req.payload?.verdict ?? req.payload?.decision ?? req.payload ?? null;
+
+    setRagLoadingId(req.id);
+    try {
+      const resp = await fetch(`${API_BASE}/rag/regulatory-explain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question:
+            req.user_question ??
+            "Explain this decision for the verification team, referencing the relevant policy and why this case needs manual review.",
+          decision,
+          regulatory_references: req.regulatory_reference_ids ?? [],
+        }),
+      });
+
+      if (!resp.ok) {
+        throw new Error(`RAG explain failed: ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      const answer =
+        (data.answer as string) ??
+        (data.text as string) ??
+        JSON.stringify(data, null, 2);
+
+      setRagAnswers((prev) => ({
+        ...prev,
+        [req.id]: answer,
+      }));
+
+      emitCodexCommand("verification_rag_explained", {
+        verification_id: req.id,
+        engine_family: req.engine_family,
+        decision_type: req.decision_type,
+        regulatory_reference_ids: req.regulatory_reference_ids ?? [],
+      });
+    } catch (err) {
+      console.error(err);
+      setRagAnswers((prev) => ({
+        ...prev,
+        [req.id]: "Failed to load RAG explanation.",
+      }));
+    } finally {
+      setRagLoadingId(null);
+    }
   };
 
   return (
@@ -116,22 +169,46 @@ export function VerificationQueuePanel() {
               </span>
             </div>
 
-            {req.source_documents?.length ? (
-              <div className="flex flex-wrap items-center gap-1">
-                {req.source_documents.slice(0, 2).map((doc) => (
-                  <a
-                    key={doc}
-                    href={doc}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={() => handleOpenDoc(req, doc)}
-                    className="rounded-full bg-white px-2 py-0.5 text-[9px] text-slate-700 ring-1 ring-slate-300 hover:bg-slate-100"
-                  >
-                    Open doc
-                  </a>
-                ))}
+            <div className="flex items-center justify-between gap-2">
+              {req.source_documents?.length ? (
+                <div className="flex flex-wrap items-center gap-1">
+                  {req.source_documents.slice(0, 2).map((doc) => (
+                    <a
+                      key={doc}
+                      href={doc}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={() => handleOpenDoc(req, doc)}
+                      className="rounded-full bg-white px-2 py-0.5 text-[9px] text-slate-700 ring-1 ring-slate-300 hover:bg-slate-100"
+                    >
+                      Open doc
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-[9px] text-slate-400">
+                  No source documents
+                </span>
+              )}
+
+              <button
+                type="button"
+                onClick={() => explainRequestWithRag(req)}
+                disabled={ragLoadingId === req.id}
+                className="rounded-full bg-slate-900 px-2 py-0.5 text-[9px] text-slate-50 hover:bg-slate-800 disabled:opacity-40"
+              >
+                {ragLoadingId === req.id ? "Explaining…" : "Explain with RAG"}
+              </button>
+            </div>
+
+            {ragAnswers[req.id] && (
+              <div className="mt-1 rounded bg-white p-2 text-[9px] leading-snug text-slate-800 ring-1 ring-slate-200">
+                <strong className="mb-1 block text-[9px] text-slate-600">
+                  RAG explanation
+                </strong>
+                <p className="whitespace-pre-wrap">{ragAnswers[req.id]}</p>
               </div>
-            ) : null}
+            )}
           </article>
         ))}
       </div>
