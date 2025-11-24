@@ -23,6 +23,20 @@ const API_BASE = (import.meta as any).env?.VITE_API_BASE || "";
 const CSF_PRACTITIONER_SOURCE_DOCUMENT =
   "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf";
 
+type ItemHistory = {
+  item_id: string;
+  name: string;
+  strength: string;
+  dosage_form: string;
+  dea_schedule: string;
+  last_purchase_date: string;
+  last_ship_to_state: string;
+  last_decision_status: string;
+  total_orders_12m: number;
+  verification_flags: string[];
+  source_documents: string[];
+};
+
 type PractitionerExample = {
   id: string;
   label: string;
@@ -117,6 +131,13 @@ export function PractitionerCsfSandbox() {
   const [ragAnswer, setRagAnswer] = useState<string | null>(null);
   const [isRagLoading, setIsRagLoading] = useState(false);
   const [ragError, setRagError] = useState<string | null>(null);
+
+  // --- NEW: inline controlled-substance item helper state ---
+  const [itemQuery, setItemQuery] = useState("");
+  const [itemResult, setItemResult] = useState<ItemHistory | null>(null);
+  const [itemLoading, setItemLoading] = useState(false);
+  const [itemError, setItemError] = useState<string | null>(null);
+  const [itemRagAnswer, setItemRagAnswer] = useState<string | null>(null);
 
   function applyPractitionerExample(example: PractitionerExample) {
     const nextForm = {
@@ -267,6 +288,12 @@ export function PractitionerCsfSandbox() {
     setRegulatoryArtifacts([]);
     setRegulatoryError(null);
     setIsLoadingRegulatory(false);
+
+    setItemQuery("");
+    setItemResult(null);
+    setItemLoading(false);
+    setItemError(null);
+    setItemRagAnswer(null);
   };
 
   const handleExplain = async () => {
@@ -291,6 +318,92 @@ export function PractitionerCsfSandbox() {
       );
     } finally {
       setIsExplaining(false);
+    }
+  };
+
+  const lookupItemHistory = async () => {
+    const q = itemQuery.trim();
+    if (!q || !API_BASE) return;
+    setItemLoading(true);
+    setItemError(null);
+    setItemResult(null);
+    setItemRagAnswer(null);
+
+    try {
+      const resp = await fetch(
+        `${API_BASE}/controlled-substances/item-history/search?` +
+          new URLSearchParams({ query: q, limit: "1" })
+      );
+      if (!resp.ok) {
+        throw new Error(`Item history search failed: ${resp.status}`);
+      }
+      const data = (await resp.json()) as ItemHistory[];
+      const first = data[0] ?? null;
+      setItemResult(first);
+
+      emitCodexCommand("cs_practitioner_item_history_lookup", {
+        query: q,
+        found: !!first,
+        engine_family: "csf",
+        decision_type: "csf_practitioner",
+      });
+
+      if (!first) {
+        setItemError("No item history found for that query.");
+      }
+    } catch (err) {
+      console.error(err);
+      setItemError("Failed to search item history.");
+    } finally {
+      setItemLoading(false);
+    }
+  };
+
+  const explainItemWithRag = async () => {
+    if (!itemResult || !API_BASE) return;
+
+    setItemRagAnswer(null);
+    try {
+      const decisionPayload = {
+        item_id: itemResult.item_id,
+        name: itemResult.name,
+        dea_schedule: itemResult.dea_schedule,
+        last_ship_to_state: itemResult.last_ship_to_state,
+        last_decision_status: itemResult.last_decision_status,
+        total_orders_12m: itemResult.total_orders_12m,
+        verification_flags: itemResult.verification_flags,
+      };
+
+      const resp = await fetch(`${API_BASE}/rag/regulatory-explain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question:
+            "Explain what controlled-substance licenses or forms are required to ship this item to the given state, and how CSF / Ohio TDDD / PDMA flows apply.",
+          decision: decisionPayload,
+          regulatory_references: [], // we let the backend pick relevant rules/docs
+        }),
+      });
+
+      if (!resp.ok) {
+        throw new Error(`RAG explain failed: ${resp.status}`);
+      }
+      const data = await resp.json();
+      const answer =
+        (data.answer as string) ??
+        (data.text as string) ??
+        JSON.stringify(data, null, 2);
+
+      setItemRagAnswer(answer);
+
+      emitCodexCommand("cs_practitioner_item_rag_explained", {
+        item_id: itemResult.item_id,
+        engine_family: "csf",
+        decision_type: "csf_practitioner",
+      });
+    } catch (err) {
+      console.error(err);
+      setItemRagAnswer("Failed to load RAG explanation for this item.");
     }
   };
 
@@ -503,6 +616,145 @@ export function PractitionerCsfSandbox() {
                 className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
                 rows={2}
               />
+            </div>
+
+            {/* --- NEW: Controlled Substances Item Helper --- */}
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-[11px] font-semibold text-slate-800">
+                    Controlled Substances – Item (optional)
+                  </h3>
+                  <p className="text-[10px] text-slate-500">
+                    Look up a controlled item by ID (NDC/SKU) or name to see DEA
+                    schedule, recent decisions, and flags while filling this
+                    form.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mb-2 flex items-center gap-1">
+                <input
+                  type="text"
+                  value={itemQuery}
+                  onChange={(e) => setItemQuery(e.target.value)}
+                  placeholder="e.g. NDC-55555-0101 or Hydrocodone"
+                  className="h-7 flex-1 rounded-md border border-slate-300 bg-white px-2 text-[11px] text-slate-900 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
+                />
+                <button
+                  type="button"
+                  onClick={lookupItemHistory}
+                  disabled={itemLoading || !API_BASE}
+                  className="h-7 rounded-md bg-slate-900 px-3 text-[11px] font-medium text-slate-50 hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {itemLoading ? "Searching…" : "Lookup"}
+                </button>
+              </div>
+
+              {itemError && (
+                <p className="mb-1 text-[10px] text-rose-600">{itemError}</p>
+              )}
+
+              {itemResult && (
+                <div className="rounded-md border border-slate-200 bg-white p-2">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-mono font-semibold text-slate-900">
+                        {itemResult.item_id}
+                      </span>
+                      <span className="text-[10px] text-slate-700">
+                        {itemResult.name}
+                      </span>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-medium text-rose-800">
+                        Schedule {itemResult.dea_schedule}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-medium text-slate-800">
+                        Last decision: {itemResult.last_decision_status}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mb-1 flex items-center justify-between gap-2 text-[9px] text-slate-600">
+                    <span>
+                      Last purchase:{" "}
+                      <strong className="text-slate-800">
+                        {itemResult.last_purchase_date}
+                      </strong>
+                    </span>
+                    <span>
+                      Ship-to:{" "}
+                      <strong className="text-slate-800">
+                        {itemResult.last_ship_to_state}
+                      </strong>
+                    </span>
+                    <span>
+                      12m orders:{" "}
+                      <strong className="text-slate-800">
+                        {itemResult.total_orders_12m}
+                      </strong>
+                    </span>
+                  </div>
+
+                  {itemResult.verification_flags?.length > 0 && (
+                    <div className="mb-1 flex flex-wrap items-center gap-1">
+                      {itemResult.verification_flags.map((f) => (
+                        <span
+                          key={f}
+                          className="rounded-full bg-slate-50 px-2 py-0.5 text-[9px] text-slate-700 ring-1 ring-slate-300"
+                        >
+                          {f.replace(/_/g, " ")}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {itemResult.source_documents?.length > 0 && (
+                    <div className="mb-1 flex flex-wrap items-center gap-1">
+                      {itemResult.source_documents.slice(0, 2).map((doc) => (
+                        <a
+                          key={doc}
+                          href={doc}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={() =>
+                            emitCodexCommand(
+                              "cs_practitioner_item_history_document_opened",
+                              {
+                                item_id: itemResult.item_id,
+                                source_document: doc, // /mnt/data/... path
+                              }
+                            )
+                          }
+                          className="rounded-full bg-white px-2 py-0.5 text-[9px] text-slate-700 ring-1 ring-slate-300 hover:bg-slate-100"
+                        >
+                          Open doc
+                        </a>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-1">
+                    <button
+                      type="button"
+                      onClick={explainItemWithRag}
+                      className="rounded-full bg-slate-900 px-3 py-0.5 text-[9px] text-slate-50 hover:bg-slate-800"
+                    >
+                      Explain this item with RAG
+                    </button>
+                  </div>
+
+                  {itemRagAnswer && (
+                    <div className="mt-1 rounded bg-slate-50 p-2 text-[9px] leading-snug text-slate-800">
+                      <strong className="mb-1 block text-[9px] text-slate-600">
+                        RAG explanation
+                      </strong>
+                      <p className="whitespace-pre-wrap">{itemRagAnswer}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="mt-2 flex items-center gap-2">
