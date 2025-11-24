@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import os
 from typing import Any, Dict, List, Optional
 
@@ -9,26 +10,22 @@ from autocomply.domain.compliance_artifacts import (
     COMPLIANCE_ARTIFACTS,
     ComplianceArtifact,
 )
-
-# --- Optional LangChain imports (guarded) ---
+from src.api.models.compliance_models import RegulatoryContextItem
 
 USE_REAL_RAG = os.getenv("AUTOCOMPLY_ENABLE_RAG", "0") == "1"
 
-try:
-    if USE_REAL_RAG:
-        from langchain_openai import ChatOpenAI, OpenAIEmbeddings  # type: ignore
-        from langchain_community.vectorstores import Chroma  # type: ignore
-        from langchain_community.document_loaders import (  # type: ignore
-            PyPDFLoader,
-            UnstructuredHTMLLoader,
-        )
-        from langchain.text_splitter import RecursiveCharacterTextSplitter  # type: ignore
+HAVE_RAG_DEPENDENCIES = False
 
-        HAVE_LANGCHAIN = True
-    else:
-        HAVE_LANGCHAIN = False
-except ImportError:
-    HAVE_LANGCHAIN = False
+if USE_REAL_RAG and importlib.util.find_spec("openai") and importlib.util.find_spec(
+    "rag.regulatory_docs_retriever"
+):
+    from openai import OpenAI
+    from rag.regulatory_docs_retriever import (
+        RetrievedRegulatoryChunk,
+        retrieve_regulatory_chunks,
+    )
+
+    HAVE_RAG_DEPENDENCIES = True
 
 
 class RegulatoryRagRequestModel(BaseModel):
@@ -72,106 +69,202 @@ def _lookup_artifacts(ids: List[str]) -> List[ComplianceArtifact]:
     return [a for a in COMPLIANCE_ARTIFACTS if a.id in id_set]
 
 
+def _build_artifact_context_items(
+    artifacts: List[ComplianceArtifact],
+) -> List[RegulatoryContextItem]:
+    if not artifacts:
+        return []
+
+    items: List[RegulatoryContextItem] = []
+    for artifact in artifacts:
+        snippet = artifact.notes or f"Reference artifact: {artifact.name}"
+        items.append(
+            RegulatoryContextItem(
+                jurisdiction=artifact.jurisdiction,
+                snippet=snippet,
+                source=f"artifact:{artifact.id}",
+            )
+        )
+
+    return items
+
+
+def _vector_chunks_to_context(
+    chunks: List["RetrievedRegulatoryChunk"],
+    default_jurisdiction: Optional[str],
+) -> List[RegulatoryContextItem]:
+    context_items: List[RegulatoryContextItem] = []
+
+    for chunk in chunks:
+        meta = chunk.metadata or {}
+        title = (
+            meta.get("title")
+            or meta.get("file_name")
+            or os.path.basename(meta.get("url", "") or "")
+            or "Regulatory document"
+        )
+
+        context_items.append(
+            RegulatoryContextItem(
+                jurisdiction=meta.get("jurisdiction") or default_jurisdiction,
+                snippet=f"{title}: {chunk.text}",
+                source=meta.get("source") or "regulatory_docs",
+            )
+        )
+
+    return context_items
+
+
+def _format_context_blocks(context_items: List[RegulatoryContextItem]) -> str:
+    if not context_items:
+        return ""
+
+    context_blocks: List[str] = []
+    for idx, c in enumerate(context_items, start=1):
+        header_bits = []
+        if c.source:
+            header_bits.append(str(c.source))
+        if c.jurisdiction:
+            header_bits.append(f"[{c.jurisdiction}]")
+        header = " ".join(header_bits) if header_bits else f"Source {idx}"
+
+        context_blocks.append(f"{header}\n{c.snippet}")
+
+    return "\n\n---\n\n".join(context_blocks)
+
+
+def _derive_jurisdiction(
+    decision: Optional[Dict[str, Any]],
+    artifacts: List[ComplianceArtifact],
+) -> Optional[str]:
+    if decision:
+        for key in ("state", "jurisdiction", "ship_to_state"):
+            value = decision.get(key)
+            if value:
+                return value
+
+    for artifact in artifacts:
+        if artifact.jurisdiction:
+            return artifact.jurisdiction
+
+    return None
+
+
+def _build_decision_summary(
+    decision: Optional[Dict[str, Any]],
+    artifact_labels: List[str],
+) -> str:
+    if not decision and not artifact_labels:
+        return ""
+
+    parts: List[str] = []
+
+    if decision:
+        status = decision.get("status")
+        if status:
+            parts.append(f"status: {status}")
+
+        reason = decision.get("reason")
+        if reason:
+            parts.append(f"reason: {reason}")
+
+    if artifact_labels:
+        parts.append(f"artifacts: {', '.join(artifact_labels)}")
+
+    return " | ".join(parts)
+
+
 def _real_rag_answer(
     payload: RegulatoryRagRequestModel,
     artifacts: List[ComplianceArtifact],
 ) -> RegulatoryRagAnswer:
     """
-    Real RAG implementation using LangChain.
-    This will only be used if AUTOCOMPLY_ENABLE_RAG=1 and LangChain is installed.
+    Real RAG implementation for regulatory explanations.
 
-    NOTE: This is intentionally minimal and can be enriched later.
+    - Prefer chunks from the `autocomply_regulatory_docs` Chroma collection
+    - Fall back to the existing artifact/rule-based context
     """
+    jurisdiction = _derive_jurisdiction(payload.decision, artifacts)
+    artifact_labels = [a.name for a in artifacts if a.name]
 
-    if not artifacts:
-        return RegulatoryRagAnswer(
-            answer=(
-                "No matching regulatory artifacts were found for the provided "
-                "regulatory_references. RAG could not run."
-            ),
-            regulatory_references=payload.regulatory_references,
-            artifacts_used=[],
-            debug={"mode": "rag", "docs_loaded": 0},
-        )
-
-    docs = []
-
-    for art in artifacts:
-        src = art.source_document
-        if not src:
-            continue
-
-        # source_document values are local paths under /mnt/data/...
-        # Example:
-        # - /mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf
-        # - /mnt/data/FLORIDA TEST.pdf
-        # - /mnt/data/Ohio TDDD.html
-
-        if src.lower().endswith(".pdf"):
-            loader = PyPDFLoader(src)
-        elif src.lower().endswith(".html"):
-            loader = UnstructuredHTMLLoader(src)
-        else:
-            # Fallback: treat as text-like file
-            loader = UnstructuredHTMLLoader(src)
-
-        docs.extend(loader.load())
-
-    if not docs:
-        return RegulatoryRagAnswer(
-            answer=(
-                "RAG pipeline could not load any documents for the provided "
-                "regulatory_references."
-            ),
-            regulatory_references=payload.regulatory_references,
-            artifacts_used=[a.id for a in artifacts],
-            debug={"mode": "rag", "docs_loaded": 0},
-        )
-
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1200,
-        chunk_overlap=150,
+    decision_summary = _build_decision_summary(
+        payload.decision,
+        artifact_labels,
     )
-    split_docs = splitter.split_documents(docs)
 
-    embeddings = OpenAIEmbeddings()
-    vectordb = Chroma.from_documents(split_docs, embedding=embeddings)
-    retriever = vectordb.as_retriever(search_kwargs={"k": 6})
+    query_parts: List[str] = []
+    if jurisdiction:
+        query_parts.append(f"jurisdiction: {jurisdiction}")
+    if decision_summary:
+        query_parts.append(decision_summary)
+    query_parts.append(payload.question)
+    rag_query = " | ".join(part for part in query_parts if part)
 
-    llm = ChatOpenAI(temperature=0.2)
+    vector_chunks: List[RetrievedRegulatoryChunk] = retrieve_regulatory_chunks(
+        rag_query,
+        k=6,
+    )
 
-    # Manual, minimal RAG loop (can be replaced with a chain/graph later)
-    retrieved = retriever.invoke(payload.question)
-    context_text = "\n\n".join([d.page_content for d in retrieved])
+    vector_context_items = _vector_chunks_to_context(
+        vector_chunks,
+        jurisdiction,
+    )
+    artifact_context_items = _build_artifact_context_items(artifacts)
+    full_context_items: List[RegulatoryContextItem] = vector_context_items + (
+        artifact_context_items or []
+    )
+    context_text = _format_context_blocks(full_context_items)
 
     decision_snippet = ""
     if payload.decision:
         decision_snippet = f"Engine decision JSON:\n{payload.decision}\n"
 
-    prompt = (
-        "You are an AI assistant helping explain regulatory compliance decisions.\n"
-        "Use the provided regulatory context and the decision JSON (if present)\n"
-        "to answer the user's question. Cite specific obligations or language\n"
-        "from the documents when helpful.\n\n"
-        "=== REGULATORY CONTEXT ===\n"
-        f"{context_text}\n\n"
-        "=== DECISION CONTEXT ===\n"
-        f"{decision_snippet}\n"
-        "=== QUESTION ===\n"
-        f"{payload.question}\n\n"
-        "Answer in clear, concise language, suitable for a compliance analyst.\n"
+    system_prompt = (
+        "You are an expert in US healthcare regulatory compliance, "
+        "with a focus on controlled substances, state licenses, and "
+        "distributor responsibilities. Explain the decision clearly, "
+        "citing the relevant rules in natural language."
     )
 
-    resp = llm.invoke(prompt)
+    user_prompt = f"""You are explaining a compliance decision to an internal support agent.
+
+Decision summary:
+{decision_summary or '(no decision summary provided)'}
+
+Regulatory context:
+{context_text or '(no additional regulatory documents were found, fall back to general rules.)'}
+
+Question from the agent:
+{payload.question}
+
+Write a concise, well-structured explanation that:
+- Clearly states whether the decision allows or blocks shipment, and why.
+- References relevant jurisdictions (e.g., states, federal agencies like DEA).
+- Mentions any key forms or licenses (e.g., Ohio TDDD, CSF, DEA registration) that drive the decision.
+- Uses plain language suitable for frontline support teams.
+"""
+
+    client = OpenAI()
+    completion = client.responses.create(
+        model=os.getenv("AUTOCOMPLY_RAG_MODEL", "gpt-4.1-mini"),
+        input=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+    )
+
+    answer_text = getattr(completion, "output_text", str(completion))
 
     return RegulatoryRagAnswer(
-        answer=str(resp.content),
+        answer=answer_text,
         regulatory_references=payload.regulatory_references,
         artifacts_used=[a.id for a in artifacts],
         debug={
             "mode": "rag",
-            "docs_loaded": len(docs),
-            "chunks": len(split_docs),
+            "rag_query": rag_query,
+            "vector_chunks": len(vector_chunks),
+            "artifact_context": len(artifact_context_items),
+            "context_items": [c.model_dump() for c in full_context_items],
         },
     )
 
@@ -181,13 +274,13 @@ def regulatory_rag_explain(payload: RegulatoryRagRequestModel) -> RegulatoryRagA
     Entry point used by the FastAPI route.
 
     - Resolves artifacts by regulatory_references.
-    - If LangChain + AUTOCOMPLY_ENABLE_RAG=1, runs real RAG.
+    - If AUTOCOMPLY_ENABLE_RAG=1 and RAG dependencies are available, runs real RAG.
     - Otherwise returns a deterministic stub answer that still echoes artifacts.
     """
 
     artifacts = _lookup_artifacts(payload.regulatory_references)
 
-    if USE_REAL_RAG and HAVE_LANGCHAIN:
+    if USE_REAL_RAG and HAVE_RAG_DEPENDENCIES:
         return _real_rag_answer(payload, artifacts)
 
     # Stubbed answer (safe for CI and environments without LangChain/OpenAI key)
@@ -210,7 +303,7 @@ def regulatory_rag_explain(payload: RegulatoryRagRequestModel) -> RegulatoryRagA
         artifacts_used=[a.id for a in artifacts],
         debug={
             "mode": "stub",
-            "have_langchain": HAVE_LANGCHAIN,
+            "have_rag_dependencies": HAVE_RAG_DEPENDENCIES,
             "use_real_rag_flag": USE_REAL_RAG,
         },
     )
