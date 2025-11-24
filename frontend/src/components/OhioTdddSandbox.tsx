@@ -83,6 +83,14 @@ export function OhioTdddSandbox() {
   const [isRagLoading, setIsRagLoading] = useState(false);
   const [ragError, setRagError] = useState<string | null>(null);
 
+  // ---- Ohio TDDD Form Copilot state (new) ----
+  const [copilotLoading, setCopilotLoading] = useState(false);
+  const [copilotDecision, setCopilotDecision] = useState<any | null>(null);
+  const [copilotExplanation, setCopilotExplanation] = useState<string | null>(
+    null
+  );
+  const [copilotError, setCopilotError] = useState<string | null>(null);
+
   // Regulatory basis chips
   const [regulatoryArtifacts, setRegulatoryArtifacts] = useState<
     ComplianceArtifact[]
@@ -224,6 +232,80 @@ export function OhioTdddSandbox() {
     setRegulatoryArtifacts([]);
     setRegulatoryError(null);
     setIsLoadingRegulatory(false);
+  };
+
+  const runOhioTdddCopilot = async () => {
+    if (!API_BASE) return;
+
+    setCopilotLoading(true);
+    setCopilotError(null);
+    setCopilotExplanation(null);
+    setCopilotDecision(null);
+
+    try {
+      // 1) Run the real Ohio TDDD decision engine
+      const evalResp = await fetch(`${API_BASE}/ohio-tddd/evaluate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+
+      if (!evalResp.ok) {
+        throw new Error(`Ohio TDDD evaluate failed: ${evalResp.status}`);
+      }
+
+      const evalJson = await evalResp.json();
+      const decision =
+        (evalJson.decision as any) ?? (evalJson.verdict as any) ?? evalJson;
+
+      setCopilotDecision(decision);
+
+      emitCodexCommand("ohio_tddd_form_copilot_run", {
+        engine_family: "ohio_tddd",
+        decision_type: "ohio_tddd",
+        outcome: decision.outcome ?? decision.status ?? "unknown",
+      });
+
+      // 2) Ask RAG to explain what this means / what’s missing
+      const ragResp = await fetch(`${API_BASE}/rag/regulatory-explain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question:
+            "Explain for a verification specialist what this Ohio TDDD decision means, including what licenses or TDDD classifications are required for this account/location to receive controlled substances in Ohio. Be concise and actionable.",
+          decision,
+          regulatory_references: [],
+        }),
+      });
+
+      if (!ragResp.ok) {
+        throw new Error(`RAG explain failed: ${ragResp.status}`);
+      }
+
+      const ragJson = await ragResp.json();
+      const answer =
+        (ragJson.answer as string) ??
+        (ragJson.text as string) ??
+        JSON.stringify(ragJson, null, 2);
+
+      setCopilotExplanation(answer);
+
+      emitCodexCommand("ohio_tddd_form_copilot_complete", {
+        engine_family: "ohio_tddd",
+        decision_type: "ohio_tddd",
+        outcome: decision.outcome ?? decision.status ?? "unknown",
+      });
+    } catch (err: any) {
+      console.error(err);
+      setCopilotError(
+        "Ohio TDDD Copilot could not run. Check the console or try again."
+      );
+      emitCodexCommand("ohio_tddd_form_copilot_error", {
+        message: String(err?.message || err),
+      });
+    } finally {
+      setCopilotLoading(false);
+    }
   };
 
   const handleExplain = async () => {
@@ -603,6 +685,75 @@ export function OhioTdddSandbox() {
           )}
         </div>
       )}
+
+      {/* ---- Ohio TDDD Form Copilot (beta) ---- */}
+      <section className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+        <header className="mb-2 flex items-center justify-between gap-2">
+          <div>
+            <h3 className="text-[11px] font-semibold text-slate-800">
+              Ohio TDDD Copilot (beta)
+            </h3>
+            <p className="text-[10px] text-slate-500">
+              Runs the Ohio TDDD engine on the current form and asks the
+              regulatory RAG service to explain what&apos;s allowed or blocked,
+              plus what licenses/classifications are missing.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={runOhioTdddCopilot}
+            disabled={copilotLoading || !API_BASE}
+            className="h-7 rounded-md bg-slate-900 px-3 text-[11px] font-medium text-slate-50 hover:bg-slate-800 disabled:opacity-50"
+          >
+            {copilotLoading ? "Checking…" : "Check & Explain"}
+          </button>
+        </header>
+
+        {copilotError && (
+          <p className="mb-1 text-[10px] text-rose-600">{copilotError}</p>
+        )}
+
+        {copilotDecision && (
+          <div className="mb-1 rounded-md bg-slate-50 p-2 text-[10px] text-slate-800">
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <span className="font-semibold text-slate-700">
+                Decision outcome:
+              </span>
+              <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[9px] font-medium text-slate-50">
+                {copilotDecision.outcome ??
+                  copilotDecision.status ??
+                  "See details below"}
+              </span>
+            </div>
+            {copilotDecision.reason && (
+              <p className="text-[10px] text-slate-600">
+                Reason: {String(copilotDecision.reason)}
+              </p>
+            )}
+          </div>
+        )}
+
+        {copilotExplanation && (
+          <div className="mt-1 rounded-md bg-slate-50 p-2 text-[10px] leading-snug text-slate-800">
+            <div className="mb-1 text-[10px] font-semibold text-slate-700">
+              Copilot explanation
+            </div>
+            <p className="whitespace-pre-wrap">{copilotExplanation}</p>
+          </div>
+        )}
+
+        {!copilotDecision &&
+          !copilotExplanation &&
+          !copilotLoading &&
+          !copilotError && (
+            <p className="text-[10px] text-slate-400">
+              Click <span className="font-semibold">“Check &amp; Explain”</span>{" "}
+              to have AutoComply run the Ohio TDDD engine on this form and
+              summarize what it thinks, including required TDDD license details
+              or missing information.
+            </p>
+          )}
+      </section>
 
       {/* Reset */}
       <div className="mt-3 flex justify-end">
