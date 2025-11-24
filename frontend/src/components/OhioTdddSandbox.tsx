@@ -22,6 +22,9 @@ import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { emitCodexCommand } from "../utils/codexLogger";
 
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || "";
+const OHIO_TDDD_SOURCE_DOCUMENT = "/mnt/data/Ohio TDDD.html";
+
 type OhioExample = {
   id: string;
   label: string;
@@ -119,6 +122,86 @@ export function OhioTdddSandbox() {
     try {
       const result = await evaluateOhioTddd(form);
       setDecision(result);
+
+      emitCodexCommand("evaluate_ohio_tddd", {
+        form,
+        decision: result,
+        source_document: OHIO_TDDD_SOURCE_DOCUMENT,
+      });
+
+      // --- NEW: snapshot into decision history ---
+      let snapshotId: string | undefined;
+
+      try {
+        const snapResp = await fetch(`${API_BASE}/decisions/history`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            engine_family: "ohio_tddd",
+            decision_type: "ohio_tddd",
+            status: result.status,
+            jurisdiction: form.shipToState,
+            regulatory_reference_ids:
+              result.regulatory_references?.map((r: any) => r.id) ?? [],
+            source_documents:
+              result.regulatory_references?.map((r: any) => r.source_document) ??
+              [OHIO_TDDD_SOURCE_DOCUMENT],
+            payload: {
+              form,
+              decision: result,
+            },
+          }),
+        });
+
+        if (snapResp.ok) {
+          const snapBody = await snapResp.json();
+          snapshotId = (snapBody as any).id;
+        }
+      } catch (err) {
+        console.error("Failed to snapshot Ohio TDDD decision", err);
+      }
+
+      // --- NEW: create verification request when not allowed ---
+      if (result.status !== "allowed") {
+        try {
+          await fetch(`${API_BASE}/verifications/submit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              engine_family: "ohio_tddd",
+              decision_type: "ohio_tddd",
+              jurisdiction: form.shipToState,
+              reason_for_review:
+                result.status === "manual_review"
+                  ? "manual_review"
+                  : "ohio_tddd_blocked",
+              decision_snapshot_id: snapshotId,
+              regulatory_reference_ids:
+                result.regulatory_references?.map((r: any) => r.id) ?? [],
+              source_documents:
+                result.regulatory_references?.map((r: any) => r.source_document) ??
+                [OHIO_TDDD_SOURCE_DOCUMENT],
+              user_question: null,
+              channel: "web_sandbox",
+              payload: {
+                form,
+                decision: result,
+              },
+            }),
+          });
+
+          emitCodexCommand("verification_request_created", {
+            engine_family: "ohio_tddd",
+            decision_type: "ohio_tddd",
+            status: result.status,
+            decision_snapshot_id: snapshotId,
+            source_document: OHIO_TDDD_SOURCE_DOCUMENT,
+          });
+        } catch (err) {
+          console.error("Failed to submit Ohio TDDD verification request", err);
+        }
+      }
+      // --- END NEW ---
     } catch (err: any) {
       setError(
         err?.message ?? "Failed to evaluate Ohio TDDD application"

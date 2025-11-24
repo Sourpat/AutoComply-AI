@@ -19,6 +19,10 @@ import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { emitCodexCommand } from "../utils/codexLogger";
 
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || "";
+const CSF_PRACTITIONER_SOURCE_DOCUMENT =
+  "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf";
+
 type PractitionerExample = {
   id: string;
   label: string;
@@ -160,6 +164,86 @@ export function PractitionerCsfSandbox() {
         ...form,
       });
       setDecision(result);
+
+      emitCodexCommand("evaluate_csf_practitioner", {
+        form,
+        decision: result,
+        source_document: CSF_PRACTITIONER_SOURCE_DOCUMENT,
+      });
+
+      // --- NEW: snapshot into decision history ---
+      let snapshotId: string | undefined;
+
+      try {
+        const snapResp = await fetch(`${API_BASE}/decisions/history`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            engine_family: "csf",
+            decision_type: "csf_practitioner",
+            status: result.status,
+            jurisdiction: form.shipToState,
+            regulatory_reference_ids:
+              result.regulatory_references?.map((r: any) => r.id) ?? [],
+            source_documents:
+              result.regulatory_references?.map((r: any) => r.source_document) ??
+              [CSF_PRACTITIONER_SOURCE_DOCUMENT],
+            payload: {
+              form,
+              decision: result,
+            },
+          }),
+        });
+
+        if (snapResp.ok) {
+          const snapBody = await snapResp.json();
+          snapshotId = (snapBody as any).id;
+        }
+      } catch (err) {
+        console.error("Failed to snapshot CSF practitioner decision", err);
+      }
+
+      // --- NEW: create verification request when not allowed ---
+      if (result.status !== "allowed") {
+        try {
+          await fetch(`${API_BASE}/verifications/submit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              engine_family: "csf",
+              decision_type: "csf_practitioner",
+              jurisdiction: form.shipToState,
+              reason_for_review:
+                result.status === "manual_review"
+                  ? "manual_review"
+                  : "csf_practitioner_blocked",
+              decision_snapshot_id: snapshotId,
+              regulatory_reference_ids:
+                result.regulatory_references?.map((r: any) => r.id) ?? [],
+              source_documents:
+                result.regulatory_references?.map((r: any) => r.source_document) ??
+                [CSF_PRACTITIONER_SOURCE_DOCUMENT],
+              user_question: null,
+              channel: "web_sandbox",
+              payload: {
+                form,
+                decision: result,
+              },
+            }),
+          });
+
+          emitCodexCommand("verification_request_created", {
+            engine_family: "csf",
+            decision_type: "csf_practitioner",
+            status: result.status,
+            decision_snapshot_id: snapshotId,
+            source_document: CSF_PRACTITIONER_SOURCE_DOCUMENT,
+          });
+        } catch (err) {
+          console.error("Failed to submit CSF practitioner verification request", err);
+        }
+      }
+      // --- END NEW ---
     } catch (err: any) {
       setError(err?.message ?? "Failed to evaluate Practitioner CSF");
     } finally {
