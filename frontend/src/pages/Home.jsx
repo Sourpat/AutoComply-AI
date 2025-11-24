@@ -19,6 +19,7 @@ import { ComplianceCoverageTable } from "../components/ComplianceCoverageTable";
 import { RegulatoryFlowsPanel } from "../components/RegulatoryFlowsPanel";
 import { PdmaSampleSandbox } from "../components/PdmaSampleSandbox";
 import { VerificationQueuePanel } from "../components/VerificationQueuePanel";
+import { ControlledSubstancesItemHistoryPanel } from "../components/ControlledSubstancesItemHistoryPanel";
 import { validateLicenseJSON, explainRule } from "../services/api";
 
 const Home = () => {
@@ -217,6 +218,7 @@ const Home = () => {
               <RegulatoryFlowsPanel />
               <DecisionHistoryPanel />
               <VerificationQueuePanel />
+              <ControlledSubstancesItemHistoryPanel />
               <ComplianceCoverageTable />
               <section className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
                 <header className="mb-4 flex items-center justify-between">
