@@ -395,8 +395,32 @@ export function PractitionerCsfSandbox() {
     setCopilotSources([]);
 
     try {
-      const evalJson = await callPractitionerEvaluate(API_BASE, form);
-      const decision = evalJson.verdict ?? evalJson;
+      // 1) Run the real CSF decision engine on the current form
+      // Build the payload in the exact shape the backend expects
+      const payload = {
+        facility_name: form.facilityName.trim(), // adjust to the actual field name in state
+        facility_type: form.facilityType, // reuse the same enum key used by the main Evaluate handler
+        account_number: form.accountNumber.trim(),
+        practitioner_name: form.practitionerName.trim(),
+        state_license_number: form.stateLicenseNumber.trim(),
+        dea_number: form.deaNumber.trim(),
+        ship_to_state: form.shipToState,
+        attestation_accepted: form.attestationAccepted,
+        internal_notes: form.internalNotes?.trim() || null,
+      };
+
+      const evalResp = await fetch(`${API_BASE}/csf/practitioner/evaluate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!evalResp.ok) {
+        throw new Error(`Evaluate failed: ${evalResp.status}`);
+      }
+
+      const evalJson = await evalResp.json();
+      const decision = evalJson.decision ?? evalJson.verdict ?? evalJson;
 
       setCopilotDecision(decision);
       setDecision(decision);
