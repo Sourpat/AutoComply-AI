@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import BaseModel, Field
+from pydantic import AnyHttpUrl, BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # n8n integration (optional)
     AUTOCOMPLY_N8N_BASE_URL: str | None = Field(default=None)
     AUTOCOMPLY_N8N_SLACK_WEBHOOK_PATH: str | None = Field(default=None)
+    n8n_verification_webhook_url: AnyHttpUrl | None = Field(
+        default=None, alias="N8N_VERIFICATION_WEBHOOK_URL"
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
