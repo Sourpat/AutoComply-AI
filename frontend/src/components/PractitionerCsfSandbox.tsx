@@ -18,6 +18,7 @@ import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { emitCodexCommand } from "../utils/codexLogger";
+import { RegulatorySourcesList, RegulatorySource } from "./RegulatorySourcesList";
 
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || "";
 const CSF_PRACTITIONER_SOURCE_DOCUMENT =
@@ -137,6 +138,7 @@ export function PractitionerCsfSandbox() {
     null
   );
   const [copilotError, setCopilotError] = useState<string | null>(null);
+  const [copilotSources, setCopilotSources] = useState<RegulatorySource[]>([]);
 
   // --- NEW: inline controlled-substance item helper state ---
   const [itemQuery, setItemQuery] = useState("");
@@ -295,6 +297,7 @@ export function PractitionerCsfSandbox() {
     setCopilotDecision(null);
     setCopilotExplanation(null);
     setCopilotError(null);
+    setCopilotSources([]);
 
     setRegulatoryArtifacts([]);
     setRegulatoryError(null);
@@ -339,6 +342,7 @@ export function PractitionerCsfSandbox() {
     setCopilotError(null);
     setCopilotExplanation(null);
     setCopilotDecision(null);
+    setCopilotSources([]);
 
     try {
       // 1) Run the real CSF decision engine on the current form
@@ -388,6 +392,18 @@ export function PractitionerCsfSandbox() {
 
       setCopilotExplanation(answer);
 
+      const ctx = (ragJson.regulatory_context ?? ragJson.context ?? []) as any[];
+      const sources: RegulatorySource[] = (ctx || []).map((c, idx) => ({
+        title:
+          c.title ||
+          c.form_name ||
+          (c.url ? String(c.url).split("/").pop() : `Source ${idx + 1}`),
+        url: c.url,
+        jurisdiction: c.jurisdiction,
+        source: c.source,
+      }));
+      setCopilotSources(sources);
+
       emitCodexCommand("cs_practitioner_form_copilot_complete", {
         engine_family: "csf",
         decision_type: "csf_practitioner",
@@ -396,6 +412,7 @@ export function PractitionerCsfSandbox() {
     } catch (err: any) {
       console.error(err);
       setCopilotError("Form Copilot could not run. Check the console or try again.");
+      setCopilotSources([]);
       emitCodexCommand("cs_practitioner_form_copilot_error", {
         message: String(err?.message || err),
       });
@@ -1122,7 +1139,12 @@ export function PractitionerCsfSandbox() {
                   <div className="mb-1 text-[10px] font-semibold text-slate-700">
                     Copilot explanation
                   </div>
-                  <p className="whitespace-pre-wrap">{copilotExplanation}</p>
+                  <p className="mb-1 whitespace-pre-wrap">
+                    {copilotExplanation}
+                  </p>
+
+                  {/* NEW: show which docs/rules were used */}
+                  <RegulatorySourcesList sources={copilotSources} compact />
                 </div>
               )}
 
