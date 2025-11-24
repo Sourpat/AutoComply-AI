@@ -180,6 +180,7 @@ export function PractitionerCsfSandbox() {
   const [ragAnswer, setRagAnswer] = useState<string | null>(null);
   const [isRagLoading, setIsRagLoading] = useState(false);
   const [ragError, setRagError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotDecision, setCopilotDecision] = useState<any | null>(null);
   const [copilotExplanation, setCopilotExplanation] = useState<string | null>(
@@ -358,6 +359,7 @@ export function PractitionerCsfSandbox() {
     setItemLoading(false);
     setItemError(null);
     setItemRagAnswer(null);
+    setNotice(null);
   };
 
   const handleExplain = async () => {
@@ -388,6 +390,16 @@ export function PractitionerCsfSandbox() {
   const runFormCopilot = async () => {
     if (!API_BASE) return;
 
+    // Form Copilot needs a current CSF decision; ask the user to evaluate first
+    if (!decision) {
+      setNotice(
+        "Please click 'Evaluate Practitioner CSF' first, then run Form Copilot."
+      );
+      return;
+    }
+
+    setNotice(null);
+
     setCopilotLoading(true);
     setCopilotError(null);
     setCopilotExplanation(null);
@@ -395,40 +407,17 @@ export function PractitionerCsfSandbox() {
     setCopilotSources([]);
 
     try {
-      // 1) Run the real CSF decision engine on the current form
-      // Build the payload in the exact shape the backend expects
-      const payload = {
-        facility_name: form.facilityName.trim(), // adjust to the actual field name in state
-        facility_type: form.facilityType, // reuse the same enum key used by the main Evaluate handler
-        account_number: form.accountNumber.trim(),
-        practitioner_name: form.practitionerName.trim(),
-        state_license_number: form.stateLicenseNumber.trim(),
-        dea_number: form.deaNumber.trim(),
-        ship_to_state: form.shipToState,
-        attestation_accepted: form.attestationAccepted,
-        internal_notes: form.internalNotes?.trim() || null,
-      };
+      // 1) Reuse the existing CSF decision from the main Evaluate button
+      const decisionToUse = decision;
 
-      const evalResp = await fetch(`${API_BASE}/csf/practitioner/evaluate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!evalResp.ok) {
-        throw new Error(`Evaluate failed: ${evalResp.status}`);
-      }
-
-      const evalJson = await evalResp.json();
-      const decision = evalJson.decision ?? evalJson.verdict ?? evalJson;
-
-      setCopilotDecision(decision);
-      setDecision(decision);
+      // Keep Copilot state in sync with the main decision
+      setCopilotDecision(decisionToUse);
+      setDecision(decisionToUse);
 
       emitCodexCommand("cs_practitioner_form_copilot_run", {
         engine_family: "csf",
         decision_type: "csf_practitioner",
-        decision_outcome: decision.status ?? "unknown",
+        decision_outcome: decisionToUse.status ?? "unknown",
       });
 
       // 2) Ask the regulatory RAG endpoint to explain this decision
@@ -438,7 +427,7 @@ export function PractitionerCsfSandbox() {
         body: JSON.stringify({
           engine_family: "csf",
           decision_type: "csf_practitioner",
-          decision,
+          decision: decisionToUse,
           ask: "Explain to a verification specialist what this Practitioner CSF decision means, what is missing, and what is required next.",
           regulatory_references: [],
         }),
@@ -1175,6 +1164,10 @@ export function PractitionerCsfSandbox() {
                   {copilotLoading ? "Checking…" : "Check & Explain"}
                 </button>
               </header>
+
+              {notice && (
+                <p className="mb-1 text-[10px] text-amber-700">{notice}</p>
+              )}
 
               {copilotError && (
                 <p className="mb-1 text-[10px] text-rose-600">{copilotError}</p>
