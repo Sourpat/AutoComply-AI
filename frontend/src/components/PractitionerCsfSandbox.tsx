@@ -5,7 +5,6 @@ import {
   PractitionerCsfFormData,
   PractitionerFacilityType,
 } from "../domain/csfPractitioner";
-import { evaluatePractitionerCsf } from "../api/csfPractitionerClient";
 import { explainCsfDecision } from "../api/csfExplainClient";
 import type { CsfDecisionSummary } from "../api/csfExplainClient";
 import {
@@ -23,6 +22,55 @@ import { RegulatorySourcesList, RegulatorySource } from "./RegulatorySourcesList
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || "";
 const CSF_PRACTITIONER_SOURCE_DOCUMENT =
   "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf";
+
+type PractitionerCsfPayload = {
+  facility_name: string;
+  facility_type: string;
+  account_number: string;
+  practitioner_name: string;
+  state_license_number: string;
+  dea_number: string;
+  ship_to_state: string;
+  attestation_accepted: boolean;
+  internal_notes: string | null;
+};
+
+const buildPractitionerCsfPayload = (
+  form: PractitionerCsfFormData
+): PractitionerCsfPayload => {
+  const trim = (v: string | undefined | null) => (v ?? "").trim();
+
+  return {
+    facility_name: trim(form.facilityName),
+    facility_type: form.facilityType, // use the enum key the backend expects
+    account_number: trim(form.accountNumber),
+    practitioner_name: trim(form.practitionerName),
+    state_license_number: trim(form.stateLicenseNumber),
+    dea_number: trim(form.deaNumber),
+    ship_to_state: form.shipToState, // e.g. "NY"
+    attestation_accepted: form.attestationAccepted,
+    internal_notes: trim(form.internalNotes) || null,
+  };
+};
+
+const callPractitionerEvaluate = async (
+  apiBase: string,
+  form: PractitionerCsfFormData
+) => {
+  const payload = buildPractitionerCsfPayload(form);
+
+  const resp = await fetch(`${apiBase}/csf/practitioner/evaluate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!resp.ok) {
+    throw new Error(`Evaluate failed: ${resp.status}`);
+  }
+
+  return resp.json();
+};
 
 type ItemHistory = {
   item_id: string;
@@ -180,6 +228,9 @@ export function PractitionerCsfSandbox() {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!API_BASE) return;
+
     setIsLoading(true);
     setError(null);
     setDecision(null);
@@ -189,9 +240,8 @@ export function PractitionerCsfSandbox() {
     setRagError(null);
 
     try {
-      const result = await evaluatePractitionerCsf({
-        ...form,
-      });
+      const evalJson = await callPractitionerEvaluate(API_BASE, form);
+      const result = (evalJson as any).verdict ?? evalJson;
       setDecision(result);
 
       emitCodexCommand("evaluate_csf_practitioner", {
@@ -345,27 +395,16 @@ export function PractitionerCsfSandbox() {
     setCopilotSources([]);
 
     try {
-      // 1) Run the real CSF decision engine on the current form
-      const evalResp = await fetch(`${API_BASE}/csf/practitioner/evaluate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-
-      if (!evalResp.ok) {
-        throw new Error(`Evaluate failed: ${evalResp.status}`);
-      }
-
-      const evalJson = await evalResp.json();
-      const decision =
-        evalJson.decision ?? evalJson.verdict ?? evalJson;
+      const evalJson = await callPractitionerEvaluate(API_BASE, form);
+      const decision = evalJson.verdict ?? evalJson;
 
       setCopilotDecision(decision);
+      setDecision(decision);
 
       emitCodexCommand("cs_practitioner_form_copilot_run", {
         engine_family: "csf",
         decision_type: "csf_practitioner",
-        outcome: decision.outcome ?? decision.status ?? "unknown",
+        decision_outcome: decision.status ?? "unknown",
       });
 
       // 2) Ask the regulatory RAG endpoint to explain this decision
@@ -373,9 +412,10 @@ export function PractitionerCsfSandbox() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          question:
-            "Explain for a verification specialist what this CSF Practitioner decision means, including what is missing or required for this practitioner/location to be allowed to order controlled substances. Be concise and actionable.",
+          engine_family: "csf",
+          decision_type: "csf_practitioner",
           decision,
+          ask: "Explain to a verification specialist what this Practitioner CSF decision means, what is missing, and what is required next.",
           regulatory_references: [],
         }),
       });
@@ -407,11 +447,13 @@ export function PractitionerCsfSandbox() {
       emitCodexCommand("cs_practitioner_form_copilot_complete", {
         engine_family: "csf",
         decision_type: "csf_practitioner",
-        outcome: decision.outcome ?? decision.status ?? "unknown",
+        decision_outcome: decision.status ?? decision.outcome ?? "unknown",
       });
     } catch (err: any) {
       console.error(err);
-      setCopilotError("Form Copilot could not run. Check the console or try again.");
+      setCopilotError(
+        "Form Copilot could not run. Please check the form and try again."
+      );
       setCopilotSources([]);
       emitCodexCommand("cs_practitioner_form_copilot_error", {
         message: String(err?.message || err),
