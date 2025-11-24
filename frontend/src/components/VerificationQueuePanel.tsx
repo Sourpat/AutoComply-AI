@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { emitCodexCommand } from "../utils/codexLogger";
+import { VerificationDetailView } from "./VerificationDetailView";
 
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || "";
 
@@ -22,8 +23,11 @@ type VerificationRequest = {
 export function VerificationQueuePanel() {
   const [items, setItems] = useState<VerificationRequest[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
   const [ragLoadingId, setRagLoadingId] = useState<string | null>(null);
   const [ragAnswers, setRagAnswers] = useState<Record<string, string>>({});
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const loadQueue = async () => {
     setIsLoading(true);
@@ -37,6 +41,10 @@ export function VerificationQueuePanel() {
       emitCodexCommand("verification_queue_loaded", {
         count: data.length,
       });
+      // Reset selection if current selection disappeared
+      if (selectedId && !data.find((r) => r.id === selectedId)) {
+        setSelectedId(null);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -54,7 +62,7 @@ export function VerificationQueuePanel() {
       verification_id: req.id,
       engine_family: req.engine_family,
       decision_type: req.decision_type,
-      source_document: doc, // /mnt/data/... path, treated as URL by runtime
+      source_document: doc, // /mnt/data/... path
     });
   };
 
@@ -109,6 +117,10 @@ export function VerificationQueuePanel() {
     }
   };
 
+  const selected = selectedId
+    ? items.find((r) => r.id === selectedId) ?? null
+    : null;
+
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-3">
       <header className="mb-2 flex items-center justify-between gap-2">
@@ -132,16 +144,20 @@ export function VerificationQueuePanel() {
 
       {items.length === 0 && !isLoading && (
         <p className="text-[10px] text-slate-400">
-          No pending verification requests. Try evaluating a PDMA sample that is
-          not eligible to create one.
+          No pending verification requests. Try evaluating a PDMA, CSF, or Ohio
+          case that is not allowed to create one.
         </p>
       )}
 
-      <div className="max-h-64 space-y-1 overflow-auto">
+      <div className="max-h-56 space-y-1 overflow-auto">
         {items.map((req) => (
           <article
             key={req.id}
-            className="flex flex-col gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1.5"
+            className={`flex flex-col gap-1 rounded border px-2 py-1.5 ${
+              selectedId === req.id
+                ? "border-slate-400 bg-slate-100"
+                : "border-slate-200 bg-slate-50"
+            }`}
           >
             <div className="flex items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-1">
@@ -191,27 +207,43 @@ export function VerificationQueuePanel() {
                 </span>
               )}
 
-              <button
-                type="button"
-                onClick={() => explainRequestWithRag(req)}
-                disabled={ragLoadingId === req.id}
-                className="rounded-full bg-slate-900 px-2 py-0.5 text-[9px] text-slate-50 hover:bg-slate-800 disabled:opacity-40"
-              >
-                {ragLoadingId === req.id ? "Explaining…" : "Explain with RAG"}
-              </button>
-            </div>
-
-            {ragAnswers[req.id] && (
-              <div className="mt-1 rounded bg-white p-2 text-[9px] leading-snug text-slate-800 ring-1 ring-slate-200">
-                <strong className="mb-1 block text-[9px] text-slate-600">
-                  RAG explanation
-                </strong>
-                <p className="whitespace-pre-wrap">{ragAnswers[req.id]}</p>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => explainRequestWithRag(req)}
+                  disabled={ragLoadingId === req.id}
+                  className="rounded-full bg-slate-900 px-2 py-0.5 text-[9px] text-slate-50 hover:bg-slate-800 disabled:opacity-40"
+                >
+                  {ragLoadingId === req.id ? "Explaining…" : "Explain"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedId(req.id);
+                    emitCodexCommand("verification_selected", {
+                      verification_id: req.id,
+                      engine_family: req.engine_family,
+                      decision_type: req.decision_type,
+                    });
+                  }}
+                  className="rounded-full bg-white px-2 py-0.5 text-[9px] text-slate-700 ring-1 ring-slate-300 hover:bg-slate-100"
+                >
+                  Details
+                </button>
               </div>
-            )}
+            </div>
           </article>
         ))}
       </div>
+
+      {selected && (
+        <VerificationDetailView
+          request={selected}
+          ragAnswer={ragAnswers[selected.id]}
+          onExplain={() => explainRequestWithRag(selected)}
+          onClose={() => setSelectedId(null)}
+        />
+      )}
     </section>
   );
 }
