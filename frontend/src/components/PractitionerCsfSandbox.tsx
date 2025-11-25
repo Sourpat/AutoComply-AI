@@ -544,13 +544,12 @@ export function PractitionerCsfSandbox() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          question:
-            "Explain to a verification specialist what this Practitioner CSF decision means, including what is missing and any follow-up steps.",
-          decision: {
-            ship_to_state: form.shipToState,
-            account_number: form.accountNumber,
-            ...decisionToUse,
-          },
+          engine_family: "csf",
+          decision_type: "csf_practitioner",
+          decision_status:
+            decisionToUse.status ?? (decisionToUse as any).outcome ?? undefined,
+          decision: decisionToUse,
+          ask: "Explain to a verification specialist what this Practitioner CSF decision means, including what's missing or needed.",
           regulatory_references: regulatoryReferenceIds,
         }),
       });
