@@ -2,6 +2,8 @@ import React from "react";
 
 export type RegulatorySource = {
   title: string;
+  citation?: string;
+  snippet?: string;
   url?: string; // will be a local /mnt/data/... path; hosting will transform it
   jurisdiction?: string;
   source?: string; // e.g. "regulatory_docs", "rules_stub"

@@ -443,6 +443,12 @@ export function PractitionerCsfSandbox() {
         setCopilotDecision(freshDecision);
         setLastEvaluatedPayload(normalizedPayload);
 
+        emitCodexCommand("cs_practitioner_form_copilot_run", {
+          engine_family: "csf",
+          decision_type: "csf_practitioner",
+          decision_outcome: freshDecision.status ?? "unknown",
+        });
+
         try {
           const snapResp = await fetch(`${API_BASE}/decisions/history`, {
             method: "POST",
@@ -475,6 +481,11 @@ export function PractitionerCsfSandbox() {
         }
       } else if (decisionToUse) {
         setCopilotDecision(decisionToUse);
+        emitCodexCommand("cs_practitioner_form_copilot_run", {
+          engine_family: "csf",
+          decision_type: "csf_practitioner",
+          decision_outcome: decisionToUse.status ?? "unknown",
+        });
       }
 
       if (!decisionToUse) {
@@ -482,12 +493,6 @@ export function PractitionerCsfSandbox() {
       }
 
       setNotice(null);
-
-      emitCodexCommand("cs_practitioner_form_copilot_run", {
-        engine_family: "csf",
-        decision_type: "csf_practitioner",
-        decision_outcome: decisionToUse.status ?? "unknown",
-      });
 
       const regulatoryReferenceIds =
         decisionToUse.regulatory_references?.map((r: any) =>
@@ -518,77 +523,87 @@ export function PractitionerCsfSandbox() {
           decision: decisionToUse,
         },
       };
-
-      const verificationResp = await fetch(`${API_BASE}/verifications/submit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(verificationPayload),
-      });
-
-      if (!verificationResp.ok) {
-        let backendDetail: string;
-        try {
-          backendDetail = await verificationResp.text();
-        } catch (readErr) {
-          backendDetail = String(readErr);
-        }
-        const err = new Error(
-          `Verification submission failed (${verificationResp.status}): ${backendDetail}`
+      try {
+        const verificationResp = await fetch(
+          `${API_BASE}/verifications/submit`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(verificationPayload),
+          }
         );
-        (err as any).status = verificationResp.status;
-        throw err;
+
+        if (!verificationResp.ok) {
+          let backendDetail: string;
+          try {
+            backendDetail = await verificationResp.text();
+          } catch (readErr) {
+            backendDetail = String(readErr);
+          }
+          const err = new Error(
+            `Verification submission failed (${verificationResp.status}): ${backendDetail}`
+          );
+          (err as any).status = verificationResp.status;
+          throw err;
+        }
+      } catch (err) {
+        console.error("Verification submit failed in Form Copilot", err);
+        emitCodexCommand("cs_practitioner_form_copilot_verification_error", {});
       }
 
       // 3) Ask the regulatory RAG endpoint to explain this decision
-      const ragResp = await fetch(`${API_BASE}/rag/regulatory-explain`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          engine_family: "csf",
-          decision_type: "csf_practitioner",
-          decision_status:
-            decisionToUse.status ?? (decisionToUse as any).outcome ?? undefined,
-          decision: decisionToUse,
-          ask: "Explain to a verification specialist what this Practitioner CSF decision means, including what's missing or needed.",
-          regulatory_references: regulatoryReferenceIds,
-        }),
-      });
+      try {
+        const ragResp = await fetch(`${API_BASE}/rag/regulatory-explain`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            engine_family: "csf",
+            decision_type: "csf_practitioner",
+            decision: decisionToUse,
+            ask: "Explain to a verification specialist what this Practitioner CSF decision means, including what is missing or required.",
+            regulatory_references: [],
+          }),
+        });
 
-      if (!ragResp.ok) {
-        let backendDetail: string;
-        try {
-          backendDetail = await ragResp.text();
-        } catch (readErr) {
-          backendDetail = String(readErr);
+        if (!ragResp.ok) {
+          let backendDetail: string;
+          try {
+            backendDetail = await ragResp.text();
+          } catch (readErr) {
+            backendDetail = String(readErr);
+          }
+          const err = new Error(
+            `RAG explain failed (${ragResp.status}): ${backendDetail}`
+          );
+          (err as any).status = ragResp.status;
+          throw err;
         }
-        const err = new Error(
-          `RAG explain failed (${ragResp.status}): ${backendDetail}`
+
+        const ragJson = await ragResp.json();
+        const answer =
+          (ragJson.answer as string) ??
+          (ragJson.explanation as string) ??
+          JSON.stringify(ragJson, null, 2);
+
+        setCopilotExplanation(answer);
+
+        const contextEntries =
+          (ragJson.regulatory_context as any[]) ?? (ragJson.context as any[]) ?? [];
+        const sources: RegulatorySource[] = contextEntries.map(
+          (entry: any, idx: number) => ({
+            title: entry?.title ?? entry?.citation ?? `Source ${idx + 1}`,
+            citation: entry?.citation,
+            snippet: entry?.snippet ?? entry?.text ?? entry?.content ?? "",
+          })
         );
-        (err as any).status = ragResp.status;
-        throw err;
+        setCopilotSources(sources);
+      } catch (err) {
+        console.error("RAG explain failed in Form Copilot", err);
+        emitCodexCommand("cs_practitioner_form_copilot_rag_error", {});
+        setCopilotExplanation(
+          "A detailed AI explanation for this decision is not available right now. Use the decision summary above as your regulatory guidance."
+        );
       }
-
-      const ragJson = await ragResp.json();
-      const answer =
-        (ragJson.answer as string) ??
-        (ragJson.text as string) ??
-        JSON.stringify(ragJson, null, 2);
-
-      setCopilotExplanation(answer);
-
-      const ragReferences =
-        (ragJson.regulatory_references as string[] | undefined) ||
-        regulatoryReferenceIds;
-      const ragArtifacts = (ragJson.artifacts_used as string[] | undefined) || [];
-      const combinedSources = Array.from(
-        new Set([...(ragReferences ?? []), ...ragArtifacts])
-      );
-
-      const sources: RegulatorySource[] = combinedSources.map((id, idx) => ({
-        title: id || `Source ${idx + 1}`,
-        source: ragArtifacts.includes(id) ? "artifact" : undefined,
-      }));
-      setCopilotSources(sources);
 
       emitCodexCommand("cs_practitioner_form_copilot_complete", {
         engine_family: "csf",
