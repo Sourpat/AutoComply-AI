@@ -423,13 +423,13 @@ export function PractitionerCsfSandbox() {
     setCopilotDecision(null);
     setCopilotSources([]);
 
+    let decisionToUse = decision;
+    let snapshotId = decisionSnapshotId;
+
     try {
       const normalizedPayload = JSON.stringify(
         buildPractitionerCsfPayload(form)
       );
-
-      let decisionToUse = decision;
-      let snapshotId = decisionSnapshotId;
 
       // If the form changed since the last evaluation (or we never evaluated),
       // run a fresh evaluation first.
@@ -612,12 +612,13 @@ export function PractitionerCsfSandbox() {
           decisionToUse.status ?? (decisionToUse as any).outcome ?? "unknown",
       });
     } catch (err: any) {
-      console.error(err);
-      setCopilotError(
-        String(err?.message || "")?.includes("422")
-          ? "Form Copilot could not run. Some required practitioner or licensing details may be missing."
-          : "Form Copilot could not run. Please check the form and try again."
-      );
+      if (!decisionToUse && !copilotDecision) {
+        console.error(err);
+        setCopilotError(err?.message ?? "Failed to run Form Copilot");
+      } else {
+        console.error("Form Copilot non-fatal error", err);
+      }
+
       setCopilotSources([]);
       emitCodexCommand("cs_practitioner_form_copilot_error", {
         message: String(err?.message || err),
@@ -1321,8 +1322,17 @@ export function PractitionerCsfSandbox() {
                 <p className="mb-1 text-[10px] text-amber-700">{notice}</p>
               )}
 
-              {copilotError && (
-                <p className="mb-1 text-[10px] text-rose-600">{copilotError}</p>
+              {copilotError && !copilotDecision && (
+                <p className="text-red-600 text-sm">
+                  Form Copilot could not run. Please check the form and try again.
+                </p>
+              )}
+
+              {copilotError && copilotDecision && (
+                <p className="text-yellow-700 text-sm">
+                  We couldn’t generate a detailed AI explanation, but the CSF decision
+                  below is still valid.
+                </p>
               )}
 
               {copilotDecision && (
@@ -1337,25 +1347,16 @@ export function PractitionerCsfSandbox() {
                         "See details below"}
                     </span>
                   </div>
-                  {copilotDecision.reason && (
-                    <p className="text-[10px] text-slate-600">
-                      Reason: {String(copilotDecision.reason)}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {copilotExplanation && (
-                <div className="mt-1 rounded-md bg-slate-50 p-2 text-[10px] leading-snug text-slate-800">
-                  <div className="mb-1 text-[10px] font-semibold text-slate-700">
-                    Copilot explanation
-                  </div>
-                  <p className="mb-1 whitespace-pre-wrap">
-                    {copilotExplanation}
+                  <p className="text-[10px] text-slate-600">
+                    Reason:{" "}
+                    {copilotExplanation ??
+                      copilotDecision.reason ??
+                      "All required facility, practitioner, licensing, jurisdiction, and attestation details are present."}
                   </p>
 
-                  {/* NEW: show which docs/rules were used */}
-                  <RegulatorySourcesList sources={copilotSources} compact />
+                  {copilotSources.length > 0 && (
+                    <RegulatorySourcesList sources={copilotSources} />
+                  )}
                 </div>
               )}
 
