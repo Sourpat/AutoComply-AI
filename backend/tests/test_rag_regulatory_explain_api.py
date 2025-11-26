@@ -41,3 +41,23 @@ def test_rag_regulatory_explain_stub_with_known_artifacts():
 
     debug = data.get("debug", {})
     assert debug.get("mode") in ("stub", "rag")
+
+
+def test_rag_regulatory_explain_accepts_csf_practitioner_payload():
+    payload = {
+        "engine_family": "csf",
+        "decision_type": "csf_practitioner",
+        "ask": "Explain what this CSF Practitioner decision means and what evidence is needed.",
+        "decision": {
+            "status": "ok_to_ship",
+            "reason": "All licenses appear valid for this practitioner.",
+            "regulatory_references": ["csf_practitioner_form"],
+        },
+        "regulatory_references": [],
+    }
+
+    resp = client.post("/rag/regulatory-explain", json=payload)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data.get("answer")

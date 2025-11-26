@@ -560,8 +560,11 @@ export function PractitionerCsfSandbox() {
             engine_family: "csf",
             decision_type: "csf_practitioner",
             decision: decisionToUse,
-            ask: "Explain to a verification specialist what this Practitioner CSF decision means, including what is missing or required.",
-            regulatory_references: [],
+            question:
+              "Explain to a verification specialist what this Practitioner CSF decision means, including what is missing or required.",
+            regulatory_references: regulatoryReferenceIds,
+            account_id: form.accountNumber || undefined,
+            decision_snapshot_id: snapshotId ?? undefined,
           }),
         });
 
@@ -600,6 +603,11 @@ export function PractitionerCsfSandbox() {
       } catch (err) {
         console.error("RAG explain failed in Form Copilot", err);
         emitCodexCommand("cs_practitioner_form_copilot_rag_error", {});
+        setCopilotError(
+          err instanceof Error
+            ? err.message
+            : "Form Copilot could not run. Please check the form and try again."
+        );
         setCopilotExplanation(
           "A detailed AI explanation for this decision is not available right now. Use the decision summary above as your regulatory guidance."
         );
