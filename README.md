@@ -113,6 +113,27 @@ Wherever these appear (backend responses, UI links, `CODEX_COMMAND` logs, tools)
 
 ## ▶️ Running the project
 
+### Quick troubleshooting: “Check & Explain” button
+
+The **Check & Explain** (Form Copilot) CTA sends multiple API calls when clicked:
+
+- Snapshots the current decision to `/decisions/history` and submits a verification request to `/verifications/submit`.
+- Asks the regulatory RAG endpoint (`/rag/regulatory-explain`) to summarize the decision.
+
+If the backend is not running or `VITE_API_BASE` is misconfigured, the browser will throw errors (for example, a 500 that surfaces as “Cannot read properties of null (reading 'save')”) and the UI will show “Form Copilot could not run”. Start the FastAPI server and point the frontend at it:
+
+```bash
+# Terminal 1 – backend
+cd backend
+uvicorn src.api.main:app --reload --port 8000
+
+# Terminal 2 – frontend
+cd frontend
+VITE_API_BASE="http://localhost:8000/api/v1" npm run dev
+```
+
+With the API running at the configured base URL, the **Check & Explain** flow will be able to record history, submit verification requests, and fetch the explanatory RAG answer without runtime errors.
+
 ### Backend
 
 From `backend/`:
