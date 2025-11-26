@@ -566,26 +566,26 @@ export function PractitionerCsfSandbox() {
         emitCodexCommand("cs_practitioner_form_copilot_verification_error", {});
       }
 
-      // 3) Ask the regulatory RAG endpoint to explain this decision
+      // 3) Ask the regulatory RAG endpoint to explain this decision.
+      // Reuse the same helper that the "Deep RAG explain" button uses so
+      // the payload matches the FastAPI model.
       try {
-        // 2) Ask the regulatory RAG endpoint to explain this decision
-        const ragJson = await callRegulatoryRag({
+        const ragResult = await callRegulatoryRag({
           question:
             "Explain to a verification specialist what this Practitioner CSF decision means, what is missing, and what is required next.",
           decision: decisionToUse,
           regulatory_references: decisionToUse.regulatory_references ?? [],
         });
 
-        const answer =
-          (ragJson as any).answer ??
-          (ragJson as any).text ??
-          JSON.stringify(ragJson, null, 2);
-
-        setCopilotExplanation(answer);
+        setCopilotExplanation(
+          (ragResult as any).answer ??
+            (ragResult as any).text ??
+            JSON.stringify(ragResult, null, 2)
+        );
 
         const contextEntries =
-          ((ragJson as any).regulatory_context ??
-            (ragJson as any).context ??
+          ((ragResult as any).regulatory_context ??
+            (ragResult as any).context ??
             []) as any[];
         const sources: RegulatorySource[] = contextEntries.map(
           (entry: any, idx: number) => ({
