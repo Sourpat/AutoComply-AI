@@ -287,10 +287,6 @@ export function PractitionerCsfSandbox() {
       const result = (evalJson as any).verdict ?? evalJson;
       setDecision(result);
 
-      const regulatoryReferenceIds = extractRegulatoryReferenceIds(
-        result.regulatory_references as any[]
-      );
-
       setLastEvaluatedPayload(normalizedPayload);
 
       emitCodexCommand("evaluate_csf_practitioner", {
@@ -300,19 +296,21 @@ export function PractitionerCsfSandbox() {
       });
 
       // --- NEW: snapshot into decision history ---
-      let snapshotId: string | null = null;
+      let snapshotId: string | undefined;
 
       if (!isLocal) {
         try {
-          const decisionStatus =
-            result.status ?? (result as any).outcome ?? "unknown";
+          const regulatoryReferenceIds = Array.isArray(result.regulatory_references)
+            ? result.regulatory_references
+            : [];
+
           const snapResp = await fetch(`${API_BASE}/decisions/history`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               engine_family: "csf",
               decision_type: "csf_practitioner",
-              status: decisionStatus,
+              status: result.status,
               jurisdiction: form.shipToState,
               regulatory_reference_ids: regulatoryReferenceIds,
               source_documents: [CSF_PRACTITIONER_SOURCE_DOCUMENT],
@@ -323,9 +321,16 @@ export function PractitionerCsfSandbox() {
             }),
           });
 
-          if (snapResp.ok) {
+          if (!snapResp.ok) {
+            const errText = await snapResp.text().catch(() => "");
+            console.error(
+              "Failed to snapshot CSF practitioner decision",
+              snapResp.status,
+              errText,
+            );
+          } else {
             const snapBody = await snapResp.json();
-            snapshotId = (snapBody as any).id ?? null;
+            snapshotId = (snapBody as any).id;
             setDecisionSnapshotId(snapshotId ?? null);
           }
         } catch (err) {
@@ -339,39 +344,63 @@ export function PractitionerCsfSandbox() {
         result.status && !["ok_to_ship", "allowed"].includes(result.status);
 
       if (needsVerification && !isLocal) {
-        try {
-          await fetch(`${API_BASE}/verifications/submit`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              engine_family: "csf",
-              decision_type: "csf_practitioner",
-              jurisdiction: form.shipToState,
-              reason_for_review:
-                decisionStatus === "manual_review"
-                  ? "manual_review"
-                  : "csf_practitioner_blocked",
-              decision_snapshot_id: snapshotId,
-              regulatory_reference_ids: regulatoryReferenceIds,
-              source_documents: [CSF_PRACTITIONER_SOURCE_DOCUMENT],
-              user_question: null,
-              channel: "web_sandbox",
-              payload: {
-                form,
-                decision: result,
-              },
-            }),
-          });
+        if (!snapshotId) {
+          console.warn(
+            "Result is not allowed but no snapshotId was created; skipping verification submit.",
+          );
+        } else {
+          try {
+            const regulatoryReferenceIds = Array.isArray(
+              result.regulatory_references
+            )
+              ? result.regulatory_references
+              : [];
 
-          emitCodexCommand("verification_request_created", {
-            engine_family: "csf",
-            decision_type: "csf_practitioner",
-            status: decisionStatus,
-            decision_snapshot_id: snapshotId,
-            source_document: CSF_PRACTITIONER_SOURCE_DOCUMENT,
-          });
-        } catch (err) {
-          console.error("Failed to submit CSF practitioner verification request", err);
+            const verifyResp = await fetch(`${API_BASE}/verifications/submit`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                engine_family: "csf",
+                decision_type: "csf_practitioner",
+                jurisdiction: form.shipToState,
+                reason_for_review:
+                  result.status === "manual_review"
+                    ? "manual_review"
+                    : "csf_practitioner_blocked",
+                decision_snapshot_id: snapshotId,
+                regulatory_reference_ids: regulatoryReferenceIds,
+                source_documents: [CSF_PRACTITIONER_SOURCE_DOCUMENT],
+                user_question: null,
+                channel: "web_sandbox",
+                payload: {
+                  form,
+                  decision: result,
+                },
+              }),
+            });
+
+            if (!verifyResp.ok) {
+              const errText = await verifyResp.text().catch(() => "");
+              console.error(
+                "Failed to submit CSF practitioner verification request",
+                verifyResp.status,
+                errText,
+              );
+            } else {
+              emitCodexCommand("verification_request_created", {
+                engine_family: "csf",
+                decision_type: "csf_practitioner",
+                status: result.status,
+                decision_snapshot_id: snapshotId,
+                source_document: CSF_PRACTITIONER_SOURCE_DOCUMENT,
+              });
+            }
+          } catch (err) {
+            console.error(
+              "Failed to submit CSF practitioner verification request",
+              err,
+            );
+          }
         }
       }
       // --- END NEW ---
@@ -589,14 +618,27 @@ export function PractitionerCsfSandbox() {
       // Reuse the same helper that the "Deep RAG explain" button uses so
       // the payload matches the FastAPI model.
       try {
-        const question =
-          "Explain to a verification specialist what this Practitioner CSF decision means, what is missing, and what is required next.";
-
-        const ragResult = await callRegulatoryRag({
-          question,
-          regulatory_references: decisionToUse.regulatory_references ?? [],
-          decision: decisionToUse,
+        const ragResp = await fetch(`${API_BASE}/rag/regulatory-explain`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            engine_family: "csf",
+            decision_type: "csf_practitioner",
+            question:
+              "Explain to a verification specialist what this Practitioner CSF decision means, what is missing, and what is required next.",
+            decision: decisionToUse,
+            regulatory_references: decisionToUse.regulatory_references ?? [],
+          }),
         });
+
+        if (!ragResp.ok) {
+          const errText = await ragResp.text().catch(() => "");
+          throw new Error(
+            `RAG explain failed: ${ragResp.status}${errText ? " – " + errText : ""}`,
+          );
+        }
+
+        const ragResult = await ragResp.json();
 
         const answer =
           (ragResult as any).answer ??
