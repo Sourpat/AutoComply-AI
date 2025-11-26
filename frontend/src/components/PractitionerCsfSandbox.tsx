@@ -65,6 +65,22 @@ const deriveSourceDocuments = (
   return docs.length ? docs : [CSF_PRACTITIONER_SOURCE_DOCUMENT];
 };
 
+const extractRegulatoryReferenceIds = (
+  references: any[] | undefined
+): string[] => {
+  if (!Array.isArray(references)) return [];
+
+  return references
+    .map((ref) => {
+      if (typeof ref === "string") return ref;
+      if (ref && typeof ref === "object" && "id" in ref) {
+        return String((ref as any).id);
+      }
+      return undefined;
+    })
+    .filter((id): id is string => Boolean(id));
+};
+
 const callPractitionerEvaluate = async (
   apiBase: string,
   form: PractitionerCsfFormData
@@ -250,6 +266,9 @@ export function PractitionerCsfSandbox() {
 
     if (!API_BASE) return;
 
+    const isLocal =
+      API_BASE.includes("127.0.0.1") || API_BASE.includes("localhost");
+
     setIsLoading(true);
     setError(null);
     setDecision(null);
@@ -268,10 +287,9 @@ export function PractitionerCsfSandbox() {
       const result = (evalJson as any).verdict ?? evalJson;
       setDecision(result);
 
-      const regulatoryReferenceIds: string[] =
-        (Array.isArray(result.regulatory_references)
-          ? result.regulatory_references
-          : []) ?? [];
+      const regulatoryReferenceIds = extractRegulatoryReferenceIds(
+        result.regulatory_references as any[]
+      );
 
       setLastEvaluatedPayload(normalizedPayload);
 
@@ -284,32 +302,35 @@ export function PractitionerCsfSandbox() {
       // --- NEW: snapshot into decision history ---
       let snapshotId: string | null = null;
 
-      try {
-        const decisionStatus = result.status ?? (result as any).outcome;
-        const snapResp = await fetch(`${API_BASE}/decisions/history`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            engine_family: "csf",
-            decision_type: "csf_practitioner",
-            status: decisionStatus,
-            jurisdiction: form.shipToState,
-            regulatory_reference_ids: regulatoryReferenceIds,
-            source_documents: [CSF_PRACTITIONER_SOURCE_DOCUMENT],
-            payload: {
-              form,
-              decision: result,
-            },
-          }),
-        });
+      if (!isLocal) {
+        try {
+          const decisionStatus =
+            result.status ?? (result as any).outcome ?? "unknown";
+          const snapResp = await fetch(`${API_BASE}/decisions/history`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              engine_family: "csf",
+              decision_type: "csf_practitioner",
+              status: decisionStatus,
+              jurisdiction: form.shipToState,
+              regulatory_reference_ids: regulatoryReferenceIds,
+              source_documents: [CSF_PRACTITIONER_SOURCE_DOCUMENT],
+              payload: {
+                form,
+                decision: result,
+              },
+            }),
+          });
 
-        if (snapResp.ok) {
-          const snapBody = await snapResp.json();
-          snapshotId = (snapBody as any).id ?? null;
-          setDecisionSnapshotId(snapshotId ?? null);
+          if (snapResp.ok) {
+            const snapBody = await snapResp.json();
+            snapshotId = (snapBody as any).id ?? null;
+            setDecisionSnapshotId(snapshotId ?? null);
+          }
+        } catch (err) {
+          console.error("Failed to snapshot CSF practitioner decision", err);
         }
-      } catch (err) {
-        console.error("Failed to snapshot CSF practitioner decision", err);
       }
 
       // --- NEW: create verification request when not ok_to_ship/allowed ---
@@ -317,7 +338,7 @@ export function PractitionerCsfSandbox() {
       const needsVerification =
         result.status && !["ok_to_ship", "allowed"].includes(result.status);
 
-      if (needsVerification) {
+      if (needsVerification && !isLocal) {
         try {
           await fetch(`${API_BASE}/verifications/submit`, {
             method: "POST",
@@ -422,6 +443,9 @@ export function PractitionerCsfSandbox() {
   const runFormCopilot = async () => {
     if (!API_BASE) return;
 
+    const isLocal =
+      API_BASE.includes("127.0.0.1") || API_BASE.includes("localhost");
+
     setCopilotLoading(true);
     setCopilotError(null);
     setCopilotExplanation(null);
@@ -454,6 +478,7 @@ export function PractitionerCsfSandbox() {
           decision_outcome: freshDecision.status ?? "unknown",
         });
 
+      if (!isLocal) {
         try {
           const snapResp = await fetch(`${API_BASE}/decisions/history`, {
             method: "POST",
@@ -461,14 +486,16 @@ export function PractitionerCsfSandbox() {
             body: JSON.stringify({
               engine_family: "csf",
               decision_type: "csf_practitioner",
-              status: freshDecision.status,
+              status: freshDecision.status ?? "unknown",
               jurisdiction: form.shipToState,
-              regulatory_reference_ids:
-                (freshDecision.regulatory_references as string[] | undefined) ??
-                [],
+              regulatory_reference_ids: extractRegulatoryReferenceIds(
+                freshDecision.regulatory_references as any[]
+              ),
               source_documents:
                 (freshDecision.source_documents as string[] | undefined) ??
-                deriveSourceDocuments(freshDecision.regulatory_references as any[]),
+                deriveSourceDocuments(
+                  freshDecision.regulatory_references as any[]
+                ),
               payload: {
                 form,
                 decision: freshDecision,
@@ -484,6 +511,7 @@ export function PractitionerCsfSandbox() {
         } catch (snapErr) {
           console.error("Failed to snapshot CSF practitioner decision", snapErr);
         }
+      }
       } else if (decisionToUse) {
         setCopilotDecision(decisionToUse);
         emitCodexCommand("cs_practitioner_form_copilot_run", {
@@ -499,8 +527,9 @@ export function PractitionerCsfSandbox() {
 
       setNotice(null);
 
-      const regulatoryReferenceIds =
-        (decisionToUse.regulatory_references as string[] | undefined) ?? [];
+      const regulatoryReferenceIds = extractRegulatoryReferenceIds(
+        decisionToUse.regulatory_references as any[]
+      );
 
       // 2) Submit a verification request aligned with the backend model
       const verificationPayload = {
@@ -526,32 +555,34 @@ export function PractitionerCsfSandbox() {
           decision: decisionToUse,
         },
       };
-      try {
-        const verificationResp = await fetch(
-          `${API_BASE}/verifications/submit`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(verificationPayload),
-          }
-        );
-
-        if (!verificationResp.ok) {
-          let backendDetail: string;
-          try {
-            backendDetail = await verificationResp.text();
-          } catch (readErr) {
-            backendDetail = String(readErr);
-          }
-          const err = new Error(
-            `Verification submission failed (${verificationResp.status}): ${backendDetail}`
+      if (!isLocal) {
+        try {
+          const verificationResp = await fetch(
+            `${API_BASE}/verifications/submit`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(verificationPayload),
+            }
           );
-          (err as any).status = verificationResp.status;
-          throw err;
+
+          if (!verificationResp.ok) {
+            let backendDetail: string;
+            try {
+              backendDetail = await verificationResp.text();
+            } catch (readErr) {
+              backendDetail = String(readErr);
+            }
+            const err = new Error(
+              `Verification submission failed (${verificationResp.status}): ${backendDetail}`
+            );
+            (err as any).status = verificationResp.status;
+            throw err;
+          }
+        } catch (err) {
+          console.error("Verification submit failed in Form Copilot", err);
+          emitCodexCommand("cs_practitioner_form_copilot_verification_error", {});
         }
-      } catch (err) {
-        console.error("Verification submit failed in Form Copilot", err);
-        emitCodexCommand("cs_practitioner_form_copilot_verification_error", {});
       }
 
       // 3) Ask the regulatory RAG endpoint to explain this decision.
