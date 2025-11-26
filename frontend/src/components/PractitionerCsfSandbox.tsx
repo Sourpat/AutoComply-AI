@@ -573,6 +573,8 @@ export function PractitionerCsfSandbox() {
         const ragResult = await callRegulatoryRag({
           question:
             "Explain to a verification specialist what this Practitioner CSF decision means, what is missing, and what is required next.",
+          engine_family: "csf",
+          decision_type: "csf_practitioner",
           decision: decisionToUse,
           regulatory_references: decisionToUse.regulatory_references ?? [],
         });
