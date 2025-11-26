@@ -685,21 +685,12 @@ export function PractitionerCsfSandbox() {
         verification_flags: itemResult.verification_flags,
       };
 
-      const resp = await fetch(`${API_BASE}/rag/regulatory-explain`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question:
-            "Explain what controlled-substance licenses or forms are required to ship this item to the given state, and how CSF / Ohio TDDD / PDMA flows apply.",
-          decision: decisionPayload,
-          regulatory_references: [], // we let the backend pick relevant rules/docs
-        }),
+      const data = await callRegulatoryRag({
+        question:
+          "Explain what controlled-substance licenses or forms are required to ship this item to the given state, and how CSF / Ohio TDDD / PDMA flows apply.",
+        decision: decisionPayload,
+        regulatory_references: [], // let backend pick relevant rules/docs
       });
-
-      if (!resp.ok) {
-        throw new Error(`RAG explain failed: ${resp.status}`);
-      }
-      const data = await resp.json();
       const answer =
         (data.answer as string) ??
         (data.text as string) ??
