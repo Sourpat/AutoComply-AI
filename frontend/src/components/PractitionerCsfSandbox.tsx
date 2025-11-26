@@ -1,5 +1,5 @@
 // src/components/PractitionerCsfSandbox.tsx
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   PractitionerCsfDecision,
   PractitionerCsfFormData,
@@ -19,7 +19,26 @@ import { CopyCurlButton } from "./CopyCurlButton";
 import { emitCodexCommand } from "../utils/codexLogger";
 import { RegulatorySourcesList, RegulatorySource } from "./RegulatorySourcesList";
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE || "";
+const getApiBase = () => (import.meta as any).env?.VITE_API_BASE || "";
+
+const ErrorAlert = ({
+  message,
+  tone = "error",
+}: {
+  message: string;
+  tone?: "error" | "warning";
+}) => {
+  const toneStyles =
+    tone === "warning"
+      ? "bg-amber-50 text-amber-800 ring-1 ring-amber-100"
+      : "bg-red-50 text-red-700 ring-1 ring-red-100";
+
+  return (
+    <div className={`rounded-md px-2 py-1 text-[11px] ${toneStyles}`}>
+      {message}
+    </div>
+  );
+};
 const CSF_PRACTITIONER_SOURCE_DOCUMENT =
   "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf";
 
@@ -190,10 +209,16 @@ const initialForm: PractitionerCsfFormData = {
 };
 
 export function PractitionerCsfSandbox() {
+  const API_BASE = getApiBase();
   const [form, setForm] = useState<PractitionerCsfFormData>(initialForm);
   const [decision, setDecision] = useState<PractitionerCsfDecision | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [apiBaseError, setApiBaseError] = useState<string | null>(
+    API_BASE
+      ? null
+      : "Sandbox misconfigured: missing API base URL. Please set VITE_API_BASE in your environment before using Practitioner CSF tools."
+  );
   const [controlledSubstances, setControlledSubstances] = useState<
     ControlledSubstance[]
   >([]);
@@ -222,6 +247,8 @@ export function PractitionerCsfSandbox() {
   const [decisionSnapshotId, setDecisionSnapshotId] = useState<string | null>(
     null
   );
+  const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   // --- NEW: inline controlled-substance item helper state ---
   const [itemQuery, setItemQuery] = useState("");
@@ -229,6 +256,17 @@ export function PractitionerCsfSandbox() {
   const [itemLoading, setItemLoading] = useState(false);
   const [itemError, setItemError] = useState<string | null>(null);
   const [itemRagAnswer, setItemRagAnswer] = useState<string | null>(null);
+  const [itemRagError, setItemRagError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!API_BASE) {
+      setApiBaseError(
+        "Sandbox misconfigured: missing API base URL. Please set VITE_API_BASE in your environment before using Practitioner CSF tools."
+      );
+    } else {
+      setApiBaseError(null);
+    }
+  }, [API_BASE]);
 
   function applyPractitionerExample(example: PractitionerExample) {
     const nextForm = {
@@ -264,13 +302,22 @@ export function PractitionerCsfSandbox() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!API_BASE) return;
+    if (!API_BASE) {
+      setApiBaseError(
+        "Sandbox misconfigured: missing API base URL. Please set VITE_API_BASE in your environment before using Practitioner CSF tools."
+      );
+      return;
+    }
+
+    setApiBaseError(null);
 
     const isLocal =
       API_BASE.includes("127.0.0.1") || API_BASE.includes("localhost");
 
     setIsLoading(true);
     setError(null);
+    setVerificationError(null);
+    setHistoryError(null);
     setDecision(null);
     setDecisionSnapshotId(null);
     setLastEvaluatedPayload(null);
@@ -328,6 +375,9 @@ export function PractitionerCsfSandbox() {
               snapResp.status,
               errText,
             );
+            setHistoryError(
+              "Could not save decision history snapshot (this will not block your request)."
+            );
           } else {
             const snapBody = await snapResp.json();
             snapshotId = (snapBody as any).id;
@@ -335,6 +385,9 @@ export function PractitionerCsfSandbox() {
           }
         } catch (err) {
           console.error("Failed to snapshot CSF practitioner decision", err);
+          setHistoryError(
+            "Could not save decision history snapshot (this will not block your request)."
+          );
         }
       }
 
@@ -386,6 +439,9 @@ export function PractitionerCsfSandbox() {
                 verifyResp.status,
                 errText,
               );
+              setVerificationError(
+                "Verification request failed. Please try again or contact support if this persists."
+              );
             } else {
               emitCodexCommand("verification_request_created", {
                 engine_family: "csf",
@@ -399,6 +455,9 @@ export function PractitionerCsfSandbox() {
             console.error(
               "Failed to submit CSF practitioner verification request",
               err,
+            );
+            setVerificationError(
+              "Verification request failed. Please try again or contact support if this persists."
             );
           }
         }
@@ -415,6 +474,8 @@ export function PractitionerCsfSandbox() {
     setForm(initialForm);
     setDecision(null);
     setError(null);
+    setVerificationError(null);
+    setHistoryError(null);
     setControlledSubstances([]);
     setExplanation(null);
     setExplainError(null);
@@ -441,11 +502,12 @@ export function PractitionerCsfSandbox() {
     setItemLoading(false);
     setItemError(null);
     setItemRagAnswer(null);
+    setItemRagError(null);
     setNotice(null);
   };
 
   const handleExplain = async () => {
-    if (!decision) return;
+    if (!decision || apiBaseError) return;
 
     setIsExplaining(true);
     setExplainError(null);
@@ -470,12 +532,20 @@ export function PractitionerCsfSandbox() {
   };
 
   const runFormCopilot = async () => {
-    if (!API_BASE) return;
+    if (!API_BASE) {
+      setApiBaseError(
+        "Sandbox misconfigured: missing API base URL. Please set VITE_API_BASE in your environment before using Practitioner CSF tools."
+      );
+      return;
+    }
+
+    setApiBaseError(null);
 
     const isLocal =
       API_BASE.includes("127.0.0.1") || API_BASE.includes("localhost");
 
     setCopilotLoading(true);
+    setVerificationError(null);
     setCopilotError(null);
     setCopilotExplanation(null);
     setCopilotDecision(null);
@@ -595,11 +665,11 @@ export function PractitionerCsfSandbox() {
             }
           );
 
-          if (!verificationResp.ok) {
-            let backendDetail: string;
-            try {
-              backendDetail = await verificationResp.text();
-            } catch (readErr) {
+        if (!verificationResp.ok) {
+          let backendDetail: string;
+          try {
+            backendDetail = await verificationResp.text();
+          } catch (readErr) {
               backendDetail = String(readErr);
             }
             const err = new Error(
@@ -610,6 +680,9 @@ export function PractitionerCsfSandbox() {
           }
         } catch (err) {
           console.error("Verification submit failed in Form Copilot", err);
+          setVerificationError(
+            "Verification request failed. Please try again or contact support if this persists."
+          );
           emitCodexCommand("cs_practitioner_form_copilot_verification_error", {});
         }
       }
@@ -663,11 +736,7 @@ export function PractitionerCsfSandbox() {
       } catch (err) {
         console.error("RAG explain failed in Form Copilot", err);
         emitCodexCommand("cs_practitioner_form_copilot_rag_error", {});
-        setCopilotError(
-          err instanceof Error
-            ? err.message
-            : "Form Copilot could not run. Please check the form and try again."
-        );
+        setCopilotError("Deep regulatory explain is temporarily unavailable.");
         setCopilotExplanation(
           "A detailed AI explanation for this decision is not available right now. Use the decision summary above as your regulatory guidance."
         );
@@ -699,11 +768,19 @@ export function PractitionerCsfSandbox() {
 
   const lookupItemHistory = async () => {
     const q = itemQuery.trim();
-    if (!q || !API_BASE) return;
+    if (!q) return;
+    if (!API_BASE) {
+      setApiBaseError(
+        "Sandbox misconfigured: missing API base URL. Please set VITE_API_BASE in your environment before using Practitioner CSF tools."
+      );
+      return;
+    }
+    setApiBaseError(null);
     setItemLoading(true);
     setItemError(null);
     setItemResult(null);
     setItemRagAnswer(null);
+    setItemRagError(null);
 
     try {
       const resp = await fetch(
@@ -736,9 +813,17 @@ export function PractitionerCsfSandbox() {
   };
 
   const explainItemWithRag = async () => {
-    if (!itemResult || !API_BASE) return;
+    if (!itemResult) return;
+    if (!API_BASE) {
+      setApiBaseError(
+        "Sandbox misconfigured: missing API base URL. Please set VITE_API_BASE in your environment before using Practitioner CSF tools."
+      );
+      return;
+    }
 
+    setApiBaseError(null);
     setItemRagAnswer(null);
+    setItemRagError(null);
     try {
       const decisionPayload = {
         item_id: itemResult.item_id,
@@ -769,8 +854,8 @@ export function PractitionerCsfSandbox() {
         decision_type: "csf_practitioner",
       });
     } catch (err) {
-      console.error(err);
-      setItemRagAnswer("Failed to load RAG explanation for this item.");
+      console.error("Item RAG explain failed", err);
+      setItemRagError("Deep regulatory explain is temporarily unavailable.");
     }
   };
 
@@ -823,6 +908,11 @@ export function PractitionerCsfSandbox() {
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-3 text-[11px] shadow-sm">
+      {apiBaseError && (
+        <div className="mb-2">
+          <ErrorAlert message={apiBaseError} />
+        </div>
+      )}
       <header className="mb-2 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-700">
@@ -1011,7 +1101,10 @@ export function PractitionerCsfSandbox() {
                 <button
                   type="button"
                   onClick={lookupItemHistory}
-                  disabled={itemLoading || !API_BASE}
+                  disabled={itemLoading || !!apiBaseError}
+                  title={
+                    apiBaseError ? "Disabled: missing API base URL." : undefined
+                  }
                   className="h-7 rounded-md bg-slate-900 px-3 text-[11px] font-medium text-slate-50 hover:bg-slate-800 disabled:opacity-50"
                 >
                   {itemLoading ? "Searching…" : "Lookup"}
@@ -1106,11 +1199,17 @@ export function PractitionerCsfSandbox() {
                     <button
                       type="button"
                       onClick={explainItemWithRag}
-                      className="rounded-full bg-slate-900 px-3 py-0.5 text-[9px] text-slate-50 hover:bg-slate-800"
+                      disabled={!!apiBaseError}
+                      title={
+                        apiBaseError ? "Disabled: missing API base URL." : undefined
+                      }
+                      className="rounded-full bg-slate-900 px-3 py-0.5 text-[9px] text-slate-50 hover:bg-slate-800 disabled:opacity-50"
                     >
                       Explain this item with RAG
                     </button>
                   </div>
+
+                  {itemRagError && <ErrorAlert message={itemRagError} />}
 
                   {itemRagAnswer && (
                     <div className="mt-1 rounded bg-slate-50 p-2 text-[9px] leading-snug text-slate-800">
@@ -1127,7 +1226,8 @@ export function PractitionerCsfSandbox() {
             <div className="mt-2 flex items-center gap-2">
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || !!apiBaseError}
+                title={apiBaseError ? "Disabled: missing API base URL." : undefined}
                 className="rounded-md bg-blue-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
                 {isLoading ? "Evaluating…" : "Evaluate Practitioner CSF"}
@@ -1148,6 +1248,15 @@ export function PractitionerCsfSandbox() {
               <div className="rounded-md bg-red-50 px-2 py-1 text-red-700">
                 {error}
               </div>
+            )}
+
+            {verificationError && <ErrorAlert message={verificationError} />}
+
+            {historyError && (
+              <ErrorAlert
+                tone="warning"
+                message={historyError}
+              />
             )}
 
             {decision && (
@@ -1180,7 +1289,10 @@ export function PractitionerCsfSandbox() {
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      disabled={isExplaining}
+                      disabled={isExplaining || !!apiBaseError}
+                      title={
+                        apiBaseError ? "Disabled: missing API base URL." : undefined
+                      }
                       className="rounded-md bg-slate-700 px-3 py-1 text-[11px] font-medium text-white hover:bg-slate-800 disabled:opacity-50"
                       onClick={handleExplain}
                     >
@@ -1221,7 +1333,10 @@ export function PractitionerCsfSandbox() {
 
                   <button
                     type="button"
-                    disabled={isRagLoading || !decision}
+                    disabled={isRagLoading || !decision || !!apiBaseError}
+                    title={
+                      apiBaseError ? "Disabled: missing API base URL." : undefined
+                    }
                     className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                     onClick={async () => {
                       if (!decision) return;
@@ -1256,8 +1371,9 @@ export function PractitionerCsfSandbox() {
                           }
                         );
                       } catch (err: any) {
+                        console.error("Deep RAG explain failed", err);
                         setRagError(
-                          err?.message ?? "Failed to call RAG explain for this decision."
+                          "Deep regulatory explain is temporarily unavailable."
                         );
                       } finally {
                         setIsRagLoading(false);
@@ -1268,9 +1384,7 @@ export function PractitionerCsfSandbox() {
                   </button>
 
                   {ragError && (
-                    <div className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700">
-                      {ragError}
-                    </div>
+                    <ErrorAlert message={ragError} />
                   )}
 
                   {ragAnswer && (
@@ -1370,7 +1484,10 @@ export function PractitionerCsfSandbox() {
                 <button
                   type="button"
                   onClick={runFormCopilot}
-                  disabled={copilotLoading || !API_BASE}
+                  disabled={copilotLoading || !!apiBaseError}
+                  title={
+                    apiBaseError ? "Disabled: missing API base URL." : undefined
+                  }
                   className="h-7 rounded-md bg-slate-900 px-3 text-[11px] font-medium text-slate-50 hover:bg-slate-800 disabled:opacity-50"
                 >
                   {copilotLoading ? "Checking…" : "Check & Explain"}
