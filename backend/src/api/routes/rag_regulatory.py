@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, root_validator
 from typing import Any, Dict, List, Optional
 
 from autocomply.domain.rag_regulatory_explain import (
@@ -18,14 +18,46 @@ class RegulatoryRagRequest(BaseModel):
     """
     Public API shape for /rag/regulatory-explain.
 
-    - question: what the caller wants explained.
-    - regulatory_references: artifact IDs to focus on, usually taken from a decision.
-    - decision: optional raw decision JSON (CSF or Ohio TDDD).
+    We accept a superset of fields used by various frontend sandboxes so that
+    callers don't have to perfectly match the backend model. Only the
+    question/ask field is required; other fields are optional and ignored if not
+    used by the current engine.
     """
 
-    question: str = Field(..., min_length=1)
-    regulatory_references: List[str] = Field(default_factory=list)
+    # Core question fields
+    question: Optional[str] = Field(None, min_length=1)
+    ask: Optional[str] = Field(None, min_length=1)
+
+    # Engine context
+    engine_family: Optional[str] = Field(
+        None, description="Decision engine family (e.g., csf, license)."
+    )
+    decision_type: Optional[str] = Field(
+        None, description="Specific decision type (e.g., csf_practitioner)."
+    )
+
+    # Decision payload and identifiers
     decision: Optional[Dict[str, Any]] = None
+    account_id: Optional[str] = None
+    decision_snapshot_id: Optional[str] = None
+    source_document: Optional[str] = None
+
+    regulatory_references: List[str] = Field(default_factory=list)
+
+    @root_validator(pre=True)
+    def set_question_from_ask(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        # Frontends may send either `question` or `ask`; normalize to `question`.
+        if not values.get("question") and values.get("ask"):
+            values["question"] = values.get("ask")
+        return values
+
+    @root_validator(skip_on_failure=True)
+    def ensure_question(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        question = (values.get("question") or "").strip()
+        if not question:
+            raise ValueError("question or ask is required")
+        values["question"] = question
+        return values
 
 
 class RegulatoryRagResponse(RegulatoryRagAnswer):
