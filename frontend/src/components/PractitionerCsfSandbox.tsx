@@ -268,10 +268,10 @@ export function PractitionerCsfSandbox() {
       const result = (evalJson as any).verdict ?? evalJson;
       setDecision(result);
 
-      const regulatoryReferenceIds = (result.regulatory_references ?? []) as string[];
-      const sourceDocuments =
-        (result.source_documents as string[] | undefined) ??
-        deriveSourceDocuments(result.regulatory_references as any[]);
+      const regulatoryReferenceIds: string[] =
+        (Array.isArray(result.regulatory_references)
+          ? result.regulatory_references
+          : []) ?? [];
 
       setLastEvaluatedPayload(normalizedPayload);
 
@@ -295,7 +295,7 @@ export function PractitionerCsfSandbox() {
             status: decisionStatus,
             jurisdiction: form.shipToState,
             regulatory_reference_ids: regulatoryReferenceIds,
-            source_documents: sourceDocuments,
+            source_documents: [CSF_PRACTITIONER_SOURCE_DOCUMENT],
             payload: {
               form,
               decision: result,
@@ -314,10 +314,10 @@ export function PractitionerCsfSandbox() {
 
       // --- NEW: create verification request when not ok_to_ship/allowed ---
       const decisionStatus = result.status ?? (result as any).outcome;
-      const isOkToShip =
-        decisionStatus === "ok_to_ship" || decisionStatus === "allowed";
+      const needsVerification =
+        result.status && !["ok_to_ship", "allowed"].includes(result.status);
 
-      if (!isOkToShip) {
+      if (needsVerification) {
         try {
           await fetch(`${API_BASE}/verifications/submit`, {
             method: "POST",
@@ -332,7 +332,7 @@ export function PractitionerCsfSandbox() {
                   : "csf_practitioner_blocked",
               decision_snapshot_id: snapshotId,
               regulatory_reference_ids: regulatoryReferenceIds,
-              source_documents: sourceDocuments,
+              source_documents: [CSF_PRACTITIONER_SOURCE_DOCUMENT],
               user_question: null,
               channel: "web_sandbox",
               payload: {
