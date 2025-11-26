@@ -267,6 +267,27 @@ export function PractitionerCsfSandbox() {
       const evalJson = await callPractitionerEvaluate(API_BASE, form);
       const result = (evalJson as any).verdict ?? evalJson;
       setDecision(result);
+
+      const regulatoryReferenceIds: string[] = Array.isArray(
+        result.regulatory_references
+      )
+        ? result.regulatory_references.map((r: any) =>
+            typeof r === "string" ? r : r.id
+          )
+        : [];
+
+      let sourceDocuments: string[] = Array.isArray(result.regulatory_references)
+        ? result.regulatory_references
+            .map((r: any) =>
+              typeof r === "string" ? null : r.source_document ?? null
+            )
+            .filter((d: string | null): d is string => Boolean(d))
+        : [];
+
+      if (sourceDocuments.length === 0) {
+        sourceDocuments = [CSF_PRACTITIONER_SOURCE_DOCUMENT];
+      }
+
       setLastEvaluatedPayload(normalizedPayload);
 
       emitCodexCommand("evaluate_csf_practitioner", {
@@ -287,11 +308,8 @@ export function PractitionerCsfSandbox() {
             decision_type: "csf_practitioner",
             status: result.status,
             jurisdiction: form.shipToState,
-            regulatory_reference_ids:
-              result.regulatory_references?.map((r: any) => r.id) ?? [],
-            source_documents: deriveSourceDocuments(
-              result.regulatory_references as any[]
-            ),
+            regulatory_reference_ids: regulatoryReferenceIds,
+            source_documents: sourceDocuments,
             payload: {
               form,
               decision: result,
@@ -323,11 +341,8 @@ export function PractitionerCsfSandbox() {
                   ? "manual_review"
                   : "csf_practitioner_blocked",
               decision_snapshot_id: snapshotId,
-              regulatory_reference_ids:
-                result.regulatory_references?.map((r: any) => r.id) ?? [],
-              source_documents: deriveSourceDocuments(
-                result.regulatory_references as any[]
-              ),
+              regulatory_reference_ids: regulatoryReferenceIds,
+              source_documents: sourceDocuments,
               user_question: null,
               channel: "web_sandbox",
               payload: {
@@ -553,45 +568,25 @@ export function PractitionerCsfSandbox() {
 
       // 3) Ask the regulatory RAG endpoint to explain this decision
       try {
-        const ragResp = await fetch(`${API_BASE}/rag/regulatory-explain`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            engine_family: "csf",
-            decision_type: "csf_practitioner",
-            decision: decisionToUse,
-            question:
-              "Explain to a verification specialist what this Practitioner CSF decision means, including what is missing or required.",
-            regulatory_references: regulatoryReferenceIds,
-            account_id: form.accountNumber || undefined,
-            decision_snapshot_id: snapshotId ?? undefined,
-          }),
+        // 2) Ask the regulatory RAG endpoint to explain this decision
+        const ragJson = await callRegulatoryRag({
+          question:
+            "Explain to a verification specialist what this Practitioner CSF decision means, what is missing, and what is required next.",
+          decision: decisionToUse,
+          regulatory_references: decisionToUse.regulatory_references ?? [],
         });
 
-        if (!ragResp.ok) {
-          let backendDetail: string;
-          try {
-            backendDetail = await ragResp.text();
-          } catch (readErr) {
-            backendDetail = String(readErr);
-          }
-          const err = new Error(
-            `RAG explain failed (${ragResp.status}): ${backendDetail}`
-          );
-          (err as any).status = ragResp.status;
-          throw err;
-        }
-
-        const ragJson = await ragResp.json();
         const answer =
-          (ragJson.answer as string) ??
-          (ragJson.explanation as string) ??
+          (ragJson as any).answer ??
+          (ragJson as any).text ??
           JSON.stringify(ragJson, null, 2);
 
         setCopilotExplanation(answer);
 
         const contextEntries =
-          (ragJson.regulatory_context as any[]) ?? (ragJson.context as any[]) ?? [];
+          ((ragJson as any).regulatory_context ??
+            (ragJson as any).context ??
+            []) as any[];
         const sources: RegulatorySource[] = contextEntries.map(
           (entry: any, idx: number) => ({
             title: entry?.title ?? entry?.citation ?? `Source ${idx + 1}`,
