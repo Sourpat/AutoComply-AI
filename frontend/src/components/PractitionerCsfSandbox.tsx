@@ -20,6 +20,7 @@ import { emitCodexCommand } from "../utils/codexLogger";
 import { RegulatorySourcesList, RegulatorySource } from "./RegulatorySourcesList";
 
 const getApiBase = () => (import.meta as any).env?.VITE_API_BASE || "";
+const API_BASE = getApiBase();
 
 const ErrorAlert = ({
   message,
@@ -209,7 +210,6 @@ const initialForm: PractitionerCsfFormData = {
 };
 
 export function PractitionerCsfSandbox() {
-  const API_BASE = getApiBase();
   const [form, setForm] = useState<PractitionerCsfFormData>(initialForm);
   const [decision, setDecision] = useState<PractitionerCsfDecision | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -239,6 +239,7 @@ export function PractitionerCsfSandbox() {
   const [copilotExplanation, setCopilotExplanation] = useState<string | null>(
     null
   );
+  const [copilotRagAnswer, setCopilotRagAnswer] = useState<string | null>(null);
   const [copilotError, setCopilotError] = useState<string | null>(null);
   const [copilotSources, setCopilotSources] = useState<RegulatorySource[]>([]);
   const [lastEvaluatedPayload, setLastEvaluatedPayload] = useState<string | null>(
@@ -548,6 +549,7 @@ export function PractitionerCsfSandbox() {
     setVerificationError(null);
     setCopilotError(null);
     setCopilotExplanation(null);
+    setCopilotRagAnswer(null);
     setCopilotDecision(null);
     setCopilotSources([]);
 
@@ -697,18 +699,19 @@ export function PractitionerCsfSandbox() {
           body: JSON.stringify({
             engine_family: "csf",
             decision_type: "csf_practitioner",
-            question:
-              "Explain to a verification specialist what this Practitioner CSF decision means, what is missing, and what is required next.",
+            ask: "Explain to a verification specialist what this Practitioner CSF decision means, what is missing, and what is required next.",
             decision: decisionToUse,
-            regulatory_references: decisionToUse.regulatory_references ?? [],
+            regulatory_references: regulatoryReferenceIds,
           }),
         });
 
         if (!ragResp.ok) {
           const errText = await ragResp.text().catch(() => "");
-          throw new Error(
+          const err = new Error(
             `RAG explain failed: ${ragResp.status}${errText ? " – " + errText : ""}`,
           );
+          (err as any).status = ragResp.status;
+          throw err;
         }
 
         const ragResult = await ragResp.json();
@@ -718,25 +721,36 @@ export function PractitionerCsfSandbox() {
           (ragResult as any).text ??
           JSON.stringify(ragResult, null, 2);
 
-        setCopilotExplanation(answer);
-
-        const ctx = ((ragResult as any).regulatory_context ??
+        const rawSources =
+          (ragResult as any).sources ??
+          (ragResult as any).regulatory_context ??
           (ragResult as any).context ??
-          []) as any[];
-        const sources: RegulatorySource[] = (ctx || []).map((c, idx) => ({
-          title:
-            c.title ||
-            c.form_name ||
-            (c.url ? String(c.url).split("/").pop() : `Source ${idx + 1}`),
-          url: c.url,
-          jurisdiction: c.jurisdiction,
-          source: c.source,
-        }));
+          [];
+        const sources: RegulatorySource[] = (rawSources as any[]).map(
+          (c, idx) => ({
+            title:
+              c.title ||
+              c.form_name ||
+              (c.url ? String(c.url).split("/").pop() : `Source ${idx + 1}`),
+            url: c.url,
+            jurisdiction: c.jurisdiction,
+            source: c.source,
+          })
+        );
+
+        setCopilotRagAnswer(answer);
+        setCopilotExplanation(answer);
         setCopilotSources(sources);
-      } catch (err) {
+        setCopilotError(null);
+      } catch (err: any) {
         console.error("RAG explain failed in Form Copilot", err);
         emitCodexCommand("cs_practitioner_form_copilot_rag_error", {});
-        setCopilotError("Deep regulatory explain is temporarily unavailable.");
+        const statusPart = (err as any)?.status
+          ? ` (status ${(err as any).status})`
+          : "";
+        setCopilotError(
+          `Form Copilot could not run${statusPart}. Please try again.`,
+        );
         setCopilotExplanation(
           "A detailed AI explanation for this decision is not available right now. Use the decision summary above as your regulatory guidance."
         );
