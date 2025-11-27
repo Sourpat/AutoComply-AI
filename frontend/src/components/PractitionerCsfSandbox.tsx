@@ -40,6 +40,7 @@ const ErrorAlert = ({
     </div>
   );
 };
+
 const CSF_PRACTITIONER_SOURCE_DOCUMENT =
   "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf";
 
@@ -85,6 +86,7 @@ const deriveSourceDocuments = (
   return docs.length ? docs : [CSF_PRACTITIONER_SOURCE_DOCUMENT];
 };
 
+// ✅ UPDATED: normalize regulatory_reference_id / id and handle non-array safely
 const extractRegulatoryReferenceIds = (
   references: any[] | undefined
 ): string[] => {
@@ -92,11 +94,21 @@ const extractRegulatoryReferenceIds = (
 
   return references
     .map((ref) => {
-      if (typeof ref === "string") return ref;
-      if (ref && typeof ref === "object" && "id" in ref) {
-        return String((ref as any).id);
+      // Already a string ID
+      if (typeof ref === "string") {
+        return ref;
       }
-      return undefined;
+
+      // Skip non-objects
+      if (!ref || typeof ref !== "object") {
+        return undefined;
+      }
+
+      const obj = ref as any;
+      const rawId = obj.regulatory_reference_id ?? obj.id;
+      if (rawId == null) return undefined;
+
+      return String(rawId);
     })
     .filter((id): id is string => Boolean(id));
 };
@@ -584,15 +596,19 @@ export function PractitionerCsfSandbox() {
         decisionToUse.regulatory_references as any[]
       );
 
+      // ✅ UPDATED: backend expects `question` + regulatory_references[]
+      const question =
+        "Explain to a verification specialist what this Practitioner CSF decision means, what is missing, and what is required next.";
+
       const ragResp = await fetch(`${API_BASE}/rag/regulatory-explain`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           engine_family: "csf",
           decision_type: "csf_practitioner",
-          ask: "Explain to a verification specialist what this Practitioner CSF decision means, what is missing, and what is required next.",
+          question,
           decision: decisionToUse,
-          regulatory_references: regulatoryReferenceIds,
+          regulatory_references: regulatoryReferenceIds ?? [],
         }),
       });
 
@@ -661,6 +677,7 @@ export function PractitionerCsfSandbox() {
       setCopilotLoading(false);
     }
   };
+
   const lookupItemHistory = async () => {
     const q = itemQuery.trim();
     if (!q) return;
