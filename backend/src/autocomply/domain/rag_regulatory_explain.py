@@ -428,3 +428,26 @@ def explain_csf_practitioner_decision(
     )
 
     return regulatory_rag_explain(rag_request)
+
+
+def explain_csf_facility_decision(
+    decision: Optional[Dict[str, Any]],
+    question: str,
+    regulatory_references: Optional[List[str]] = None,
+) -> RegulatoryRagAnswer:
+    """Use regulatory RAG to explain a Facility CSF decision."""
+
+    regulatory_references = regulatory_references or []
+    decision = decision or {}
+
+    references = regulatory_references or decision.get("regulatory_references") or [
+        "csf_facility_form"
+    ]
+
+    rag_request = RegulatoryRagRequestModel(
+        question=question,
+        regulatory_references=references,
+        decision=decision,
+    )
+
+    return regulatory_rag_explain(rag_request)
