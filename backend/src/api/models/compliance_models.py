@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional, Literal
 from pydantic import BaseModel, Field
 
 from autocomply.domain.csf_explain import CsfDecisionSummary
+from autocomply.domain.csf_practitioner import CsDecisionStatus
 
 
 # ----------------------------
@@ -248,5 +249,17 @@ class FacilityFormCopilotResponse(BaseModel):
     decision: "CsfDecisionSummary"
     explanation: str
     regulatory_references: List[str] = Field(default_factory=list)
+    artifacts_used: List[str] = Field(default_factory=list)
+    rag_sources: List[RegulatorySource] = Field(default_factory=list)
+
+
+class HospitalFormCopilotResponse(BaseModel):
+    """Response payload for Hospital CSF Form Copilot."""
+
+    status: CsDecisionStatus
+    reason: str
+    missing_fields: List[str] = Field(default_factory=list)
+    regulatory_references: List[str] = Field(default_factory=list)
+    rag_explanation: str
     artifacts_used: List[str] = Field(default_factory=list)
     rag_sources: List[RegulatorySource] = Field(default_factory=list)

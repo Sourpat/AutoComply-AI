@@ -18,7 +18,10 @@ import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { emitCodexCommand } from "../utils/codexLogger";
-import { callFacilityFormCopilot } from "../api/csfFacilityClient";
+import {
+  callHospitalFormCopilot,
+  type HospitalFormCopilotResponse,
+} from "../api/csfHospitalCopilotClient";
 
 const API_BASE =
   (import.meta as any).env?.VITE_API_BASE || process.env.VITE_API_BASE || "";
@@ -78,9 +81,11 @@ export function HospitalCsfSandbox() {
 
   // ---- Hospital CSF Form Copilot state ----
   const [copilotLoading, setCopilotLoading] = useState(false);
-  const [copilotDecision, setCopilotDecision] = useState<any | null>(null);
-  const [copilotExplanation, setCopilotExplanation] =
-    useState<string | null>(null);
+  const [copilotDecision, setCopilotDecision] =
+    useState<HospitalFormCopilotResponse | null>(null);
+  const [copilotExplanation, setCopilotExplanation] = useState<string | null>(
+    null
+  );
   const [copilotError, setCopilotError] = useState<string | null>(null);
 
   function applyHospitalExample(example: HospitalExample) {
@@ -121,6 +126,7 @@ export function HospitalCsfSandbox() {
     try {
       const result = await evaluateHospitalCsf({
         ...form,
+        controlledSubstances,
       });
       setDecision(result);
     } catch (err: any) {
@@ -182,45 +188,32 @@ export function HospitalCsfSandbox() {
     try {
       if (!API_BASE) {
         throw new Error(
-          "Sandbox misconfigured: missing API base URL. Please set VITE_API_BASE in your environment before using Facility CSF tools."
+          "Sandbox misconfigured: missing API base URL. Please set VITE_API_BASE in your environment before using Hospital CSF tools."
         );
       }
 
-      const decision = await evaluateHospitalCsf({ ...form });
-      setCopilotDecision(decision);
-
-      emitCodexCommand("csf_facility_form_copilot_run", {
-        engine_family: "csf",
-        decision_type: "csf_facility",
-        outcome: decision.status ?? "unknown",
-        ship_to_state: form.shipToState,
+      const copilotResponse = await callHospitalFormCopilot({
+        ...form,
+        controlledSubstances,
       });
 
-      const questionText =
-        "Explain for a verification specialist what this Facility CSF decision means, including what controlled-substance licenses or facility classifications are required for this location to receive controlled drugs. Be concise and actionable.";
+      setCopilotDecision(copilotResponse);
+      setCopilotExplanation(copilotResponse.rag_explanation);
 
-      const copilotResponse = await callFacilityFormCopilot(
-        decision,
-        questionText
-      );
-
-      setCopilotExplanation(copilotResponse.explanation);
-
-      emitCodexCommand("csf_facility_form_copilot_complete", {
+      emitCodexCommand("csf_hospital_form_copilot_run", {
         engine_family: "csf",
-        decision_type: "csf_facility",
-        outcome: decision.status ?? "unknown",
-        ship_to_state: form.shipToState,
+        decision_type: "csf_hospital",
+        decision_outcome: copilotResponse.status ?? "unknown",
+        reason: copilotResponse.reason,
+        missing_fields: copilotResponse.missing_fields ?? [],
+        regulatory_references: copilotResponse.regulatory_references ?? [],
       });
     } catch (err: any) {
       console.error(err);
       setCopilotError(
         err?.message ||
-          "Facility CSF Copilot could not run. Check the console or try again."
+          "Hospital CSF Copilot could not run. Check the console or try again."
       );
-      emitCodexCommand("csf_facility_form_copilot_error", {
-        message: String(err?.message || err),
-      });
     } finally {
       setCopilotLoading(false);
     }
@@ -727,13 +720,33 @@ export function HospitalCsfSandbox() {
               <div className="mb-1 flex flex-wrap items-center gap-2">
                 <span className="font-semibold text-slate-700">Decision outcome:</span>
                 <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[9px] font-medium text-slate-50">
-                  {copilotDecision.outcome ?? copilotDecision.status ?? "See details below"}
+                  {copilotDecision.status ?? "See details below"}
                 </span>
               </div>
               {copilotDecision.reason && (
                 <p className="text-[10px] text-slate-600">
                   Reason: {String(copilotDecision.reason)}
                 </p>
+              )}
+
+              {copilotDecision.missing_fields?.length > 0 && (
+                <div className="mt-1">
+                  <div className="text-[10px] font-semibold text-slate-700">
+                    Missing fields
+                  </div>
+                  <ul className="list-inside list-disc text-[10px] text-slate-600">
+                    {copilotDecision.missing_fields.map((field) => (
+                      <li key={field}>{field}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {copilotDecision.regulatory_references?.length > 0 && (
+                <div className="mt-1 text-[10px] text-slate-600">
+                  <span className="font-semibold text-slate-700">Regulatory references:</span>{" "}
+                  {copilotDecision.regulatory_references.join(", ")}
+                </div>
               )}
             </div>
           )}
@@ -744,6 +757,19 @@ export function HospitalCsfSandbox() {
                 Copilot explanation
               </div>
               <p className="whitespace-pre-wrap">{copilotExplanation}</p>
+
+              {copilotDecision?.rag_sources?.length ? (
+                <div className="mt-2 space-y-1">
+                  <div className="text-[10px] font-semibold text-slate-700">
+                    RAG details
+                  </div>
+                  <ul className="list-inside list-disc text-[10px] text-slate-600">
+                    {copilotDecision.rag_sources.map((src) => (
+                      <li key={`${src.id}-${src.title}`}>{src.title || src.id}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </div>
           )}
 

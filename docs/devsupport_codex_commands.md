@@ -556,3 +556,34 @@ Note: If the actual command names in the console differ slightly
 csf_practitioner_copilot_run), this document should be updated to
 exactly match the names emitted in the browser logs so DevSupport
 agents can pattern-match reliably.
+
+9.3 Hospital CSF Form Copilot
+Hospital follows the same pattern as practitioner/facility but targets the
+hospital decision engine and RAG prompt.
+
+9.3.1 Run completed
+ts
+Copy code
+console.log("CODEX_COMMAND: csf_hospital_form_copilot_run", {
+  engine_family: "csf",
+  decision_type: "csf_hospital",
+  decision_outcome: decision.status ?? "unknown",
+  reason: decision.reason,
+  missing_fields: decision.missing_fields ?? [],
+  regulatory_references: decision.regulatory_references ?? [],
+});
+Intent
+
+Capture the hospital Copilot output so DevSupport can correlate the decision
+outcome, rationale, and any missing fields or regulatory references surfaced
+by the RAG explainer.
+
+Key fields & usage
+
+decision_outcome: the hospital CSF engine result.
+
+reason: human-readable explanation from Copilot (RAG answer or fallback).
+
+missing_fields: any fields the engine flagged as missing.
+
+regulatory_references: artifacts cited by the engine/RAG response.

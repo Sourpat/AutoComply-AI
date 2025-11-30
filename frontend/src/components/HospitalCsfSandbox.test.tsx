@@ -1,18 +1,14 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const mockDecision = {
-  status: "ok_to_ship",
-  reason: "Facility approved",
-  missing_fields: [],
-  regulatory_references: ["csf_facility_form"],
-};
-
 const mockCopilotResponse = {
-  engine_family: "csf",
-  decision_type: "csf_facility",
-  decision: mockDecision,
-  explanation: "Facility copilot explanation",
+  status: "ok_to_ship",
+  reason: "Hospital copilot reason",
+  missing_fields: [],
+  regulatory_references: ["csf_hospital_form"],
+  rag_explanation: "Hospital copilot explanation",
+  rag_sources: [],
+  artifacts_used: [],
 };
 
 function mockFetchSequence(responses: Response[]) {
@@ -34,13 +30,12 @@ afterEach(() => {
   delete global.fetch;
 });
 
-describe("Hospital (Facility) CSF Form Copilot", () => {
-  it("renders copilot section and calls the facility endpoint", async () => {
+describe("Hospital CSF Form Copilot", () => {
+  it("renders copilot section and calls the hospital endpoint", async () => {
     vi.stubEnv("VITE_API_BASE", "http://api.test");
     const { HospitalCsfSandbox } = await loadSandbox();
 
     const fetchMock = mockFetchSequence([
-      new Response(JSON.stringify(mockDecision), { status: 200 }),
       new Response(JSON.stringify(mockCopilotResponse), { status: 200 }),
     ]);
 
@@ -52,12 +47,12 @@ describe("Hospital (Facility) CSF Form Copilot", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText(mockCopilotResponse.explanation)
+        screen.getByText(mockCopilotResponse.rag_explanation)
       ).toBeInTheDocument()
     );
 
     const calls = fetchMock.mock.calls.map((call) => call[0] as string);
-    expect(calls.some((url) => url.includes("/csf/facility/form-copilot"))).toBe(
+    expect(calls.some((url) => url.includes("/csf/hospital/form-copilot"))).toBe(
       true
     );
   });
