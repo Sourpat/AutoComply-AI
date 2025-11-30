@@ -10,7 +10,7 @@ from autocomply.domain.compliance_artifacts import (
     COMPLIANCE_ARTIFACTS,
     ComplianceArtifact,
 )
-from src.api.models.compliance_models import RegulatoryContextItem
+from src.api.models.compliance_models import RegulatoryContextItem, RegulatorySource
 
 USE_REAL_RAG = os.getenv("AUTOCOMPLY_ENABLE_RAG", "0") == "1"
 
@@ -56,6 +56,10 @@ class RegulatoryRagAnswer(BaseModel):
         default_factory=list,
         description="IDs of artifacts that were actually loaded / considered.",
     )
+    sources: List[RegulatorySource] = Field(
+        default_factory=list,
+        description="List of regulatory sources or citations used in the answer.",
+    )
     debug: Dict[str, Any] = Field(
         default_factory=dict,
         description="Optional debug info (mode, counts, etc.).",
@@ -89,6 +93,23 @@ def _build_artifact_context_items(
     return items
 
 
+def _build_artifact_sources(artifacts: List[ComplianceArtifact]) -> List[RegulatorySource]:
+    if not artifacts:
+        return []
+
+    return [
+        RegulatorySource(
+            id=artifact.id,
+            title=artifact.name,
+            jurisdiction=artifact.jurisdiction,
+            source="artifact",
+            snippet=artifact.notes,
+            url=artifact.source_document,
+        )
+        for artifact in artifacts
+    ]
+
+
 def _vector_chunks_to_context(
     chunks: List["RetrievedRegulatoryChunk"],
     default_jurisdiction: Optional[str],
@@ -113,6 +134,35 @@ def _vector_chunks_to_context(
         )
 
     return context_items
+
+
+def _vector_chunks_to_sources(
+    chunks: List["RetrievedRegulatoryChunk"],
+    default_jurisdiction: Optional[str],
+) -> List[RegulatorySource]:
+    sources: List[RegulatorySource] = []
+
+    for idx, chunk in enumerate(chunks, start=1):
+        meta = chunk.metadata or {}
+        title = (
+            meta.get("title")
+            or meta.get("file_name")
+            or os.path.basename(meta.get("url", "") or "")
+            or f"Regulatory document {idx}"
+        )
+
+        sources.append(
+            RegulatorySource(
+                id=meta.get("artifact_id") or meta.get("id"),
+                title=title,
+                jurisdiction=meta.get("jurisdiction") or default_jurisdiction,
+                source=meta.get("source") or "regulatory_docs",
+                snippet=chunk.text,
+                url=meta.get("url"),
+            )
+        )
+
+    return sources
 
 
 def _format_context_blocks(context_items: List[RegulatoryContextItem]) -> str:
@@ -168,6 +218,22 @@ def _build_decision_summary(
         if reason:
             parts.append(f"reason: {reason}")
 
+        missing = decision.get("missing_fields")
+        if missing:
+            parts.append("missing_fields: " + ", ".join(map(str, missing)))
+
+        form_context = decision.get("form") or decision.get("csf_context") or {}
+        for key in (
+            "facility_name",
+            "practitioner_name",
+            "ship_to_state",
+            "dea_number",
+            "state_license_number",
+        ):
+            value = form_context.get(key) or decision.get(key)
+            if value:
+                parts.append(f"{key}: {value}")
+
     if artifact_labels:
         parts.append(f"artifacts: {', '.join(artifact_labels)}")
 
@@ -209,10 +275,16 @@ def _real_rag_answer(
         vector_chunks,
         jurisdiction,
     )
+    vector_sources = _vector_chunks_to_sources(
+        vector_chunks,
+        jurisdiction,
+    )
     artifact_context_items = _build_artifact_context_items(artifacts)
+    artifact_sources = _build_artifact_sources(artifacts)
     full_context_items: List[RegulatoryContextItem] = vector_context_items + (
         artifact_context_items or []
     )
+    sources: List[RegulatorySource] = vector_sources + artifact_sources
     context_text = _format_context_blocks(full_context_items)
 
     decision_snippet = ""
@@ -259,6 +331,7 @@ Write a concise, well-structured explanation that:
         answer=answer_text,
         regulatory_references=payload.regulatory_references,
         artifacts_used=[a.id for a in artifacts],
+        sources=sources,
         debug={
             "mode": "rag",
             "rag_query": rag_query,
@@ -290,20 +363,68 @@ def regulatory_rag_explain(payload: RegulatoryRagRequestModel) -> RegulatoryRagA
 
     # Include question so it's easy to see in logs/tests
     stub_answer = (
-        "RAG pipeline is not yet enabled (using stub mode). "
-        "In a real environment, this endpoint would retrieve content from "
-        f"the following artifacts and answer the question:\n\n"
-        f"Artifacts: {artifact_labels}\n\n"
-        f"Question: {payload.question}"
+        "Regulatory RAG offline stub. In a full environment this endpoint "
+        "would retrieve content from the following artifacts and answer the "
+        f"question.\n\nArtifacts: {artifact_labels}\n\nQuestion: {payload.question}"
     )
 
     return RegulatoryRagAnswer(
         answer=stub_answer,
         regulatory_references=payload.regulatory_references,
         artifacts_used=[a.id for a in artifacts],
+        sources=_build_artifact_sources(artifacts),
         debug={
             "mode": "stub",
             "have_rag_dependencies": HAVE_RAG_DEPENDENCIES,
             "use_real_rag_flag": USE_REAL_RAG,
         },
     )
+
+
+def explain_csf_practitioner_decision(
+    decision: Optional[Dict[str, Any]],
+    question: str,
+    regulatory_references: Optional[List[str]] = None,
+) -> RegulatoryRagAnswer:
+    """
+    Uses regulatory RAG to explain the practitioner CSF decision.
+
+    Builds a decision-aware query that includes status, rationale, missing fields,
+    and available facility/practitioner/jurisdiction context before delegating to
+    the generic regulatory RAG pipeline.
+    """
+
+    regulatory_references = regulatory_references or []
+    decision = decision or {}
+
+    # Normalize core references; if nothing provided, default to the primary form id.
+    references = regulatory_references or decision.get("regulatory_references") or [
+        "csf_practitioner_form"
+    ]
+
+    # Preserve any incoming decision fields and explicitly surface CSF context so it
+    # can be reflected in the RAG query and prompt.
+    form_context = decision.get("form") or {}
+    csf_context = {
+        key: value
+        for key, value in {
+            "facility_name": form_context.get("facility_name"),
+            "practitioner_name": form_context.get("practitioner_name"),
+            "ship_to_state": form_context.get("ship_to_state"),
+            "dea_number": form_context.get("dea_number"),
+            "state_license_number": form_context.get("state_license_number"),
+        }.items()
+        if value
+    }
+
+    enriched_decision: Dict[str, Any] = {**decision}
+    if csf_context:
+        enriched_decision["csf_context"] = csf_context
+
+    rag_request = RegulatoryRagRequestModel(
+        question=question,
+        regulatory_references=references,
+        decision=enriched_decision,
+    )
+
+    return regulatory_rag_explain(rag_request)

@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional, Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -206,3 +207,20 @@ class RegulatoryContextResponse(BaseModel):
     state: Optional[str] = None
     purchase_intent: Optional[str] = None
     context: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class RegulatorySource(BaseModel):
+    id: Optional[str] = None
+    title: Optional[str] = None
+    jurisdiction: Optional[str] = None
+    source: Optional[str] = None
+    snippet: Optional[str] = None
+    url: Optional[str] = None
+
+
+class RegulatoryExplainResponse(BaseModel):
+    answer: str
+    sources: List[RegulatorySource] = Field(default_factory=list)
+    regulatory_references: List[str] = Field(default_factory=list)
+    artifacts_used: List[str] = Field(default_factory=list)
+    debug: Dict[str, Any] = Field(default_factory=dict)

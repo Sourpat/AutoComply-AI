@@ -3,10 +3,12 @@ from pydantic import BaseModel, Field, root_validator
 from typing import Any, Dict, List, Optional
 
 from autocomply.domain.rag_regulatory_explain import (
-    RegulatoryRagRequestModel,
     RegulatoryRagAnswer,
+    RegulatoryRagRequestModel,
+    explain_csf_practitioner_decision,
     regulatory_rag_explain,
 )
+from src.api.models.compliance_models import RegulatoryExplainResponse
 
 router = APIRouter(
     prefix="/rag",
@@ -60,7 +62,7 @@ class RegulatoryRagRequest(BaseModel):
         return values
 
 
-class RegulatoryRagResponse(RegulatoryRagAnswer):
+class RegulatoryRagResponse(RegulatoryExplainResponse):
     """
     Response model; we just reuse the domain model.
     """
@@ -79,10 +81,23 @@ async def regulatory_explain_endpoint(
     artifacts and question. In full mode, it runs the LangChain RAG pipeline.
     """
 
-    domain_request = RegulatoryRagRequestModel(
-        question=payload.question,
-        regulatory_references=payload.regulatory_references,
-        decision=payload.decision,
-    )
-    answer = regulatory_rag_explain(domain_request)
+    answer: RegulatoryRagAnswer
+
+    if (
+        payload.engine_family == "csf"
+        and payload.decision_type == "csf_practitioner"
+    ):
+        answer = explain_csf_practitioner_decision(
+            decision=payload.decision,
+            question=payload.question,
+            regulatory_references=payload.regulatory_references,
+        )
+    else:
+        domain_request = RegulatoryRagRequestModel(
+            question=payload.question,
+            regulatory_references=payload.regulatory_references,
+            decision=payload.decision,
+        )
+        answer = regulatory_rag_explain(domain_request)
+
     return RegulatoryRagResponse(**answer.model_dump())

@@ -25,7 +25,7 @@ def test_rag_regulatory_explain_stub_with_known_artifacts():
     answer = data["answer"]
 
     # In stub mode we expect a deterministic answer structure
-    assert "RAG pipeline is not yet enabled" in answer
+    assert "Regulatory RAG offline stub" in answer
     assert "csf_practitioner_form" in answer
     assert "csf_fl_addendum" in answer
 
@@ -38,6 +38,8 @@ def test_rag_regulatory_explain_stub_with_known_artifacts():
     # Artifacts used should at least include the same ids (if present in coverage)
     assert "csf_practitioner_form" in data["artifacts_used"]
     assert "csf_fl_addendum" in data["artifacts_used"]
+
+    assert data["sources"]
 
     debug = data.get("debug", {})
     assert debug.get("mode") in ("stub", "rag")
