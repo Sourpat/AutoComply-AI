@@ -236,11 +236,11 @@ const Home = () => {
                 </header>
 
                 <div className="grid gap-4 md:grid-cols-3">
-  <PractitionerCsfSandbox />
-  <HospitalCsfSandbox />
-  <FacilityCsfSandbox />
-  <ResearcherCsfSandbox />
-</div>
+                  <PractitionerCsfSandbox />
+                  <HospitalCsfSandbox />
+                  <FacilityCsfSandbox />
+                  <ResearcherCsfSandbox />
+                </div>
 
                 <div className="mt-4 grid gap-4 md:grid-cols-3">
                   <OhioTdddSandbox />
