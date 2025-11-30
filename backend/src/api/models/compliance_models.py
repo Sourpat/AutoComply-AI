@@ -2,6 +2,8 @@ from typing import Any, Dict, List, Optional, Literal
 
 from pydantic import BaseModel, Field
 
+from autocomply.domain.csf_explain import CsfDecisionSummary
+
 
 # ----------------------------
 # License Data Models
@@ -224,3 +226,27 @@ class RegulatoryExplainResponse(BaseModel):
     regulatory_references: List[str] = Field(default_factory=list)
     artifacts_used: List[str] = Field(default_factory=list)
     debug: Dict[str, Any] = Field(default_factory=dict)
+
+
+class FacilityFormCopilotRequest(BaseModel):
+    """Request payload for Facility CSF Form Copilot."""
+
+    engine_family: Literal["csf"] = "csf"
+    decision_type: Literal["csf_facility"] = "csf_facility"
+    decision: "CsfDecisionSummary"
+    ask: Optional[str] = Field(
+        default=None,
+        description="Optional question for the copilot to answer via RAG.",
+    )
+
+
+class FacilityFormCopilotResponse(BaseModel):
+    """Response payload for Facility CSF Form Copilot."""
+
+    engine_family: Literal["csf"] = "csf"
+    decision_type: Literal["csf_facility"] = "csf_facility"
+    decision: "CsfDecisionSummary"
+    explanation: str
+    regulatory_references: List[str] = Field(default_factory=list)
+    artifacts_used: List[str] = Field(default_factory=list)
+    rag_sources: List[RegulatorySource] = Field(default_factory=list)

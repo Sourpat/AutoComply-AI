@@ -89,7 +89,7 @@ describe("PractitionerCsfSandbox", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByText(/decision/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/decision/i).length).toBeGreaterThan(0)
     );
 
     fireEvent.click(screen.getByRole("button", { name: /deep rag explain/i }));

@@ -5,8 +5,7 @@ import {
 } from "../domain/csfPractitioner";
 
 const API_BASE =
-  (import.meta as any).env?.VITE_API_BASE ||
-  "";
+  (import.meta as any).env?.VITE_API_BASE || process.env.VITE_API_BASE || "";
 
 export async function evaluatePractitionerCsf(
   form: PractitionerCsfFormData

@@ -19,7 +19,8 @@ import { CopyCurlButton } from "./CopyCurlButton";
 import { emitCodexCommand } from "../utils/codexLogger";
 import { RegulatorySourcesList, RegulatorySource } from "./RegulatorySourcesList";
 
-const getApiBase = () => (import.meta as any).env?.VITE_API_BASE || "";
+const getApiBase = () =>
+  (import.meta as any).env?.VITE_API_BASE || process.env.VITE_API_BASE || "";
 const API_BASE = getApiBase();
 
 const ErrorAlert = ({
