@@ -12,6 +12,7 @@ import { ApiStatusChip } from "../components/ApiStatusChip";
 import { DecisionHistoryPanel } from "../components/DecisionHistoryPanel";
 import { OhioTdddSandbox } from "../components/OhioTdddSandbox";
 import { PractitionerCsfSandbox } from "../components/PractitionerCsfSandbox";
+import { FacilityCsfSandbox } from "../components/FacilityCsfSandbox";
 import { HospitalCsfSandbox } from "../components/HospitalCsfSandbox";
 import { ResearcherCsfSandbox } from "../components/ResearcherCsfSandbox";
 import { RagRegulatorySandbox } from "../components/RagRegulatorySandbox";
@@ -235,10 +236,11 @@ const Home = () => {
                 </header>
 
                 <div className="grid gap-4 md:grid-cols-3">
-                  <PractitionerCsfSandbox />
-                  <HospitalCsfSandbox />
-                  <ResearcherCsfSandbox />
-                </div>
+  <PractitionerCsfSandbox />
+  <HospitalCsfSandbox />
+  <FacilityCsfSandbox />
+  <ResearcherCsfSandbox />
+</div>
 
                 <div className="mt-4 grid gap-4 md:grid-cols-3">
                   <OhioTdddSandbox />
