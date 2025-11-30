@@ -376,3 +376,183 @@ Payload:
 DevSupport agents or n8n workflows should treat url as a standard URL string
 and pass it directly into any document/image-opening tools. The runtime will
 transform /mnt/data/... into an actual accessible URL.
+
+## 9. CSF Form Copilot (Practitioner & Facility)
+
+The CSF Form Copilot flows emit additional `CODEX_COMMAND` logs so a
+DevSupport agent can reconstruct:
+
+- Which sandbox was used (practitioner vs. facility),
+- What the engine decision was,
+- How the Copilot / RAG pipeline behaved (stub vs. live, success vs. error).
+
+These commands are **separate** from the existing `explain_csf_*` and
+`rag_regulatory_explain_*` logs – they are specifically about the
+end-to-end “Form Copilot” experience.
+
+### 9.1 Practitioner CSF Form Copilot
+
+#### 9.1.1 Run started
+
+```ts
+console.log("CODEX_COMMAND: csf_practitioner_form_copilot_run", {
+  engine_family: "csf",
+  decision_type: "csf_practitioner",
+  sandbox: "practitioner_csf",
+  decision_outcome: decision.status ?? "unknown",
+  form,                // latest practitioner form payload
+});
+Intent
+
+Record that the Practitioner Form Copilot was invoked from the
+Practitioner CSF sandbox, and capture the engine decision status at the
+moment Copilot is launched.
+
+Key fields
+
+engine_family: always "csf".
+
+decision_type: "csf_practitioner".
+
+sandbox: identifies which UI surface triggered the command
+(currently "practitioner_csf").
+
+decision_outcome: engine status such as "ok_to_ship",
+"blocked", "needs_review", or "unknown" if the status is missing.
+
+form: the practitioner form body that would be sent to
+/csf/practitioner/evaluate.
+
+DevSupport usage
+
+If you need to replay the decision, POST form back to
+/csf/practitioner/evaluate.
+
+Use decision_outcome to route to different debugging workflows
+(e.g., blocked vs approved).
+
+9.1.2 Run completed
+ts
+Copy code
+console.log("CODEX_COMMAND: csf_practitioner_form_copilot_complete", {
+  engine_family: "csf",
+  decision_type: "csf_practitioner",
+  sandbox: "practitioner_csf",
+  decision_outcome: decision.status ?? "unknown",
+  reason,             // Copilot summary reason shown in UI
+  rag_mode,           // "stub" | "live"
+  rag_status,         // "ok" | "timeout" | "error"
+  question,           // prompt sent to RAG / regulatory explain
+  regulatory_references: decision.regulatory_references ?? [],
+});
+Intent
+
+Capture how the Practitioner Form Copilot finished: what it told the
+user, and how the underlying RAG / regulatory explain behaved.
+
+Key fields
+
+Everything from csf_practitioner_form_copilot_run, plus:
+
+reason: human-readable message shown in the Copilot panel
+(e.g., stub message about RAG not yet enabled).
+
+rag_mode:
+
+"stub" – using local stubbed response (current local dev default),
+
+"live" – when the real RAG endpoint is active.
+
+rag_status:
+
+"ok" – RAG call succeeded,
+
+"timeout" – RAG timed out,
+
+"error" – any non-happy-path from the RAG service.
+
+question: the question passed to /rag/regulatory-explain.
+
+regulatory_references: IDs referenced by the CSF decision.
+
+DevSupport usage
+
+When rag_mode === "stub", you can optionally call
+/rag/regulatory-explain yourself using question and
+regulatory_references to simulate a real run.
+
+When rag_status !== "ok", generate an incident-style explanation
+combining:
+
+the decision outcome,
+
+the user-visible reason,
+
+and the failure mode (timeout, error, etc.).
+
+9.2 Facility CSF Form Copilot
+The facility sandbox mirrors the practitioner flow but uses a different
+decision type and command names.
+
+9.2.1 Run started
+ts
+Copy code
+console.log("CODEX_COMMAND: csf_facility_form_copilot_run", {
+  engine_family: "csf",
+  decision_type: "csf_facility",
+  sandbox: "facility_csf",
+  decision_outcome: decision.status ?? "unknown",
+  form,                // latest facility form payload
+});
+Intent
+
+Record that the Facility Form Copilot was invoked from the Facility
+CSF sandbox.
+
+Key fields
+
+engine_family: "csf".
+
+decision_type: "csf_facility".
+
+sandbox: "facility_csf".
+
+decision_outcome: facility engine outcome at the time of invocation.
+
+form: facility form body that would be sent to /csf/facility/evaluate
+(or the appropriate facility evaluate endpoint).
+
+9.2.2 Run completed
+ts
+Copy code
+console.log("CODEX_COMMAND: csf_facility_form_copilot_complete", {
+  engine_family: "csf",
+  decision_type: "csf_facility",
+  sandbox: "facility_csf",
+  decision_outcome: decision.status ?? "unknown",
+  reason,
+  rag_mode,           // "stub" | "live"
+  rag_status,         // "ok" | "timeout" | "error"
+  question,
+  regulatory_references: decision.regulatory_references ?? [],
+});
+Intent
+
+Summarize the Facility Form Copilot result and RAG behavior.
+
+Key fields & usage
+
+Same semantics as the practitioner *_complete command:
+
+Use decision_outcome + reason to explain what Copilot decided.
+
+Use rag_mode / rag_status to diagnose RAG issues.
+
+Use question + regulatory_references to replay or deepen the RAG
+explanation if desired.
+
+Note: If the actual command names in the console differ slightly
+(for example: csf_practitioner_form_copilot_run vs
+csf_practitioner_copilot_run), this document should be updated to
+exactly match the names emitted in the browser logs so DevSupport
+agents can pattern-match reliably.
