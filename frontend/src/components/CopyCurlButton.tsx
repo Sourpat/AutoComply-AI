@@ -14,6 +14,9 @@ interface CopyCurlButtonProps {
   body?: unknown | null;
   disabled?: boolean;
   size?: "xs" | "sm";
+  sandboxId?: string;
+  decisionType?: string;
+  engineFamily?: string;
 }
 
 function buildCurlCommand(
@@ -45,14 +48,22 @@ export function CopyCurlButton({
   body,
   disabled,
   size = "xs",
+  sandboxId,
+  decisionType,
+  engineFamily,
 }: CopyCurlButtonProps) {
   const handleClick = async () => {
     const curl = buildCurlCommand(endpoint, method, body);
 
-    emitCodexCommand("copy_curl", {
+    const eventName = sandboxId ? `csf_${sandboxId}_curl_copied` : "copy_curl";
+
+    emitCodexCommand(eventName, {
       endpoint: `${API_BASE}${endpoint}`,
       method,
       body,
+      engine_family: engineFamily,
+      decision_type: decisionType,
+      sandbox: sandboxId,
     });
 
     try {

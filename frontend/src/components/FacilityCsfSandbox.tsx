@@ -22,6 +22,10 @@ import { callFacilityFormCopilot } from "../api/csfFacilityCopilotClient";
 import type { FacilityFormCopilotResponse } from "../domain/csfFacility";
 import { API_BASE } from "../api/csfHospitalClient";
 
+const FACILITY_ENGINE_FAMILY = "csf";
+const FACILITY_DECISION_TYPE = "csf_facility";
+const FACILITY_SANDBOX_ID = "facility";
+
 
 type FacilityExample = {
   id: string;
@@ -92,11 +96,13 @@ export function FacilityCsfSandbox() {
     setForm(nextForm);
 
     emitCodexCommand("csf_facility_example_selected", {
+      engine_family: FACILITY_ENGINE_FAMILY,
+      decision_type: FACILITY_DECISION_TYPE,
+      sandbox: FACILITY_SANDBOX_ID,
       example_id: example.id,
       label: example.label,
-      form: nextForm,
-      source_document:
-        "/mnt/data/Online Controlled Substance Form - Facility.pdf",
+      facility_type: nextForm.facilityType,
+      ship_to_state: nextForm.shipToState,
     });
   }
 
@@ -117,14 +123,40 @@ export function FacilityCsfSandbox() {
     setRagAnswer(null);
     setRagError(null);
 
+    emitCodexCommand("csf_facility_evaluate_attempt", {
+      engine_family: FACILITY_ENGINE_FAMILY,
+      decision_type: FACILITY_DECISION_TYPE,
+      sandbox: FACILITY_SANDBOX_ID,
+      facility_type: form.facilityType,
+      ship_to_state: form.shipToState,
+    });
+
     try {
       const result = await evaluateFacilityCsf({
         ...form,
         controlledSubstances,
       });
       setDecision(result);
+
+      emitCodexCommand("csf_facility_evaluate_success", {
+        engine_family: FACILITY_ENGINE_FAMILY,
+        decision_type: FACILITY_DECISION_TYPE,
+        sandbox: FACILITY_SANDBOX_ID,
+        facility_type: form.facilityType,
+        ship_to_state: form.shipToState,
+        decision_status: result.status,
+      });
     } catch (err: any) {
       setError(err?.message ?? "Failed to evaluate Facility CSF");
+
+      emitCodexCommand("csf_facility_evaluate_error", {
+        engine_family: FACILITY_ENGINE_FAMILY,
+        decision_type: FACILITY_DECISION_TYPE,
+        sandbox: FACILITY_SANDBOX_ID,
+        facility_type: form.facilityType,
+        ship_to_state: form.shipToState,
+        error_message: err?.message ?? "unknown_error",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -178,6 +210,14 @@ export function FacilityCsfSandbox() {
     setCopilotError(null);
     setCopilotResponse(null);
 
+    emitCodexCommand("csf_facility_form_copilot_run", {
+      engine_family: FACILITY_ENGINE_FAMILY,
+      decision_type: FACILITY_DECISION_TYPE,
+      sandbox: FACILITY_SANDBOX_ID,
+      facility_type: form.facilityType,
+      ship_to_state: form.shipToState,
+    });
+
     try {
       if (!API_BASE) {
         throw new Error(
@@ -192,9 +232,10 @@ export function FacilityCsfSandbox() {
 
       setCopilotResponse(copilotResponse);
 
-      emitCodexCommand("csf_facility_form_copilot_run", {
-        engine_family: "csf",
-        decision_type: "csf_facility",
+      emitCodexCommand("csf_facility_form_copilot_success", {
+        engine_family: FACILITY_ENGINE_FAMILY,
+        decision_type: FACILITY_DECISION_TYPE,
+        sandbox: FACILITY_SANDBOX_ID,
         decision_outcome: copilotResponse.status ?? "unknown",
         reason: copilotResponse.reason,
         missing_fields: copilotResponse.missing_fields ?? [],
@@ -206,6 +247,15 @@ export function FacilityCsfSandbox() {
         err?.message ||
           "Facility CSF Copilot could not run. Please check the form and try again."
       );
+
+      emitCodexCommand("csf_facility_form_copilot_error", {
+        engine_family: FACILITY_ENGINE_FAMILY,
+        decision_type: FACILITY_DECISION_TYPE,
+        sandbox: FACILITY_SANDBOX_ID,
+        facility_type: form.facilityType,
+        ship_to_state: form.shipToState,
+        error_message: err?.message ?? "unknown_error",
+      });
     } finally {
       setCopilotLoading(false);
     }
@@ -458,6 +508,9 @@ export function FacilityCsfSandbox() {
                 endpoint="/csf/facility/evaluate"
                 body={form}
                 disabled={isLoading}
+                sandboxId={FACILITY_SANDBOX_ID}
+                decisionType={FACILITY_DECISION_TYPE}
+                engineFamily={FACILITY_ENGINE_FAMILY}
               />
             </div>
           </form>
@@ -511,6 +564,9 @@ export function FacilityCsfSandbox() {
                       endpoint="/csf/explain"
                       body={{ decision }}
                       disabled={isExplaining}
+                      sandboxId={FACILITY_SANDBOX_ID}
+                      decisionType={FACILITY_DECISION_TYPE}
+                      engineFamily={FACILITY_ENGINE_FAMILY}
                     />
                   </div>
 
