@@ -21,6 +21,32 @@ class FacilityFacilityType(str, Enum):
     OTHER = "other"
 
 
+class FacilityControlledSubstance(BaseModel):
+    """Payload shape for Facility CSF controlled substances (frontend aligned)."""
+
+    id: str
+    name: str
+    strength: Optional[str] = None
+    unit: Optional[str] = None
+    schedule: Optional[str] = None
+    dea_code: Optional[str] = None
+    ndc: Optional[str] = None
+    dosage_form: Optional[str] = None
+    dea_schedule: Optional[str] = None
+
+    def to_controlled_substance_item(self) -> ControlledSubstanceItem:
+        """Normalize facility items into the core ControlledSubstanceItem shape."""
+
+        return ControlledSubstanceItem(
+            id=self.id,
+            name=self.name,
+            ndc=self.ndc,
+            strength=self.strength,
+            dosage_form=self.dosage_form,
+            dea_schedule=self.schedule or self.dea_schedule,
+        )
+
+
 class FacilityCsfForm(BaseModel):
     """Normalized representation of the Facility Pharmacy Controlled Substance Form."""
 
@@ -44,7 +70,7 @@ class FacilityCsfForm(BaseModel):
         ),
     )
 
-    controlled_substances: List[ControlledSubstanceItem] = Field(
+    controlled_substances: List[FacilityControlledSubstance] = Field(
         default_factory=list,
         description=(
             "Controlled substance items associated with this Facility CSF. "
@@ -84,7 +110,9 @@ def evaluate_facility_csf(form: FacilityCsfForm) -> FacilityCsfDecision:
         pharmacist_contact_phone=form.pharmacist_contact_phone,
         ship_to_state=form.ship_to_state,
         attestation_accepted=form.attestation_accepted,
-        controlled_substances=form.controlled_substances,
+        controlled_substances=[
+            item.to_controlled_substance_item() for item in form.controlled_substances
+        ],
         internal_notes=form.internal_notes,
     )
 
@@ -95,6 +123,7 @@ def evaluate_facility_csf(form: FacilityCsfForm) -> FacilityCsfDecision:
 __all__ = [
     "FacilityFacilityType",
     "FacilityCsfForm",
+    "FacilityControlledSubstance",
     "FacilityCsfDecision",
     "evaluate_facility_csf",
 ]
