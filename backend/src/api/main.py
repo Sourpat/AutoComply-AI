@@ -14,6 +14,7 @@ from src.api.routes.csf_facility import (
     router as csf_facility_router,
 )
 from src.api.routes.csf_explain import router as csf_explain_router
+from src.api.routes.csf_ems import router as csf_ems_router
 from src.api.routes.csf_hospital import router as csf_hospital_router
 from src.api.routes.csf_practitioner import router as csf_practitioner_router
 from src.api.routes.csf_researcher import router as csf_researcher_router
@@ -62,6 +63,7 @@ app.include_router(csf_researcher_router)
 app.include_router(controlled_substances_router)
 app.include_router(csf_facility_router)
 app.include_router(csf_facility_v1_router)
+app.include_router(csf_ems_router)
 app.include_router(csf_explain_router)
 app.include_router(rag_regulatory_router)
 app.include_router(pdma_sample_router)

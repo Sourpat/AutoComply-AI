@@ -1,7 +1,8 @@
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
+from pydantic.config import ConfigDict
 
 from autocomply.domain.controlled_substances import ControlledSubstanceItem
 from autocomply.domain.csf_practitioner import CsDecisionStatus
@@ -15,6 +16,30 @@ class EmsServiceType(str, Enum):
     OTHER = "other"
 
 
+class EmsControlledSubstance(BaseModel):
+    """Payload shape for EMS CSF controlled substances (frontend aligned)."""
+
+    id: str
+    name: str
+    strength: Optional[str] = None
+    unit: Optional[str] = None
+    schedule: Optional[str] = None
+    dea_code: Optional[str] = None
+    ndc: Optional[str] = None
+    dosage_form: Optional[str] = None
+    dea_schedule: Optional[str] = None
+
+    def to_controlled_substance_item(self) -> ControlledSubstanceItem:
+        return ControlledSubstanceItem(
+            id=self.id,
+            name=self.name,
+            ndc=self.ndc,
+            strength=self.strength,
+            dosage_form=self.dosage_form,
+            dea_schedule=self.schedule or self.dea_schedule,
+        )
+
+
 class EmsCsfForm(BaseModel):
     """
     Normalized representation of the EMS Controlled Substance Form.
@@ -23,14 +48,25 @@ class EmsCsfForm(BaseModel):
     'Online Controlled Substance Form - EMS form.pdf'.
     """
 
+    model_config = ConfigDict(populate_by_name=True)
+
     # Service identity
-    service_name: str = Field(...)
-    service_type: EmsServiceType
+    facility_name: str = Field(
+        ..., validation_alias=AliasChoices("facility_name", "service_name")
+    )
+    facility_type: Optional[str] = Field(
+        default="ems_service",
+        validation_alias=AliasChoices("facility_type", "service_type"),
+    )
     account_number: Optional[str] = None
 
     # Licensing
-    agency_license_number: str = Field(
-        ..., description="EMS agency/service license"
+    pharmacy_license_number: str = Field(
+        ...,
+        validation_alias=AliasChoices(
+            "pharmacy_license_number", "agency_license_number"
+        ),
+        description="EMS agency/service license",
     )
     dea_number: Optional[str] = Field(
         default=None,
@@ -41,7 +77,13 @@ class EmsCsfForm(BaseModel):
     )
 
     # Responsible medical director / officer
-    medical_director_name: str = Field(...)
+    pharmacist_in_charge_name: str = Field(
+        ...,
+        validation_alias=AliasChoices(
+            "pharmacist_in_charge_name", "medical_director_name"
+        ),
+    )
+    pharmacist_contact_phone: Optional[str] = None
 
     # Jurisdiction
     ship_to_state: str = Field(..., max_length=2)
@@ -52,7 +94,7 @@ class EmsCsfForm(BaseModel):
         description="True if the service accepted the CSF attestation clause.",
     )
 
-    controlled_substances: List[ControlledSubstanceItem] = Field(
+    controlled_substances: List[EmsControlledSubstance] = Field(
         default_factory=list,
         description=("Controlled substance items associated with this EMS CSF."),
     )
@@ -79,18 +121,30 @@ def evaluate_ems_csf(form: EmsCsfForm) -> EmsCsfDecision:
     First-pass decision logic for EMS CSF.
 
     Conservative baseline:
-    - Require service_name, agency_license_number, medical_director_name, ship_to_state.
+    - Require facility_name, pharmacy_license_number, pharmacist_in_charge_name, ship_to_state.
     - DEA number is optional for now (depends on operating model).
     - Require attestation_accepted to allow shipping.
     """
     missing: List[str] = []
 
-    if not form.service_name.strip():
-        missing.append("service_name")
-    if not form.agency_license_number.strip():
-        missing.append("agency_license_number")
-    if not form.medical_director_name.strip():
-        missing.append("medical_director_name")
+    cs_items: List[ControlledSubstanceItem] = []
+    for item in form.controlled_substances:
+        if hasattr(item, "to_controlled_substance_item"):
+            cs_items.append(item.to_controlled_substance_item())
+        elif isinstance(item, ControlledSubstanceItem):
+            cs_items.append(item)
+        else:
+            cs_items.append(ControlledSubstanceItem.model_validate(item))
+
+    if not form.facility_name.strip():
+        missing.extend(["facility_name", "service_name"])
+    if not form.pharmacy_license_number.strip():
+        missing.extend(["pharmacy_license_number", "agency_license_number"])
+    if not form.pharmacist_in_charge_name.strip():
+        missing.extend([
+            "pharmacist_in_charge_name",
+            "medical_director_name",
+        ])
     if not form.ship_to_state.strip():
         missing.append("ship_to_state")
 
@@ -120,9 +174,7 @@ def evaluate_ems_csf(form: EmsCsfForm) -> EmsCsfDecision:
     # --- NEW: item-aware rule layer ---
     ship_state = (form.ship_to_state or "").upper()
     high_risk_items = [
-        item
-        for item in form.controlled_substances
-        if (item.dea_schedule or "").upper() in {"II", "CII"}
+        item for item in cs_items if (item.dea_schedule or "").upper() in {"II", "CII"}
     ]
 
     if high_risk_items and ship_state == "FL":

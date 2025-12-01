@@ -8,13 +8,13 @@ import {
 // This is the single source of truth for where the backend lives.
 const getApiBase = (): string => {
   const metaEnv = (import.meta as any)?.env ?? {};
-  const viteBase =
+  const viteBaseRaw =
     (metaEnv.VITE_API_BASE as string | undefined) ??
     (metaEnv.VITE_API_BASE_URL as string | undefined);
 
-  // 1) Prefer explicit Vite env if set
-  if (viteBase && viteBase.length > 0) {
-    return viteBase;
+  // 1) Prefer explicit Vite env if set (including empty string)
+  if (viteBaseRaw !== undefined) {
+    return viteBaseRaw;
   }
 
   // 2) Local dev: frontend on 5173, backend on 8000

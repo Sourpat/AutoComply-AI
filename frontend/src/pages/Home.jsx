@@ -13,6 +13,7 @@ import { DecisionHistoryPanel } from "../components/DecisionHistoryPanel";
 import { OhioTdddSandbox } from "../components/OhioTdddSandbox";
 import { PractitionerCsfSandbox } from "../components/PractitionerCsfSandbox";
 import { FacilityCsfSandbox } from "../components/FacilityCsfSandbox";
+import { EmsCsfSandbox } from "../components/EmsCsfSandbox";
 import { HospitalCsfSandbox } from "../components/HospitalCsfSandbox";
 import { ResearcherCsfSandbox } from "../components/ResearcherCsfSandbox";
 import { RagRegulatorySandbox } from "../components/RagRegulatorySandbox";
@@ -239,6 +240,7 @@ const Home = () => {
                   <PractitionerCsfSandbox />
                   <HospitalCsfSandbox />
                   <FacilityCsfSandbox />
+                  <EmsCsfSandbox />
                   <ResearcherCsfSandbox />
                 </div>
 

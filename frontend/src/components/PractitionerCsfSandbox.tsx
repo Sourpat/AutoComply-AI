@@ -27,7 +27,7 @@ const getApiBase = (): string => {
     (metaEnv.VITE_API_BASE as string | undefined) ??
     (metaEnv.VITE_API_BASE_URL as string | undefined);
 
-  if (viteBase && viteBase.length > 0) {
+  if (viteBase !== undefined) {
     return viteBase;
   }
 
