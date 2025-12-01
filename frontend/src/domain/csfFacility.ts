@@ -40,3 +40,20 @@ export interface FacilityCsfDecision {
   missing_fields: string[];
   regulatory_references: string[];
 }
+
+export interface FacilityFormCopilotSource {
+  id?: string;
+  title: string;
+  url?: string;
+  snippet?: string;
+}
+
+export interface FacilityFormCopilotResponse {
+  status: FacilityCsfDecisionStatus;
+  reason: string;
+  missing_fields: string[];
+  regulatory_references: string[];
+  rag_explanation: string;
+  artifacts_used: string[];
+  rag_sources: FacilityFormCopilotSource[];
+}
