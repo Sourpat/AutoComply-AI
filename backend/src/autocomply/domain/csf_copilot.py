@@ -13,6 +13,10 @@ from src.autocomply.domain.csf_hospital import (
     HospitalFacilityType,
     evaluate_hospital_csf,
 )
+from src.autocomply.domain.csf_researcher import (
+    ResearcherCsfForm,
+    evaluate_researcher_csf,
+)
 from src.autocomply.domain.csf_practitioner import CsDecisionStatus
 from src.autocomply.domain.rag_regulatory_explain import (
     RegulatoryRagAnswer,
@@ -84,6 +88,8 @@ async def run_csf_copilot(
         doc_id = "csf_facility_form"
     elif csf_type == "ems":
         doc_id = "csf_ems_form"
+    elif csf_type == "researcher":
+        doc_id = "csf_researcher_form"
     else:
         doc_id = "csf_hospital_form"
     prompt = build_csf_copilot_prompt(
@@ -228,6 +234,74 @@ async def run_csf_copilot(
             )
             rag_explanation = (
                 "RAG pipeline is not yet enabled for EMS CSF (using stub mode). "
+                f"Decision summary: {decision.reason}"
+            )
+
+        return CsfCopilotResult(
+            status=decision.status,
+            reason=decision.reason,
+            missing_fields=decision.missing_fields,
+            regulatory_references=references,
+            rag_explanation=rag_explanation,
+            artifacts_used=artifacts_used,
+            rag_sources=rag_sources,
+        )
+
+    if csf_type == "researcher":
+        researcher_form = ResearcherCsfForm(
+            facility_name=request_model.name or "",
+            facility_type=request_model.facility_type,
+            account_number=request_model.account_number,
+            pharmacy_license_number=request_model.pharmacy_license_number or "",
+            dea_number=request_model.dea_number or "",
+            pharmacist_in_charge_name=request_model.pharmacist_in_charge_name or "",
+            pharmacist_contact_phone=request_model.pharmacist_contact_phone,
+            ship_to_state=request_model.ship_to_state or "",
+            attestation_accepted=request_model.attestation_accepted,
+            controlled_substances=request_model.controlled_substances,
+            internal_notes=request_model.internal_notes,
+        )
+
+        decision = evaluate_researcher_csf(researcher_form)
+        references = decision.regulatory_references or ["csf_researcher_form"]
+        rag_explanation = decision.reason
+
+        logger.info(
+            "Researcher CSF copilot request received",
+            extra={
+                "engine_family": "csf",
+                "decision_type": "csf_researcher",
+                "doc_id": doc_id,
+                "decision_status": decision.status,
+            },
+        )
+
+        try:
+            rag_answer = explain_csf_facility_decision(
+                decision=decision.model_dump(),
+                question=prompt,
+                regulatory_references=references,
+            )
+            rag_explanation = rag_answer.answer or rag_explanation
+            rag_sources = rag_answer.sources
+            artifacts_used = rag_answer.artifacts_used
+
+            if rag_answer.debug.get("mode") == "stub":
+                rag_explanation = (
+                    "RAG pipeline is not yet enabled for Researcher CSF (using stub mode). "
+                    f"Decision summary: {decision.reason}"
+                )
+        except Exception:
+            logger.exception(
+                "Failed to generate Researcher CSF copilot explanation",
+                extra={
+                    "engine_family": "csf",
+                    "decision_type": "csf_researcher",
+                    "doc_id": doc_id,
+                },
+            )
+            rag_explanation = (
+                "RAG pipeline is not yet enabled for Researcher CSF (using stub mode). "
                 f"Decision summary: {decision.reason}"
             )
 

@@ -845,3 +845,105 @@ Use this to add a new EMS CSF example (e.g., different agency types or jurisdict
    - Add a new entry with realistic data (agency name, facility_type, license, DEA, ship_to_state, attestation, controlled_substances).
    - Keep the label descriptive so users know what the scenario covers (e.g., “Air Medical – Missing Attestation”).
    - Wire the new example into the UI (selector/buttons) and ensure telemetry logs include `example_label` and `ship_to_state`.
+
+### Researcher CSF Sandbox
+
+The Researcher CSF Sandbox lets you test Researcher Controlled Substance Forms against the CSF decision/RAG engine, with Researcher-specific UI and endpoints.
+
+Key files:
+
+- **Frontend**
+  - `frontend/src/components/ResearcherCsfSandbox.tsx`
+  - `frontend/src/domain/csfResearcher.ts`
+  - `frontend/src/api/csfResearcherClient.ts`
+  - `frontend/src/api/csfResearcherCopilotClient.ts`
+
+- **Backend**
+  - `backend/src/api/routes/csf_researcher.py`
+  - `backend/src/autocomply/domain/csf_researcher.py`
+  - `backend/src/autocomply/domain/csf_copilot.py`
+  - `backend/src/rag/csf_copilot_prompt.py`
+
+Endpoints:
+
+- `POST /csf/researcher/evaluate`
+- `POST /csf/researcher/form-copilot`
+
+#### Command: `csf_researcher_fix_copilot_failure`
+
+**When to use**
+
+Use this when the Researcher CSF Form Copilot (the “Check & Explain” button in the Researcher CSF Sandbox) is:
+
+- Returning errors (non-200 responses),
+- Returning an empty or obviously broken payload, or
+- Not showing the RAG explanation / regulatory references in the UI.
+
+**What Codex should do**
+
+1. **Check frontend API client wiring**
+
+   - Open `frontend/src/api/csfResearcherCopilotClient.ts`.
+   - Confirm that it:
+     - Uses the shared `API_BASE` (same as Hospital).
+     - Calls `POST /csf/researcher/form-copilot`.
+     - Parses JSON into `ResearcherFormCopilotResponse`.
+     - Throws a helpful error message:
+       `"Researcher Form Copilot failed with status ${message}"`.
+
+2. **Check Researcher sandbox handler + state**
+
+   - Open `frontend/src/components/ResearcherCsfSandbox.tsx`.
+   - Verify:
+     - There is a handler that calls `callResearcherFormCopilot(form)` when the “Check & Explain” button is clicked.
+     - It updates `copilotResponse`, `copilotLoading`, and `copilotError` correctly.
+     - The UI renders:
+       - `status`
+       - `reason`
+       - `missing_fields`
+       - `regulatory_references`
+       - `rag_explanation`
+       - `rag_sources`
+     - All user-facing copy says **“Researcher CSF”**, not “Facility”, “EMS”, or “Hospital”.
+
+3. **Check backend route + RAG helper**
+
+   - Open `backend/src/api/routes/csf_researcher.py`.
+   - Confirm `POST /csf/researcher/form-copilot`:
+     - Accepts the Researcher CSF payload.
+     - Builds a `copilot_request` with `csf_type="researcher"` and all relevant fields (name, facility_type, account_number, license/DEA, ship_to_state, attestation, controlled_substances, internal_notes).
+     - Calls `run_csf_copilot(copilot_request)`.
+     - Maps the result into `ResearcherFormCopilotResponse` (status, reason, missing_fields, regulatory_references, rag_explanation, artifacts_used, rag_sources).
+
+   - Open `backend/src/autocomply/domain/csf_copilot.py`.
+     - Confirm `run_csf_copilot` routes `csf_type="researcher"` to the Researcher doc id (`csf_researcher_form`).
+     - Uses the CSF copilot prompt builder to include Researcher labeling.
+
+4. **Run checks**
+
+   - Run backend tests:
+     - `cd backend`
+     - `pytest`
+   - Run frontend typecheck/build:
+     - `cd frontend`
+     - `pnpm build` (or the project’s standard build command).
+   - If any changes were made, ensure both evaluate and copilot still work in the Researcher CSF Sandbox.
+
+#### Command: `csf_researcher_add_example`
+
+**When to use**
+
+Use this to add a new Researcher CSF example (e.g., different lab types or jurisdictions) to the Researcher CSF Sandbox so users can quickly test realistic scenarios.
+
+**What Codex should do**
+
+1. **Locate Researcher examples list**
+
+   - Open `frontend/src/components/ResearcherCsfSandbox.tsx`.
+   - Find the `RESEARCHER_EXAMPLES` constant (array of `ResearcherCsfFormData`).
+
+2. **Add the new example**
+
+   - Add a new entry with realistic data (lab name, facility_type, license, DEA, ship_to_state, attestation, controlled_substances).
+   - Keep the label descriptive so users know what the scenario covers (e.g., “Research University – Missing Attestation”).
+   - Wire the new example into the UI (selector/buttons) and ensure telemetry logs include `example_label` and `ship_to_state`.

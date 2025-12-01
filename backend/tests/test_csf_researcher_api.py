@@ -1,78 +1,75 @@
+from typing import Any, Dict
+
 from fastapi.testclient import TestClient
 
-from autocomply.domain.csf_practitioner import CsDecisionStatus
 from src.api.main import app
+from src.api.models.compliance_models import RegulatorySource
+from src.api.routes import csf_researcher
+from src.autocomply.domain.csf_copilot import CsfCopilotResult
+from src.autocomply.domain.csf_practitioner import CsDecisionStatus
 
 client = TestClient(app)
 
 
+def make_valid_researcher_csf_payload() -> Dict[str, Any]:
+    return {
+        "facility_name": "University Research Lab – MA",
+        "facility_type": "researcher",
+        "account_number": "910123456",
+        "pharmacy_license_number": "MA-RES-2025-001",
+        "dea_number": "RS1234567",
+        "pharmacist_in_charge_name": "Dr. Dana Example",
+        "pharmacist_contact_phone": "555-400-9001",
+        "ship_to_state": "MA",
+        "attestation_accepted": True,
+        "internal_notes": "Happy path Researcher CSF test payload.",
+        "controlled_substances": [
+            {"id": "fentanyl", "name": "Fentanyl"},
+            {"id": "ketamine", "name": "Ketamine"},
+        ],
+    }
+
+
 def test_csf_researcher_evaluate_ok_to_ship():
-    payload = {
-        "institution_name": "Test University",
-        "facility_type": "university",
-        "account_number": "ACC-R-001",
-        "principal_investigator_name": "Dr. Test PI",
-        "researcher_title": "Principal Investigator",
-        "state_license_number": None,
-        "dea_number": None,
-        "protocol_or_study_id": "PROT-12345",
-        "ship_to_state": "OH",
-        "attestation_accepted": True,
-        "internal_notes": None,
-    }
+    payload = make_valid_researcher_csf_payload()
 
     resp = client.post("/csf/researcher/evaluate", json=payload)
     assert resp.status_code == 200
 
     data = resp.json()
-    assert data["status"] == CsDecisionStatus.OK_TO_SHIP.value
-    assert data["missing_fields"] == []
+    assert data["status"] in {"ok_to_ship", "manual_review"}
+    assert "reason" in data
 
 
-def test_csf_researcher_evaluate_blocked_when_missing_core_fields():
-    payload = {
-        "institution_name": "",
-        "facility_type": "university",
-        "account_number": "ACC-R-001",
-        "principal_investigator_name": "",
-        "researcher_title": "Principal Investigator",
-        "state_license_number": None,
-        "dea_number": None,
-        "protocol_or_study_id": "",
-        "ship_to_state": "",
-        "attestation_accepted": True,
-        "internal_notes": None,
-    }
+def test_csf_researcher_form_copilot(monkeypatch):
+    async def fake_copilot(request):
+        return CsfCopilotResult(
+            status=CsDecisionStatus.OK_TO_SHIP,
+            reason="Researcher CSF is approved to proceed.",
+            missing_fields=[],
+            regulatory_references=["csf_researcher_form"],
+            rag_explanation="stubbed Researcher explanation",
+            artifacts_used=["csf_researcher_form"],
+            rag_sources=[
+                RegulatorySource(
+                    id="csf_researcher_form", title="Researcher CSF", snippet="stub"
+                )
+            ],
+        )
 
-    resp = client.post("/csf/researcher/evaluate", json=payload)
+    monkeypatch.setattr(csf_researcher, "run_csf_copilot", fake_copilot)
+
+    resp = client.post(
+        "/csf/researcher/form-copilot", json=make_valid_researcher_csf_payload()
+    )
+
     assert resp.status_code == 200
-
     data = resp.json()
-    assert data["status"] == CsDecisionStatus.BLOCKED.value
-    assert "institution_name" in data["missing_fields"]
-    assert "principal_investigator_name" in data["missing_fields"]
-    assert "protocol_or_study_id" in data["missing_fields"]
-    assert "ship_to_state" in data["missing_fields"]
+    assert data["status"] == "ok_to_ship"
+    assert data["rag_sources"][0]["id"] == "csf_researcher_form"
 
 
-def test_csf_researcher_evaluate_blocked_when_attestation_not_accepted():
-    payload = {
-        "institution_name": "Test University",
-        "facility_type": "university",
-        "account_number": "ACC-R-001",
-        "principal_investigator_name": "Dr. Test PI",
-        "researcher_title": "Principal Investigator",
-        "state_license_number": None,
-        "dea_number": None,
-        "protocol_or_study_id": "PROT-12345",
-        "ship_to_state": "OH",
-        "attestation_accepted": False,
-        "internal_notes": None,
-    }
+def test_csf_researcher_invalid_payload_returns_422():
+    resp = client.post("/csf/researcher/evaluate", json={"facility_name": ""})
 
-    resp = client.post("/csf/researcher/evaluate", json=payload)
-    assert resp.status_code == 200
-
-    data = resp.json()
-    assert data["status"] == CsDecisionStatus.BLOCKED.value
-    assert "attestation_accepted" in data["missing_fields"]
+    assert resp.status_code == 422

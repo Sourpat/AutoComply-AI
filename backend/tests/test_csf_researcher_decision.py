@@ -1,7 +1,6 @@
 from autocomply.domain.controlled_substances import ControlledSubstanceItem
 from autocomply.domain.csf_practitioner import CsDecisionStatus
 from autocomply.domain.csf_researcher import (
-    ResearchFacilityType,
     ResearcherCsfDecision,
     ResearcherCsfForm,
     evaluate_researcher_csf,
@@ -10,17 +9,16 @@ from autocomply.domain.csf_researcher import (
 
 def make_base_form(**overrides) -> ResearcherCsfForm:
     base = dict(
-        institution_name="Test University",
-        facility_type=ResearchFacilityType.UNIVERSITY,
-        account_number="ACC-R-001",
-        principal_investigator_name="Dr. Test PI",
-        researcher_title="Principal Investigator",
-        state_license_number=None,
-        dea_number=None,
-        protocol_or_study_id="PROT-12345",
-        ship_to_state="OH",
+        facility_name="University Research Lab",
+        facility_type="researcher",
+        account_number="910123456",
+        pharmacy_license_number="MA-RES-2025-001",
+        dea_number="RS1234567",
+        pharmacist_in_charge_name="Dr. Dana Example",
+        pharmacist_contact_phone="555-400-9001",
+        ship_to_state="MA",
         attestation_accepted=True,
-        internal_notes=None,
+        internal_notes="Happy path",
     )
     base.update(overrides)
     return ResearcherCsfForm(**base)
@@ -37,17 +35,17 @@ def test_researcher_csf_ok_to_ship_when_required_fields_and_attestation():
 
 def test_researcher_csf_blocked_when_core_fields_missing():
     form = make_base_form(
-        institution_name="",
-        principal_investigator_name="",
-        protocol_or_study_id="",
+        facility_name="",
+        pharmacy_license_number="",
+        pharmacist_in_charge_name="",
         ship_to_state="",
     )
     decision = evaluate_researcher_csf(form)
 
     assert decision.status == CsDecisionStatus.BLOCKED
-    assert "institution_name" in decision.missing_fields
-    assert "principal_investigator_name" in decision.missing_fields
-    assert "protocol_or_study_id" in decision.missing_fields
+    assert "facility_name" in decision.missing_fields
+    assert "pharmacy_license_number" in decision.missing_fields
+    assert "pharmacist_in_charge_name" in decision.missing_fields
     assert "ship_to_state" in decision.missing_fields
     assert decision.regulatory_references == ["csf_researcher_form"]
 
