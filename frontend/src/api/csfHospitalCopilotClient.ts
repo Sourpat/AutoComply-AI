@@ -3,7 +3,9 @@ import { HospitalCsfDecisionStatus, HospitalCsfFormData } from "../domain/csfHos
 import type { RegulatorySource } from "./csfExplainClient";
 
 const API_BASE =
-  (import.meta as any).env?.VITE_API_BASE || process.env.VITE_API_BASE || "";
+  (import.meta as any)?.env?.VITE_API_BASE ||
+  (import.meta as any)?.env?.VITE_API_BASE_URL ||
+  "";
 
 export interface HospitalFormCopilotResponse {
   status: HospitalCsfDecisionStatus;

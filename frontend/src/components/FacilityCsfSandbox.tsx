@@ -1,4 +1,4 @@
-// src/components/HospitalCsfSandbox.tsx
+// src/components/FacilityCsfSandbox.tsx
 import { FormEvent, useEffect, useState } from "react";
 import {
   HospitalCsfDecision,
