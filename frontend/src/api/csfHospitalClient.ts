@@ -4,10 +4,39 @@ import {
   HospitalCsfFormData,
 } from "../domain/csfHospital";
 
-export const API_BASE =
-  (import.meta as any)?.env?.VITE_API_BASE ||
-  (import.meta as any)?.env?.VITE_API_BASE_URL ||
-  "";
+// Shared API base helper for all CSF clients (hospital, facility, etc.)
+// This is the single source of truth for where the backend lives.
+const getApiBase = (): string => {
+  const metaEnv = (import.meta as any)?.env ?? {};
+  const viteBase =
+    (metaEnv.VITE_API_BASE as string | undefined) ??
+    (metaEnv.VITE_API_BASE_URL as string | undefined);
+
+  // 1) Prefer explicit Vite env if set
+  if (viteBase && viteBase.length > 0) {
+    return viteBase;
+  }
+
+  // 2) Local dev: frontend on 5173, backend on 8000
+  if (
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1")
+  ) {
+    return "http://127.0.0.1:8000";
+  }
+
+  // 3) Fallback: same origin (for deployed envs where API is served by UI host)
+  if (typeof window !== "undefined") {
+    return `${window.location.protocol}//${window.location.host}`;
+  }
+
+  // 4) Last resort – empty string; callers can show a config error
+  return "";
+};
+
+// Exported so other CSF clients (facility, copilot, etc.) can reuse it
+export const API_BASE = getApiBase();
 
 export async function evaluateHospitalCsf(
   form: HospitalCsfFormData
