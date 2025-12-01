@@ -1,10 +1,7 @@
 from fastapi import APIRouter
 
-from autocomply.domain.rag_regulatory_explain import (
-    RegulatoryRagAnswer,
-    explain_csf_hospital_decision,
-)
 from src.api.models.compliance_models import HospitalFormCopilotResponse
+from src.autocomply.domain.csf_copilot import run_csf_copilot
 from src.autocomply.domain.csf_hospital import (
     HospitalCsfDecision,
     HospitalCsfForm,
@@ -18,12 +15,6 @@ router = APIRouter(
 )
 
 logger = get_logger(__name__)
-
-
-DEFAULT_HOSPITAL_COPILOT_QUESTION = (
-    "Explain to a verification specialist what this Hospital CSF decision "
-    "means, what is missing, and what is required next."
-)
 
 
 @router.post("/evaluate", response_model=HospitalCsfDecision)
@@ -41,56 +32,38 @@ async def evaluate_hospital_csf_endpoint(
 async def hospital_form_copilot(form: HospitalCsfForm) -> HospitalFormCopilotResponse:
     """Hospital CSF Form Copilot backed by regulatory RAG."""
 
-    decision = evaluate_hospital_csf(form)
-    references = decision.regulatory_references or ["csf_hospital_form"]
-    question = DEFAULT_HOSPITAL_COPILOT_QUESTION
-    rag_explanation = decision.reason
-    rag_sources = []
-    artifacts_used = []
+    copilot_request = {
+        "csf_type": "hospital",
+        "name": form.facility_name,
+        "facility_type": form.facility_type,
+        "account_number": form.account_number,
+        "pharmacy_license_number": form.pharmacy_license_number,
+        "dea_number": form.dea_number,
+        "pharmacist_in_charge_name": form.pharmacist_in_charge_name,
+        "pharmacist_contact_phone": form.pharmacist_contact_phone,
+        "ship_to_state": form.ship_to_state,
+        "attestation_accepted": form.attestation_accepted,
+        "internal_notes": form.internal_notes,
+        "controlled_substances": form.controlled_substances,
+    }
+
+    rag_result = await run_csf_copilot(copilot_request)
 
     logger.info(
         "Hospital CSF copilot request received",
         extra={
             "engine_family": "csf",
             "decision_type": "csf_hospital",
-            "decision_status": decision.status,
+            "decision_status": rag_result.status,
         },
     )
 
-    try:
-        rag_answer: RegulatoryRagAnswer = explain_csf_hospital_decision(
-            decision=decision.model_dump(),
-            question=question,
-            regulatory_references=references,
-        )
-        rag_explanation = rag_answer.answer or rag_explanation
-        rag_sources = rag_answer.sources
-        artifacts_used = rag_answer.artifacts_used
-
-        if rag_answer.debug.get("mode") == "stub":
-            rag_explanation = (
-                "RAG pipeline is not yet enabled for Hospital CSF (using stub mode). "
-                f"Decision summary: {decision.reason}"
-            )
-    except Exception:
-        logger.exception(
-            "Failed to generate hospital CSF copilot explanation",
-            extra={
-                "engine_family": "csf",
-                "decision_type": "csf_hospital",
-            },
-        )
-        rag_explanation = (
-            "RAG pipeline is not yet enabled for Hospital CSF (using stub mode). "
-            f"Decision summary: {decision.reason}"
-        )
-
     return HospitalFormCopilotResponse(
-        status=decision.status,
-        reason=decision.reason,
-        missing_fields=decision.missing_fields,
-        regulatory_references=references,
-        rag_explanation=rag_explanation,
-        artifacts_used=artifacts_used,
-        rag_sources=rag_sources,
+        status=rag_result.status,
+        reason=rag_result.reason,
+        missing_fields=rag_result.missing_fields,
+        regulatory_references=rag_result.regulatory_references,
+        rag_explanation=rag_result.rag_explanation,
+        artifacts_used=rag_result.artifacts_used,
+        rag_sources=rag_result.rag_sources,
     )

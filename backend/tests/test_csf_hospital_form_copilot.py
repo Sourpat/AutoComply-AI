@@ -2,29 +2,30 @@ from starlette.testclient import TestClient
 
 from src.api.main import app
 from src.api.routes import csf_hospital
-from src.autocomply.domain.rag_regulatory_explain import RegulatoryRagAnswer
 from src.api.models.compliance_models import RegulatorySource
+from src.autocomply.domain.csf_copilot import CsfCopilotResult
+from src.autocomply.domain.csf_practitioner import CsDecisionStatus
 
 client = TestClient(app)
 
 
 def test_hospital_copilot_returns_explanation(monkeypatch):
-    def fake_explain(decision, question, regulatory_references=None):
-        return RegulatoryRagAnswer(
-            answer="stubbed hospital explanation",
-            regulatory_references=regulatory_references or [],
-            artifacts_used=regulatory_references or [],
-            sources=[
+    async def fake_copilot(request):
+        return CsfCopilotResult(
+            status=CsDecisionStatus.OK_TO_SHIP,
+            reason="Hospital CSF is approved to proceed.",
+            missing_fields=[],
+            regulatory_references=["csf_hospital_form"],
+            rag_explanation="stubbed hospital explanation",
+            artifacts_used=["csf_hospital_form"],
+            rag_sources=[
                 RegulatorySource(
                     id="csf_hospital_form", title="Hospital CSF", snippet="stub"
                 )
             ],
-            debug={"mode": "stub"},
         )
 
-    monkeypatch.setattr(
-        csf_hospital, "explain_csf_hospital_decision", fake_explain
-    )
+    monkeypatch.setattr(csf_hospital, "run_csf_copilot", fake_copilot)
 
     resp = client.post(
         "/csf/hospital/form-copilot",
