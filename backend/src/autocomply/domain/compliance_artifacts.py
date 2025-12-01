@@ -143,6 +143,18 @@ COMPLIANCE_ARTIFACTS: List[ComplianceArtifact] = [
         ),
     ),
     ComplianceArtifact(
+        id="csf_facility_form",
+        name="Controlled Substance Form – Surgery Center / Facility",
+        jurisdiction="US-Multi",
+        artifact_type=ArtifactType.FORM,
+        source_document="/mnt/data/Online Controlled Substance Form - Surgery Center form.pdf",
+        engine_status=ArtifactStatus.MODELED_RULES,
+        notes=(
+            "Primary facility / surgery center controlled substance form used to "
+            "drive facility CSF engine rules."
+        ),
+    ),
+    ComplianceArtifact(
         id="csf_surgery_center_form",
         name="Controlled Substance Form – Surgery Center",
         jurisdiction="US-Multi",

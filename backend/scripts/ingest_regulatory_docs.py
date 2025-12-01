@@ -48,6 +48,12 @@ DOC_SPECS: List[Dict[str, str]] = [
     },
     {
         "filename": "Online Controlled Substance Form - Surgery Center form.pdf",
+        "doc_type": "csf_facility_form",
+        "jurisdiction": "US-multi",
+        "form_name": "Controlled Substances Form – Surgery Center / Facility",
+    },
+    {
+        "filename": "Online Controlled Substance Form - Surgery Center form.pdf",
         "doc_type": "csf_surgery_center",
         "jurisdiction": "US-multi",
         "form_name": "Controlled Substances Form – Surgery Center",

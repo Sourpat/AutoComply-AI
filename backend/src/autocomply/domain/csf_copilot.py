@@ -108,7 +108,11 @@ async def run_csf_copilot(
 
         decision = evaluate_facility_csf(facility_form)
         decision.reason = _facility_success_reason(decision.reason)
-        references = decision.regulatory_references or ["csf_hospital_form"]
+        references = decision.regulatory_references or ["csf_facility_form"]
+        references = [
+            "csf_facility_form" if ref == "csf_hospital_form" else ref
+            for ref in references
+        ]
         rag_explanation = decision.reason
 
         logger.info(
