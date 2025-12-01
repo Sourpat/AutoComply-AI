@@ -22,38 +22,7 @@ import {
   callFacilityFormCopilot,
   type FacilityFormCopilotResponse,
 } from "../api/csfFacilityCopilotClient";
-
-// Vite-friendly helper: no `process` in the browser
-const getApiBase = (): string => {
-  // 1) Prefer Vite env variables if present
-  const metaEnv = (import.meta as any)?.env ?? {};
-  const viteBase =
-    (metaEnv.VITE_API_BASE as string | undefined) ??
-    (metaEnv.VITE_API_BASE_URL as string | undefined);
-
-  if (viteBase && viteBase.length > 0) {
-    return viteBase;
-  }
-
-  // 2) Local dev: frontend on 5173, backend on 8000
-  if (
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1")
-  ) {
-    return "http://127.0.0.1:8000";
-  }
-
-  // 3) Fallback: same origin (for deployed envs)
-  if (typeof window !== "undefined") {
-    return `${window.location.protocol}//${window.location.host}`;
-  }
-
-  // 4) Last resort – empty string; UI will show a config error
-  return "";
-};
-
-const API_BASE = getApiBase();
+import { API_BASE } from "../api/csfHospitalClient";
 
 
 type FacilityExample = {
