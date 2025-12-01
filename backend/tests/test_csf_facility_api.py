@@ -25,6 +25,11 @@ def test_csf_facility_evaluate_ok_to_ship():
     data = resp.json()
     assert data["status"] == "ok_to_ship"
     assert data["missing_fields"] == []
+    assert (
+        data["reason"]
+        == "All required facility, pharmacy license, DEA, jurisdiction, and attestation "
+        "details are present. Facility CSF is approved to proceed."
+    )
 
 
 def test_csf_facility_evaluate_ok_to_ship_v1_prefix():

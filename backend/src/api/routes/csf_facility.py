@@ -33,6 +33,18 @@ DEFAULT_FACILITY_COPILOT_QUESTION = (
 )
 
 
+def _facility_success_reason(reason: str) -> str:
+    """Normalize success copy to be Facility-specific."""
+
+    if not reason:
+        return reason
+
+    return reason.replace(
+        "Hospital CSF is approved to proceed.",
+        "Facility CSF is approved to proceed.",
+    )
+
+
 @router.post("/evaluate", response_model=FacilityCsfDecision)
 async def evaluate_facility_csf_endpoint(
     form: FacilityCsfForm,
@@ -48,6 +60,7 @@ async def evaluate_facility_csf_endpoint(
     )
 
     decision = evaluate_facility_csf(form)
+    decision.reason = _facility_success_reason(decision.reason)
     return decision
 
 
@@ -56,6 +69,7 @@ async def facility_form_copilot(form: FacilityCsfForm) -> FacilityFormCopilotRes
     """Facility CSF Form Copilot backed by regulatory RAG."""
 
     decision = evaluate_facility_csf(form)
+    decision.reason = _facility_success_reason(decision.reason)
     references = decision.regulatory_references or ["csf_facility_form"]
     question = DEFAULT_FACILITY_COPILOT_QUESTION
     rag_explanation = decision.reason
@@ -77,7 +91,9 @@ async def facility_form_copilot(form: FacilityCsfForm) -> FacilityFormCopilotRes
             question=question,
             regulatory_references=references,
         )
-        rag_explanation = rag_answer.answer or rag_explanation
+        rag_explanation = _facility_success_reason(
+            rag_answer.answer or rag_explanation
+        )
         rag_sources = rag_answer.sources
         artifacts_used = rag_answer.artifacts_used
 
@@ -96,7 +112,7 @@ async def facility_form_copilot(form: FacilityCsfForm) -> FacilityFormCopilotRes
         )
         rag_explanation = (
             "RAG pipeline is not yet enabled for Facility CSF (using stub mode). "
-            f"Decision summary: {decision.reason}"
+            f"Decision summary: {_facility_success_reason(decision.reason)}"
         )
 
     return FacilityFormCopilotResponse(
