@@ -27,6 +27,28 @@ def test_csf_facility_evaluate_ok_to_ship():
     assert data["missing_fields"] == []
 
 
+def test_csf_facility_evaluate_ok_to_ship_v1_prefix():
+    payload = {
+        "facility_name": "Test Facility",
+        "facility_type": "facility",
+        "account_number": "ACC-999",
+        "pharmacy_license_number": "PHARM-12345",
+        "dea_number": "DEA-7654321",
+        "pharmacist_in_charge_name": "Chief Pharmacist",
+        "pharmacist_contact_phone": "555-123-4567",
+        "ship_to_state": "OH",
+        "attestation_accepted": True,
+        "internal_notes": None,
+    }
+
+    resp = client.post("/api/v1/csf/facility/evaluate", json=payload)
+    assert resp.status_code == 200
+
+    data = resp.json()
+    assert data["status"] == "ok_to_ship"
+    assert data["missing_fields"] == []
+
+
 def test_csf_facility_evaluate_blocked_when_core_fields_missing():
     payload = {
         "facility_name": "",
