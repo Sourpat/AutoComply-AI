@@ -35,14 +35,63 @@ type FacilityExample = {
 
 const FACILITY_EXAMPLES: FacilityExample[] = [
   {
-    id: "fl_level1_trauma_schedule_ii",
-    label: "FL – Level 1 trauma, Schedule II",
+    id: "facility_happy_path",
+    label: "Happy Path – NJ Surgery Center",
     overrides: {
-      facilityName: "Sunrise Regional Medical Center",
+      facilityName: "Garden State Surgical Center – NJ",
       facilityType: "facility",
-      accountNumber: "ACC-FAC-001",
-      shipToState: "FL",
+      accountNumber: "800123456",
+      pharmacyLicenseNumber: "NJ-SC-2025-001",
+      deaNumber: "FG1234567",
+      pharmacistInChargeName: "Dr. Alice Example",
+      pharmacistContactPhone: "555-201-9001",
+      shipToState: "NJ",
       attestationAccepted: true,
+      internalNotes:
+        "Happy path Facility CSF – surgery center in NJ with valid license and DEA.",
+      controlledSubstances: [
+        { id: "hydrocodone", name: "Hydrocodone" },
+        { id: "oxycodone", name: "Oxycodone" },
+      ],
+    },
+  },
+  {
+    id: "facility_needs_review",
+    label: "Needs Review – CA LTC (Missing DEA)",
+    overrides: {
+      facilityName: "Sunrise Long-Term Care – CA",
+      facilityType: "facility",
+      accountNumber: "800987654",
+      pharmacyLicenseNumber: "CA-LTC-778899",
+      deaNumber: "",
+      pharmacistInChargeName: "Dr. Brian Example",
+      pharmacistContactPhone: "555-201-9002",
+      shipToState: "CA",
+      attestationAccepted: true,
+      internalNotes:
+        "Missing DEA number; should trigger needs_review or additional documentation.",
+      controlledSubstances: [
+        { id: "morphine", name: "Morphine" },
+        { id: "fentanyl", name: "Fentanyl" },
+      ],
+    },
+  },
+  {
+    id: "facility_blocked",
+    label: "Blocked – TX Clinic (No License / No Attestation)",
+    overrides: {
+      facilityName: "Metro Outpatient Clinic – TX",
+      facilityType: "facility",
+      accountNumber: "800555777",
+      pharmacyLicenseNumber: "",
+      deaNumber: "",
+      pharmacistInChargeName: "Dr. Carol Example",
+      pharmacistContactPhone: "555-201-9003",
+      shipToState: "TX",
+      attestationAccepted: false,
+      internalNotes:
+        "No license/DEA and attestation not accepted – expected to be blocked.",
+      controlledSubstances: [{ id: "oxycodone", name: "Oxycodone" }],
     },
   },
 ];
@@ -94,13 +143,16 @@ export function FacilityCsfSandbox() {
     };
 
     setForm(nextForm);
+    if (example.overrides.controlledSubstances) {
+      setControlledSubstances(example.overrides.controlledSubstances);
+    }
 
     emitCodexCommand("csf_facility_example_selected", {
       engine_family: FACILITY_ENGINE_FAMILY,
       decision_type: FACILITY_DECISION_TYPE,
       sandbox: FACILITY_SANDBOX_ID,
       example_id: example.id,
-      label: example.label,
+      example_label: example.label,
       facility_type: nextForm.facilityType,
       ship_to_state: nextForm.shipToState,
     });
