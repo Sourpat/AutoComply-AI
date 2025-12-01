@@ -580,6 +580,9 @@ decision_outcome: engine status such as "ok_to_ship",
 form: the practitioner form body that would be sent to
 /csf/practitioner/evaluate.
 
+Regulatory doc id: `csf_practitioner_form` (Online Controlled Substance Form –
+Practitioner Form with addendums PDF).
+
 DevSupport usage
 
 If you need to replay the decision, POST form back to
@@ -589,63 +592,38 @@ Use decision_outcome to route to different debugging workflows
 (e.g., blocked vs approved).
 
 9.1.2 Run completed
-ts
-Copy code
+```ts
 console.log("CODEX_COMMAND: csf_practitioner_form_copilot_complete", {
   engine_family: "csf",
   decision_type: "csf_practitioner",
   sandbox: "practitioner_csf",
   decision_outcome: decision.status ?? "unknown",
-  reason,             // Copilot summary reason shown in UI
-  rag_mode,           // "stub" | "live"
-  rag_status,         // "ok" | "timeout" | "error"
-  question,           // prompt sent to RAG / regulatory explain
-  regulatory_references: decision.regulatory_references ?? [],
+  artifacts_used: decision.artifacts_used ?? [],
 });
+```
+
 Intent
 
-Capture how the Practitioner Form Copilot finished: what it told the
-user, and how the underlying RAG / regulatory explain behaved.
+Capture how the Practitioner Form Copilot finished and which RAG
+artifacts (e.g., `csf_practitioner_form`) were used to ground the
+explanation.
 
 Key fields
 
-Everything from csf_practitioner_form_copilot_run, plus:
+- Everything from csf_practitioner_form_copilot_run.
+- artifacts_used: list of regulatory doc IDs used (e.g.,
+  `csf_practitioner_form`, `csf_fl_addendum`).
 
-reason: human-readable message shown in the Copilot panel
-(e.g., stub message about RAG not yet enabled).
+Key files
 
-rag_mode:
-
-"stub" – using local stubbed response (current local dev default),
-
-"live" – when the real RAG endpoint is active.
-
-rag_status:
-
-"ok" – RAG call succeeded,
-
-"timeout" – RAG timed out,
-
-"error" – any non-happy-path from the RAG service.
-
-question: the question passed to /rag/regulatory-explain.
-
-regulatory_references: IDs referenced by the CSF decision.
-
-DevSupport usage
-
-When rag_mode === "stub", you can optionally call
-/rag/regulatory-explain yourself using question and
-regulatory_references to simulate a real run.
-
-When rag_status !== "ok", generate an incident-style explanation
-combining:
-
-the decision outcome,
-
-the user-visible reason,
-
-and the failure mode (timeout, error, etc.).
+- frontend/src/components/PractitionerCsfSandbox.tsx
+- frontend/src/domain/csfPractitioner.ts
+- frontend/src/api/csfPractitionerClient.ts
+- frontend/src/api/csfPractitionerCopilotClient.ts
+- backend/src/api/routes/csf_practitioner.py
+- backend/src/domain/csf_practitioner.py
+- backend/src/autocomply/domain/csf_copilot.py
+- backend/src/rag/csf_copilot_prompt.py
 
 9.2 Facility CSF Form Copilot
 The facility sandbox mirrors the practitioner flow but uses a different

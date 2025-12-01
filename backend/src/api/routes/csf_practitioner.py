@@ -1,7 +1,6 @@
-from typing import List, Optional
+from typing import List
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
 
 from src.autocomply.domain.csf_practitioner import (
     CsDecisionStatus,
@@ -10,11 +9,8 @@ from src.autocomply.domain.csf_practitioner import (
     describe_practitioner_csf_decision,
     evaluate_practitioner_csf,
 )
-from src.autocomply.domain.rag_regulatory_explain import (
-    RegulatoryRagAnswer,
-    explain_csf_practitioner_decision,
-)
-from src.api.models.compliance_models import RegulatorySource
+from src.autocomply.domain.csf_copilot import run_csf_copilot
+from src.api.models.compliance_models import PractitionerFormCopilotResponse
 from src.utils.logger import get_logger
 
 router = APIRouter(
@@ -23,26 +19,6 @@ router = APIRouter(
 )
 
 logger = get_logger(__name__)
-
-
-DEFAULT_COPILOT_QUESTION = (
-    "Explain to a verification specialist what this Practitioner CSF decision "
-    "means, what is missing, and what is required next."
-)
-
-
-class PractitionerCopilotRequest(PractitionerCsfForm):
-    question: Optional[str] = Field(
-        default=None,
-        description="Optional custom question for the copilot explanation.",
-    )
-
-
-class PractitionerCopilotResponse(BaseModel):
-    status: CsDecisionStatus
-    reason: str
-    rag_sources: List[RegulatorySource] = Field(default_factory=list)
-    raw_decision: PractitionerCsfDecision
 
 
 @router.post("/evaluate", response_model=PractitionerCsfDecision)
@@ -65,44 +41,46 @@ async def evaluate_practitioner_csf_endpoint(
     return decision
 
 
-@router.post("/form-copilot", response_model=PractitionerCopilotResponse)
+@router.post("/form-copilot", response_model=PractitionerFormCopilotResponse)
 async def practitioner_form_copilot(
-    form: PractitionerCopilotRequest,
-) -> PractitionerCopilotResponse:
-    """
-    Practitioner Form Copilot endpoint backed by regulatory RAG.
-    """
+    form: PractitionerCsfForm,
+) -> PractitionerFormCopilotResponse:
+    """Practitioner Form Copilot endpoint backed by regulatory RAG."""
 
-    decision = evaluate_practitioner_csf(form)
-    fallback_reason = (
-        decision.reason
-        or "All required facility, practitioner, licensing, jurisdiction, and "
-        "attestation details are present. Practitioner CSF is approved to proceed."
+    copilot_request = {
+        "csf_type": "practitioner",
+        "name": form.practitioner_name or form.facility_name,
+        "facility_type": form.facility_type,
+        "account_number": form.account_number,
+        "pharmacy_license_number": form.state_license_number,
+        "practitioner_name": form.practitioner_name,
+        "state_license_number": form.state_license_number,
+        "dea_number": form.dea_number,
+        "pharmacist_in_charge_name": form.practitioner_name,
+        "pharmacist_contact_phone": None,
+        "ship_to_state": form.ship_to_state,
+        "attestation_accepted": form.attestation_accepted,
+        "internal_notes": form.internal_notes,
+        "controlled_substances": form.controlled_substances,
+    }
+
+    rag_result = await run_csf_copilot(copilot_request)
+
+    logger.info(
+        "Practitioner CSF copilot request received",
+        extra={
+            "engine_family": "csf",
+            "decision_type": "csf_practitioner",
+            "decision_status": rag_result.status,
+        },
     )
-    rag_reason = fallback_reason
-    rag_sources: List[RegulatorySource] = []
 
-    try:
-        rag_answer: RegulatoryRagAnswer = explain_csf_practitioner_decision(
-            decision={**decision.model_dump(), "form": form.model_dump()},
-            question=form.question or DEFAULT_COPILOT_QUESTION,
-            regulatory_references=decision.regulatory_references,
-        )
-        rag_reason = rag_answer.answer or fallback_reason
-        rag_sources = rag_answer.sources
-    except Exception:
-        logger.exception(
-            "Failed to generate practitioner CSF copilot explanation",
-            extra={
-                "engine_family": "csf",
-                "decision_type": "csf_practitioner",
-                "account_number": form.account_number,
-            },
-        )
-
-    return PractitionerCopilotResponse(
-        status=decision.status,
-        reason=rag_reason,
-        rag_sources=rag_sources,
-        raw_decision=decision,
+    return PractitionerFormCopilotResponse(
+        status=rag_result.status,
+        reason=rag_result.reason,
+        missing_fields=rag_result.missing_fields,
+        regulatory_references=rag_result.regulatory_references,
+        rag_explanation=rag_result.rag_explanation,
+        artifacts_used=rag_result.artifacts_used,
+        rag_sources=rag_result.rag_sources,
     )

@@ -17,11 +17,17 @@ from src.autocomply.domain.csf_researcher import (
     ResearcherCsfForm,
     evaluate_researcher_csf,
 )
-from src.autocomply.domain.csf_practitioner import CsDecisionStatus
+from src.autocomply.domain.csf_practitioner import (
+    CsDecisionStatus,
+    PractitionerCsfForm,
+    PractitionerFacilityType,
+    evaluate_practitioner_csf,
+)
 from src.autocomply.domain.rag_regulatory_explain import (
     RegulatoryRagAnswer,
     explain_csf_facility_decision,
     explain_csf_hospital_decision,
+    explain_csf_practitioner_decision,
 )
 from src.rag.csf_copilot_prompt import build_csf_copilot_prompt
 from src.api.models.compliance_models import RegulatorySource
@@ -41,6 +47,8 @@ class CsfCopilotRequest(BaseModel):
     facility_type: Optional[str] = None
     account_number: Optional[str] = None
     pharmacy_license_number: Optional[str] = None
+    practitioner_name: Optional[str] = None
+    state_license_number: Optional[str] = None
     dea_number: Optional[str] = None
     pharmacist_in_charge_name: Optional[str] = None
     pharmacist_contact_phone: Optional[str] = None
@@ -90,6 +98,8 @@ async def run_csf_copilot(
         doc_id = "csf_ems_form"
     elif csf_type == "researcher":
         doc_id = "csf_researcher_form"
+    elif csf_type == "practitioner":
+        doc_id = "csf_practitioner_form"
     else:
         doc_id = "csf_hospital_form"
     prompt = build_csf_copilot_prompt(
@@ -302,6 +312,77 @@ async def run_csf_copilot(
             )
             rag_explanation = (
                 "RAG pipeline is not yet enabled for Researcher CSF (using stub mode). "
+                f"Decision summary: {decision.reason}"
+            )
+
+        return CsfCopilotResult(
+            status=decision.status,
+            reason=decision.reason,
+            missing_fields=decision.missing_fields,
+            regulatory_references=references,
+            rag_explanation=rag_explanation,
+            artifacts_used=artifacts_used,
+            rag_sources=rag_sources,
+        )
+
+    if csf_type == "practitioner":
+        practitioner_form = PractitionerCsfForm(
+            facility_name=request_model.name or "",
+            facility_type=(
+                PractitionerFacilityType(request_model.facility_type)
+                if request_model.facility_type
+                else PractitionerFacilityType.OTHER
+            ),
+            account_number=request_model.account_number,
+            practitioner_name=request_model.practitioner_name or "",
+            state_license_number=request_model.state_license_number or "",
+            dea_number=request_model.dea_number or "",
+            ship_to_state=request_model.ship_to_state or "",
+            attestation_accepted=request_model.attestation_accepted,
+            controlled_substances=request_model.controlled_substances,
+            internal_notes=request_model.internal_notes,
+        )
+
+        decision = evaluate_practitioner_csf(practitioner_form)
+        references = decision.regulatory_references or ["csf_practitioner_form"]
+        rag_explanation = decision.reason
+
+        logger.info(
+            "Practitioner CSF copilot request received",
+            extra={
+                "engine_family": "csf",
+                "decision_type": "csf_practitioner",
+                "doc_id": doc_id,
+                "decision_status": decision.status,
+            },
+        )
+
+        try:
+            rag_answer = explain_csf_practitioner_decision(
+                decision=decision.model_dump(),
+                question=prompt,
+                regulatory_references=references,
+            )
+            rag_explanation = rag_answer.answer or rag_explanation
+            rag_sources = rag_answer.sources
+            artifacts_used = rag_answer.artifacts_used
+
+            if rag_answer.debug.get("mode") == "stub":
+                rag_explanation = (
+                    "RAG pipeline is not yet enabled for Practitioner CSF (using stub mode). "
+                    f"Decision summary: {decision.reason}"
+                )
+        except Exception:
+            logger.exception(
+                "Failed to generate practitioner CSF copilot explanation",
+                extra={
+                    "engine_family": "csf",
+                    "decision_type": "csf_practitioner",
+                    "doc_id": doc_id,
+                },
+            )
+            rag_explanation = (
+                "RAG pipeline is not yet enabled for Practitioner CSF (using stub mode). "
                 f"Decision summary: {decision.reason}"
             )
 

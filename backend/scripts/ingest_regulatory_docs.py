@@ -36,7 +36,7 @@ PERSIST_DIR = Path(os.getenv("AUTOCOMPLY_RAG_DIR", "data/rag/regulatory_docs"))
 DOC_SPECS: List[Dict[str, str]] = [
     {
         "filename": "Online Controlled Substance Form - Practitioner Form with addendums.pdf",
-        "doc_type": "csf_practitioner",
+        "doc_type": "csf_practitioner_form",
         "jurisdiction": "US-multi",
         "form_name": "Controlled Substances Form – Practitioner (with addendums)",
     },

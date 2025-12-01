@@ -66,6 +66,8 @@ Form summary:
 - Facility type: {payload.get("facility_type") or ''}
 - Account number: {payload.get("account_number") or ''}
 - Pharmacy license number: {payload.get("pharmacy_license_number") or ''}
+- Practitioner name: {payload.get("practitioner_name") or ''}
+- State license number: {payload.get("state_license_number") or ''}
 - DEA number: {payload.get("dea_number") or ''}
 - Pharmacist in charge: {payload.get("pharmacist_in_charge_name") or ''}
 - Pharmacist contact phone: {payload.get("pharmacist_contact_phone") or ''}

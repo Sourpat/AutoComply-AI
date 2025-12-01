@@ -3,7 +3,8 @@ from fastapi.testclient import TestClient
 from src.api.main import app
 from src.api.models.compliance_models import RegulatorySource
 from src.api.routes import csf_practitioner as csf_practitioner_route
-from src.autocomply.domain.rag_regulatory_explain import RegulatoryRagAnswer
+from src.autocomply.domain.csf_copilot import CsfCopilotResult
+from src.autocomply.domain.csf_practitioner import CsDecisionStatus
 
 client = TestClient(app)
 
@@ -22,50 +23,61 @@ BASE_FORM_PAYLOAD = {
 
 
 def test_practitioner_copilot_returns_rag_reason(monkeypatch):
-    def fake_explain(decision, question, regulatory_references=None):
-        return RegulatoryRagAnswer(
-            answer="mocked rag answer",
-            regulatory_references=regulatory_references or [],
-            artifacts_used=regulatory_references or [],
-            sources=[
+    async def fake_copilot(request):
+        return CsfCopilotResult(
+            status=CsDecisionStatus.OK_TO_SHIP,
+            reason="mocked rag answer",
+            missing_fields=[],
+            regulatory_references=["csf_practitioner_form"],
+            rag_explanation="mocked rag answer",
+            artifacts_used=["csf_practitioner_form"],
+            rag_sources=[
                 RegulatorySource(
                     id="csf_practitioner_form",
                     title="Practitioner CSF",
                     snippet="Mock source",
                 )
             ],
-            debug={"mode": "mock"},
         )
 
-    monkeypatch.setattr(
-        csf_practitioner_route,
-        "explain_csf_practitioner_decision",
-        fake_explain,
-    )
+    monkeypatch.setattr(csf_practitioner_route, "run_csf_copilot", fake_copilot)
 
     resp = client.post("/csf/practitioner/form-copilot", json=BASE_FORM_PAYLOAD)
     assert resp.status_code == 200
 
     data = resp.json()
     assert data["status"] == "ok_to_ship"
-    assert data["reason"] == "mocked rag answer"
+    assert data["rag_explanation"] == "mocked rag answer"
     assert data["rag_sources"][0]["id"] == "csf_practitioner_form"
+    assert "csf_practitioner_form" in data.get("artifacts_used", [])
 
 
-def test_practitioner_copilot_rag_failure_falls_back(monkeypatch):
-    def failing_explain(*args, **kwargs):
-        raise RuntimeError("rag failure")
+def test_practitioner_copilot_uses_practitioner_doc(monkeypatch):
+    recorded_request = {}
 
-    monkeypatch.setattr(
-        csf_practitioner_route,
-        "explain_csf_practitioner_decision",
-        failing_explain,
-    )
+    async def fake_copilot(request):
+        recorded_request.update(request)
+        return CsfCopilotResult(
+            status=CsDecisionStatus.OK_TO_SHIP,
+            reason="ok",
+            missing_fields=[],
+            regulatory_references=["csf_practitioner_form"],
+            rag_explanation="ok",
+            artifacts_used=["csf_practitioner_form"],
+            rag_sources=[
+                RegulatorySource(
+                    id="csf_practitioner_form",
+                    title="Practitioner CSF",
+                    snippet="Mock",
+                )
+            ],
+        )
+
+    monkeypatch.setattr(csf_practitioner_route, "run_csf_copilot", fake_copilot)
 
     resp = client.post("/csf/practitioner/form-copilot", json=BASE_FORM_PAYLOAD)
     assert resp.status_code == 200
 
     data = resp.json()
-    assert data["status"] == "ok_to_ship"
-    assert "Practitioner CSF is approved to proceed" in data["reason"]
-    assert data["rag_sources"] == []
+    assert any("csf_practitioner_form" in a for a in data.get("artifacts_used", []))
+    assert recorded_request.get("csf_type") == "practitioner"
