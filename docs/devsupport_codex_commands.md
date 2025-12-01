@@ -153,6 +153,163 @@ console.log("CODEX_COMMAND: explain_csf_ems_decision", {
 
 Source doc is the EMS CSF PDF.
 
+### 2.6 Facility CSF Sandbox
+
+The Facility CSF Sandbox lets you test and debug the Facility Controlled Substance Form flows using the same backend decision/RAG engine as the Hospital CSF Sandbox, but with Facility-specific UI, payload shape, and copy.
+
+Key files:
+
+- **Frontend**
+  - `frontend/src/components/FacilityCsfSandbox.tsx`  
+    Main Facility CSF sandbox UI (form, evaluate, copilot, RAG explanation).
+  - `frontend/src/domain/csfFacility.ts`  
+    Facility CSF types: `FacilityCsfFormData`, `FacilityCsfDecision`, `FacilityFormCopilotResponse`, and related RAG source types.
+  - `frontend/src/api/csfFacilityClient.ts`  
+    Client for `POST /csf/facility/evaluate`.
+  - `frontend/src/api/csfFacilityCopilotClient.ts`  
+    Client for `POST /csf/facility/form-copilot`.
+
+- **Backend**
+  - `backend/src/api/routes/csf_facility.py`  
+    FastAPI router for Facility CSF evaluate + form-copilot endpoints.
+  - `backend/src/autocomply/domain/csf_copilot.py`  
+    Shared CSF Copilot RAG helper (`run_csf_copilot`).
+  - `backend/src/rag/csf_copilot_prompt.py`  
+    Builds the CSF Copilot prompt based on `csf_type` (e.g., `"facility"` vs `"hospital"`).
+
+Endpoints:
+
+- `POST /csf/facility/evaluate`
+- `POST /csf/facility/form-copilot`
+
+#### Command: `csf_facility_fix_copilot_failure`
+
+**When to use**
+
+Use this when the Facility CSF Form Copilot (the “Check & Explain” button in the Facility CSF Sandbox) is:
+
+- Returning errors (non-200 responses),
+- Returning an empty or obviously broken payload, or
+- Not showing the RAG explanation / regulatory references in the UI.
+
+**What Codex should do**
+
+1. **Check frontend API client wiring**
+
+   - Open `frontend/src/api/csfFacilityCopilotClient.ts`.
+   - Confirm that it:
+     - Uses the shared `API_BASE` (same as Hospital).
+     - Calls `POST /csf/facility/form-copilot`.
+     - Parses JSON into `FacilityFormCopilotResponse`.
+     - Throws a helpful error message:  
+       `"Facility Form Copilot failed with status ${message}"`.
+
+2. **Check Facility sandbox handler + state**
+
+   - Open `frontend/src/components/FacilityCsfSandbox.tsx`.
+   - Verify:
+     - There is a handler that calls `callFacilityFormCopilot(form)` when the “Check & Explain” button is clicked.
+     - It updates `copilotResponse`, `copilotLoading`, and `copilotError` correctly.
+     - The UI renders:
+       - `status`
+       - `reason`
+       - `missing_fields`
+       - `regulatory_references`
+       - `rag_explanation`
+       - `rag_sources`
+     - All user-facing copy says **“Facility CSF”**, not “Hospital”.
+
+3. **Check backend route + RAG helper**
+
+   - Open `backend/src/api/routes/csf_facility.py`.
+   - Confirm `POST /csf/facility/form-copilot`:
+     - Accepts `FacilityCsfFormData`.
+     - Builds a `copilot_request` with `csf_type="facility"` and all relevant fields (name, facility_type, account_number, license/DEA, ship_to_state, attestation, controlled_substances, internal_notes).
+     - Calls `run_csf_copilot(copilot_request)`.
+     - Maps the result into `FacilityFormCopilotResponse` (status, reason, missing_fields, regulatory_references, rag_explanation, artifacts_used, rag_sources).
+
+   - Open `backend/src/autocomply/domain/csf_copilot.py`.
+     - Confirm `run_csf_copilot`:
+       - Reads `csf_type` (`"facility"` vs `"hospital"`).
+       - Calls `build_csf_copilot_prompt` from `backend/src/rag/csf_copilot_prompt.py`.
+       - Uses the underlying CSF regulatory doc (e.g., `csf_hospital_form`) for retrieval.
+       - Returns a structured result that matches the Facility response model.
+
+4. **Run checks**
+
+   - Run backend tests:
+     - `cd backend`
+     - `pytest`
+   - Run frontend typecheck/build:
+     - `cd frontend`
+     - `pnpm build` (or the project’s standard build command).
+   - If any changes were made, ensure both evaluate and copilot still work in the Facility CSF Sandbox.
+
+#### Command: `csf_facility_add_example`
+
+**When to use**
+
+Use this to add a new Facility CSF example (e.g., a long-term care facility, clinic, or multi-location facility) to the Facility CSF Sandbox so users can quickly test realistic scenarios.
+
+**What Codex should do**
+
+1. **Locate Facility examples list**
+
+   - Open `frontend/src/components/FacilityCsfSandbox.tsx`.
+   - Find the `FACILITY_EXAMPLES` constant (array of `FacilityCsfFormData`).
+
+2. **Add a new example object**
+
+   - Append a new example entry with:
+     - A descriptive `facility_name`.
+     - `facility_type: "facility"` (or another valid type if supported).
+     - Realistic `account_number`, `pharmacy_license_number`, `dea_number`.
+     - A representative `ship_to_state`.
+     - `attestation_accepted: true` for a “happy path” example.
+     - A non-empty `controlled_substances` list matching what the decision engine expects.
+
+   - Example shape (adjust to match the actual type):
+
+     ```ts
+     {
+       facilityName: "Example Care Clinic – NJ",
+       facilityType: "facility",
+       accountNumber: "123456789",
+       pharmacyLicenseNumber: "NJ-987654",
+       deaNumber: "AB1234567",
+       pharmacistInChargeName: "Dr. Example Pharmacist",
+       pharmacistContactPhone: "555-555-1212",
+       shipToState: "NJ",
+       attestationAccepted: true,
+       internalNotes: "Example Facility CSF sandbox scenario.",
+       controlledSubstances: ["Hydrocodone", "Oxycodone"],
+     }
+     ```
+
+3. **Ensure the example selector wiring works**
+
+   - Confirm that the example selection UI (dropdown/buttons) in `FacilityCsfSandbox.tsx`:
+     - Renders the new example label.
+     - Calls `applyFacilityExample(...)` or equivalent handler when selected.
+
+4. **Check telemetry**
+
+   - Keep or update telemetry in `applyFacilityExample`:
+     - Event name: `csf_facility_example_selected`.
+     - Include fields like:
+       - `engine_family: "csf"`
+       - `decision_type: "csf_facility"`
+       - `sandbox: "facility"`
+       - `facility_type`, `ship_to_state`, and any available example identifier.
+
+5. **Run frontend checks**
+
+   - `cd frontend`
+   - `pnpm build`
+   - Open the Facility CSF Sandbox and verify the new example:
+     - Loads the form values correctly.
+     - Evaluates and runs Copilot without errors.
+
 ## 3. RAG Regulatory Explain Commands
 
 When the user triggers a deep RAG explanation (e.g., from the
