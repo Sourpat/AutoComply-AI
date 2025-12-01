@@ -744,3 +744,104 @@ reason: human-readable explanation from Copilot (RAG answer or fallback).
 missing_fields: any fields the engine flagged as missing.
 
 regulatory_references: artifacts cited by the engine/RAG response.
+#
+### EMS CSF Sandbox
+
+The EMS CSF Sandbox lets you test EMS Controlled Substance Forms against the same decision/RAG engine, with EMS-specific UI and endpoints.
+
+Key files:
+
+- **Frontend**
+  - `frontend/src/components/EmsCsfSandbox.tsx`
+  - `frontend/src/domain/csfEms.ts`
+  - `frontend/src/api/csfEmsClient.ts`
+  - `frontend/src/api/csfEmsCopilotClient.ts`
+
+- **Backend**
+  - `backend/src/api/routes/csf_ems.py`
+  - `backend/src/autocomply/domain/csf_copilot.py`
+  - `backend/src/rag/csf_copilot_prompt.py`
+
+Endpoints:
+
+- `POST /csf/ems/evaluate`
+- `POST /csf/ems/form-copilot`
+
+#### Command: `csf_ems_fix_copilot_failure`
+
+**When to use**
+
+Use this when the EMS CSF Form Copilot (the “Check & Explain” button in the EMS CSF Sandbox) is:
+
+- Returning errors (non-200 responses),
+- Returning an empty or obviously broken payload, or
+- Not showing the RAG explanation / regulatory references in the UI.
+
+**What Codex should do**
+
+1. **Check frontend API client wiring**
+
+   - Open `frontend/src/api/csfEmsCopilotClient.ts`.
+   - Confirm that it:
+     - Uses the shared `API_BASE` (same as Hospital).
+     - Calls `POST /csf/ems/form-copilot`.
+     - Parses JSON into `EmsFormCopilotResponse`.
+     - Throws a helpful error message:
+       `"EMS Form Copilot failed with status ${message}"`.
+
+2. **Check EMS sandbox handler + state**
+
+   - Open `frontend/src/components/EmsCsfSandbox.tsx`.
+   - Verify:
+     - There is a handler that calls `callEmsFormCopilot(form)` when the “Check & Explain” button is clicked.
+     - It updates `copilotResponse`, `copilotLoading`, and `copilotError` correctly.
+     - The UI renders:
+       - `status`
+       - `reason`
+       - `missing_fields`
+       - `regulatory_references`
+       - `rag_explanation`
+       - `rag_sources`
+     - All user-facing copy says **“EMS CSF”**, not “Facility” or “Hospital”.
+
+3. **Check backend route + RAG helper**
+
+   - Open `backend/src/api/routes/csf_ems.py`.
+   - Confirm `POST /csf/ems/form-copilot`:
+     - Accepts the EMS CSF payload.
+     - Builds a `copilot_request` with `csf_type="ems"` and all relevant fields (name, facility_type, account_number, license/DEA, ship_to_state, attestation, controlled_substances, internal_notes).
+     - Calls `run_csf_copilot(copilot_request)`.
+     - Maps the result into `EmsFormCopilotResponse` (status, reason, missing_fields, regulatory_references, rag_explanation, artifacts_used, rag_sources).
+
+   - Open `backend/src/autocomply/domain/csf_copilot.py`.
+     - Confirm `run_csf_copilot` routes `csf_type="ems"` to the EMS doc id (`csf_ems_form`).
+     - Uses the CSF copilot prompt builder to include EMS labeling.
+
+4. **Run checks**
+
+   - Run backend tests:
+     - `cd backend`
+     - `pytest`
+   - Run frontend typecheck/build:
+     - `cd frontend`
+     - `pnpm build` (or the project’s standard build command).
+   - If any changes were made, ensure both evaluate and copilot still work in the EMS CSF Sandbox.
+
+#### Command: `csf_ems_add_example`
+
+**When to use**
+
+Use this to add a new EMS CSF example (e.g., different agency types or jurisdictions) to the EMS CSF Sandbox so users can quickly test realistic scenarios.
+
+**What Codex should do**
+
+1. **Locate EMS examples list**
+
+   - Open `frontend/src/components/EmsCsfSandbox.tsx`.
+   - Find the `EMS_EXAMPLES` constant (array of `EmsCsfFormData`).
+
+2. **Add the new example**
+
+   - Add a new entry with realistic data (agency name, facility_type, license, DEA, ship_to_state, attestation, controlled_substances).
+   - Keep the label descriptive so users know what the scenario covers (e.g., “Air Medical – Missing Attestation”).
+   - Wire the new example into the UI (selector/buttons) and ensure telemetry logs include `example_label` and `ship_to_state`.
