@@ -18,6 +18,7 @@ from src.autocomply.domain.rag_regulatory_explain import (
     explain_csf_facility_decision,
     explain_csf_hospital_decision,
 )
+from src.rag.csf_copilot_prompt import build_csf_copilot_prompt
 from src.api.models.compliance_models import RegulatorySource
 from src.utils.logger import get_logger
 
@@ -54,18 +55,6 @@ class CsfCopilotResult(BaseModel):
     rag_sources: List[RegulatorySource] = Field(default_factory=list)
 
 
-DEFAULT_COPILOT_QUESTIONS: Dict[str, str] = {
-    "hospital": (
-        "Explain to a verification specialist what this Hospital CSF decision "
-        "means, what is missing, and what is required next."
-    ),
-    "facility": (
-        "Explain to a verification specialist what this Facility CSF decision "
-        "means, what is missing, and what is required next."
-    ),
-}
-
-
 def _facility_success_reason(reason: str) -> str:
     """Normalize success copy to be Facility-specific."""
 
@@ -90,8 +79,8 @@ async def run_csf_copilot(
     )
 
     csf_type = (request_model.csf_type or "hospital").lower()
-    question = DEFAULT_COPILOT_QUESTIONS.get(
-        csf_type, DEFAULT_COPILOT_QUESTIONS["hospital"]
+    prompt = build_csf_copilot_prompt(
+        csf_type=csf_type, payload=request_model.model_dump()
     )
 
     rag_explanation = ""
@@ -119,7 +108,7 @@ async def run_csf_copilot(
 
         decision = evaluate_facility_csf(facility_form)
         decision.reason = _facility_success_reason(decision.reason)
-        references = decision.regulatory_references or ["csf_facility_form"]
+        references = decision.regulatory_references or ["csf_hospital_form"]
         rag_explanation = decision.reason
 
         logger.info(
@@ -134,7 +123,7 @@ async def run_csf_copilot(
         try:
             rag_answer: RegulatoryRagAnswer = explain_csf_facility_decision(
                 decision=decision.model_dump(),
-                question=question,
+                question=prompt,
                 regulatory_references=references,
             )
             rag_explanation = _facility_success_reason(
@@ -205,7 +194,7 @@ async def run_csf_copilot(
     try:
         rag_answer = explain_csf_hospital_decision(
             decision=decision.model_dump(),
-            question=question,
+            question=prompt,
             regulatory_references=references,
         )
         rag_explanation = rag_answer.answer or rag_explanation
