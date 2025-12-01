@@ -18,10 +18,8 @@ import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { emitCodexCommand } from "../utils/codexLogger";
-import {
-  callFacilityFormCopilot,
-  type FacilityFormCopilotResponse,
-} from "../api/csfFacilityCopilotClient";
+import { callFacilityFormCopilot } from "../api/csfFacilityCopilotClient";
+import type { FacilityFormCopilotResponse } from "../domain/csfFacility";
 import { API_BASE } from "../api/csfHospitalClient";
 
 
@@ -79,12 +77,9 @@ export function FacilityCsfSandbox() {
   const [ragError, setRagError] = useState<string | null>(null);
 
   // ---- Facility CSF Form Copilot state ----
-  const [copilotLoading, setCopilotLoading] = useState(false);
-  const [copilotDecision, setCopilotDecision] =
+  const [copilotResponse, setCopilotResponse] =
     useState<FacilityFormCopilotResponse | null>(null);
-  const [copilotExplanation, setCopilotExplanation] = useState<string | null>(
-    null
-  );
+  const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
 
   function applyFacilityExample(example: FacilityExample) {
@@ -181,8 +176,7 @@ export function FacilityCsfSandbox() {
   const runFacilityCsfCopilot = async () => {
     setCopilotLoading(true);
     setCopilotError(null);
-    setCopilotExplanation(null);
-    setCopilotDecision(null);
+    setCopilotResponse(null);
 
     try {
       if (!API_BASE) {
@@ -196,8 +190,7 @@ export function FacilityCsfSandbox() {
         controlledSubstances,
       });
 
-      setCopilotDecision(copilotResponse);
-      setCopilotExplanation(copilotResponse.rag_explanation);
+      setCopilotResponse(copilotResponse);
 
       emitCodexCommand("csf_facility_form_copilot_run", {
         engine_family: "csf",
@@ -211,7 +204,7 @@ export function FacilityCsfSandbox() {
       console.error(err);
       setCopilotError(
         err?.message ||
-          "Facility CSF Copilot could not run. Check the console or try again."
+          "Facility CSF Copilot could not run. Please check the form and try again."
       );
     } finally {
       setCopilotLoading(false);
@@ -711,78 +704,114 @@ export function FacilityCsfSandbox() {
             </button>
           </header>
 
-          {copilotError && (
-            <p className="mb-1 text-[10px] text-rose-600">{copilotError}</p>
+          {copilotLoading && (
+            <div className="mb-2 text-[10px] text-slate-600">
+              Running Facility CSF Copilot…
+            </div>
           )}
 
-          {copilotDecision && (
-            <div className="mb-1 rounded-md bg-slate-50 p-2 text-[10px] text-slate-800">
-              <div className="mb-1 flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-slate-700">Decision outcome:</span>
-                <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[9px] font-medium text-slate-50">
-                  {copilotDecision.status ?? "See details below"}
-                </span>
-              </div>
-              {copilotDecision.reason && (
-                <p className="text-[10px] text-slate-600">
-                  Reason: {String(copilotDecision.reason)}
-                </p>
-              )}
+          {copilotError && (
+            <div className="mb-2 rounded-md bg-rose-50 px-2 py-1 text-[10px] text-rose-700">
+              {copilotError}
+            </div>
+          )}
 
-              {copilotDecision.missing_fields?.length > 0 && (
-                <div className="mt-1">
-                  <div className="text-[10px] font-semibold text-slate-700">
-                    Missing fields
-                  </div>
-                  <ul className="list-inside list-disc text-[10px] text-slate-600">
-                    {copilotDecision.missing_fields.map((field) => (
+          {copilotResponse && !copilotLoading && (
+            <section className="rounded-md bg-slate-50 p-2 text-[10px] text-slate-800">
+              <h3 className="mb-1 text-[10px] font-semibold text-slate-700">
+                Facility CSF Copilot Explanation
+              </h3>
+
+              <div className="mb-2 space-y-0.5">
+                <p>
+                  <strong>Status:</strong> {copilotResponse.status}
+                </p>
+                <p>
+                  <strong>Reason:</strong> {copilotResponse.reason}
+                </p>
+              </div>
+
+              {copilotResponse.missing_fields?.length > 0 && (
+                <div className="mb-2">
+                  <h4 className="text-[10px] font-semibold text-slate-700">
+                    Missing or inconsistent fields
+                  </h4>
+                  <ul className="list-inside list-disc text-[10px] text-slate-700">
+                    {copilotResponse.missing_fields.map((field) => (
                       <li key={field}>{field}</li>
                     ))}
                   </ul>
                 </div>
               )}
 
-              {copilotDecision.regulatory_references?.length > 0 && (
-                <div className="mt-1 text-[10px] text-slate-600">
-                  <span className="font-semibold text-slate-700">Regulatory references:</span>{" "}
-                  {copilotDecision.regulatory_references.join(", ")}
-                </div>
-              )}
-            </div>
-          )}
-
-          {copilotExplanation && (
-            <div className="mt-1 rounded-md bg-slate-50 p-2 text-[10px] leading-snug text-slate-800">
-              <div className="mb-1 text-[10px] font-semibold text-slate-700">
-                Copilot explanation
-              </div>
-              <p className="whitespace-pre-wrap">{copilotExplanation}</p>
-
-              {copilotDecision?.rag_sources?.length ? (
-                <div className="mt-2 space-y-1">
-                  <div className="text-[10px] font-semibold text-slate-700">
-                    RAG details
-                  </div>
-                  <ul className="list-inside list-disc text-[10px] text-slate-600">
-                    {copilotDecision.rag_sources.map((src) => (
-                      <li key={`${src.id}-${src.title}`}>{src.title || src.id}</li>
+              {copilotResponse.regulatory_references?.length > 0 && (
+                <div className="mb-2">
+                  <h4 className="text-[10px] font-semibold text-slate-700">
+                    Regulatory references
+                  </h4>
+                  <ul className="list-inside list-disc text-[10px] text-slate-700">
+                    {copilotResponse.regulatory_references.map((ref) => (
+                      <li key={ref}>{ref}</li>
                     ))}
                   </ul>
                 </div>
-              ) : null}
-            </div>
+              )}
+
+              {copilotResponse.rag_explanation && (
+                <div className="mb-2">
+                  <h4 className="text-[10px] font-semibold text-slate-700">
+                    Explanation
+                  </h4>
+                  <p className="whitespace-pre-wrap text-[10px] leading-snug text-slate-800">
+                    {copilotResponse.rag_explanation}
+                  </p>
+                </div>
+              )}
+
+              {copilotResponse.rag_sources?.length > 0 && (
+                <div>
+                  <h4 className="text-[10px] font-semibold text-slate-700">
+                    Sources consulted
+                  </h4>
+                  <ul className="list-inside list-disc text-[10px] text-slate-700">
+                    {copilotResponse.rag_sources.map((source, idx) => (
+                      <li key={source.id ?? idx} className="mb-1">
+                        <div>
+                          <strong>{source.title}</strong>
+                          {source.url && (
+                            <>
+                              {" "}–{" "}
+                              <a
+                                href={source.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-slate-700 underline"
+                              >
+                                open
+                              </a>
+                            </>
+                          )}
+                        </div>
+                        {source.snippet && (
+                          <div className="text-[10px] text-slate-600">
+                            {source.snippet}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
           )}
 
-          {!copilotDecision &&
-            !copilotExplanation &&
-            !copilotLoading &&
-            !copilotError && (
-              <p className="text-[10px] text-slate-400">
-                Click <span className="font-semibold">“Check &amp; Explain”</span>{" "}
-                to have AutoComply run the Facility CSF engine on this form and summarize
-                what it thinks, including required facility licenses and missing information.
-              </p>
-            )}
+          {!copilotResponse && !copilotLoading && !copilotError && (
+            <p className="text-[10px] text-slate-400">
+              Click <span className="font-semibold">“Check &amp; Explain”</span>{" "}
+              to have AutoComply run the Facility CSF engine on this form and summarize
+              what it thinks, including required facility licenses and missing information.
+            </p>
+          )}
         </section>
 
         {/* Right: Controlled Substances panel */}

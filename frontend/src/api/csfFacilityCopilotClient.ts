@@ -1,17 +1,9 @@
 // src/api/csfFacilityCopilotClient.ts
 import { API_BASE } from "./csfHospitalClient";
-import { FacilityCsfDecisionStatus, FacilityCsfFormData } from "../domain/csfFacility";
-import type { RegulatorySource } from "./csfExplainClient";
-
-export interface FacilityFormCopilotResponse {
-  status: FacilityCsfDecisionStatus;
-  reason: string;
-  missing_fields: string[];
-  regulatory_references: string[];
-  rag_explanation: string;
-  artifacts_used: string[];
-  rag_sources: RegulatorySource[];
-}
+import {
+  FacilityCsfFormData,
+  type FacilityFormCopilotResponse,
+} from "../domain/csfFacility";
 
 export async function callFacilityFormCopilot(
   form: FacilityCsfFormData
@@ -40,5 +32,6 @@ export async function callFacilityFormCopilot(
     throw new Error(`Facility Form Copilot failed with status ${message}`);
   }
 
-  return resp.json();
+  const data: FacilityFormCopilotResponse = await resp.json();
+  return data;
 }
