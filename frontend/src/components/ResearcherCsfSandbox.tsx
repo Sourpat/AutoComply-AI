@@ -1,11 +1,13 @@
 // src/components/ResearcherCsfSandbox.tsx
-import { FormEvent, useEffect, useState } from "react";
+import React, { FormEvent, useEffect, useState } from "react";
 import {
-  ResearchFacilityType,
   ResearcherCsfDecision,
   ResearcherCsfFormData,
+  ResearcherFacilityType,
+  type ResearcherFormCopilotResponse,
 } from "../domain/csfResearcher";
 import { evaluateResearcherCsf } from "../api/csfResearcherClient";
+import { callResearcherFormCopilot } from "../api/csfResearcherCopilotClient";
 import { explainCsfDecision } from "../api/csfExplainClient";
 import type { CsfDecisionSummary } from "../api/csfExplainClient";
 import {
@@ -17,9 +19,12 @@ import { ControlledSubstancesPanel } from "./ControlledSubstancesPanel";
 import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
-import { emitCodexCommand } from "../utils/codexLogger";
+import { trackSandboxEvent } from "../devsupport/telemetry";
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE || "";
+const RESEARCHER_ENGINE_FAMILY = "csf";
+const RESEARCHER_DECISION_TYPE = "csf_researcher";
+const RESEARCHER_SANDBOX_ID = "researcher";
+
 
 type ResearcherExample = {
   id: string;
@@ -29,28 +34,54 @@ type ResearcherExample = {
 
 const RESEARCHER_EXAMPLES: ResearcherExample[] = [
   {
-    id: "phase_ii_opioid_study_fl",
-    label: "FL – Phase II opioid study",
+    id: "researcher_happy_path_ma",
+    label: "Happy Path – University Research Lab (MA)",
     overrides: {
-      institutionName: "Sunrise Clinical Research Unit",
-      accountNumber: "ACC-RES-001",
-      shipToState: "FL",
+      facilityName: "University Research Lab – MA",
+      facilityType: "researcher",
+      accountNumber: "910123456",
+      pharmacyLicenseNumber: "MA-RES-2025-001",
+      deaNumber: "RS1234567",
+      pharmacistInChargeName: "Dr. Dana Example",
+      pharmacistContactPhone: "555-400-9001",
+      shipToState: "MA",
       attestationAccepted: true,
-      protocolOrStudyId: "PROTO-OPIOID-22",
+      internalNotes: "Happy path Researcher CSF example.",
+      controlledSubstances: [
+        { id: "fentanyl", name: "Fentanyl" },
+        { id: "ketamine", name: "Ketamine" },
+      ],
+    },
+  },
+  {
+    id: "researcher_blocked_co",
+    label: "Blocked – Missing License/DEA (CO)",
+    overrides: {
+      facilityName: "Independent Research Lab – CO",
+      facilityType: "researcher",
+      accountNumber: "910987654",
+      pharmacyLicenseNumber: "",
+      deaNumber: "",
+      pharmacistInChargeName: "Dr. Evan Example",
+      pharmacistContactPhone: "555-400-9002",
+      shipToState: "CO",
+      attestationAccepted: false,
+      internalNotes:
+        "Missing license/DEA and declined attestation – expected blocked.",
+      controlledSubstances: [{ id: "morphine", name: "Morphine" }],
     },
   },
 ];
 
 const initialForm: ResearcherCsfFormData = {
-  institutionName: "",
-  facilityType: "university",
+  facilityName: "",
+  facilityType: "researcher",
   accountNumber: "",
-  principalInvestigatorName: "",
-  researcherTitle: "",
-  stateLicenseNumber: "",
+  pharmacyLicenseNumber: "",
   deaNumber: "",
-  protocolOrStudyId: "",
-  shipToState: "OH",
+  pharmacistInChargeName: "",
+  pharmacistContactPhone: "",
+  shipToState: "MA",
   attestationAccepted: false,
   internalNotes: "",
 };
@@ -76,10 +107,9 @@ export function ResearcherCsfSandbox() {
   const [ragError, setRagError] = useState<string | null>(null);
 
   // ---- Researcher CSF Form Copilot state ----
+  const [copilotResponse, setCopilotResponse] =
+    useState<ResearcherFormCopilotResponse | null>(null);
   const [copilotLoading, setCopilotLoading] = useState(false);
-  const [copilotDecision, setCopilotDecision] = useState<any | null>(null);
-  const [copilotExplanation, setCopilotExplanation] =
-    useState<string | null>(null);
   const [copilotError, setCopilotError] = useState<string | null>(null);
 
   function applyResearcherExample(example: ResearcherExample) {
@@ -90,13 +120,16 @@ export function ResearcherCsfSandbox() {
     };
 
     setForm(nextForm);
+    if (example.overrides.controlledSubstances) {
+      setControlledSubstances(example.overrides.controlledSubstances);
+    }
 
-    emitCodexCommand("csf_researcher_example_selected", {
-      example_id: example.id,
-      label: example.label,
-      form: nextForm,
-      source_document:
-        "/mnt/data/Online Controlled Substance Form - Researcher form.pdf",
+    trackSandboxEvent("csf_researcher_example_selected", {
+      engine_family: RESEARCHER_ENGINE_FAMILY,
+      decision_type: RESEARCHER_DECISION_TYPE,
+      sandbox: RESEARCHER_SANDBOX_ID,
+      example_label: example.label ?? example.overrides.facilityName,
+      ship_to_state: (example.overrides.shipToState || nextForm.shipToState) ?? "",
     });
   }
 
@@ -117,34 +150,42 @@ export function ResearcherCsfSandbox() {
     setRagAnswer(null);
     setRagError(null);
 
+    trackSandboxEvent("csf_researcher_evaluate_attempt", {
+      engine_family: RESEARCHER_ENGINE_FAMILY,
+      decision_type: RESEARCHER_DECISION_TYPE,
+      sandbox: RESEARCHER_SANDBOX_ID,
+      facility_type: form.facilityType,
+      ship_to_state: form.shipToState,
+    });
+
     try {
       const result = await evaluateResearcherCsf({
         ...form,
+        controlledSubstances,
       });
       setDecision(result);
+
+      trackSandboxEvent("csf_researcher_evaluate_success", {
+        engine_family: RESEARCHER_ENGINE_FAMILY,
+        decision_type: RESEARCHER_DECISION_TYPE,
+        sandbox: RESEARCHER_SANDBOX_ID,
+        facility_type: form.facilityType,
+        ship_to_state: form.shipToState,
+        decision_status: result.status,
+      });
     } catch (err: any) {
       setError(err?.message ?? "Failed to evaluate Researcher CSF");
+      trackSandboxEvent("csf_researcher_evaluate_error", {
+        engine_family: RESEARCHER_ENGINE_FAMILY,
+        decision_type: RESEARCHER_DECISION_TYPE,
+        sandbox: RESEARCHER_SANDBOX_ID,
+        facility_type: form.facilityType,
+        ship_to_state: form.shipToState,
+        message: String(err?.message || err),
+      });
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const reset = () => {
-    setForm(initialForm);
-    setDecision(null);
-    setError(null);
-    setControlledSubstances([]);
-    setExplanation(null);
-    setExplainError(null);
-    setIsExplaining(false);
-
-    setRagAnswer(null);
-    setRagError(null);
-    setIsRagLoading(false);
-
-    setRegulatoryArtifacts([]);
-    setRegulatoryError(null);
-    setIsLoadingRegulatory(false);
   };
 
   const handleExplain = async () => {
@@ -173,72 +214,47 @@ export function ResearcherCsfSandbox() {
   };
 
   const runResearcherCsfCopilot = async () => {
-    if (!API_BASE) return;
-
     setCopilotLoading(true);
     setCopilotError(null);
-    setCopilotExplanation(null);
-    setCopilotDecision(null);
+    setCopilotResponse(null);
+
+    trackSandboxEvent("csf_researcher_form_copilot_run", {
+      engine_family: RESEARCHER_ENGINE_FAMILY,
+      decision_type: RESEARCHER_DECISION_TYPE,
+      sandbox: RESEARCHER_SANDBOX_ID,
+      facility_type: form.facilityType,
+      ship_to_state: form.shipToState,
+    });
+
+    const defaultCopilotErrorMessage =
+      "Researcher CSF Copilot could not run. Please check the form and try again.";
 
     try {
-      const evalResp = await fetch(`${API_BASE}/csf/researcher/evaluate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+      const response = await callResearcherFormCopilot({
+        ...form,
+        controlledSubstances,
       });
+      setCopilotResponse(response);
 
-      if (!evalResp.ok) {
-        throw new Error(`Researcher CSF evaluate failed: ${evalResp.status}`);
-      }
-
-      const evalJson = await evalResp.json();
-      const decision =
-        (evalJson.decision as any) ??
-        (evalJson.verdict as any) ??
-        evalJson;
-
-      setCopilotDecision(decision);
-
-      emitCodexCommand("csf_researcher_form_copilot_run", {
-        engine_family: "csf",
-        decision_type: "csf_researcher",
-        outcome: decision.outcome ?? decision.status ?? "unknown",
-      });
-
-      const ragResp = await fetch(`${API_BASE}/rag/regulatory-explain`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question:
-            "Explain for a verification specialist what this Researcher CSF decision means, including what research/teaching licenses, DEA research registrations, or protocol documentation are required for controlled-substance supply. Be concise and actionable.",
-          decision,
-          regulatory_references: [],
-        }),
-      });
-
-      if (!ragResp.ok) {
-        throw new Error(`RAG explain failed: ${ragResp.status}`);
-      }
-
-      const ragJson = await ragResp.json();
-      const answer =
-        (ragJson.answer as string) ??
-        (ragJson.text as string) ??
-        JSON.stringify(ragJson, null, 2);
-
-      setCopilotExplanation(answer);
-
-      emitCodexCommand("csf_researcher_form_copilot_complete", {
-        engine_family: "csf",
-        decision_type: "csf_researcher",
-        outcome: decision.outcome ?? decision.status ?? "unknown",
+      trackSandboxEvent("csf_researcher_form_copilot_success", {
+        engine_family: RESEARCHER_ENGINE_FAMILY,
+        decision_type: RESEARCHER_DECISION_TYPE,
+        sandbox: RESEARCHER_SANDBOX_ID,
+        facility_type: form.facilityType,
+        ship_to_state: form.shipToState,
+        decision_status: response.status,
       });
     } catch (err: any) {
-      console.error(err);
-      setCopilotError(
-        "Researcher CSF Copilot could not run. Check the console or try again."
-      );
-      emitCodexCommand("csf_researcher_form_copilot_error", {
+      const errorMessage = err?.message?.trim()
+        ? err.message
+        : defaultCopilotErrorMessage;
+      setCopilotError(errorMessage);
+      trackSandboxEvent("csf_researcher_form_copilot_error", {
+        engine_family: RESEARCHER_ENGINE_FAMILY,
+        decision_type: RESEARCHER_DECISION_TYPE,
+        sandbox: RESEARCHER_SANDBOX_ID,
+        facility_type: form.facilityType,
+        ship_to_state: form.shipToState,
         message: String(err?.message || err),
       });
     } finally {
@@ -258,542 +274,444 @@ export function ResearcherCsfSandbox() {
 
     const refs = decision.regulatory_references;
 
-    setIsLoadingRegulatory(true);
-    setRegulatoryError(null);
+    const fetchArtifacts = async () => {
+      setIsLoadingRegulatory(true);
+      setRegulatoryError(null);
 
-    (async () => {
       try {
-        const all = await fetchComplianceArtifacts();
-        if (cancelled) return;
-
-        const byId = new Map(all.map((a) => [a.id, a]));
-        const relevant: ComplianceArtifact[] = [];
-
-        for (const id of refs) {
-          const art = byId.get(id);
-          if (art) {
-            relevant.push(art);
-          }
+        const response = await fetchComplianceArtifacts(refs);
+        if (!cancelled) {
+          setRegulatoryArtifacts(response.items);
         }
-
-        setRegulatoryArtifacts(relevant);
       } catch (err: any) {
-        if (cancelled) return;
-        setRegulatoryError(
-          err?.message ?? "Failed to load regulatory artifacts for this decision."
-        );
+        if (!cancelled) {
+          setRegulatoryError(err?.message ?? "Failed to load regulatory artifacts");
+        }
       } finally {
-        if (cancelled) return;
-        setIsLoadingRegulatory(false);
+        if (!cancelled) {
+          setIsLoadingRegulatory(false);
+        }
       }
-    })();
+    };
+
+    fetchArtifacts();
 
     return () => {
       cancelled = true;
     };
   }, [decision]);
 
-  return (
-    <section className="rounded-xl border border-gray-200 bg-white p-3 text-[11px] shadow-sm">
-      <header className="mb-2 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-700">
-            Researcher CSF Sandbox
-          </h2>
-          <p className="text-[10px] text-gray-500">
-            Test researcher controlled substance forms with study/protocol context.
-          </p>
+  const runRegulatoryRag = async () => {
+    if (!decision) return;
 
-          <div className="mt-1 flex flex-wrap gap-1">
-            {RESEARCHER_EXAMPLES.map((ex) => (
-              <button
-                key={ex.id}
-                type="button"
-                onClick={() => applyResearcherExample(ex)}
-                className="rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
-              >
-                {ex.label}
-              </button>
-            ))}
+    setIsRagLoading(true);
+    setRagError(null);
+    setRagAnswer(null);
+
+    try {
+      const ragResponse = await callRegulatoryRag(
+        decision.regulatory_references || [],
+        "Explain why the Researcher CSF decision was made and summarize the key compliance rules."
+      );
+
+      setRagAnswer(ragResponse.answer || ragResponse.text);
+    } catch (err: any) {
+      setRagError(err?.message || "Failed to run regulatory RAG");
+    } finally {
+      setIsRagLoading(false);
+    }
+  };
+
+  return (
+    <div className="bg-white shadow rounded-lg p-6 mb-8">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-2xl font-semibold">Researcher CSF Sandbox</h2>
+          <p className="text-gray-600">
+            Test Researcher controlled substance forms end-to-end (decision +
+            Copilot).
+          </p>
+        </div>
+      </div>
+
+      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-6">
+        <p className="text-sm text-blue-900">
+          Use this sandbox to simulate Researcher CSF submissions. Fill in the
+          form, run the engine, and optionally generate a RAG-backed explanation
+          for the decision.
+        </p>
+      </div>
+
+      {/* Example selector */}
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Quick examples
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {RESEARCHER_EXAMPLES.map((example) => (
+            <button
+              key={example.id}
+              onClick={() => applyResearcherExample(example)}
+              className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm"
+            >
+              {example.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <form onSubmit={onSubmit} className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Facility / Lab name
+            </label>
+            <input
+              type="text"
+              value={form.facilityName}
+              onChange={(e) => onChange("facilityName", e.target.value)}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              placeholder="Research institution name"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Facility type
+            </label>
+            <select
+              value={form.facilityType}
+              onChange={(e) =>
+                onChange("facilityType", e.target.value as ResearcherFacilityType)
+              }
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+            >
+              <option value="researcher">Researcher</option>
+              <option value="facility">Facility</option>
+              <option value="hospital">Hospital</option>
+              <option value="long_term_care">Long-term care</option>
+              <option value="surgical_center">Surgical center</option>
+              <option value="clinic">Clinic</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Account number
+            </label>
+            <input
+              type="text"
+              value={form.accountNumber || ""}
+              onChange={(e) => onChange("accountNumber", e.target.value)}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              placeholder="Optional customer account"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Pharmacy license number
+            </label>
+            <input
+              type="text"
+              value={form.pharmacyLicenseNumber}
+              onChange={(e) =>
+                onChange("pharmacyLicenseNumber", e.target.value)
+              }
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              placeholder="License or authorization"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              DEA number
+            </label>
+            <input
+              type="text"
+              value={form.deaNumber}
+              onChange={(e) => onChange("deaNumber", e.target.value)}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              placeholder="DEA number"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Pharmacist in charge
+            </label>
+            <input
+              type="text"
+              value={form.pharmacistInChargeName}
+              onChange={(e) =>
+                onChange("pharmacistInChargeName", e.target.value)
+              }
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              placeholder="Responsible pharmacist or contact"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Pharmacist contact phone
+            </label>
+            <input
+              type="text"
+              value={form.pharmacistContactPhone || ""}
+              onChange={(e) =>
+                onChange("pharmacistContactPhone", e.target.value)
+              }
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              placeholder="Optional contact phone"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Ship-to state
+            </label>
+            <input
+              type="text"
+              value={form.shipToState}
+              onChange={(e) => onChange("shipToState", e.target.value)}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              placeholder="State abbreviation"
+              maxLength={2}
+              required
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Internal notes
+            </label>
+            <textarea
+              value={form.internalNotes || ""}
+              onChange={(e) => onChange("internalNotes", e.target.value)}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              rows={2}
+              placeholder="Optional notes for support or compliance"
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <div className="flex items-center space-x-2 mt-2">
+              <input
+                id="attestation"
+                type="checkbox"
+                checked={form.attestationAccepted}
+                onChange={(e) => onChange("attestationAccepted", e.target.checked)}
+                className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+              />
+              <label htmlFor="attestation" className="text-sm text-gray-700">
+                I confirm the Researcher CSF attestation is accepted
+              </label>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <SourceDocumentChip
-            label="Researcher CSF PDF"
-            url="/mnt/data/Online Controlled Substance Form - Researcher form.pdf"
+
+        <div className="md:col-span-2">
+          <ControlledSubstancesPanel
+            accountNumber={form.accountNumber ?? ""}
+            value={controlledSubstances}
+            onChange={setControlledSubstances}
           />
+        </div>
+
+        {error && <div className="text-red-600 text-sm">{error}</div>}
+
+        <div className="flex items-center space-x-3">
+          <button
+            type="submit"
+            className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+            disabled={isLoading}
+          >
+            {isLoading ? "Evaluating…" : "Evaluate Researcher CSF"}
+          </button>
+
+          <CopyCurlButton
+            endpoint="/csf/researcher/evaluate"
+            method="POST"
+            body={form}
+            sandboxId={RESEARCHER_SANDBOX_ID}
+            decisionType={RESEARCHER_DECISION_TYPE}
+            engineFamily={RESEARCHER_ENGINE_FAMILY}
+          />
+        </div>
+      </form>
+
+      {/* Decision results */}
+      {decision && (
+        <div className="mt-6 p-4 border rounded-lg bg-gray-50">
+          <h3 className="font-semibold">Decision</h3>
+          <p className="text-sm text-gray-800">Status: {decision.status}</p>
+          <p className="text-sm text-gray-800">Reason: {decision.reason}</p>
+
+          {decision.missing_fields?.length ? (
+            <p className="text-sm text-gray-800">
+              Missing fields: {decision.missing_fields.join(", ")}
+            </p>
+          ) : null}
+
+          {decision.regulatory_references?.length ? (
+            <div className="mt-2">
+              <h4 className="text-sm font-medium">Regulatory references</h4>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {decision.regulatory_references.map((ref) => (
+                  <SourceDocumentChip key={ref} id={ref} />
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-3 flex gap-3">
+            <button
+              type="button"
+              onClick={handleExplain}
+              className="px-3 py-2 bg-gray-800 text-white rounded hover:bg-gray-900 text-sm"
+              disabled={isExplaining}
+            >
+              {isExplaining ? "Explaining…" : "Explain decision"}
+            </button>
+            <button
+              type="button"
+              onClick={runRegulatoryRag}
+              className="px-3 py-2 bg-blue-100 text-blue-800 rounded hover:bg-blue-200 text-sm"
+              disabled={isRagLoading}
+            >
+              {isRagLoading ? "Running RAG…" : "Explain with RAG"}
+            </button>
+          </div>
+
+          {explainError && (
+            <div className="text-sm text-red-600 mt-2">{explainError}</div>
+          )}
+          {explanation && (
+            <div className="mt-3 p-3 bg-white border rounded">
+              <h4 className="text-sm font-medium">Engine explanation</h4>
+              <p className="text-sm text-gray-800 whitespace-pre-line">
+                {explanation}
+              </p>
+            </div>
+          )}
+
+          {ragError && (
+            <div className="text-sm text-red-600 mt-2">{ragError}</div>
+          )}
+          {ragAnswer && (
+            <div className="mt-3 p-3 bg-white border rounded">
+              <h4 className="text-sm font-medium">Regulatory RAG</h4>
+              <p className="text-sm text-gray-800 whitespace-pre-line">
+                {ragAnswer}
+              </p>
+            </div>
+          )}
+
+          {isLoadingRegulatory && (
+            <p className="text-sm text-gray-600 mt-2">Loading artifacts…</p>
+          )}
+          {regulatoryError && (
+            <p className="text-sm text-red-600 mt-2">{regulatoryError}</p>
+          )}
+          {regulatoryArtifacts.length > 0 && (
+            <div className="mt-3">
+              <h4 className="text-sm font-medium">Referenced artifacts</h4>
+              <ul className="list-disc ml-5 text-sm text-gray-800">
+                {regulatoryArtifacts.map((artifact) => (
+                  <li key={artifact.id}>
+                    <span className="font-medium">{artifact.name}</span> —
+                    {" "}
+                    {artifact.notes || artifact.jurisdiction}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Researcher Copilot */}
+      <section className="mt-6 p-4 border rounded-lg bg-white">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800">
+              Researcher CSF Copilot (beta)
+            </h3>
+            <p className="text-sm text-gray-600">
+              Runs the Researcher CSF engine on the current form and asks the
+              regulatory RAG service to explain what&apos;s allowed or blocked.
+            </p>
+          </div>
           <button
             type="button"
-            onClick={reset}
-            className="text-[10px] text-gray-500 hover:underline"
+            onClick={runResearcherCsfCopilot}
+            disabled={copilotLoading}
+            className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm disabled:opacity-60"
           >
-            Reset
+            {copilotLoading ? "Running Copilot…" : "Check & Explain"}
           </button>
         </div>
-      </header>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="space-y-3">
-          <form onSubmit={onSubmit} className="space-y-3">
-            {/* Institution & facility */}
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">
-                  Institution name
-                </label>
-                <input
-                  type="text"
-                  value={form.institutionName}
-                  onChange={(e) => onChange("institutionName", e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">
-                  Facility type
-                </label>
-                <select
-                  value={form.facilityType}
-                  onChange={(e) =>
-                    onChange("facilityType", e.target.value as ResearchFacilityType)
-                  }
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
-                >
-                  <option value="university">University</option>
-                  <option value="hospital_research">Hospital research</option>
-                  <option value="private_lab">Private lab</option>
-                  <option value="pharma_rnd">Pharma R&D</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-            </div>
+        {copilotLoading && (
+          <p className="mt-2 text-sm text-gray-700">
+            Running Researcher CSF Copilot…
+          </p>
+        )}
 
-            {/* Account / licensing */}
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">
-                  Account #
-                </label>
-                <input
-                  type="text"
-                  value={form.accountNumber ?? ""}
-                  onChange={(e) => onChange("accountNumber", e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">
-                  Ship-to state
-                </label>
-                <input
-                  type="text"
-                  value={form.shipToState}
-                  onChange={(e) => onChange("shipToState", e.target.value.toUpperCase())}
-                  maxLength={2}
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs uppercase"
-                />
-              </div>
-              <div className="flex items-end">
-                <label className="inline-flex items-center gap-2 text-xs text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={form.attestationAccepted}
-                    onChange={(e) =>
-                      onChange("attestationAccepted", e.target.checked)
-                    }
-                  />
-                  <span>I accept the CSF attestation clause</span>
-                </label>
-              </div>
-            </div>
-
-            {/* Investigator / licensing */}
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">
-                  Principal investigator name
-                </label>
-                <input
-                  type="text"
-                  value={form.principalInvestigatorName}
-                  onChange={(e) =>
-                    onChange("principalInvestigatorName", e.target.value)
-                  }
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">
-                  Investigator title
-                </label>
-                <input
-                  type="text"
-                  value={form.researcherTitle}
-                  onChange={(e) => onChange("researcherTitle", e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">
-                  Protocol or study ID
-                </label>
-                <input
-                  type="text"
-                  value={form.protocolOrStudyId}
-                  onChange={(e) => onChange("protocolOrStudyId", e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Licensing numbers */}
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">
-                  State license #
-                </label>
-                <input
-                  type="text"
-                  value={form.stateLicenseNumber}
-                  onChange={(e) => onChange("stateLicenseNumber", e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">
-                  DEA #
-                </label>
-                <input
-                  type="text"
-                  value={form.deaNumber}
-                  onChange={(e) => onChange("deaNumber", e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Notes */}
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">
-                Internal notes (optional)
-              </label>
-              <textarea
-                value={form.internalNotes ?? ""}
-                onChange={(e) => onChange("internalNotes", e.target.value)}
-                className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
-                rows={2}
-              />
-            </div>
-
-            <div className="mt-2 flex items-center gap-2">
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="rounded-md bg-blue-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                {isLoading ? "Evaluating…" : "Evaluate Researcher CSF"}
-              </button>
-
-              <CopyCurlButton
-                label="Copy cURL (evaluate)"
-                endpoint="/csf/researcher/evaluate"
-                body={form}
-                disabled={isLoading}
-              />
-            </div>
-          </form>
-
-          {/* Result & error */}
-          <div className="space-y-2 text-xs">
-            {error && (
-              <div className="rounded-md bg-red-50 px-2 py-1 text-red-700">
-                {error}
-              </div>
-            )}
-
-            {decision && (
-              <div className="rounded-md bg-gray-50 px-3 py-2">
-                <div className="mb-1 flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">
-                    Decision
-                  </span>
-                  <span className="rounded-full bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white">
-                    {decision.status}
-                  </span>
-                </div>
-                <p className="text-[11px] text-gray-800">{decision.reason}</p>
-
-                {decision.missing_fields.length > 0 && (
-                  <div className="mt-2">
-                    <div className="text-[11px] font-medium text-gray-700">
-                      Missing fields
-                    </div>
-                    <ul className="list-inside list-disc text-[11px] text-gray-700">
-                      {decision.missing_fields.map((f) => (
-                        <li key={f}>{f}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <div className="mt-3 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={isExplaining}
-                      className="rounded-md bg-slate-700 px-3 py-1 text-[11px] font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-                      onClick={handleExplain}
-                    >
-                      {isExplaining ? "Explaining…" : "Explain decision"}
-                    </button>
-
-                    <CopyCurlButton
-                      label="Copy cURL (explain)"
-                      endpoint="/csf/explain"
-                      body={{ decision }}
-                      disabled={isExplaining}
-                    />
-                  </div>
-
-                  {explainError && (
-                    <div className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700">
-                      {explainError}
-                    </div>
-                  )}
-
-                  {explanation && (
-                    <pre className="whitespace-pre-wrap rounded-md bg-white px-2 py-2 text-[11px] text-gray-800 ring-1 ring-gray-200">
-                      {explanation}
-                    </pre>
-                  )}
-                </div>
-
-                {/* NEW: Deep RAG explain via /rag/regulatory-explain */}
-                <div className="mt-3 space-y-1 border-t border-gray-200 pt-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-gray-700">
-                      Deep RAG explain (experimental)
-                    </span>
-                    {isRagLoading && (
-                      <span className="text-[10px] text-gray-400">Running RAG…</span>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    disabled={isRagLoading || !decision}
-                    className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    onClick={async () => {
-                      if (!decision) return;
-
-                      setIsRagLoading(true);
-                      setRagError(null);
-                      setRagAnswer(null);
-
-                      const question =
-                        "Explain this researcher controlled substance form decision using the referenced regulatory artifacts. " +
-                        "Focus on protocol requirements, licensing, and why the status is '" +
-                        decision.status +
-                        "'.";
-
-                      try {
-                        const res = await callRegulatoryRag({
-                          question,
-                          regulatory_references: decision.regulatory_references ?? [],
-                          decision,
-                        });
-
-                        setRagAnswer(res.answer);
-
-                        // Optional: log a Codex command for DevSupport
-                        emitCodexCommand(
-                          "rag_regulatory_explain_researcher",
-                          {
-                            question,
-                            regulatory_references:
-                              decision.regulatory_references ?? [],
-                            decision,
-                            controlled_substances: controlledSubstances,
-                            source_document:
-                              "/mnt/data/Online Controlled Substance Form - Researcher form.pdf",
-                          }
-                        );
-                      } catch (err: any) {
-                        setRagError(
-                          err?.message ?? "Failed to call RAG explain for this decision."
-                        );
-                      } finally {
-                        setIsRagLoading(false);
-                      }
-                    }}
-                  >
-                    {isRagLoading ? "Running RAG…" : "Deep RAG explain"}
-                  </button>
-
-                  {ragError && (
-                    <div className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700">
-                      {ragError}
-                    </div>
-                  )}
-
-                  {ragAnswer && (
-                    <pre className="whitespace-pre-wrap rounded-md bg-white px-2 py-2 text-[11px] text-gray-800 ring-1 ring-gray-200">
-                      {ragAnswer}
-                    </pre>
-                  )}
-                </div>
-
-                {/* Regulatory basis pills */}
-                {decision.regulatory_references?.length > 0 && (
-                  <div className="mt-3 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold text-gray-700">
-                        Regulatory basis
-                      </span>
-                      {isLoadingRegulatory && (
-                        <span className="text-[10px] text-gray-400">Loading…</span>
-                      )}
-                    </div>
-
-                    {regulatoryError && (
-                      <div className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700">
-                        {regulatoryError}
-                      </div>
-                    )}
-
-                    {!regulatoryError &&
-                      regulatoryArtifacts.length === 0 &&
-                      !isLoadingRegulatory && (
-                        <div className="text-[11px] text-gray-400">
-                          No matching artifacts found for: {decision.regulatory_references.join(", ")}.
-                        </div>
-                      )}
-
-                    {regulatoryArtifacts.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {regulatoryArtifacts.map((art) => (
-                          <span
-                            key={art.id}
-                            className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-800 ring-1 ring-indigo-100"
-                          >
-                            <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
-                            <span>{art.name}</span>
-                            <span className="text-[9px] text-indigo-500">
-                              [{art.jurisdiction}]
-                            </span>
-                            {art.source_document && (
-                              <span className="text-[9px] text-indigo-400">({art.id})</span>
-                            )}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Codex hook */}
-                <div className="mt-3 flex items-center justify-between">
-                  <button
-                    type="button"
-                    className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50"
-                    onClick={() => {
-                      emitCodexCommand(
-                        "explain_csf_researcher_decision",
-                        {
-                          form,
-                          decision,
-                          controlled_substances: controlledSubstances,
-                          source_document:
-                            "/mnt/data/Online Controlled Substance Form - Researcher form.pdf",
-                        }
-                      );
-                    }}
-                  >
-                    Ask Codex to explain decision
-                  </button>
-                  <span className="text-[10px] text-gray-400">
-                    Future: narrative explanation for researcher CSF decisions.
-                  </span>
-                </div>
-
-                {/* ---- Researcher CSF Form Copilot (beta) ---- */}
-                <section className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
-                  <header className="mb-2 flex items-center justify-between gap-2">
-                    <div>
-                      <h3 className="text-[11px] font-semibold text-slate-800">
-                        Researcher CSF Copilot (beta)
-                      </h3>
-                      <p className="text-[10px] text-slate-500">
-                        Runs the Researcher CSF engine and asks the regulatory RAG
-                        service to explain the decision and research/teaching license
-                        requirements.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={runResearcherCsfCopilot}
-                      disabled={copilotLoading || !API_BASE}
-                      className="h-7 rounded-md bg-slate-900 px-3 text-[11px] font-medium text-slate-50 hover:bg-slate-800 disabled:opacity-50"
-                    >
-                      {copilotLoading ? "Checking…" : "Check & Explain"}
-                    </button>
-                  </header>
-
-                  {copilotError && (
-                    <p className="mb-1 text-[10px] text-rose-600">{copilotError}</p>
-                  )}
-
-                  {copilotDecision && (
-                    <div className="mb-1 rounded-md bg-slate-50 p-2 text-[10px] text-slate-800">
-                      <div className="mb-1 flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-slate-700">
-                          Decision outcome:
-                        </span>
-                        <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[9px] font-medium text-slate-50">
-                          {copilotDecision.outcome ??
-                            copilotDecision.status ??
-                            "See details below"}
-                        </span>
-                      </div>
-                      {copilotDecision.reason && (
-                        <p className="text-[10px] text-slate-600">
-                          Reason: {String(copilotDecision.reason)}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {copilotExplanation && (
-                    <div className="mt-1 rounded-md bg-slate-50 p-2 text-[10px] leading-snug text-slate-800">
-                      <div className="mb-1 text-[10px] font-semibold text-slate-700">
-                        Copilot explanation
-                      </div>
-                      <p className="whitespace-pre-wrap">{copilotExplanation}</p>
-                    </div>
-                  )}
-
-                  {!copilotDecision &&
-                    !copilotExplanation &&
-                    !copilotLoading &&
-                    !copilotError && (
-                      <p className="text-[10px] text-slate-400">
-                        Use <span className="font-semibold">“Check &amp; Explain”</span>{" "}
-                        to get a summarized view of the Researcher CSF decision and what
-                        research/teaching licenses or protocols are required.
-                      </p>
-                    )}
-                </section>
-              </div>
-            )}
+        {copilotError && (
+          <div className="mt-2 rounded-md bg-rose-50 px-2 py-1 text-sm text-rose-700">
+            {copilotError}
           </div>
-        </div>
+        )}
 
-        <ControlledSubstancesPanel
-          accountNumber={form.accountNumber ?? ""}
-          value={controlledSubstances}
-          onChange={setControlledSubstances}
-        />
-      </div>
-    </section>
+        {copilotResponse && (
+          <div className="mt-3 p-3 bg-gray-50 border rounded space-y-2">
+            <h4 className="text-sm font-medium">Researcher CSF Copilot</h4>
+            <p className="text-sm text-gray-800">Status: {copilotResponse.status}</p>
+            <p className="text-sm text-gray-800">Reason: {copilotResponse.reason}</p>
+            {copilotResponse.missing_fields?.length ? (
+              <p className="text-sm text-gray-800">
+                Missing fields: {copilotResponse.missing_fields.join(", ")}
+              </p>
+            ) : null}
+            {copilotResponse.regulatory_references?.length ? (
+              <div>
+                <h5 className="text-sm font-medium">Regulatory references</h5>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {copilotResponse.regulatory_references.map((ref) => (
+                    <SourceDocumentChip key={ref} id={ref} />
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-2">
+              <h5 className="text-sm font-medium">RAG explanation</h5>
+              <p className="text-sm text-gray-800 whitespace-pre-line">
+                {copilotResponse.rag_explanation}
+              </p>
+            </div>
+
+            {copilotResponse.rag_sources?.length ? (
+              <div>
+                <h5 className="text-sm font-medium">RAG sources</h5>
+                <ul className="list-disc ml-5 text-sm text-gray-800">
+                  {copilotResponse.rag_sources.map((source, idx) => (
+                    <li key={idx}>
+                      <span className="font-medium">{source.title}</span>
+                      {source.snippet ? ` — ${source.snippet}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </section>
+    </div>
   );
 }

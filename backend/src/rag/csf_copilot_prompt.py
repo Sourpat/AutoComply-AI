@@ -40,6 +40,8 @@ def build_csf_copilot_prompt(csf_type: str, payload: Dict[str, Any]) -> str:
         csf_label = "Facility Controlled Substance Form (Facility CSF)"
     elif (csf_type or "").lower() == "ems":
         csf_label = "EMS Controlled Substance Form (EMS CSF)"
+    elif (csf_type or "").lower() == "researcher":
+        csf_label = "Researcher Controlled Substance Form (Researcher CSF)"
 
     controlled_substances = _format_controlled_substances(
         payload.get("controlled_substances") or []

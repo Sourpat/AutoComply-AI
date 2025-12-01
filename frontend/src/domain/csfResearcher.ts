@@ -1,24 +1,25 @@
 // src/domain/csfResearcher.ts
 import { ControlledSubstanceItem } from "./controlledSubstances";
 
-export type ResearchFacilityType =
-  | "university"
-  | "hospital_research"
-  | "private_lab"
-  | "pharma_rnd"
+export type ResearcherFacilityType =
+  | "facility"
+  | "hospital"
+  | "long_term_care"
+  | "surgical_center"
+  | "clinic"
+  | "researcher"
   | "other";
 
 export interface ResearcherCsfFormData {
-  institutionName: string;
-  facilityType: ResearchFacilityType;
+  facilityName: string;
+  facilityType: ResearcherFacilityType;
   accountNumber?: string | null;
 
-  principalInvestigatorName: string;
-  researcherTitle?: string | null;
+  pharmacyLicenseNumber: string;
+  deaNumber: string;
 
-  stateLicenseNumber?: string | null;
-  deaNumber?: string | null;
-  protocolOrStudyId: string;
+  pharmacistInChargeName: string;
+  pharmacistContactPhone?: string | null;
 
   shipToState: string;
 
@@ -26,7 +27,6 @@ export interface ResearcherCsfFormData {
 
   internalNotes?: string | null;
 
-  // NEW: attached controlled substances
   controlledSubstances?: ControlledSubstanceItem[];
 }
 
@@ -40,4 +40,21 @@ export interface ResearcherCsfDecision {
   reason: string;
   missing_fields: string[];
   regulatory_references: string[];
+}
+
+export interface ResearcherFormCopilotSource {
+  id?: string;
+  title: string;
+  url?: string;
+  snippet?: string;
+}
+
+export interface ResearcherFormCopilotResponse {
+  status: ResearcherCsfDecisionStatus;
+  reason: string;
+  missing_fields: string[];
+  regulatory_references: string[];
+  rag_explanation: string;
+  artifacts_used: string[];
+  rag_sources: ResearcherFormCopilotSource[];
 }

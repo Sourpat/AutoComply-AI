@@ -263,3 +263,15 @@ class EmsFormCopilotResponse(BaseModel):
     rag_explanation: str
     artifacts_used: List[str] = Field(default_factory=list)
     rag_sources: List[RegulatorySource] = Field(default_factory=list)
+
+
+class ResearcherFormCopilotResponse(BaseModel):
+    """Response payload for Researcher CSF Form Copilot."""
+
+    status: CsDecisionStatus
+    reason: str
+    missing_fields: List[str] = Field(default_factory=list)
+    regulatory_references: List[str] = Field(default_factory=list)
+    rag_explanation: str
+    artifacts_used: List[str] = Field(default_factory=list)
+    rag_sources: List[RegulatorySource] = Field(default_factory=list)
