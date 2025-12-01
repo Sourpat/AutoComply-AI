@@ -52,6 +52,23 @@ describe("Facility CSF Sandbox", () => {
     expect(screen.queryByText(/Hospital CSF/i)).toBeNull();
   });
 
+  it("shows multiple Facility CSF example scenarios", async () => {
+    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    const { FacilityCsfSandbox } = await loadSandbox();
+
+    render(<FacilityCsfSandbox />);
+
+    expect(
+      screen.getByText(/Happy Path – NJ Surgery Center/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Needs Review – CA LTC \(Missing DEA\)/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Blocked – TX Clinic \(No License \/ No Attestation\)/i)
+    ).toBeInTheDocument();
+  });
+
   it("calls evaluateFacilityCsf and shows decision result", async () => {
     vi.stubEnv("VITE_API_BASE", "http://api.test");
     const { FacilityCsfSandbox } = await loadSandbox();
