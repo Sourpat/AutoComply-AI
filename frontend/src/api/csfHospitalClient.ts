@@ -4,7 +4,7 @@ import {
   HospitalCsfFormData,
 } from "../domain/csfHospital";
 
-const API_BASE =
+export const API_BASE =
   (import.meta as any)?.env?.VITE_API_BASE ||
   (import.meta as any)?.env?.VITE_API_BASE_URL ||
   "";

@@ -31,6 +31,14 @@ async def evaluate_facility_csf_endpoint(
 ) -> FacilityCsfDecision:
     """Evaluate a Facility Controlled Substance Form and return a decision."""
 
+    logger.info(
+        "Facility CSF evaluation request received",
+        extra={
+            "engine_family": "csf",
+            "decision_type": "csf_facility",
+        },
+    )
+
     decision = evaluate_facility_csf(form)
     return decision
 

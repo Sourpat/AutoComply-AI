@@ -1,10 +1,6 @@
 // src/api/csfFacilityClient.ts
+import { API_BASE } from "./csfHospitalClient";
 import { FacilityCsfDecision, FacilityCsfFormData } from "../domain/csfFacility";
-
-const API_BASE =
-  (import.meta as any)?.env?.VITE_API_BASE ||
-  (import.meta as any)?.env?.VITE_API_BASE_URL ||
-  "";
 
 export async function evaluateFacilityCsf(
   form: FacilityCsfFormData
