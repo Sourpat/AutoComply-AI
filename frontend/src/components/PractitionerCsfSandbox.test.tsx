@@ -18,6 +18,23 @@ const mockAllowedDecision = {
   regulatory_references: [],
 };
 
+const mockCopilotResponse = {
+  status: "ok_to_ship",
+  reason: "Practitioner CSF is approved to proceed.",
+  missing_fields: [],
+  regulatory_references: ["csf_practitioner_form"],
+  rag_explanation: "This Practitioner CSF is compliant based on example rules.",
+  rag_sources: [
+    {
+      id: "csf_practitioner_form",
+      title: "Controlled Substance Form – Practitioner (with addendums)",
+      url: "https://example.com/csf-practitioner",
+      snippet: "Example snippet from the Practitioner CSF doc.",
+    },
+  ],
+  artifacts_used: ["csf_practitioner_form"],
+};
+
 async function loadSandbox() {
   vi.resetModules();
   return import("./PractitionerCsfSandbox");
@@ -35,6 +52,8 @@ afterEach(() => {
   vi.restoreAllMocks();
   // @ts-expect-error - cleanup test-specific fetch mocks
   delete global.fetch;
+  // @ts-expect-error
+  delete navigator.clipboard;
 });
 
 describe("PractitionerCsfSandbox", () => {
@@ -99,5 +118,58 @@ describe("PractitionerCsfSandbox", () => {
         screen.getByText("Deep regulatory explain is temporarily unavailable.")
       ).toBeInTheDocument()
     );
+  });
+
+  it("calls Practitioner Form Copilot and renders RAG details", async () => {
+    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    const { PractitionerCsfSandbox } = await loadSandbox();
+
+    const fetchMock = mockFetchSequence([
+      new Response(JSON.stringify(mockCopilotResponse), { status: 200 }),
+    ]);
+
+    render(<PractitionerCsfSandbox />);
+
+    const copilotButton = screen.getByRole("button", {
+      name: /check & explain/i,
+    });
+
+    fireEvent.click(copilotButton);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const calls = fetchMock.mock.calls.map((call) => call[0] as string);
+    expect(
+      calls.some((url) => url.includes("/csf/practitioner/form-copilot"))
+    ).toBe(true);
+
+    expect(
+      screen.getAllByText(/Practitioner CSF is approved to proceed/i).length
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        /This Practitioner CSF is compliant based on example rules./i
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText(/csf_practitioner_form/i)).toBeInTheDocument();
+  });
+
+  it("copies the practitioner evaluate cURL snippet", async () => {
+    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    const { PractitionerCsfSandbox } = await loadSandbox();
+
+    const writeText = vi.fn();
+    // @ts-expect-error - test shim
+    navigator.clipboard = { writeText };
+
+    render(<PractitionerCsfSandbox />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /copy curl \(evaluate\)/i })
+    );
+
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    const curl = writeText.mock.calls[0][0] as string;
+    expect(curl).toContain("/csf/practitioner/evaluate");
   });
 });

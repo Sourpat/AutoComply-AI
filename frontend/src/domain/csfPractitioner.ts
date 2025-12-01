@@ -39,3 +39,21 @@ export interface PractitionerCsfDecision {
   missing_fields: string[];
   regulatory_references: string[];
 }
+
+export interface PractitionerFormCopilotSource {
+  id?: string;
+  title: string;
+  url?: string;
+  snippet?: string;
+  jurisdiction?: string;
+}
+
+export interface PractitionerFormCopilotResponse {
+  status: PractitionerCsfDecisionStatus;
+  reason: string;
+  missing_fields: string[];
+  regulatory_references: string[];
+  rag_explanation: string;
+  artifacts_used: string[];
+  rag_sources: PractitionerFormCopilotSource[];
+}

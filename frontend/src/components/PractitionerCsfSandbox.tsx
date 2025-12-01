@@ -4,6 +4,7 @@ import {
   PractitionerCsfDecision,
   PractitionerCsfFormData,
   PractitionerFacilityType,
+  PractitionerFormCopilotResponse,
 } from "../domain/csfPractitioner";
 import { explainCsfDecision } from "../api/csfExplainClient";
 import type { CsfDecisionSummary } from "../api/csfExplainClient";
@@ -12,6 +13,7 @@ import {
   type ComplianceArtifact,
 } from "../api/complianceArtifactsClient";
 import { callRegulatoryRag } from "../api/ragRegulatoryClient";
+import { callPractitionerFormCopilot } from "../api/csfPractitionerCopilotClient";
 import { ControlledSubstancesPanel } from "./ControlledSubstancesPanel";
 import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
@@ -113,33 +115,6 @@ const deriveSourceDocuments = (
     .filter(Boolean) as string[];
 
   return docs.length ? docs : [CSF_PRACTITIONER_SOURCE_DOCUMENT];
-};
-
-// ✅ UPDATED: normalize regulatory_reference_id / id and handle non-array safely
-const extractRegulatoryReferenceIds = (
-  references: any[] | undefined
-): string[] => {
-  if (!Array.isArray(references)) return [];
-
-  return references
-    .map((ref) => {
-      // Already a string ID
-      if (typeof ref === "string") {
-        return ref;
-      }
-
-      // Skip non-objects
-      if (!ref || typeof ref !== "object") {
-        return undefined;
-      }
-
-      const obj = ref as any;
-      const rawId = obj.regulatory_reference_id ?? obj.id;
-      if (rawId == null) return undefined;
-
-      return String(rawId);
-    })
-    .filter((id): id is string => Boolean(id));
 };
 
 const callPractitionerEvaluate = async (
@@ -275,14 +250,10 @@ export function PractitionerCsfSandbox() {
   const [isRagLoading, setIsRagLoading] = useState(false);
   const [ragError, setRagError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [copilotResponse, setCopilotResponse] =
+    useState<PractitionerFormCopilotResponse | null>(null);
   const [copilotLoading, setCopilotLoading] = useState(false);
-  const [copilotDecision, setCopilotDecision] = useState<any | null>(null);
-  const [copilotExplanation, setCopilotExplanation] = useState<string | null>(
-    null
-  );
-  const [copilotRagAnswer, setCopilotRagAnswer] = useState<string | null>(null);
   const [copilotError, setCopilotError] = useState<string | null>(null);
-  const [copilotSources, setCopilotSources] = useState<RegulatorySource[]>([]);
   const [lastEvaluatedPayload, setLastEvaluatedPayload] = useState<string | null>(
     null
   );
@@ -528,10 +499,8 @@ export function PractitionerCsfSandbox() {
     setIsRagLoading(false);
 
     setCopilotLoading(false);
-    setCopilotDecision(null);
-    setCopilotExplanation(null);
+    setCopilotResponse(null);
     setCopilotError(null);
-    setCopilotSources([]);
     setLastEvaluatedPayload(null);
     setDecisionSnapshotId(null);
 
@@ -574,138 +543,66 @@ export function PractitionerCsfSandbox() {
   };
 
   const runFormCopilot = async () => {
-  if (!API_BASE) {
-    setApiBaseError(
-      "Sandbox misconfigured: missing API base URL. Please set VITE_API_BASE in your environment before using Practitioner CSF tools."
-    );
-    return;
-  }
-
-  const normalizedPayload = JSON.stringify(buildPractitionerCsfPayload(form));
-
-  console.log("[FormCopilot] Practitioner run config", {
-    apiBase: API_BASE,
-    normalizedPayload,
-    blueprint: "csf_practitioner",
-  });
-
-  setApiBaseError(null);
-
-  setCopilotLoading(true);
-  setVerificationError(null);
-  setCopilotError(null);
-  setCopilotExplanation(null);
-  setCopilotRagAnswer(null);
-  setCopilotDecision(null);
-  setCopilotSources([]);
-
-  try {
-    const evalJson = await callPractitionerEvaluate(API_BASE, form);
-    const decisionToUse = (evalJson as any).verdict ?? evalJson;
-
-    setDecision(decisionToUse);
-    setCopilotDecision(decisionToUse);
-    setLastEvaluatedPayload(normalizedPayload);
-    setNotice(null);
-
-    emitCodexCommand("cs_practitioner_form_copilot_run", {
-      engine_family: "csf",
-      decision_type: "csf_practitioner",
-      decision_outcome: decisionToUse.status ?? "unknown",
-    });
-
-    console.log("[FormCopilot] Practitioner decision", {
-      status: decisionToUse.status,
-      reason: decisionToUse.reason,
-    });
-
-    const regulatoryReferenceIds = extractRegulatoryReferenceIds(
-      decisionToUse.regulatory_references as any[]
-    );
-
-    const questionText =
-      "Explain to a verification specialist what this Practitioner CSF decision means, what is missing, and what is required next.";
-
-    const ragResp = await fetch(`${API_BASE}/rag/regulatory-explain`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        engine_family: "csf",
-        decision_type: "csf_practitioner",
-        // ✅ this is the field the backend requires
-        question: questionText,
-        // optional, for backwards compatibility / logging
-        ask: questionText,
-        decision: decisionToUse,
-        regulatory_references: regulatoryReferenceIds ?? [],
-      }),
-    });
-
-    if (!ragResp.ok) {
-      const errText = await ragResp.text().catch(() => "");
-      const err = new Error(
-        `RAG explain failed: ${ragResp.status}${
-          errText ? " – " + errText : ""
-        }`,
+    if (!API_BASE) {
+      setApiBaseError(
+        "Sandbox misconfigured: missing API base URL. Please set VITE_API_BASE in your environment before using Practitioner CSF tools."
       );
-      (err as any).status = ragResp.status;
-      throw err;
+      return;
     }
 
-    const ragResult = await ragResp.json();
+    const normalizedPayload = JSON.stringify(buildPractitionerCsfPayload(form));
 
-    const answer =
-      (ragResult as any).answer ??
-      (ragResult as any).text ??
-      JSON.stringify(ragResult, null, 2);
-
-    const rawSources =
-      (ragResult as any).sources ??
-      (ragResult as any).regulatory_context ??
-      (ragResult as any).context ??
-      [];
-    const sources: RegulatorySource[] = (rawSources as any[]).map((c, idx) => ({
-      title:
-        c.title ||
-        c.form_name ||
-        (c.url ? String(c.url).split("/").pop() : `Source ${idx + 1}`),
-      url: c.url,
-      jurisdiction: c.jurisdiction,
-      source: c.source,
-    }));
-
-    setCopilotRagAnswer(answer);
-    setCopilotExplanation(answer);
-    setCopilotSources(sources);
+    setApiBaseError(null);
+    setCopilotLoading(true);
+    setVerificationError(null);
     setCopilotError(null);
+    setCopilotResponse(null);
 
-    emitCodexCommand("cs_practitioner_form_copilot_complete", {
-      engine_family: "csf",
-      decision_type: "csf_practitioner",
-      decision_outcome:
-        decisionToUse.status ?? (decisionToUse as any).outcome ?? "unknown",
-    });
-  } catch (err: any) {
-    console.error("Form Copilot failed for Practitioner CSF", err);
-    const statusPart = (err as any)?.status
-      ? ` (status ${(err as any).status})`
-      : "";
+    try {
+      const copilotResult = await callPractitionerFormCopilot(
+        form,
+        controlledSubstances
+      );
 
-    setCopilotError(
-      `Form Copilot could not run${statusPart}. Please check the form and try again.`,
-    );
-    setCopilotExplanation(
-      "A detailed AI explanation for this decision is not available right now. Use the decision summary above as your regulatory guidance.",
-    );
-    setCopilotSources([]);
-    emitCodexCommand("cs_practitioner_form_copilot_error", {
-      message: String(err?.message || err),
-      status: (err as any)?.status ?? undefined,
-    });
-  } finally {
-    setCopilotLoading(false);
-  }
-};
+      setCopilotResponse(copilotResult);
+      setDecision({
+        status: copilotResult.status,
+        reason: copilotResult.reason,
+        missing_fields: copilotResult.missing_fields,
+        regulatory_references: copilotResult.regulatory_references,
+      });
+      setLastEvaluatedPayload(normalizedPayload);
+      setNotice(null);
+
+      emitCodexCommand("csf_practitioner_form_copilot_run", {
+        engine_family: "csf",
+        decision_type: "csf_practitioner",
+        decision_outcome: copilotResult.status ?? "unknown",
+      });
+
+      emitCodexCommand("csf_practitioner_form_copilot_complete", {
+        engine_family: "csf",
+        decision_type: "csf_practitioner",
+        decision_outcome: copilotResult.status ?? "unknown",
+        artifacts_used: copilotResult.artifacts_used,
+      });
+    } catch (err: any) {
+      console.error("Form Copilot failed for Practitioner CSF", err);
+      const statusPart = (err as any)?.status
+        ? ` (status ${(err as any).status})`
+        : "";
+
+      setCopilotError(
+        `Form Copilot could not run${statusPart}. Please check the form and try again.`,
+      );
+      emitCodexCommand("csf_practitioner_form_copilot_error", {
+        message: String(err?.message || err),
+        status: (err as any)?.status ?? undefined,
+      });
+    } finally {
+      setCopilotLoading(false);
+    }
+  };
 
   const lookupItemHistory = async () => {
     const q = itemQuery.trim();
@@ -1439,53 +1336,76 @@ export function PractitionerCsfSandbox() {
                 <p className="mb-1 text-[10px] text-amber-700">{notice}</p>
               )}
 
-              {copilotError && !copilotDecision && (
+              {copilotError && (
                 <p className="text-red-600 text-sm">
                   Form Copilot could not run. Please check the form and try again.
                 </p>
               )}
 
-              {copilotError && copilotDecision && (
-                <p className="text-yellow-700 text-sm">
-                  We couldn’t generate a detailed AI explanation, but the CSF decision
-                  below is still valid.
-                </p>
-              )}
-
-              {copilotDecision && (
+              {copilotResponse && (
                 <div className="mb-1 rounded-md bg-slate-50 p-2 text-[10px] text-slate-800">
                   <div className="mb-1 flex flex-wrap items-center gap-2">
                     <span className="font-semibold text-slate-700">
                       Decision outcome:
                     </span>
                     <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[9px] font-medium text-slate-50">
-                      {copilotDecision.outcome ??
-                        copilotDecision.status ??
-                        "See details below"}
+                      {copilotResponse.status || "See details below"}
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-600">
-                    Reason:{" "}
-                    {copilotExplanation ??
-                      copilotDecision.reason ??
-                      "All required facility, practitioner, licensing, jurisdiction, and attestation details are present."}
+                    Reason: {copilotResponse.reason}
                   </p>
 
-                  {copilotSources.length > 0 && (
-                    <RegulatorySourcesList sources={copilotSources} />
+                  <div className="mt-1 text-[10px] text-slate-700">
+                    <p className="font-semibold text-slate-700">RAG explanation</p>
+                    <p className="whitespace-pre-line text-[10px] text-slate-700">
+                      {copilotResponse.rag_explanation}
+                    </p>
+                  </div>
+
+                  {copilotResponse.missing_fields?.length > 0 && (
+                    <div className="mt-2">
+                      <h4 className="text-[10px] font-semibold text-slate-700">
+                        Missing or inconsistent fields
+                      </h4>
+                      <ul className="list-inside list-disc text-[10px] text-slate-700">
+                        {copilotResponse.missing_fields.map((field) => (
+                          <li key={field}>{field}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {copilotResponse.regulatory_references?.length > 0 && (
+                    <div className="mt-2">
+                      <h4 className="text-[10px] font-semibold text-slate-700">
+                        Regulatory references
+                      </h4>
+                      <ul className="list-inside list-disc text-[10px] text-slate-700">
+                        {copilotResponse.regulatory_references.map((ref) => (
+                          <li key={ref}>{ref}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {copilotResponse.rag_sources?.length > 0 && (
+                    <div className="mt-2">
+                      <h4 className="text-[10px] font-semibold text-slate-700">
+                        RAG sources
+                      </h4>
+                      <RegulatorySourcesList sources={copilotResponse.rag_sources as RegulatorySource[]} />
+                    </div>
                   )}
                 </div>
               )}
 
-              {!copilotDecision &&
-                !copilotExplanation &&
-                !copilotLoading &&
-                !copilotError && (
-                  <p className="text-[10px] text-slate-400">
-                    Click <span className="font-semibold">“Check &amp; Explain”</span>{" "}
-                    to have AutoComply run the CSF engine on your current form and summarize what it thinks, including missing licenses or issues.
-                  </p>
-                )}
+              {!copilotResponse && !copilotLoading && !copilotError && (
+                <p className="text-[10px] text-slate-400">
+                  Click <span className="font-semibold">“Check &amp; Explain”</span>{" "}
+                  to have AutoComply run the CSF engine on your current form and summarize what it thinks, including missing licenses or issues.
+                </p>
+              )}
             </section>
           </div>
         </div>
