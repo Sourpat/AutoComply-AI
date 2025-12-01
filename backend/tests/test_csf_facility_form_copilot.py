@@ -1,4 +1,6 @@
-from starlette.testclient import TestClient
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
 
 from src.api.main import app
 from src.api.routes import csf_facility
@@ -47,4 +49,37 @@ def test_facility_copilot_returns_explanation(monkeypatch):
     assert data["status"] == "ok_to_ship"
     assert "rag_explanation" in data
     assert data["regulatory_references"]
+    assert data["rag_sources"][0]["id"] == "csf_facility_form"
+
+
+def test_facility_copilot_v1_prefix(monkeypatch):
+    def fake_explain(**kwargs):
+        return RegulatoryRagAnswer(
+            answer="stubbed facility explanation",
+            sources=[RegulatorySource(id="csf_facility_form", title="Facility CSF", snippet="stub")],
+            artifacts_used=[],
+            debug={"mode": "stub"},
+        )
+
+    with patch.object(csf_facility, "explain_csf_facility_decision", fake_explain):
+        resp = client.post(
+            "/api/v1/csf/facility/form-copilot",
+            json={
+                "facility_name": "Test Facility",
+                "facility_type": "facility",
+                "account_number": "ACC-999",
+                "pharmacy_license_number": "PHARM-12345",
+                "dea_number": "DEA-7654321",
+                "pharmacist_in_charge_name": "Chief Pharmacist",
+                "pharmacist_contact_phone": "555-123-4567",
+                "ship_to_state": "OH",
+                "attestation_accepted": True,
+                "internal_notes": None,
+                "controlled_substances": [],
+            },
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["rag_explanation"]
     assert data["rag_sources"][0]["id"] == "csf_facility_form"

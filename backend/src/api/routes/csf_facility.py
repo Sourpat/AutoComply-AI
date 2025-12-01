@@ -17,6 +17,14 @@ router = APIRouter(
     tags=["csf_facility"],
 )
 
+# Compatibility router so callers that expect versioned API prefixes don't hit 404s.
+# The handlers delegate to the same logic as the primary router to keep behavior
+# identical.
+compat_router = APIRouter(
+    prefix="/api/v1/csf/facility",
+    tags=["csf_facility"],
+)
+
 logger = get_logger(__name__)
 
 DEFAULT_FACILITY_COPILOT_QUESTION = (
@@ -100,3 +108,21 @@ async def facility_form_copilot(form: FacilityCsfForm) -> FacilityFormCopilotRes
         artifacts_used=artifacts_used,
         rag_sources=rag_sources,
     )
+
+
+@compat_router.post("/evaluate", response_model=FacilityCsfDecision)
+async def evaluate_facility_csf_endpoint_v1(
+    form: FacilityCsfForm,
+) -> FacilityCsfDecision:
+    """Versioned compatibility endpoint for Facility CSF evaluation."""
+
+    return await evaluate_facility_csf_endpoint(form)
+
+
+@compat_router.post("/form-copilot", response_model=FacilityFormCopilotResponse)
+async def facility_form_copilot_v1(
+    form: FacilityCsfForm,
+) -> FacilityFormCopilotResponse:
+    """Versioned compatibility endpoint for Facility CSF Form Copilot."""
+
+    return await facility_form_copilot(form)
