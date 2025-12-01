@@ -4,29 +4,30 @@ from fastapi.testclient import TestClient
 
 from src.api.main import app
 from src.api.routes import csf_facility
-from src.autocomply.domain.rag_regulatory_explain import RegulatoryRagAnswer
+from src.autocomply.domain.csf_copilot import CsfCopilotResult
+from src.autocomply.domain.csf_practitioner import CsDecisionStatus
 from src.api.models.compliance_models import RegulatorySource
 
 client = TestClient(app)
 
 
 def test_facility_copilot_returns_explanation(monkeypatch):
-    def fake_explain(decision, question, regulatory_references=None):
-        return RegulatoryRagAnswer(
-            answer="stubbed facility explanation",
-            regulatory_references=regulatory_references or [],
-            artifacts_used=regulatory_references or [],
-            sources=[
+    async def fake_copilot(request):
+        return CsfCopilotResult(
+            status=CsDecisionStatus.OK_TO_SHIP,
+            reason="Facility CSF is approved to proceed.",
+            missing_fields=[],
+            regulatory_references=["csf_facility_form"],
+            rag_explanation="stubbed facility explanation",
+            artifacts_used=["csf_facility_form"],
+            rag_sources=[
                 RegulatorySource(
                     id="csf_facility_form", title="Facility CSF", snippet="stub"
                 )
             ],
-            debug={"mode": "stub"},
         )
 
-    monkeypatch.setattr(
-        csf_facility, "explain_csf_facility_decision", fake_explain
-    )
+    monkeypatch.setattr(csf_facility, "run_csf_copilot", fake_copilot)
 
     resp = client.post(
         "/csf/facility/form-copilot",
@@ -53,15 +54,22 @@ def test_facility_copilot_returns_explanation(monkeypatch):
 
 
 def test_facility_copilot_v1_prefix(monkeypatch):
-    def fake_explain(**kwargs):
-        return RegulatoryRagAnswer(
-            answer="stubbed facility explanation",
-            sources=[RegulatorySource(id="csf_facility_form", title="Facility CSF", snippet="stub")],
+    async def fake_copilot(request=None, **kwargs):
+        return CsfCopilotResult(
+            status=CsDecisionStatus.OK_TO_SHIP,
+            reason="Facility CSF is approved to proceed.",
+            missing_fields=[],
+            regulatory_references=["csf_facility_form"],
+            rag_explanation="stubbed facility explanation",
             artifacts_used=[],
-            debug={"mode": "stub"},
+            rag_sources=[
+                RegulatorySource(
+                    id="csf_facility_form", title="Facility CSF", snippet="stub"
+                )
+            ],
         )
 
-    with patch.object(csf_facility, "explain_csf_facility_decision", fake_explain):
+    with patch.object(csf_facility, "run_csf_copilot", fake_copilot):
         resp = client.post(
             "/api/v1/csf/facility/form-copilot",
             json={
