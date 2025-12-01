@@ -1,42 +1,38 @@
 // src/api/csfFacilityClient.ts
-import type { HospitalCsfDecision } from "../domain/csfHospital";
+import { FacilityCsfDecision, FacilityCsfFormData } from "../domain/csfFacility";
 
 const API_BASE =
   (import.meta as any)?.env?.VITE_API_BASE ||
   (import.meta as any)?.env?.VITE_API_BASE_URL ||
   "";
 
-export interface FacilityFormCopilotResponse {
-  engine_family: string;
-  decision_type: string;
-  decision: HospitalCsfDecision;
-  explanation: string;
-}
-
-export async function callFacilityFormCopilot(
-  decision: HospitalCsfDecision,
-  question: string
-): Promise<FacilityFormCopilotResponse> {
-  const resp = await fetch(`${API_BASE}/csf/facility/form-copilot`, {
+export async function evaluateFacilityCsf(
+  form: FacilityCsfFormData
+): Promise<FacilityCsfDecision> {
+  const resp = await fetch(`${API_BASE}/csf/facility/evaluate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({
-      engine_family: "csf",
-      decision_type: "csf_facility",
-      decision: {
-        status: decision.status,
-        reason: decision.reason,
-        missing_fields: decision.missing_fields ?? [],
-        regulatory_references: decision.regulatory_references ?? [],
-      },
-      ask: question,
+      facility_name: form.facilityName,
+      facility_type: form.facilityType,
+      account_number: form.accountNumber ?? null,
+      pharmacy_license_number: form.pharmacyLicenseNumber,
+      dea_number: form.deaNumber,
+      pharmacist_in_charge_name: form.pharmacistInChargeName,
+      pharmacist_contact_phone: form.pharmacistContactPhone ?? null,
+      ship_to_state: form.shipToState,
+      attestation_accepted: form.attestationAccepted,
+      internal_notes: form.internalNotes ?? null,
+      controlled_substances: form.controlledSubstances ?? [],
     }),
   });
 
   if (!resp.ok) {
-    const text = await resp.text().catch(() => "");
-    const message = text ? `${resp.status}: ${text}` : `${resp.status}`;
-    throw new Error(`Facility Form Copilot failed with status ${message}`);
+    throw new Error(
+      `Facility CSF evaluation failed with status ${resp.status}`
+    );
   }
 
   return resp.json();

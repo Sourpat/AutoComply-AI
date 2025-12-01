@@ -1,11 +1,11 @@
 // src/components/FacilityCsfSandbox.tsx
-import { FormEvent, useEffect, useState } from "react";
+import React, { FormEvent, useEffect, useState } from "react";
 import {
-  HospitalCsfDecision,
-  HospitalCsfFormData,
-  HospitalFacilityType,
-} from "../domain/csfHospital";
-import { evaluateHospitalCsf } from "../api/csfHospitalClient";
+  FacilityCsfDecision,
+  FacilityCsfFormData,
+  FacilityFacilityType,
+} from "../domain/csfFacility";
+import { evaluateFacilityCsf } from "../api/csfFacilityClient";
 import { explainCsfDecision } from "../api/csfExplainClient";
 import type { CsfDecisionSummary } from "../api/csfExplainClient";
 import {
@@ -19,9 +19,9 @@ import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { emitCodexCommand } from "../utils/codexLogger";
 import {
-  callHospitalFormCopilot,
-  type HospitalFormCopilotResponse,
-} from "../api/csfHospitalCopilotClient";
+  callFacilityFormCopilot,
+  type FacilityFormCopilotResponse,
+} from "../api/csfFacilityCopilotClient";
 
 // Vite-friendly helper: no `process` in the browser
 const getApiBase = (): string => {
@@ -56,29 +56,29 @@ const getApiBase = (): string => {
 const API_BASE = getApiBase();
 
 
-type HospitalExample = {
+type FacilityExample = {
   id: string;
   label: string;
-  overrides: Partial<HospitalCsfFormData>;
+  overrides: Partial<FacilityCsfFormData>;
 };
 
-const HOSPITAL_EXAMPLES: HospitalExample[] = [
+const FACILITY_EXAMPLES: FacilityExample[] = [
   {
     id: "fl_level1_trauma_schedule_ii",
     label: "FL – Level 1 trauma, Schedule II",
     overrides: {
       facilityName: "Sunrise Regional Medical Center",
-      facilityType: "hospital",
-      accountNumber: "ACC-HOSP-001",
+      facilityType: "facility",
+      accountNumber: "ACC-FAC-001",
       shipToState: "FL",
       attestationAccepted: true,
     },
   },
 ];
 
-const initialForm: HospitalCsfFormData = {
+const initialForm: FacilityCsfFormData = {
   facilityName: "",
-  facilityType: "hospital",
+  facilityType: "facility",
   accountNumber: "",
   pharmacyLicenseNumber: "",
   deaNumber: "",
@@ -90,8 +90,8 @@ const initialForm: HospitalCsfFormData = {
 };
 
 export function FacilityCsfSandbox() {
-  const [form, setForm] = useState<HospitalCsfFormData>(initialForm);
-  const [decision, setDecision] = useState<HospitalCsfDecision | null>(null);
+  const [form, setForm] = useState<FacilityCsfFormData>(initialForm);
+  const [decision, setDecision] = useState<FacilityCsfDecision | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [controlledSubstances, setControlledSubstances] = useState<
@@ -109,16 +109,16 @@ export function FacilityCsfSandbox() {
   const [isRagLoading, setIsRagLoading] = useState(false);
   const [ragError, setRagError] = useState<string | null>(null);
 
-  // ---- Hospital CSF Form Copilot state ----
+  // ---- Facility CSF Form Copilot state ----
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotDecision, setCopilotDecision] =
-    useState<HospitalFormCopilotResponse | null>(null);
+    useState<FacilityFormCopilotResponse | null>(null);
   const [copilotExplanation, setCopilotExplanation] = useState<string | null>(
     null
   );
   const [copilotError, setCopilotError] = useState<string | null>(null);
 
-  function applyHospitalExample(example: HospitalExample) {
+  function applyFacilityExample(example: FacilityExample) {
     const nextForm = {
       ...initialForm,
       ...form,
@@ -127,16 +127,16 @@ export function FacilityCsfSandbox() {
 
     setForm(nextForm);
 
-    emitCodexCommand("csf_hospital_example_selected", {
+    emitCodexCommand("csf_facility_example_selected", {
       example_id: example.id,
       label: example.label,
       form: nextForm,
       source_document:
-        "/mnt/data/Online Controlled Substance Form - Hospital Pharmacy.pdf",
+        "/mnt/data/Online Controlled Substance Form - Facility.pdf",
     });
   }
 
-  const onChange = (field: keyof HospitalCsfFormData, value: any) => {
+  const onChange = (field: keyof FacilityCsfFormData, value: any) => {
     setForm((prev) => ({
       ...prev,
       [field]: value,
@@ -154,13 +154,13 @@ export function FacilityCsfSandbox() {
     setRagError(null);
 
     try {
-      const result = await evaluateHospitalCsf({
+      const result = await evaluateFacilityCsf({
         ...form,
         controlledSubstances,
       });
       setDecision(result);
     } catch (err: any) {
-      setError(err?.message ?? "Failed to evaluate Hospital CSF");
+      setError(err?.message ?? "Failed to evaluate Facility CSF");
     } finally {
       setIsLoading(false);
     }
@@ -198,7 +198,7 @@ export function FacilityCsfSandbox() {
     };
 
     try {
-      const res = await explainCsfDecision("hospital", summary);
+      const res = await explainCsfDecision("facility", summary);
       setExplanation(res.explanation);
     } catch (err: any) {
       setExplainError(
@@ -209,7 +209,7 @@ export function FacilityCsfSandbox() {
     }
   };
 
-  const runHospitalCsfCopilot = async () => {
+  const runFacilityCsfCopilot = async () => {
     setCopilotLoading(true);
     setCopilotError(null);
     setCopilotExplanation(null);
@@ -218,11 +218,11 @@ export function FacilityCsfSandbox() {
     try {
       if (!API_BASE) {
         throw new Error(
-          "Sandbox misconfigured: missing API base URL. Please set VITE_API_BASE in your environment before using Hospital CSF tools."
+          "Sandbox misconfigured: missing API base URL. Please set VITE_API_BASE in your environment before using Facility CSF tools."
         );
       }
 
-      const copilotResponse = await callHospitalFormCopilot({
+      const copilotResponse = await callFacilityFormCopilot({
         ...form,
         controlledSubstances,
       });
@@ -232,7 +232,7 @@ export function FacilityCsfSandbox() {
 
       emitCodexCommand("csf_facility_form_copilot_run", {
         engine_family: "csf",
-        decision_type: "csf_hospital",
+        decision_type: "csf_facility",
         decision_outcome: copilotResponse.status ?? "unknown",
         reason: copilotResponse.reason,
         missing_fields: copilotResponse.missing_fields ?? [],
@@ -242,7 +242,7 @@ export function FacilityCsfSandbox() {
       console.error(err);
       setCopilotError(
         err?.message ||
-          "Hospital CSF Copilot could not run. Check the console or try again."
+          "Facility CSF Copilot could not run. Check the console or try again."
       );
     } finally {
       setCopilotLoading(false);
@@ -301,19 +301,19 @@ export function FacilityCsfSandbox() {
       <header className="mb-2 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-700">
-            Hospital CSF Sandbox
+            Facility CSF Sandbox
           </h2>
           <p className="text-[10px] text-gray-500">
-            Test hospital controlled substance forms with live decision and RAG
-            explain.
+            Test facility controlled substance forms with live decisioning and
+            RAG explain.
           </p>
 
           <div className="mt-1 flex flex-wrap gap-1">
-            {HOSPITAL_EXAMPLES.map((ex) => (
+            {FACILITY_EXAMPLES.map((ex) => (
               <button
                 key={ex.id}
                 type="button"
-                onClick={() => applyHospitalExample(ex)}
+                onClick={() => applyFacilityExample(ex)}
                 className="rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
               >
                 {ex.label}
@@ -324,7 +324,7 @@ export function FacilityCsfSandbox() {
         <div className="flex items-center gap-2">
           <SourceDocumentChip
             label="Facility CSF PDF"
-            url="/mnt/data/Online Controlled Substance Form - Hospital Pharmacy.pdf"
+            url="/mnt/data/Online Controlled Substance Form - Facility.pdf"
           />
           <button
             type="button"
@@ -360,10 +360,11 @@ export function FacilityCsfSandbox() {
                 <select
                   value={form.facilityType}
                   onChange={(e) =>
-                    onChange("facilityType", e.target.value as HospitalFacilityType)
+                    onChange("facilityType", e.target.value as FacilityFacilityType)
                   }
                   className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
                 >
+                  <option value="facility">Facility</option>
                   <option value="hospital">Hospital</option>
                   <option value="long_term_care">Long-term care</option>
                   <option value="surgical_center">Surgical center</option>
@@ -487,7 +488,7 @@ export function FacilityCsfSandbox() {
                 disabled={isLoading}
                 className="rounded-md bg-blue-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
-                {isLoading ? "Evaluating…" : "Evaluate Hospital CSF"}
+                {isLoading ? "Evaluating…" : "Evaluate Facility CSF"}
               </button>
 
               <CopyCurlButton
@@ -587,10 +588,10 @@ export function FacilityCsfSandbox() {
                       setRagAnswer(null);
 
                       const question =
-                        "Explain this hospital controlled substance form decision using the referenced regulatory artifacts. " +
+                        "Explain this facility controlled substance form decision using the referenced regulatory artifacts. " +
                         "Focus on why the status is '" +
                         decision.status +
-                        "' and how the hospital CSF form and any state addendums apply.";
+                        "' and how the facility CSF form and any state addendums apply.";
 
                       try {
                         const res = await callRegulatoryRag({
@@ -603,7 +604,7 @@ export function FacilityCsfSandbox() {
 
                         // Optional: log a Codex command for DevSupport
                         emitCodexCommand(
-                          "rag_regulatory_explain_hospital",
+                          "rag_regulatory_explain_facility",
                           {
                             question,
                             regulatory_references:
@@ -611,7 +612,7 @@ export function FacilityCsfSandbox() {
                             decision,
                             controlled_substances: controlledSubstances,
                             source_document:
-                              "/mnt/data/Online Controlled Substance Form - Hospital Pharmacy.pdf",
+                              "/mnt/data/Online Controlled Substance Form - Facility.pdf",
                           }
                         );
                       } catch (err: any) {
@@ -701,7 +702,7 @@ export function FacilityCsfSandbox() {
                           decision,
                           controlled_substances: controlledSubstances,
                           source_document:
-                            "/mnt/data/Online Controlled Substance Form - Hospital Pharmacy.pdf",
+                            "/mnt/data/Online Controlled Substance Form - Facility.pdf",
                         }
                       );
                     }}
@@ -709,7 +710,7 @@ export function FacilityCsfSandbox() {
                     Ask Codex to explain decision
                   </button>
                   <span className="text-[10px] text-gray-400">
-                    Future: narrative explanation for hospital CSF decisions.
+                    Future: narrative explanation for facility CSF decisions.
                   </span>
                 </div>
 
@@ -718,7 +719,7 @@ export function FacilityCsfSandbox() {
           </div>
         </div>
 
-        {/* ---- Hospital CSF Form Copilot (beta) ---- */}
+        {/* ---- Facility CSF Form Copilot (beta) ---- */}
         <section className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
           <header className="mb-2 flex items-center justify-between gap-2">
             <div>
@@ -726,14 +727,14 @@ export function FacilityCsfSandbox() {
                 Form Copilot (beta)
               </h3>
               <p className="text-[10px] text-slate-500">
-                Runs the Hospital CSF engine on the current form and asks the
+                Runs the Facility CSF engine on the current form and asks the
                 regulatory RAG service to explain what&apos;s allowed or blocked,
-                plus what licenses or hospital classifications are missing.
+                plus what licenses or facility classifications are missing.
               </p>
             </div>
             <button
               type="button"
-              onClick={runHospitalCsfCopilot}
+              onClick={runFacilityCsfCopilot}
               disabled={copilotLoading || !API_BASE}
               className="h-7 rounded-md bg-slate-900 px-3 text-[11px] font-medium text-slate-50 hover:bg-slate-800 disabled:opacity-50"
             >
@@ -809,8 +810,8 @@ export function FacilityCsfSandbox() {
             !copilotError && (
               <p className="text-[10px] text-slate-400">
                 Click <span className="font-semibold">“Check &amp; Explain”</span>{" "}
-                to have AutoComply run the Hospital CSF engine on this form and summarize
-                what it thinks, including required hospital licenses and missing information.
+                to have AutoComply run the Facility CSF engine on this form and summarize
+                what it thinks, including required facility licenses and missing information.
               </p>
             )}
         </section>

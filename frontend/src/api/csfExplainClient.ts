@@ -7,6 +7,7 @@ const API_BASE =
 export type CsfType =
   | "practitioner"
   | "hospital"
+  | "facility"
   | "researcher"
   | "surgery_center"
   | "ems";
