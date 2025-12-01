@@ -117,6 +117,18 @@ def evaluate_facility_csf(form: FacilityCsfForm) -> FacilityCsfDecision:
     )
 
     decision = evaluate_hospital_csf(hospital_form)
+
+    references = decision.regulatory_references or ["csf_facility_form"]
+    normalized_references = [
+        "csf_facility_form" if ref == "csf_hospital_form" else ref
+        for ref in references
+    ]
+
+    if not normalized_references:
+        normalized_references = ["csf_facility_form"]
+
+    decision.regulatory_references = normalized_references
+
     return FacilityCsfDecision.model_validate(decision.model_dump())
 
 
