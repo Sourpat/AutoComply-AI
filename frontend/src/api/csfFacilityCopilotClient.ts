@@ -1,11 +1,7 @@
 // src/api/csfFacilityCopilotClient.ts
+import { API_BASE } from "./csfHospitalClient";
 import { FacilityCsfDecisionStatus, FacilityCsfFormData } from "../domain/csfFacility";
 import type { RegulatorySource } from "./csfExplainClient";
-
-const API_BASE =
-  (import.meta as any)?.env?.VITE_API_BASE ||
-  (import.meta as any)?.env?.VITE_API_BASE_URL ||
-  "";
 
 export interface FacilityFormCopilotResponse {
   status: FacilityCsfDecisionStatus;
