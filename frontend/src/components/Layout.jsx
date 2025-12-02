@@ -67,6 +67,18 @@ export default function Layout({ children }) {
             >
               Ohio TDDD License
             </NavLink>
+            <NavLink
+              to="/console"
+              className={({ isActive }) =>
+                `rounded-full px-2 py-1 transition ${
+                  isActive
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-700 hover:bg-slate-100"
+                }`
+              }
+            >
+              Compliance Console
+            </NavLink>
           </nav>
         </div>
 
