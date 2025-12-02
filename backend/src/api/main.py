@@ -22,6 +22,7 @@ from src.api.routes import decision_history
 from src.api.routes import verification
 from src.api.routes import controlled_substances_item_history
 from src.api.routes.license_validation import router as license_router
+from src.api.routes.license_ny_pharmacy import router as license_ny_pharmacy_router
 from src.api.routes.ohio_tddd import router as ohio_tddd_router
 from src.api.routes.ohio_tddd_explain import router as ohio_tddd_explain_router
 from src.api.routes.license_ohio_tddd import router as license_ohio_tddd_router
@@ -57,6 +58,7 @@ app.add_middleware(
 #   /api/v1/licenses/...
 app.include_router(license_router)
 app.include_router(license_ohio_tddd_router)
+app.include_router(license_ny_pharmacy_router)
 app.include_router(ohio_tddd_router)
 app.include_router(ohio_tddd_explain_router)
 app.include_router(compliance_router)

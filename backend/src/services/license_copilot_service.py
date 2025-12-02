@@ -29,8 +29,10 @@ async def run_license_copilot(license_request: Dict) -> LicenseCopilotResult:
 
     if license_type == "ohio_tddd":
         doc_id = "ohio_tddd_rules"
+    elif license_type == "ny_pharmacy":
+        doc_id = "ny_pharmacy_rules"
     else:
-        doc_id = "ohio_tddd_rules"
+        doc_id = license_request.get("doc_id", "ohio_tddd_rules")
 
     prompt = build_license_copilot_prompt(
         license_type=license_type,
