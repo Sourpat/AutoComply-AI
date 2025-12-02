@@ -37,6 +37,8 @@ An external DevSupport agent can:
   - Call /rag/regulatory-explain,
   - Open source documents using url fields that point to /mnt/data/....
 
+For a high-level view of the license engines, see [`docs/license_suite_overview.md`](license_suite_overview.md).
+
 Important: When a command includes a source_document or url such as
 "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf",
 you should pass that local path as the url directly to your tools.
