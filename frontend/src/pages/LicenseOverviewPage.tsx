@@ -23,6 +23,15 @@ const LICENSE_SANDBOXES: LicenseSandboxMeta[] = [
     copilotEndpoint: "/license/ohio-tddd/form-copilot",
     ragDocId: "ohio_tddd_rules",
   },
+  {
+    id: "ny_pharmacy",
+    title: "NY Pharmacy License Sandbox",
+    description:
+      "Evaluate and explain New York Pharmacy license payloads using the ny_pharmacy engine.",
+    evaluateEndpoint: "/license/ny-pharmacy/evaluate",
+    copilotEndpoint: "/license/ny-pharmacy/form-copilot",
+    ragDocId: "ny_pharmacy_rules",
+  },
   // Future: add more license engines here (e.g., other states, DEA, etc.)
 ];
 
@@ -91,6 +100,36 @@ export function LicenseOverviewPage() {
               className="license-section-sandbox-wrapper overflow-hidden rounded-xl border border-slate-200 bg-white"
             >
               {meta.id === "ohio_tddd" && <OhioTdddSandbox />}
+              {meta.id === "ny_pharmacy" && (
+                <div className="space-y-3 p-4 text-sm text-slate-800">
+                  <p>
+                    This sandbox exercises the <code>ny_pharmacy</code> license
+                    engine for New York pharmacies.
+                  </p>
+                  <ul className="list-disc space-y-1 pl-5 text-[12px]">
+                    <li>
+                      Evaluate NY Pharmacy license payloads via
+                      <code className="ml-1">POST /license/ny-pharmacy/evaluate</code>.
+                    </li>
+                    <li>
+                      Use the NY Pharmacy License Copilot to get RAG-backed
+                      explanations grounded in <code>ny_pharmacy_rules</code>.
+                    </li>
+                    <li>
+                      Experiment with missing or incorrect fields to see
+                      <code className="ml-1">needs_review</code> decisions.
+                    </li>
+                  </ul>
+                  <p className="text-[12px] font-semibold">
+                    <a
+                      href="/license/ny-pharmacy"
+                      className="text-slate-900 underline underline-offset-2"
+                    >
+                      Open NY Pharmacy License Sandbox →
+                    </a>
+                  </p>
+                </div>
+              )}
             </div>
           </section>
         ))}
