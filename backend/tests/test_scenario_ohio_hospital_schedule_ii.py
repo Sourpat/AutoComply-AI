@@ -61,6 +61,28 @@ def make_ohio_tddd_payload_from_csf(csf_payload: dict) -> dict:
     }
 
 
+def make_ohio_tddd_payload_missing_tddd(csf_payload: dict) -> dict:
+    """
+    Negative scenario:
+    - Same Ohio hospital + Schedule II context.
+    - BUT Ohio TDDD number is missing.
+    - CSF can still be ok_to_ship, but TDDD should NOT be ok_to_ship.
+    """
+
+    return {
+        "tddd_number": "",
+        "facility_name": csf_payload.get("facility_name", "Ohio General Hospital"),
+        "account_number": csf_payload.get("account_number", "800123456"),
+        "ship_to_state": csf_payload.get("ship_to_state", "OH"),
+        "license_type": "ohio_tddd",
+        "attestation_accepted": True,
+        "internal_notes": (
+            "Negative scenario: Ohio hospital Schedule II with missing TDDD. "
+            "Ohio TDDD license is expected to require review or be blocked."
+        ),
+    }
+
+
 def test_ohio_hospital_schedule_ii_csf_and_ohio_tddd_flow() -> None:
     """
     End-to-end scenario:
@@ -160,3 +182,86 @@ def test_ohio_hospital_schedule_ii_csf_and_ohio_tddd_flow() -> None:
     artifacts = tddd_copilot_data.get("artifacts_used", [])
     if artifacts:
         assert any("ohio_tddd_rules" in str(a) for a in artifacts)
+
+
+def test_ohio_hospital_schedule_ii_csf_ok_but_ohio_tddd_missing_number() -> None:
+    """
+    Negative scenario:
+
+    - Same Ohio hospital + Schedule II drug.
+    - CSF is still filled correctly and should be ok_to_ship.
+    - Ohio TDDD payload is missing the TDDD number.
+
+    Expected behavior:
+    - Hospital CSF evaluation: ok_to_ship.
+    - Ohio TDDD evaluation: NOT ok_to_ship (status is needs_review or blocked).
+    - License Copilot explanation reflects that the TDDD information is incomplete.
+    """
+
+    csf_payload = make_ohio_hospital_csf_payload()
+    tddd_negative_payload = make_ohio_tddd_payload_missing_tddd(csf_payload)
+
+    # --- Step 1: Hospital CSF evaluate (should still be ok_to_ship) ---
+    csf_eval_resp = client.post("/csf/hospital/evaluate", json=csf_payload)
+    assert csf_eval_resp.status_code == 200
+
+    csf_eval_data = csf_eval_resp.json()
+    assert csf_eval_data["status"] in {"ok_to_ship", "needs_review", "blocked"}
+    assert "reason" in csf_eval_data
+    assert "missing_fields" in csf_eval_data
+
+    # For this negative scenario we still expect the CSF itself to be ok_to_ship.
+    assert csf_eval_data["status"] == "ok_to_ship"
+
+    # --- Step 2: Ohio TDDD evaluate (should NOT be ok_to_ship) ---
+    tddd_eval_resp = client.post(
+        "/license/ohio-tddd/evaluate",
+        json=tddd_negative_payload,
+    )
+    assert tddd_eval_resp.status_code == 200
+
+    tddd_eval_data = tddd_eval_resp.json()
+    assert tddd_eval_data["status"] in {"ok_to_ship", "needs_review", "blocked"}
+    assert "reason" in tddd_eval_data
+    assert "missing_fields" in tddd_eval_data
+
+    # Key assertion: TDDD evaluation MUST NOT be ok_to_ship in this case.
+    assert tddd_eval_data["status"] != "ok_to_ship"
+
+    # If your evaluation logic tracks missing TDDD explicitly, assert that here:
+    missing = tddd_eval_data.get("missing_fields", [])
+    # We don't hard fail if the exact field name differs, but this is a helpful check.
+    if missing:
+        assert any("tddd" in field.lower() for field in missing)
+
+    # --- Step 3: Ohio TDDD License Copilot explanation ---
+    tddd_copilot_resp = client.post(
+        "/license/ohio-tddd/form-copilot",
+        json=tddd_negative_payload,
+    )
+    assert tddd_copilot_resp.status_code == 200
+
+    tddd_copilot_data = tddd_copilot_resp.json()
+    for key in [
+        "status",
+        "reason",
+        "missing_fields",
+        "regulatory_references",
+        "rag_explanation",
+        "artifacts_used",
+        "rag_sources",
+    ]:
+        assert key in tddd_copilot_data
+
+    # Copilot should also NOT consider this ok_to_ship.
+    assert tddd_copilot_data["status"] != "ok_to_ship"
+
+    # Optional: sanity check that explanation mentions something about missing license data.
+    rag_explanation = (tddd_copilot_data.get("rag_explanation") or "").lower()
+    if rag_explanation:
+        # soft check, no strict wording:
+        assert (
+            "missing" in rag_explanation
+            or "incomplete" in rag_explanation
+            or "license" in rag_explanation
+        )
