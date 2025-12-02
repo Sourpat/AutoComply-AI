@@ -973,3 +973,152 @@ Use this to add a new Researcher CSF example (e.g., different lab types or juris
    - Add a new entry with realistic data (lab name, facility_type, license, DEA, ship_to_state, attestation, controlled_substances).
    - Keep the label descriptive so users know what the scenario covers (e.g., “Research University – Missing Attestation”).
    - Wire the new example into the UI (selector/buttons) and ensure telemetry logs include `example_label` and `ship_to_state`.
+
+## AutoComply AI – Compliance Flows
+
+This section documents DevSupport / Codex commands that are specific to the
+AutoComply AI compliance prototype. These commands are designed to be:
+
+- Narrow and incremental.
+- Focused on the existing CSF Suite, License Suite, and Mock Order engines.
+- Safe to run repeatedly during local development.
+
+Each command below is phrased as something you can paste into DevSupport and run
+without additional context, assuming the repo is already checked out locally.
+
+### Ohio Hospital Order Journey
+
+#### Command: debug_ohio_hospital_order_journey
+
+**When to use**
+
+Use this when the Ohio Hospital Order Journey card is not behaving as expected,
+or when the `/orders/mock/ohio-hospital-approval` endpoint returns unexpected
+data or errors.
+
+**Command text (paste into Codex):**
+
+> debug_ohio_hospital_order_journey  
+> - Open `backend/tests/test_order_mock_approval_api.py` and run the tests for the Ohio Hospital mock order endpoint.  
+> - If any tests fail, show the failure details and propose minimal fixes in `backend/src/api/routes/order_mock_ohio_hospital.py` (or the actual mock order route module).  
+> - Open `frontend/src/api/orderMockApprovalClient.ts` and verify that `runOhioHospitalOrderScenario` is POSTing to `/orders/mock/ohio-hospital-approval` with the correct JSON shape for all scenarios (`happy_path`, `missing_tddd`, `non_ohio_no_tddd`).  
+> - Open `frontend/src/components/OhioHospitalOrderJourneyCard.tsx` and confirm:  
+>   - The three buttons map to the correct scenario keys.  
+>   - The `DecisionStatusBadge` is used for `csf_status`, `tddd_status`, and `final_decision`.  
+>   - The Developer Trace panel is rendering `lastRun.request` and `lastRun.response`.  
+> - Do **not** change any API paths; only fix mismatched field names, types, or obvious wiring issues.  
+> - When finished, re-run the relevant tests and summarize what changed.
+
+#### Command: add_ohio_hospital_order_trace_curl_help
+
+**When to use**
+
+Use this to adjust or extend the “Copy as cURL / JSON” helpers for the Ohio
+Hospital order trace, without changing the core order logic.
+
+**Command text:**
+
+> add_ohio_hospital_order_trace_curl_help  
+> - Open `frontend/src/utils/curlBuilder.ts` and verify that `buildCurlCommand` uses the shared `API_BASE` and produces a readable multi-line cURL command for JSON POST requests.  
+> - Open `frontend/src/components/OhioHospitalOrderJourneyCard.tsx` and confirm the Developer Trace section includes buttons to:  
+>   - Copy the request as cURL,  
+>   - Copy the request JSON,  
+>   - Copy the response JSON.  
+> - If any of these are missing or broken, add or fix the buttons and their handlers using the existing `copyToClipboard` and `buildCurlCommand` utilities.  
+> - Keep changes minimal and avoid altering the scenario logic or endpoint paths.  
+> - Run `pnpm test` and `pnpm build` in the `frontend/` directory and summarize any changes.
+
+### NY Pharmacy License and License-Only Order
+
+#### Command: debug_ny_pharmacy_license_and_order
+
+**When to use**
+
+Use this when the NY Pharmacy License sandbox or the NY license-only mock order
+decision is failing, returning unexpected statuses, or not rendering in the UI.
+
+**Command text:**
+
+> debug_ny_pharmacy_license_and_order  
+> - Open and run `backend/tests/test_license_ny_pharmacy_api.py` to verify the NY Pharmacy license endpoints.  
+> - Open and run `backend/tests/test_order_mock_ny_pharmacy_api.py` to verify the NY Pharmacy license-only mock order endpoint (`/orders/mock/ny-pharmacy-approval`).  
+> - If tests fail, inspect `backend/src/domain/license_ny_pharmacy.py`, `backend/src/api/routes/license_ny_pharmacy.py`, and `backend/src/api/routes/order_mock_ny_pharmacy.py` to fix any mismatched field names, response models, or routing issues.  
+> - On the frontend, open:  
+>   - `frontend/src/domain/licenseNyPharmacy.ts`  
+>   - `frontend/src/api/licenseNyPharmacyClient.ts`  
+>   - `frontend/src/api/orderNyPharmacyMockClient.ts`  
+>   - `frontend/src/components/NyPharmacyLicenseSandbox.tsx`  
+> - Verify that:  
+>   - The sandbox form fields map correctly to the backend field names.  
+>   - The Evaluate and Copilot buttons call the correct endpoints.  
+>   - The “Run license-only order decision” button calls the mock order client.  
+>   - The `DecisionStatusBadge` is used for `license_status` and `final_decision`.  
+>   - The NY order trace section renders request/response JSON and the “Copy as cURL / JSON” buttons.  
+> - Make minimal code changes to align the frontend and backend, then re-run the backend tests and `pnpm test`/`pnpm build` for the frontend.
+
+#### Command: add_new_license_engine_from_template
+
+**When to use**
+
+Use this when you want to add a **new license engine** similar to Ohio TDDD and
+NY Pharmacy, using the existing domain + RAG patterns.
+
+**Command text:**
+
+> add_new_license_engine_from_template  
+> - Ask me for a short identifier for the new license engine (e.g. `ca_pharmacy`), the base path segment (e.g. `/license/ca-pharmacy`), and a one-sentence description of what it should do.  
+> - Based on the NY Pharmacy and Ohio TDDD implementations, create:  
+>   - A new domain model file under `backend/src/domain/` (e.g. `license_ca_pharmacy.py`).  
+>   - A new FastAPI route module under `backend/src/api/routes/` (e.g. `license_ca_pharmacy.py`) exposing `/evaluate` and `/form-copilot` endpoints.  
+>   - A new test file under `backend/tests/` that validates both evaluate and copilot endpoints, using the shared copilot response contract.  
+> - Wire the new router into the main FastAPI app (where the Ohio/NY routers are included).  
+> - On the frontend, create matching domain + API client + sandbox component files, following the patterns used by NY Pharmacy:  
+>   - `frontend/src/domain/license<NewName>.ts`  
+>   - `frontend/src/api/license<NewName>Client.ts`  
+>   - `frontend/src/components/<NewName>LicenseSandbox.tsx`  
+> - Add a new section/card to `frontend/src/pages/LicenseOverviewPage.tsx` that links to the new sandbox.  
+> - Do **not** modify existing engines unless necessary; keep the new engine self-contained and aligned to the existing contract.  
+> - Summarize the files created/modified and any tests added.
+
+### System Status and Health Checks
+
+#### Command: debug_system_status_card_and_health_endpoint
+
+**When to use**
+
+Use this when the System Status card on the Compliance Console is not loading,
+or when `/health` behaves unexpectedly.
+
+**Command text:**
+
+> debug_system_status_card_and_health_endpoint  
+> - Open and run `backend/tests/test_health_api.py` to verify that `/health` responds with `status="ok"`, a `service` name, a `version`, and a `checks` dictionary.  
+> - Inspect `backend/src/api/routes/health.py` and make minimal updates if the response model or keys have drifted.  
+> - On the frontend, open:  
+>   - `frontend/src/api/healthClient.ts`  
+>   - `frontend/src/components/SystemStatusCard.tsx`  
+>   - `frontend/src/pages/ComplianceConsolePage.tsx`  
+> - Confirm that `SystemStatusCard` calls `fetchHealthStatus` and that the card is rendered near the top of the Compliance Console.  
+> - Verify that subsystem checks (e.g. `fastapi`, `csf_suite`, `license_suite`, `rag_layer`) are displayed with badges, reusing `DecisionStatusBadge`.  
+> - Fix any fetch errors, type mismatches, or missing imports in the System Status card, then run `pnpm test` and `pnpm build` in the frontend.  
+> - Summarize what changed and any remaining assumptions or TODOs.
+
+### Documentation Quick Access
+
+#### Command: open_autocomply_docs
+
+**When to use**
+
+Use this when you need to quickly open the main AutoComply AI docs (case study
+and system architecture) in your editor.
+
+**Command text:**
+
+> open_autocomply_docs  
+> - Open the following docs in the editor:  
+>   - `docs/portfolio_case_study_autocomply_ai.md`  
+>   - `docs/system_architecture_autocomply_ai.md`  
+>   - `docs/license_suite_overview.md`  
+>   - `docs/csf_suite_overview.md`  
+> - Do not modify them; just keep them open for reference while working on compliance-related tasks.
+
