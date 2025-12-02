@@ -6,6 +6,7 @@ import { OhioTdddSandbox } from "./components/OhioTdddSandbox";
 import { LicenseOverviewPage } from "./pages/LicenseOverviewPage";
 import { ComplianceConsolePage } from "./pages/ComplianceConsolePage";
 import { NyPharmacyLicenseSandbox } from "./components/NyPharmacyLicenseSandbox";
+import AutoComplyAiCaseStudy from "./pages/projects/AutoComplyAiCaseStudy";
 
 export default function App() {
   return (
@@ -20,6 +21,10 @@ export default function App() {
           <Route
             path="/license/ny-pharmacy"
             element={<NyPharmacyLicenseSandbox />}
+          />
+          <Route
+            path="/projects/autocomply-ai"
+            element={<AutoComplyAiCaseStudy repoUrl="https://github.com/Sourpat/AutoComply-AI" />}
           />
         </Routes>
       </Layout>

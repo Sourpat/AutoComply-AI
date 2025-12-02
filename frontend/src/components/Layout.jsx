@@ -79,6 +79,18 @@ export default function Layout({ children }) {
             >
               Compliance Console
             </NavLink>
+            <NavLink
+              to="/projects/autocomply-ai"
+              className={({ isActive }) =>
+                `rounded-full px-2 py-1 transition ${
+                  isActive
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-700 hover:bg-slate-100"
+                }`
+              }
+            >
+              Case Study
+            </NavLink>
           </nav>
         </div>
 
