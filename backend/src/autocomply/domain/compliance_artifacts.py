@@ -57,6 +57,18 @@ COMPLIANCE_ARTIFACTS: List[ComplianceArtifact] = [
             "operational requirements."
         ),
     ),
+    ComplianceArtifact(
+        id="ohio_tddd_rules",
+        name="Ohio TDDD – Terminal Distributor of Dangerous Drugs Rules",
+        jurisdiction="US-OH",
+        artifact_type=ArtifactType.GUIDANCE,
+        source_document="/mnt/data/Ohio TDDD.html",
+        engine_status=ArtifactStatus.RAW_DOCUMENT,
+        notes=(
+            "Rule set referenced by the license copilot for Ohio TDDD "
+            "requests. Ingested as an HTML guidance document."
+        ),
+    ),
     # 2) Controlled Substance Forms – Practitioner, Hospital, Surgery, EMS, Researcher
     ComplianceArtifact(
         id="csf_practitioner",
