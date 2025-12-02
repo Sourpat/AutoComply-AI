@@ -8,6 +8,8 @@ import {
   callNyPharmacyFormCopilot,
   evaluateNyPharmacyLicense,
 } from "../api/licenseNyPharmacyClient";
+import { NyPharmacyOrderApprovalResult } from "../domain/orderMockApproval";
+import { runNyPharmacyOrderMock } from "../api/orderNyPharmacyMockClient";
 import { OhioTdddFormCopilotResponse as LicenseCopilotResponse } from "../domain/licenseOhioTddd";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { API_BASE } from "../api/csfHospitalClient";
@@ -37,6 +39,15 @@ export function NyPharmacyLicenseSandbox() {
   const [loadingEval, setLoadingEval] = useState(false);
   const [loadingCopilot, setLoadingCopilot] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [orderResult, setOrderResult] =
+    useState<NyPharmacyOrderApprovalResult | null>(null);
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [orderTrace, setOrderTrace] = useState<{
+    request: any;
+    response: any;
+  } | null>(null);
+  const [orderTraceEnabled, setOrderTraceEnabled] = useState(false);
 
   function handleChange(
     field: keyof NyPharmacyFormData,
@@ -53,6 +64,9 @@ export function NyPharmacyLicenseSandbox() {
     setDecision(null);
     setCopilot(null);
     setError(null);
+    setOrderResult(null);
+    setOrderError(null);
+    setOrderTrace(null);
 
     trackSandboxEvent("license_ny_pharmacy_example_selected", {
       engine_family: NY_PHARMACY_ENGINE_FAMILY,
@@ -140,6 +154,44 @@ export function NyPharmacyLicenseSandbox() {
     }
   }
 
+  async function handleOrderMock() {
+    setOrderLoading(true);
+    setOrderError(null);
+    setOrderResult(null);
+
+    trackSandboxEvent("ny_pharmacy_order_mock_run", {
+      engine_family: "order",
+      license_type: "ny_pharmacy",
+      ship_to_state: form.shipToState,
+    });
+
+    try {
+      const run = await runNyPharmacyOrderMock(form);
+      setOrderTrace(run);
+      setOrderResult(run.response);
+
+      trackSandboxEvent("ny_pharmacy_order_mock_success", {
+        engine_family: "order",
+        license_type: "ny_pharmacy",
+        final_decision: run.response.final_decision,
+        license_status: run.response.license_status,
+      });
+    } catch (err: any) {
+      const message =
+        err?.message ??
+        "NY Pharmacy license-only mock order could not run. Please try again.";
+      setOrderError(message);
+
+      trackSandboxEvent("ny_pharmacy_order_mock_error", {
+        engine_family: "order",
+        license_type: "ny_pharmacy",
+        error: String(err),
+      });
+    } finally {
+      setOrderLoading(false);
+    }
+  }
+
   return (
     <div className="sandbox-card space-y-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <header className="space-y-2">
@@ -154,6 +206,9 @@ export function NyPharmacyLicenseSandbox() {
           </li>
           <li>
             <code>POST /license/ny-pharmacy/form-copilot</code>
+          </li>
+          <li>
+            <code>POST /orders/mock/ny-pharmacy-approval</code>
           </li>
         </ul>
       </header>
@@ -242,7 +297,7 @@ export function NyPharmacyLicenseSandbox() {
         </label>
       </section>
 
-      <section className="flex flex-wrap gap-3">
+      <section className="sandbox-actions flex flex-wrap gap-3">
         <button
           type="button"
           onClick={handleEvaluate}
@@ -262,6 +317,28 @@ export function NyPharmacyLicenseSandbox() {
             ? "Running License Copilot..."
             : "Check & Explain (NY Pharmacy Copilot)"}
         </button>
+
+        <button
+          type="button"
+          onClick={handleOrderMock}
+          disabled={orderLoading}
+          className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm disabled:opacity-60"
+        >
+          {orderLoading
+            ? "Running license-only order decision..."
+            : "Run license-only order decision"}
+        </button>
+      </section>
+
+      <section className="sandbox-trace-toggle text-xs text-slate-700">
+        <label className="inline-flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={orderTraceEnabled}
+            onChange={(e) => setOrderTraceEnabled(e.target.checked)}
+          />
+          <span>Show NY license-only order trace (request + response)</span>
+        </label>
       </section>
 
       {error && <p className="text-xs text-red-600">{error}</p>}
@@ -332,6 +409,61 @@ export function NyPharmacyLicenseSandbox() {
           </div>
         )}
       </section>
+
+      {orderError && <p className="text-xs text-red-600">{orderError}</p>}
+
+      {orderResult && (
+        <section className="order-journey-result space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">
+          <h2 className="text-base font-semibold">
+            NY Pharmacy License-Only Order Decision
+          </h2>
+          <p>
+            <strong>Final decision:</strong>{" "}
+            <DecisionStatusBadge status={orderResult.final_decision} />
+          </p>
+          <p>
+            <strong>License status:</strong>{" "}
+            <DecisionStatusBadge status={orderResult.license_status} />
+          </p>
+          <p>
+            <strong>License reason:</strong> {orderResult.license_reason}
+          </p>
+          {orderResult.license_missing_fields?.length > 0 && (
+            <p>
+              <strong>Missing fields:</strong>{" "}
+              {orderResult.license_missing_fields.join(", ")}
+            </p>
+          )}
+          <div>
+            <strong>Notes:</strong>
+            <ul className="list-disc pl-5">
+              {orderResult.notes.map((n, idx) => (
+                <li key={idx}>{n}</li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
+
+      {orderTraceEnabled && orderTrace && (
+        <section className="order-journey-trace space-y-3 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-800 shadow-sm">
+          <h3 className="text-sm font-semibold">NY License-Only Order Trace</h3>
+
+          <details open>
+            <summary className="cursor-pointer font-medium">Request payload</summary>
+            <pre className="code-block overflow-auto rounded-md bg-slate-900 p-3 text-[11px] text-slate-100">
+              {JSON.stringify(orderTrace.request, null, 2)}
+            </pre>
+          </details>
+
+          <details open>
+            <summary className="cursor-pointer font-medium">Response JSON</summary>
+            <pre className="code-block overflow-auto rounded-md bg-slate-900 p-3 text-[11px] text-slate-100">
+              {JSON.stringify(orderTrace.response, null, 2)}
+            </pre>
+          </details>
+        </section>
+      )}
 
       <section className="space-y-2">
         <h3 className="text-sm font-semibold">cURL example</h3>

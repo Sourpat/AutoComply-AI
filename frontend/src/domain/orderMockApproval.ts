@@ -10,3 +10,12 @@ export interface OhioHospitalOrderApprovalResult {
   final_decision: string;
   notes: string[];
 }
+
+export interface NyPharmacyOrderApprovalResult {
+  license_status: string;
+  license_reason: string;
+  license_missing_fields: string[];
+
+  final_decision: string;
+  notes: string[];
+}
