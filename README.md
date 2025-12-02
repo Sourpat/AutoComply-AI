@@ -11,6 +11,7 @@ AutoComply AI simulates a realistic compliance environment where:
 - A React frontend exposes **sandbox UIs** for demos and interviews,
 - **DevSupport affordances** (CODEX logs, DevSupport console, copy-cURL, health chip) make debugging and orchestration easy.
 - **Controlled Substance Forms (CSF) Suite** – multi-tenant sandboxes + RAG explanations for Hospital, Practitioner, Facility, EMS, and Researcher CSFs. See [`docs/csf_suite_overview.md`](docs/csf_suite_overview.md) for details.
+- **License Compliance Suite** – license evaluation + RAG-based explanations, starting with Ohio TDDD. See [`docs/license_suite_overview.md`](docs/license_suite_overview.md) for details.
 
 ---
 
