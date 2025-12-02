@@ -8,6 +8,8 @@ The goals are:
 - **Transparent, RAG-based explanations** ("License Copilot") that show _why_ a license is ok to use, needs manual review, or should be blocked.
 - **A reusable pattern** so new license engines (other states, national licenses, DEA, etc.) can be added with minimal boilerplate.
 
+For an end-to-end CSF + Ohio TDDD license walkthrough (including inline checks from CSF sandboxes), see [`docs/compliance_journey_csf_license.md`](compliance_journey_csf_license.md).
+
 ## Supported License Engines
 
 Each license engine has its own sandbox, API endpoints, and underlying regulatory document in the RAG index.

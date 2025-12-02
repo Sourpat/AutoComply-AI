@@ -6,6 +6,8 @@ The CSF Suite in AutoComply AI is a family of sandboxes and APIs that evaluate a
 - **Transparent RAG-based explanations** ("Form Copilot") that explain _why_ a form is ok to ship, needs review, or should be blocked.
 - **A reusable pattern** so new CSF types can be added with minimal boilerplate.
 
+For a combined CSF + Ohio TDDD license journey (including inline license checks from CSF sandboxes), see [`docs/compliance_journey_csf_license.md`](compliance_journey_csf_license.md).
+
 ## Supported CSF Types
 
 Each CSF type has its own sandbox, API endpoints, and underlying regulatory document in the RAG index.
