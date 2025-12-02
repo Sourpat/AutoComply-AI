@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -33,6 +31,7 @@ from src.api.routes.order_mock_approval import router as order_mock_router
 from src.api.routes.order_mock_ny_pharmacy import (
     router as order_mock_ny_pharmacy_router,
 )
+from src.api.routes.health import router as health_router
 
 app = FastAPI(
     title="AutoComply AI – Compliance API",
@@ -59,6 +58,7 @@ app.add_middleware(
 
 # Primary router – all JSON/manual and PDF endpoints live here under:
 #   /api/v1/licenses/...
+app.include_router(health_router)
 app.include_router(license_router)
 app.include_router(license_ohio_tddd_router)
 app.include_router(license_ny_pharmacy_router)
@@ -140,19 +140,3 @@ async def get_demo_expiring_licenses():
             "state_expiry": (today + timedelta(days=25)).isoformat(),
         },
     ]
-
-
-@app.get("/health", tags=["meta"])
-async def health_check() -> dict:
-    """
-    Lightweight healthcheck for uptime monitors and deployment platforms.
-
-    Returns a simple JSON payload that indicates the service is up,
-    along with a UTC timestamp. This endpoint does not call any external
-    systems, the LLM, or the RAG pipeline.
-    """
-    return {
-        "status": "ok",
-        "service": "autocomply-ai",
-        "time": datetime.utcnow().isoformat() + "Z",
-    }

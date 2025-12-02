@@ -94,6 +94,21 @@ h1, h2, h3 {
   color: #0f172a;
 }
 
+.badge-ok {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.badge-degraded {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge-down {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .decision-status-legend {
   margin-top: 0.5rem;
   padding: 1rem 1.25rem;
