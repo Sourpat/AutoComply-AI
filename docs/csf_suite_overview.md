@@ -18,6 +18,8 @@ Each CSF type has its own sandbox, API endpoints, and underlying regulatory docu
 | EMS | `EmsCsfSandbox.tsx` | `POST /csf/ems/evaluate` | `POST /csf/ems/form-copilot` | `csf_ems_form` |
 | Researcher | `ResearcherCsfSandbox.tsx` | `POST /csf/researcher/evaluate` | `POST /csf/researcher/form-copilot` | `csf_researcher_form` |
 
+The Hospital CSF Sandbox also includes an optional inline **Ohio TDDD license check** that reuses the License Suite's `/license/ohio-tddd/evaluate` endpoint for Ohio flows.
+
 Front-end sandboxes are mounted on the **CSF Overview / Playground** page:
 
 - Component: `frontend/src/pages/CsfOverviewPage.tsx`
