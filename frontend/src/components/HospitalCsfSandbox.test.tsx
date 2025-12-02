@@ -1,5 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { evaluateOhioTdddLicense } from "../api/licenseOhioTdddClient";
+
+vi.mock("../api/licenseOhioTdddClient", () => ({
+  evaluateOhioTdddLicense: vi.fn(),
+}));
 
 const mockCopilotResponse = {
   status: "ok_to_ship",
@@ -55,5 +60,33 @@ describe("Hospital CSF Form Copilot", () => {
     expect(calls.some((url) => url.includes("/csf/hospital/form-copilot"))).toBe(
       true
     );
+  });
+});
+
+describe("Hospital CSF Ohio TDDD integration", () => {
+  it("can trigger Ohio TDDD license check from Hospital CSF sandbox", async () => {
+    (evaluateOhioTdddLicense as vi.Mock).mockResolvedValue({
+      status: "ok_to_ship",
+      reason: "Ohio TDDD license details appear complete for this request.",
+      missingFields: [],
+    });
+
+    const { HospitalCsfSandbox } = await loadSandbox();
+
+    render(<HospitalCsfSandbox />);
+
+    const button = screen.getByRole("button", {
+      name: /Run Ohio TDDD license check/i,
+    });
+
+    fireEvent.click(button);
+
+    await waitFor(() =>
+      expect(evaluateOhioTdddLicense).toHaveBeenCalledTimes(1)
+    );
+
+    expect(
+      screen.getByText(/Ohio TDDD license details appear complete/i)
+    ).toBeInTheDocument();
   });
 });
