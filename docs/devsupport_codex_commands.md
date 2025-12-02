@@ -53,6 +53,24 @@ Example tool call (pseudocode):
 }
 ```
 
+### CSF Overview / Playground Page
+
+The CSF Overview page provides a single entry point to all CSF sandboxes (Hospital, Practitioner, Facility, EMS, Researcher), including their evaluate / form-copilot endpoints and RAG doc IDs.
+
+Key file:
+
+- `frontend/src/pages/CsfOverviewPage.tsx`
+
+Route:
+
+- `/csf`
+
+Use this page for demos and for quickly verifying that all CSF types are wired correctly.
+
+Codex command:
+
+- `csf_overview_fix_layout` – Update layout/copy of the CSF Overview page.
+
 ## 2. CSF Decision & Explain Commands
 
 These commands are emitted from the CSF sandboxes (Practitioner, Hospital,
