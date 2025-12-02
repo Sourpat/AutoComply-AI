@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 
 import { OhioTdddSandbox } from "../components/OhioTdddSandbox";
+import { OhioHospitalOrderJourneyCard } from "../components/OhioHospitalOrderJourneyCard";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 
 type LicenseSandboxMeta = {
@@ -94,6 +95,19 @@ export function LicenseOverviewPage() {
           </section>
         ))}
       </div>
+
+      <section className="license-section license-section--order-journey space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm backdrop-blur-sm">
+        <h2 className="text-sm font-semibold text-slate-900">
+          End-to-End Order Journey (Ohio Hospital)
+        </h2>
+        <p className="text-[11px] leading-relaxed text-slate-600">
+          This card runs a full mock approval using the Hospital CSF engine and the Ohio TDDD
+          license engine together. Use it to quickly see how AutoComply AI would treat a real Ohio
+          hospital Schedule II order.
+        </p>
+
+        <OhioHospitalOrderJourneyCard />
+      </section>
     </div>
   );
 }
