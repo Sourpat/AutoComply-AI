@@ -1,0 +1,373 @@
+import React, { useState } from "react";
+
+import {
+  NyPharmacyDecision,
+  NyPharmacyFormData,
+} from "../domain/licenseNyPharmacy";
+import {
+  callNyPharmacyFormCopilot,
+  evaluateNyPharmacyLicense,
+} from "../api/licenseNyPharmacyClient";
+import { OhioTdddFormCopilotResponse as LicenseCopilotResponse } from "../domain/licenseOhioTddd";
+import { trackSandboxEvent } from "../devsupport/telemetry";
+import { API_BASE } from "../api/csfHospitalClient";
+import { CopyCurlButton } from "./CopyCurlButton";
+
+const NY_PHARMACY_ENGINE_FAMILY = "license";
+const NY_PHARMACY_DECISION_TYPE = "license_ny_pharmacy";
+const NY_PHARMACY_SANDBOX_ID = "ny_pharmacy";
+
+const NY_PHARMACY_EXAMPLES: NyPharmacyFormData[] = [
+  {
+    pharmacyName: "Manhattan Pharmacy",
+    accountNumber: "900123456",
+    shipToState: "NY",
+    deaNumber: "FG1234567",
+    nyStateLicenseNumber: "NYPHARM-001234",
+    attestationAccepted: true,
+    internalNotes: "Happy path NY Pharmacy license example.",
+  },
+];
+
+export function NyPharmacyLicenseSandbox() {
+  const [form, setForm] = useState<NyPharmacyFormData>(NY_PHARMACY_EXAMPLES[0]);
+  const [decision, setDecision] = useState<NyPharmacyDecision | null>(null);
+  const [copilot, setCopilot] = useState<LicenseCopilotResponse | null>(null);
+  const [loadingEval, setLoadingEval] = useState(false);
+  const [loadingCopilot, setLoadingCopilot] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleChange(
+    field: keyof NyPharmacyFormData,
+    value: string | boolean
+  ) {
+    setForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }
+
+  function applyExample(example: NyPharmacyFormData) {
+    setForm(example);
+    setDecision(null);
+    setCopilot(null);
+    setError(null);
+
+    trackSandboxEvent("license_ny_pharmacy_example_selected", {
+      engine_family: NY_PHARMACY_ENGINE_FAMILY,
+      decision_type: NY_PHARMACY_DECISION_TYPE,
+      sandbox: NY_PHARMACY_SANDBOX_ID,
+      ship_to_state: example.shipToState,
+    });
+  }
+
+  async function handleEvaluate() {
+    setLoadingEval(true);
+    setError(null);
+    setDecision(null);
+
+    trackSandboxEvent("license_ny_pharmacy_evaluate_attempt", {
+      engine_family: NY_PHARMACY_ENGINE_FAMILY,
+      decision_type: NY_PHARMACY_DECISION_TYPE,
+      sandbox: NY_PHARMACY_SANDBOX_ID,
+      ship_to_state: form.shipToState,
+    });
+
+    try {
+      const result = await evaluateNyPharmacyLicense(form);
+      setDecision(result);
+
+      trackSandboxEvent("license_ny_pharmacy_evaluate_success", {
+        engine_family: NY_PHARMACY_ENGINE_FAMILY,
+        decision_type: NY_PHARMACY_DECISION_TYPE,
+        sandbox: NY_PHARMACY_SANDBOX_ID,
+        status: result.status,
+      });
+    } catch (err: any) {
+      const message =
+        err?.message ??
+        "NY Pharmacy license evaluation could not run. Please try again.";
+      setError(message);
+
+      trackSandboxEvent("license_ny_pharmacy_evaluate_error", {
+        engine_family: NY_PHARMACY_ENGINE_FAMILY,
+        decision_type: NY_PHARMACY_DECISION_TYPE,
+        sandbox: NY_PHARMACY_SANDBOX_ID,
+        error: String(err),
+      });
+    } finally {
+      setLoadingEval(false);
+    }
+  }
+
+  async function handleCopilot() {
+    setLoadingCopilot(true);
+    setError(null);
+    setCopilot(null);
+
+    trackSandboxEvent("license_ny_pharmacy_copilot_attempt", {
+      engine_family: NY_PHARMACY_ENGINE_FAMILY,
+      decision_type: NY_PHARMACY_DECISION_TYPE,
+      sandbox: NY_PHARMACY_SANDBOX_ID,
+      ship_to_state: form.shipToState,
+    });
+
+    try {
+      const result = await callNyPharmacyFormCopilot(form);
+      setCopilot(result);
+
+      trackSandboxEvent("license_ny_pharmacy_copilot_success", {
+        engine_family: NY_PHARMACY_ENGINE_FAMILY,
+        decision_type: NY_PHARMACY_DECISION_TYPE,
+        sandbox: NY_PHARMACY_SANDBOX_ID,
+        status: result.status,
+      });
+    } catch (err: any) {
+      const message =
+        err?.message ??
+        "NY Pharmacy License Copilot could not run. Please try again.";
+      setError(message);
+
+      trackSandboxEvent("license_ny_pharmacy_copilot_error", {
+        engine_family: NY_PHARMACY_ENGINE_FAMILY,
+        decision_type: NY_PHARMACY_DECISION_TYPE,
+        sandbox: NY_PHARMACY_SANDBOX_ID,
+        error: String(err),
+      });
+    } finally {
+      setLoadingCopilot(false);
+    }
+  }
+
+  return (
+    <div className="sandbox-card space-y-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <header className="space-y-2">
+        <h2 className="text-lg font-semibold">NY Pharmacy License Sandbox</h2>
+        <p className="text-sm text-slate-600">
+          Test New York Pharmacy license decisions and explanations. This
+          sandbox calls:
+        </p>
+        <ul className="text-sm text-slate-700">
+          <li>
+            <code>POST /license/ny-pharmacy/evaluate</code>
+          </li>
+          <li>
+            <code>POST /license/ny-pharmacy/form-copilot</code>
+          </li>
+        </ul>
+      </header>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">Examples</h3>
+        <div className="flex flex-wrap gap-2">
+          {NY_PHARMACY_EXAMPLES.map((example, index) => (
+            <button
+              key={index}
+              type="button"
+              onClick={() => applyExample(example)}
+              className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              {example.pharmacyName} – {example.shipToState}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold">Form</h3>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <label className="flex flex-col gap-1 text-xs font-medium text-slate-700">
+            Pharmacy name
+            <input
+              value={form.pharmacyName}
+              onChange={(e) => handleChange("pharmacyName", e.target.value)}
+              className="rounded-md border border-slate-200 px-2 py-1 text-sm"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium text-slate-700">
+            Account number
+            <input
+              value={form.accountNumber}
+              onChange={(e) => handleChange("accountNumber", e.target.value)}
+              className="rounded-md border border-slate-200 px-2 py-1 text-sm"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium text-slate-700">
+            Ship-to state
+            <input
+              value={form.shipToState}
+              onChange={(e) => handleChange("shipToState", e.target.value)}
+              className="rounded-md border border-slate-200 px-2 py-1 text-sm"
+            />
+            <span className="text-[11px] text-slate-500">
+              For this engine, this should normally be "NY".
+            </span>
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium text-slate-700">
+            DEA number (optional)
+            <input
+              value={form.deaNumber ?? ""}
+              onChange={(e) => handleChange("deaNumber", e.target.value)}
+              className="rounded-md border border-slate-200 px-2 py-1 text-sm"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium text-slate-700">
+            NY State license number
+            <input
+              value={form.nyStateLicenseNumber}
+              onChange={(e) =>
+                handleChange("nyStateLicenseNumber", e.target.value)
+              }
+              className="rounded-md border border-slate-200 px-2 py-1 text-sm"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={form.attestationAccepted}
+              onChange={(e) => handleChange("attestationAccepted", e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Attestation accepted
+          </label>
+        </div>
+        <label className="flex flex-col gap-1 text-xs font-medium text-slate-700">
+          Internal notes (optional)
+          <textarea
+            value={form.internalNotes ?? ""}
+            onChange={(e) => handleChange("internalNotes", e.target.value)}
+            className="min-h-[80px] rounded-md border border-slate-200 px-2 py-1 text-sm"
+          />
+        </label>
+      </section>
+
+      <section className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={handleEvaluate}
+          disabled={loadingEval}
+          className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-60"
+        >
+          {loadingEval ? "Evaluating..." : "Evaluate NY Pharmacy license"}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleCopilot}
+          disabled={loadingCopilot}
+          className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm disabled:opacity-60"
+        >
+          {loadingCopilot
+            ? "Running License Copilot..."
+            : "Check & Explain (NY Pharmacy Copilot)"}
+        </button>
+      </section>
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">Decision</h3>
+        {decision && (
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">
+            <p>
+              <strong>Status:</strong> {decision.status}
+            </p>
+            <p>
+              <strong>Reason:</strong> {decision.reason}
+            </p>
+            {decision.missingFields?.length > 0 && (
+              <p>
+                <strong>Missing fields:</strong> {decision.missingFields.join(", ")}
+              </p>
+            )}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">NY Pharmacy License Copilot</h3>
+        {copilot && (
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">
+            <p>
+              <strong>Status:</strong> {copilot.status}
+            </p>
+            <p>
+              <strong>Reason:</strong> {copilot.reason}
+            </p>
+            {copilot.missing_fields?.length > 0 && (
+              <p>
+                <strong>Missing fields:</strong> {copilot.missing_fields.join(", ")}
+              </p>
+            )}
+            {copilot.regulatory_references?.length > 0 && (
+              <div className="space-y-1">
+                <strong>Regulatory references:</strong>
+                <ul className="list-disc pl-5">
+                  {copilot.regulatory_references.map((ref) => (
+                    <li key={ref}>{ref}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {copilot.rag_explanation && (
+              <p>
+                <strong>Explanation:</strong> {copilot.rag_explanation}
+              </p>
+            )}
+            {copilot.rag_sources?.length > 0 && (
+              <div className="space-y-1">
+                <strong>Sources consulted:</strong>
+                <ul className="list-disc pl-5">
+                  {copilot.rag_sources.map((src) => (
+                    <li key={src.id}>
+                      {src.title} {src.url && <span>({src.url})</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">cURL example</h3>
+        <div className="rounded-md border border-slate-200 bg-slate-900 p-3 text-xs text-slate-50">
+          <pre className="overflow-auto text-[11px] leading-relaxed">{`curl -X POST "${API_BASE}/license/ny-pharmacy/evaluate" \\
+  -H "Content-Type: application/json" \\
+  -d '${JSON.stringify(
+    {
+      pharmacy_name: form.pharmacyName,
+      account_number: form.accountNumber,
+      ship_to_state: form.shipToState,
+      dea_number: form.deaNumber ?? null,
+      ny_state_license_number: form.nyStateLicenseNumber,
+      attestation_accepted: form.attestationAccepted,
+      internal_notes: form.internalNotes ?? "",
+    },
+    null,
+    2
+  )}'`}</pre>
+          <div className="mt-2">
+            <CopyCurlButton
+              endpoint="/license/ny-pharmacy/evaluate"
+              method="POST"
+              body={{
+                pharmacy_name: form.pharmacyName,
+                account_number: form.accountNumber,
+                ship_to_state: form.shipToState,
+                dea_number: form.deaNumber ?? null,
+                ny_state_license_number: form.nyStateLicenseNumber,
+                attestation_accepted: form.attestationAccepted,
+                internal_notes: form.internalNotes ?? "",
+              }}
+              sandboxId={NY_PHARMACY_SANDBOX_ID}
+              decisionType={NY_PHARMACY_DECISION_TYPE}
+              engineFamily={NY_PHARMACY_ENGINE_FAMILY}
+            />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
