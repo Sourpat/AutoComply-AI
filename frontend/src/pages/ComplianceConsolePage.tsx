@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { OhioHospitalOrderJourneyCard } from "../components/OhioHospitalOrderJourneyCard";
 import { DecisionStatusLegend } from "../components/DecisionStatusLegend";
 import { SystemStatusCard } from "../components/SystemStatusCard";
+import { DocsLinksCard } from "../components/DocsLinksCard";
 
 export function ComplianceConsolePage() {
   return (
@@ -86,6 +87,16 @@ export function ComplianceConsolePage() {
 
       <section className="console-section console-section-legend rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
         <DecisionStatusLegend />
+      </section>
+
+      <section className="console-section console-section-docs space-y-2 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
+        <h2 className="text-sm font-semibold text-slate-900">Docs, repo, and how to run this</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Use these links when you want to dive deeper into the architecture, show the code, or run the demo locally.
+        </p>
+        <div className="mt-3">
+          <DocsLinksCard />
+        </div>
       </section>
     </div>
   );

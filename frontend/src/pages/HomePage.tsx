@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { DocsLinksCard } from "../components/DocsLinksCard";
 
 export function HomePage() {
   return (
@@ -167,6 +168,17 @@ export function HomePage() {
         <p className="text-sm text-slate-600">
           Pair this UI with the case study and architecture docs in <code>docs/</code> when you walk someone through the system.
         </p>
+      </section>
+
+      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900 md:text-xl">Resources & documentation</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          When you’re sharing this project with someone (recruiter, hiring manager, architect), these links and docs help you
+          tell the full story.
+        </p>
+        <div className="mt-4">
+          <DocsLinksCard />
+        </div>
       </section>
     </div>
   );
