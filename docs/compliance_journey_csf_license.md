@@ -158,3 +158,18 @@ You can use the following script when demoing AutoComply AI:
      - Shared RAG engine patterns,
      - Sandbox UIs and cURL snippets for developers.
    - New states or license types can be added by following the same patterns.
+
+### Mock Order Approval Endpoint
+
+For demos and quick understanding, the mock orchestration endpoint:
+
+- `POST /orders/mock/ohio-hospital-approval`
+
+wraps the Hospital CSF evaluation and the Ohio TDDD license evaluation into a single response, returning:
+
+- `csf_status` / `csf_reason`
+- `tddd_status` / `tddd_reason`
+- `final_decision`
+- `notes[]` explaining how the decision was made.
+
+This endpoint showcases how the CSF Suite and License Suite combine into a single order-level decision without additional HTTP hops.
