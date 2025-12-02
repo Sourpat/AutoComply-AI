@@ -75,9 +75,26 @@ jobs:
         env:
           PYTHONPATH: "${{ github.workspace }}/backend"
         run: |
-          uvicorn src.api.main:app --host 0.0.0.0 --port 8000 &
+          # Start FastAPI with uvicorn and capture logs so we can debug failures.
+          # If your app is not defined in main.py, update "main:app" accordingly.
+          python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 > ../uvicorn.log 2>&1 &
           echo $! > ../uvicorn_pid.txt
-          sleep 15
+
+          echo "Waiting for backend to become healthy on http://127.0.0.1:8000/health ..."
+
+          # Wait up to 30 seconds for /health to respond.
+          for i in {1..30}; do
+            if curl -sSf http://127.0.0.1:8000/health > /dev/null 2>&1; then
+              echo "Backend is up (health check succeeded)."
+              exit 0
+            fi
+            echo "Health check not ready yet (attempt $i)..."
+            sleep 1
+          done
+
+          echo "Backend did not become healthy in time. Dumping uvicorn log:"
+          cat ../uvicorn.log || echo "No uvicorn log found."
+          exit 1
 
       - name: Run HTTP smoke tests
         run: |
