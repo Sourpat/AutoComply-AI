@@ -13,6 +13,8 @@ import { runNyPharmacyOrderMock } from "../api/orderNyPharmacyMockClient";
 import { OhioTdddFormCopilotResponse as LicenseCopilotResponse } from "../domain/licenseOhioTddd";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { API_BASE } from "../api/csfHospitalClient";
+import { copyToClipboard } from "../utils/clipboard";
+import { buildCurlCommand } from "../utils/curlBuilder";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
 
@@ -48,6 +50,9 @@ export function NyPharmacyLicenseSandbox() {
     response: any;
   } | null>(null);
   const [orderTraceEnabled, setOrderTraceEnabled] = useState(false);
+  const [orderTraceCopyMessage, setOrderTraceCopyMessage] = useState<
+    string | null
+  >(null);
 
   function handleChange(
     field: keyof NyPharmacyFormData,
@@ -190,6 +195,40 @@ export function NyPharmacyLicenseSandbox() {
     } finally {
       setOrderLoading(false);
     }
+  }
+
+  async function handleCopyNyOrderRequestCurl() {
+    if (!orderTrace) return;
+    const curl = buildCurlCommand(
+      "/orders/mock/ny-pharmacy-approval",
+      "POST",
+      orderTrace.request
+    );
+    const ok = await copyToClipboard(curl);
+    setOrderTraceCopyMessage(
+      ok ? "Request cURL copied to clipboard." : "Unable to copy cURL."
+    );
+    setTimeout(() => setOrderTraceCopyMessage(null), 2000);
+  }
+
+  async function handleCopyNyOrderRequestJson() {
+    if (!orderTrace) return;
+    const json = JSON.stringify(orderTrace.request, null, 2);
+    const ok = await copyToClipboard(json);
+    setOrderTraceCopyMessage(
+      ok ? "Request JSON copied to clipboard." : "Unable to copy JSON."
+    );
+    setTimeout(() => setOrderTraceCopyMessage(null), 2000);
+  }
+
+  async function handleCopyNyOrderResponseJson() {
+    if (!orderTrace) return;
+    const json = JSON.stringify(orderTrace.response, null, 2);
+    const ok = await copyToClipboard(json);
+    setOrderTraceCopyMessage(
+      ok ? "Response JSON copied to clipboard." : "Unable to copy JSON."
+    );
+    setTimeout(() => setOrderTraceCopyMessage(null), 2000);
   }
 
   return (
@@ -448,6 +487,21 @@ export function NyPharmacyLicenseSandbox() {
       {orderTraceEnabled && orderTrace && (
         <section className="order-journey-trace space-y-3 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-800 shadow-sm">
           <h3 className="text-sm font-semibold">NY License-Only Order Trace</h3>
+
+          <div className="trace-actions">
+            <button type="button" onClick={handleCopyNyOrderRequestCurl}>
+              Copy request as cURL
+            </button>
+            <button type="button" onClick={handleCopyNyOrderRequestJson}>
+              Copy request JSON
+            </button>
+            <button type="button" onClick={handleCopyNyOrderResponseJson}>
+              Copy response JSON
+            </button>
+          </div>
+          {orderTraceCopyMessage && (
+            <p className="trace-copy-message">{orderTraceCopyMessage}</p>
+          )}
 
           <details open>
             <summary className="cursor-pointer font-medium">Request payload</summary>

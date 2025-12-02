@@ -6,6 +6,8 @@ import {
 } from "../api/orderMockApprovalClient";
 import { OhioHospitalOrderApprovalResult } from "../domain/orderMockApproval";
 import { trackSandboxEvent } from "../devsupport/telemetry";
+import { copyToClipboard } from "../utils/clipboard";
+import { buildCurlCommand } from "../utils/curlBuilder";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
 
 export function OhioHospitalOrderJourneyCard() {
@@ -18,6 +20,7 @@ export function OhioHospitalOrderJourneyCard() {
   const [lastRun, setLastRun] = useState<OhioHospitalOrderScenarioRun | null>(
     null
   );
+  const [traceCopyMessage, setTraceCopyMessage] = useState<string | null>(null);
 
   async function runScenario(kind: OrderScenarioKind) {
     setLoading(kind);
@@ -58,6 +61,40 @@ export function OhioHospitalOrderJourneyCard() {
     } finally {
       setLoading(null);
     }
+  }
+
+  async function handleCopyRequestCurl() {
+    if (!lastRun) return;
+    const curl = buildCurlCommand(
+      "/orders/mock/ohio-hospital-approval",
+      "POST",
+      lastRun.request
+    );
+    const ok = await copyToClipboard(curl);
+    setTraceCopyMessage(
+      ok ? "Request cURL copied to clipboard." : "Unable to copy cURL."
+    );
+    setTimeout(() => setTraceCopyMessage(null), 2000);
+  }
+
+  async function handleCopyRequestJson() {
+    if (!lastRun) return;
+    const json = JSON.stringify(lastRun.request, null, 2);
+    const ok = await copyToClipboard(json);
+    setTraceCopyMessage(
+      ok ? "Request JSON copied to clipboard." : "Unable to copy JSON."
+    );
+    setTimeout(() => setTraceCopyMessage(null), 2000);
+  }
+
+  async function handleCopyResponseJson() {
+    if (!lastRun) return;
+    const json = JSON.stringify(lastRun.response, null, 2);
+    const ok = await copyToClipboard(json);
+    setTraceCopyMessage(
+      ok ? "Response JSON copied to clipboard." : "Unable to copy JSON."
+    );
+    setTimeout(() => setTraceCopyMessage(null), 2000);
   }
 
   return (
@@ -207,19 +244,30 @@ export function OhioHospitalOrderJourneyCard() {
             Developer Trace
           </h3>
 
+          <div className="trace-actions">
+            <button type="button" onClick={handleCopyRequestCurl}>
+              Copy request as cURL
+            </button>
+            <button type="button" onClick={handleCopyRequestJson}>
+              Copy request JSON
+            </button>
+            <button type="button" onClick={handleCopyResponseJson}>
+              Copy response JSON
+            </button>
+          </div>
+          {traceCopyMessage && (
+            <p className="trace-copy-message">{traceCopyMessage}</p>
+          )}
+
           <details open>
-            <summary className="text-sm font-semibold text-slate-800">
-              Request payload
-            </summary>
+            <summary>Request payload</summary>
             <pre className="code-block">
               {JSON.stringify(lastRun.request, null, 2)}
             </pre>
           </details>
 
           <details open>
-            <summary className="text-sm font-semibold text-slate-800">
-              Raw response
-            </summary>
+            <summary>Raw response</summary>
             <pre className="code-block">
               {JSON.stringify(lastRun.response, null, 2)}
             </pre>
