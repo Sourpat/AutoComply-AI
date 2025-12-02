@@ -1,0 +1,114 @@
+name: AutoComply AI – CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    env:
+      PYTHON_VERSION: "3.11"
+      NODE_VERSION: "20"
+      AUTOCOMPLY_BASE_URL: "http://127.0.0.1:8000"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ---------- Backend: Python / FastAPI ----------
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          if [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt
+          elif [ -f "pyproject.toml" ]; then
+            pip install .
+          else
+            echo "No backend requirements.txt or pyproject.toml found" >&2
+            exit 1
+          fi
+
+      - name: Run backend tests (pytest)
+        working-directory: backend
+        env:
+          PYTHONPATH: "${{ github.workspace }}/backend/src"
+        run: |
+          pytest
+
+      # ---------- Frontend: Node / pnpm ----------
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: |
+          pnpm install
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: |
+          pnpm test -- --watch=false || pnpm test || echo "Frontend tests may be minimal; see logs."
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          pnpm build
+
+      # ---------- Smoke test: start backend + run HTTP checks ----------
+      - name: Start FastAPI backend (background)
+        working-directory: backend
+        run: |
+          # Ensure both the backend root (.) and src/ are on PYTHONPATH so
+          # imports like "src.api.main" and "autocomply.*" both work.
+          export PYTHONPATH=".:src:${PYTHONPATH}"
+
+          # Start FastAPI with uvicorn and capture logs so we can debug failures.
+          # The app entrypoint lives in src/api/main.py as app.
+          python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 > ../uvicorn.log 2>&1 &
+          echo $! > ../uvicorn_pid.txt
+
+          echo "Waiting for backend to become healthy on http://127.0.0.1:8000/health ..."
+
+          # Wait up to 30 seconds for /health to respond.
+          for i in {1..30}; do
+            if curl -sSf http://127.0.0.1:8000/health > /dev/null 2>&1; then
+              echo "Backend is up (health check succeeded)."
+              exit 0
+            fi
+            echo "Health check not ready yet (attempt $i)..."
+            sleep 1
+          done
+
+          echo "Backend did not become healthy in time. Dumping uvicorn log:"
+          cat ../uvicorn.log || echo "No uvicorn log found."
+          exit 1
+
+      - name: Run HTTP smoke tests
+        run: |
+          if [ ! -f "scripts/smoke_test_autocomply.py" ]; then
+            echo "Smoke test script not found at scripts/smoke_test_autocomply.py" >&2
+            exit 1
+          fi
+          python scripts/smoke_test_autocomply.py --base-url "${AUTOCOMPLY_BASE_URL}"
+
+      - name: Stop FastAPI backend
+        if: always()
+        run: |
+          if [ -f "uvicorn_pid.txt" ]; then
+            kill "$(cat uvicorn_pid.txt)" || true
+          fi

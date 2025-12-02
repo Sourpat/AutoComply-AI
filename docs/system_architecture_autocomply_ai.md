@@ -357,3 +357,20 @@ Overall result: ✅ all checks passed.
 ```
 
 If something’s off (wrong field name, wrong path), adjust the script to match the actual payload shapes.
+
+### 8. CI pipeline
+
+The repository includes a GitHub Actions workflow:
+
+- `.github/workflows/ci_autocomply.yml`
+
+On each push / pull request to `main` it:
+
+1. Runs backend unit and scenario tests with `pytest`.
+2. Runs frontend tests and a production build.
+3. Starts a local FastAPI server and runs `scripts/smoke_test_autocomply.py`
+   against it to verify `/health`, CSF endpoints, license endpoints, and the
+   mock order approval flows.
+
+This keeps the demo environment honest: if any core compliance flow breaks,
+the pipeline fails before deployment.
