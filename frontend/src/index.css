@@ -62,3 +62,56 @@ h1, h2, h3 {
   border-radius: 0.5rem;
   overflow-x: auto;
 }
+
+/* Decision status badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.badge-ok_to_ship {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.badge-needs_review {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge-blocked {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge-unknown {
+  background: #e5e7eb;
+  color: #0f172a;
+}
+
+.decision-status-legend {
+  margin-top: 0.5rem;
+  padding: 1rem 1.25rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  background: #ffffff;
+}
+
+.decision-status-legend h3 {
+  margin-top: 0;
+  margin-bottom: 0.35rem;
+  font-size: 0.95rem;
+}
+
+.decision-status-legend ul {
+  padding-left: 1.25rem;
+  margin: 0;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}

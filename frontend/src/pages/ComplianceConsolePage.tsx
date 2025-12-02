@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 
 import { OhioHospitalOrderJourneyCard } from "../components/OhioHospitalOrderJourneyCard";
+import { DecisionStatusLegend } from "../components/DecisionStatusLegend";
 
 export function ComplianceConsolePage() {
   return (
@@ -76,6 +77,10 @@ export function ComplianceConsolePage() {
         </p>
 
         <OhioHospitalOrderJourneyCard />
+      </section>
+
+      <section className="console-section console-section-legend rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
+        <DecisionStatusLegend />
       </section>
     </div>
   );

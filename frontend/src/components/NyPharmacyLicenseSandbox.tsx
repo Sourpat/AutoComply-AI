@@ -12,6 +12,7 @@ import { OhioTdddFormCopilotResponse as LicenseCopilotResponse } from "../domain
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { API_BASE } from "../api/csfHospitalClient";
 import { CopyCurlButton } from "./CopyCurlButton";
+import { DecisionStatusBadge } from "./DecisionStatusBadge";
 
 const NY_PHARMACY_ENGINE_FAMILY = "license";
 const NY_PHARMACY_DECISION_TYPE = "license_ny_pharmacy";
@@ -270,7 +271,8 @@ export function NyPharmacyLicenseSandbox() {
         {decision && (
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">
             <p>
-              <strong>Status:</strong> {decision.status}
+              <strong>Status:</strong> {" "}
+              <DecisionStatusBadge status={decision.status} />
             </p>
             <p>
               <strong>Reason:</strong> {decision.reason}
@@ -289,7 +291,8 @@ export function NyPharmacyLicenseSandbox() {
         {copilot && (
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">
             <p>
-              <strong>Status:</strong> {copilot.status}
+              <strong>Status:</strong> {" "}
+              <DecisionStatusBadge status={copilot.status} />
             </p>
             <p>
               <strong>Reason:</strong> {copilot.reason}
