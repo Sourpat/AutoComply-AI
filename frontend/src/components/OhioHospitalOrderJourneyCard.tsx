@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import {
   OrderScenarioKind,
   runOhioHospitalOrderScenario,
+  OhioHospitalOrderScenarioRun,
 } from "../api/orderMockApprovalClient";
 import { OhioHospitalOrderApprovalResult } from "../domain/orderMockApproval";
 import { trackSandboxEvent } from "../devsupport/telemetry";
@@ -28,6 +29,10 @@ export function OhioHospitalOrderJourneyCard() {
   );
   const [loading, setLoading] = useState<null | OrderScenarioKind>(null);
   const [error, setError] = useState<string | null>(null);
+  const [traceEnabled, setTraceEnabled] = useState(false);
+  const [lastRun, setLastRun] = useState<OhioHospitalOrderScenarioRun | null>(
+    null
+  );
 
   async function runScenario(kind: OrderScenarioKind) {
     setLoading(kind);
@@ -41,16 +46,17 @@ export function OhioHospitalOrderJourneyCard() {
     });
 
     try {
-      const data = await runOhioHospitalOrderScenario(kind);
-      setResult(data);
+      const run = await runOhioHospitalOrderScenario(kind);
+      setLastRun(run);
+      setResult(run.response);
 
       trackSandboxEvent("order_mock_ohio_hospital_success", {
         scenario: kind,
         engine_family: "order",
         journey: "ohio_hospital_schedule_ii",
-        final_decision: data.final_decision,
-        csf_status: data.csf_status,
-        tddd_status: data.tddd_status,
+        final_decision: run.response.final_decision,
+        csf_status: run.response.csf_status,
+        tddd_status: run.response.tddd_status,
       });
     } catch (err: any) {
       const message =
@@ -109,6 +115,18 @@ export function OhioHospitalOrderJourneyCard() {
             ? "Running negative path..."
             : "Run negative path (missing TDDD)"}
         </button>
+      </section>
+
+      <section className="sandbox-trace-toggle">
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={traceEnabled}
+            onChange={(e) => setTraceEnabled(e.target.checked)}
+          />
+          <span>Show developer trace (request + response JSON)</span>
+        </label>
       </section>
 
       {error && (
@@ -184,6 +202,32 @@ export function OhioHospitalOrderJourneyCard() {
               ))}
             </ul>
           </div>
+        </section>
+      )}
+
+      {traceEnabled && lastRun && (
+        <section className="order-journey-trace">
+          <h3 className="text-base font-semibold text-slate-900">
+            Developer Trace
+          </h3>
+
+          <details open>
+            <summary className="text-sm font-semibold text-slate-800">
+              Request payload
+            </summary>
+            <pre className="code-block">
+              {JSON.stringify(lastRun.request, null, 2)}
+            </pre>
+          </details>
+
+          <details open>
+            <summary className="text-sm font-semibold text-slate-800">
+              Raw response
+            </summary>
+            <pre className="code-block">
+              {JSON.stringify(lastRun.response, null, 2)}
+            </pre>
+          </details>
         </section>
       )}
     </div>

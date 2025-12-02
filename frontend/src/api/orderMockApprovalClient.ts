@@ -3,9 +3,19 @@ import { API_BASE } from "./csfHospitalClient";
 
 export type OrderScenarioKind = "happy_path" | "missing_tddd";
 
+export interface OhioHospitalOrderScenarioRequest {
+  hospital_csf: any;
+  ohio_tddd: any;
+}
+
+export interface OhioHospitalOrderScenarioRun {
+  request: OhioHospitalOrderScenarioRequest;
+  response: OhioHospitalOrderApprovalResult;
+}
+
 export async function runOhioHospitalOrderScenario(
   scenario: OrderScenarioKind
-): Promise<OhioHospitalOrderApprovalResult> {
+): Promise<OhioHospitalOrderScenarioRun> {
   const baseCsfPayload = {
     hospital_name: "Ohio General Hospital",
     facility_type: "hospital",
@@ -51,13 +61,15 @@ export async function runOhioHospitalOrderScenario(
             "Missing TDDD number for negative mock order scenario.",
         };
 
+  const requestBody: OhioHospitalOrderScenarioRequest = {
+    hospital_csf: baseCsfPayload,
+    ohio_tddd: ohTddd,
+  };
+
   const resp = await fetch(`${API_BASE}/orders/mock/ohio-hospital-approval`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      hospital_csf: baseCsfPayload,
-      ohio_tddd: ohTddd,
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!resp.ok) {
@@ -67,5 +79,10 @@ export async function runOhioHospitalOrderScenario(
     );
   }
 
-  return (await resp.json()) as OhioHospitalOrderApprovalResult;
+  const json = (await resp.json()) as OhioHospitalOrderApprovalResult;
+
+  return {
+    request: requestBody,
+    response: json,
+  };
 }
