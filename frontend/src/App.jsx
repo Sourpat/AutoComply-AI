@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Layout from "./components/Layout";
-import Home from "./pages/Home";
+import { HomePage } from "./pages/HomePage";
 import { CsfOverviewPage } from "./pages/CsfOverviewPage";
 import { OhioTdddSandbox } from "./components/OhioTdddSandbox";
 import { LicenseOverviewPage } from "./pages/LicenseOverviewPage";
@@ -12,7 +12,7 @@ export default function App() {
     <BrowserRouter>
       <Layout>
         <Routes>
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<HomePage />} />
           <Route path="/csf" element={<CsfOverviewPage />} />
           <Route path="/license" element={<LicenseOverviewPage />} />
           <Route path="/console" element={<ComplianceConsolePage />} />
