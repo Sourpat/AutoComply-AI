@@ -296,3 +296,64 @@ Event-based flows:
 Future: alerts on blocked decisions or high-risk orders.
 
 Future: Slack/email notifications for specific license or CSF anomalies.
+
+### 7. Smoke Testing the Backend
+
+For quick verification that the main compliance flows are reachable and behaving
+sanely, there is a small HTTP smoke test script:
+
+- `scripts/smoke_test_autocomply.py`
+
+This script hits:
+
+- `GET /health`
+- `POST /csf/hospital/evaluate`
+- `POST /license/ohio-tddd/evaluate`
+- `POST /license/ny-pharmacy/evaluate`
+- `POST /orders/mock/ohio-hospital-approval`
+- `POST /orders/mock/ny-pharmacy-approval`
+
+and prints a pass/fail summary.
+
+**Usage**
+
+```bash
+# Against a local backend (uvicorn)
+python scripts/smoke_test_autocomply.py --base-url http://localhost:8000
+
+# Against a deployed backend (Render, etc.)
+python scripts/smoke_test_autocomply.py --base-url https://your-backend-url
+```
+
+If any check fails, the script shows the HTTP status and a short detail string to
+help narrow down the issue. This is intended as a fast pre-demo sanity check,
+not a replacement for full pytest coverage.
+
+---
+
+#### Quick verification
+
+From repo root (with backend running on localhost:8000):
+
+```bash
+python scripts/smoke_test_autocomply.py
+```
+
+You should see something like:
+
+```
+AutoComply AI – HTTP Smoke Test Summary
+
+Check                          OK?   HTTP   Detail
+--------------------------------------------------------
+health                         ✅    200    status=ok, service=autocomply-ai
+csf_hospital_evaluate          ✅    200    status=ok_to_ship, reason=...
+license_ohio_tddd_evaluate     ✅    200    status=ok_to_ship, reason=...
+license_ny_pharmacy_evaluate   ✅    200    status=ok_to_ship, reason=...
+order_mock_ohio_hospital       ✅    200    final_decision=ok_to_ship
+order_mock_ny_pharmacy         ✅    200    final_decision=ok_to_ship
+--------------------------------------------------------
+Overall result: ✅ all checks passed.
+```
+
+If something’s off (wrong field name, wrong path), adjust the script to match the actual payload shapes.
