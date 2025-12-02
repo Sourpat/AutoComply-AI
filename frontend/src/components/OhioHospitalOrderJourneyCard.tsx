@@ -6,22 +6,7 @@ import {
 } from "../api/orderMockApprovalClient";
 import { OhioHospitalOrderApprovalResult } from "../domain/orderMockApproval";
 import { trackSandboxEvent } from "../devsupport/telemetry";
-
-function decisionBadgeClass(decision: string) {
-  const base =
-    "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold";
-
-  switch (decision) {
-    case "ok_to_ship":
-      return `${base} bg-green-100 text-green-800`;
-    case "needs_review":
-      return `${base} bg-amber-100 text-amber-800`;
-    case "blocked":
-      return `${base} bg-red-100 text-red-800`;
-    default:
-      return `${base} bg-slate-100 text-slate-800`;
-  }
-}
+import { DecisionStatusBadge } from "./DecisionStatusBadge";
 
 export function OhioHospitalOrderJourneyCard() {
   const [result, setResult] = useState<OhioHospitalOrderApprovalResult | null>(
@@ -154,9 +139,7 @@ export function OhioHospitalOrderJourneyCard() {
               <span className="text-xs uppercase tracking-wide text-slate-500">
                 Final decision
               </span>
-              <span className={decisionBadgeClass(result.final_decision)}>
-                {result.final_decision}
-              </span>
+              <DecisionStatusBadge status={result.final_decision} />
             </div>
           </div>
 
@@ -166,7 +149,8 @@ export function OhioHospitalOrderJourneyCard() {
                 Hospital CSF Decision
               </h5>
               <p className="text-sm text-slate-700">
-                <strong>Status:</strong> {result.csf_status}
+                <strong>Status:</strong>{" "}
+                <DecisionStatusBadge status={result.csf_status} />
               </p>
               <p className="text-sm text-slate-700">
                 <strong>Reason:</strong> {result.csf_reason}
@@ -185,7 +169,8 @@ export function OhioHospitalOrderJourneyCard() {
               {result.tddd_status ? (
                 <div className="space-y-1 text-sm text-slate-700">
                   <p>
-                    <strong>Status:</strong> {result.tddd_status}
+                    <strong>Status:</strong>{" "}
+                    <DecisionStatusBadge status={result.tddd_status ?? undefined} />
                   </p>
                   <p>
                     <strong>Reason:</strong> {result.tddd_reason}
