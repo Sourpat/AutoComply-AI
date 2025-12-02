@@ -38,3 +38,27 @@ textarea:focus {
 h1, h2, h3 {
   @apply tracking-tight;
 }
+
+.order-journey-trace {
+  margin-top: 1.5rem;
+}
+
+.order-journey-trace details {
+  margin-bottom: 0.75rem;
+}
+
+.order-journey-trace summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.code-block {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.85rem;
+  background: #0b1120;
+  color: #e5e7eb;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+}
