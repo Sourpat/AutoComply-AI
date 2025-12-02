@@ -17,6 +17,7 @@ Each license engine has its own sandbox, API endpoints, and underlying regulator
 | Engine | Sandbox Component | Evaluate Endpoint | Copilot Endpoint | RAG Doc ID |
 |---------------|--------------------------------|----------------------------------------|------------------------------------------------------|-------------------|
 | Ohio TDDD | `frontend/src/components/OhioTdddSandbox.tsx` | `POST /license/ohio-tddd/evaluate` | `POST /license/ohio-tddd/form-copilot` | `ohio_tddd_rules` |
+| NY Pharmacy | _Backend prototype (UI TBD)_ | `POST /license/ny-pharmacy/evaluate` | `POST /license/ny-pharmacy/form-copilot` | `ny_pharmacy_rules` |
 
 Front-end sandboxes are mounted on the **License Overview / Playground** page:
 

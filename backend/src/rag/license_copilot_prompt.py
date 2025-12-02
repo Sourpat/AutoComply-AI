@@ -8,6 +8,8 @@ def build_license_copilot_prompt(license_type: str, payload: Dict) -> str:
     """
     if license_type == "ohio_tddd":
         license_label = "Ohio TDDD (Terminal Distributor of Dangerous Drugs) License"
+    elif license_type == "ny_pharmacy":
+        license_label = "New York Pharmacy License"
     else:
         license_label = f"{license_type} license"
 
@@ -25,7 +27,7 @@ Always respond with:
 - A clear status: ok_to_ship, needs_review, or blocked.
 - A short reason.
 - A list of missing or inconsistent fields.
-- A list of regulatory references from the Ohio TDDD rules document.
+- A list of regulatory references from the relevant rules document.
 - A concise, customer-friendly explanation.
 
 License type: {license_type}
