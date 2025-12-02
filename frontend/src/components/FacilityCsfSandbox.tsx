@@ -21,6 +21,13 @@ import { emitCodexCommand } from "../utils/codexLogger";
 import { callFacilityFormCopilot } from "../api/csfFacilityCopilotClient";
 import type { FacilityFormCopilotResponse } from "../domain/csfFacility";
 import { API_BASE } from "../api/csfHospitalClient";
+import {
+  OhioTdddDecision,
+  OhioTdddFormData,
+} from "../domain/licenseOhioTddd";
+import { evaluateOhioTdddLicense } from "../api/licenseOhioTdddClient";
+import { mapFacilityFormToOhioTddd } from "../domain/licenseMapping";
+import { trackSandboxEvent } from "../devsupport/telemetry";
 
 const FACILITY_ENGINE_FAMILY = "csf";
 const FACILITY_DECISION_TYPE = "csf_facility";
@@ -128,6 +135,10 @@ export function FacilityCsfSandbox() {
   const [ragAnswer, setRagAnswer] = useState<string | null>(null);
   const [isRagLoading, setIsRagLoading] = useState(false);
   const [ragError, setRagError] = useState<string | null>(null);
+  const [ohioTdddDecision, setOhioTdddDecision] =
+    useState<OhioTdddDecision | null>(null);
+  const [ohioTdddLoading, setOhioTdddLoading] = useState(false);
+  const [ohioTdddError, setOhioTdddError] = useState<string | null>(null);
 
   // ---- Facility CSF Form Copilot state ----
   const [copilotResponse, setCopilotResponse] =
@@ -227,10 +238,63 @@ export function FacilityCsfSandbox() {
     setRagError(null);
     setIsRagLoading(false);
 
+    setOhioTdddDecision(null);
+    setOhioTdddError(null);
+    setOhioTdddLoading(false);
+
     setRegulatoryArtifacts([]);
     setRegulatoryError(null);
     setIsLoadingRegulatory(false);
   };
+
+  async function handleOhioTdddCheck() {
+    if ((form as any).shipToState && (form as any).shipToState !== "OH") {
+      setOhioTdddError(
+        "Ohio TDDD license check is primarily relevant when ship-to state is OH."
+      );
+      setOhioTdddDecision(null);
+      return;
+    }
+
+    setOhioTdddLoading(true);
+    setOhioTdddError(null);
+    setOhioTdddDecision(null);
+
+    const payload: OhioTdddFormData = mapFacilityFormToOhioTddd(form);
+
+    trackSandboxEvent("license_ohio_tddd_from_facility_csf_attempt", {
+      engine_family: "license",
+      decision_type: "license_ohio_tddd",
+      sandbox: "facility_csf",
+      ship_to_state: payload.shipToState,
+    });
+
+    try {
+      const result = await evaluateOhioTdddLicense(payload);
+      setOhioTdddDecision(result);
+
+      trackSandboxEvent("license_ohio_tddd_from_facility_csf_success", {
+        engine_family: "license",
+        decision_type: "license_ohio_tddd",
+        sandbox: "facility_csf",
+        status: result.status,
+      });
+    } catch (err: any) {
+      const message =
+        err?.message ??
+        "Ohio TDDD license evaluation could not run. Please try again.";
+      setOhioTdddError(message);
+
+      trackSandboxEvent("license_ohio_tddd_from_facility_csf_error", {
+        engine_family: "license",
+        decision_type: "license_ohio_tddd",
+        sandbox: "facility_csf",
+        error: String(err),
+      });
+    } finally {
+      setOhioTdddLoading(false);
+    }
+  }
 
   const handleExplain = async () => {
     if (!decision) return;
@@ -788,6 +852,48 @@ export function FacilityCsfSandbox() {
             )}
           </div>
         </div>
+
+        <section className="sandbox-section sandbox-section--ohio-tddd">
+          <h3>Ohio TDDD License Check (Optional)</h3>
+          <p className="sandbox-helper">
+            Use this to validate Ohio TDDD license information for this Facility
+            CSF. This is most relevant when <code>ship-to state = OH</code>.
+          </p>
+
+          <div className="sandbox-actions">
+            <button
+              type="button"
+              onClick={handleOhioTdddCheck}
+              disabled={ohioTdddLoading}
+            >
+              {ohioTdddLoading
+                ? "Checking Ohio TDDD..."
+                : "Run Ohio TDDD license check"}
+            </button>
+            <a href="/license/ohio-tddd" target="_blank" rel="noreferrer">
+              Open full Ohio TDDD License Sandbox
+            </a>
+          </div>
+
+          {ohioTdddError && <p className="error">{ohioTdddError}</p>}
+
+          {ohioTdddDecision && (
+            <div className="decision-panel decision-panel--ohio-tddd">
+              <p>
+                <strong>Ohio TDDD status:</strong> {ohioTdddDecision.status}
+              </p>
+              <p>
+                <strong>Reason:</strong> {ohioTdddDecision.reason}
+              </p>
+              {ohioTdddDecision.missingFields?.length > 0 && (
+                <p>
+                  <strong>Missing fields:</strong>{" "}
+                  {ohioTdddDecision.missingFields.join(", ")}
+                </p>
+              )}
+            </div>
+          )}
+        </section>
 
         {/* ---- Facility CSF Form Copilot (beta) ---- */}
         <section className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
