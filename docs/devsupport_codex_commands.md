@@ -403,6 +403,34 @@ specific demonstration scenarios.
 
 ## 4. Ohio TDDD Commands
 
+### Ohio TDDD License Sandbox
+
+The Ohio TDDD License Sandbox lets you test the Ohio TDDD evaluation flow and
+the License Copilot RAG explanation pipeline grounded on the
+`ohio_tddd_rules` artifact.
+
+Key files:
+
+- `frontend/src/components/OhioTdddSandbox.tsx`
+- `frontend/src/domain/licenseOhioTddd.ts`
+- `frontend/src/api/licenseOhioTdddClient.ts`
+- `frontend/src/api/licenseOhioTdddCopilotClient.ts`
+- `backend/src/domain/license_ohio_tddd.py`
+- `backend/src/api/routes/license_ohio_tddd.py`
+- `backend/src/services/license_copilot_service.py`
+- `backend/src/rag/license_copilot_prompt.py`
+
+Endpoints:
+
+- `POST /license/ohio-tddd/evaluate`
+- `POST /license/ohio-tddd/form-copilot`
+- RAG doc: `ohio_tddd_rules`
+
+Codex command helpers (examples):
+
+- `license_ohio_tddd_fix_copilot_failure`
+- `license_ohio_tddd_add_example`
+
 The Ohio TDDD sandbox can emit logs such as:
 
 ```ts
