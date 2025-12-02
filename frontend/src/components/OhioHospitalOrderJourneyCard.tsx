@@ -88,7 +88,7 @@ export function OhioHospitalOrderJourneyCard() {
         </p>
         <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700">
           <li>Hospital CSF decision</li>
-          <li>Ohio TDDD license decision</li>
+          <li>Ohio TDDD license decision (when applicable)</li>
           <li>Final order-level decision</li>
         </ul>
       </header>
@@ -114,6 +114,17 @@ export function OhioHospitalOrderJourneyCard() {
           {loading === "missing_tddd"
             ? "Running negative path..."
             : "Run negative path (missing TDDD)"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => runScenario("non_ohio_no_tddd")}
+          disabled={loading !== null}
+          className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          {loading === "non_ohio_no_tddd"
+            ? "Running non-Ohio scenario..."
+            : "Run non-Ohio hospital (no TDDD)"}
         </button>
       </section>
 

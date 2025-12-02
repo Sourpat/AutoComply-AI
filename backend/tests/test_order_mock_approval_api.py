@@ -30,6 +30,37 @@ def make_ohio_hospital_csf_payload() -> dict:
     }
 
 
+def make_non_ohio_hospital_csf_payload() -> dict:
+    """
+    Scenario:
+    - Hospital is shipping to a non-Ohio state (e.g. PA).
+    - CSF is still correct.
+    - We will NOT send any Ohio TDDD payload in the mock order request.
+    """
+    return {
+        "facility_name": "Pennsylvania General Hospital",
+        "facility_type": "hospital",
+        "account_number": "800987654",
+        "pharmacy_license_number": "LIC-98765",
+        "dea_number": "CD7654321",
+        "pharmacist_in_charge_name": "Dr. John Smith",
+        "pharmacist_contact_phone": "555-987-6543",
+        "ship_to_state": "PA",
+        "attestation_accepted": True,
+        "internal_notes": "Mock order test – non-Ohio hospital Schedule II.",
+        "controlled_substances": [
+            {
+                "id": "cs-oxy-10mg-tab",
+                "name": "Oxycodone 10 mg tablet",
+                "ndc": "98765-4321-01",
+                "strength": "10 mg",
+                "dosage_form": "tablet",
+                "dea_schedule": "II",
+            }
+        ],
+    }
+
+
 def make_ohio_tddd_payload_valid() -> dict:
     return {
         "tddd_number": "01234567",
@@ -134,3 +165,55 @@ def test_mock_order_ohio_hospital_csf_ok_but_tddd_missing() -> None:
     notes = data["notes"]
     assert isinstance(notes, list)
     assert any("Ohio TDDD decision" in n for n in notes)
+
+
+def test_mock_order_non_ohio_hospital_no_tddd_still_ok_to_ship() -> None:
+    """
+    Scenario:
+
+    - Hospital ships to a non-Ohio state (e.g. PA).
+    - We send only the Hospital CSF payload, with NO Ohio TDDD payload.
+    - The mock order endpoint should:
+      - Evaluate the CSF.
+      - Skip TDDD evaluation.
+      - Return final_decision = ok_to_ship (assuming CSF is ok_to_ship).
+
+    This demonstrates that the TDDD engine is optional and only needed
+    when the business flow requires Ohio-specific license checks.
+    """
+    csf_payload = make_non_ohio_hospital_csf_payload()
+
+    resp = client.post(
+        "/orders/mock/ohio-hospital-approval",
+        json={
+            "hospital_csf": csf_payload,
+            # NOTE: we intentionally omit "ohio_tddd" here.
+        },
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # Basic shape checks
+    for key in [
+        "csf_status",
+        "csf_reason",
+        "csf_missing_fields",
+        "tddd_status",
+        "tddd_reason",
+        "tddd_missing_fields",
+        "final_decision",
+        "notes",
+    ]:
+        assert key in data
+
+    assert data["csf_status"] == "ok_to_ship"
+    # With no TDDD payload, we expect tddd_status to be null/None.
+    assert data["tddd_status"] is None
+    # Final decision should be ok_to_ship if CSF is ok_to_ship and no TDDD issues.
+    assert data["final_decision"] == "ok_to_ship"
+
+    notes = data["notes"]
+    assert isinstance(notes, list)
+    # Soft check that notes mention skipping TDDD.
+    assert any("skipping license evaluation" in n.lower() for n in notes)
