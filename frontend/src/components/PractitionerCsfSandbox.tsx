@@ -20,6 +20,13 @@ import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { emitCodexCommand } from "../utils/codexLogger";
 import { RegulatorySourcesList, RegulatorySource } from "./RegulatorySourcesList";
+import {
+  OhioTdddDecision,
+  OhioTdddFormData,
+} from "../domain/licenseOhioTddd";
+import { evaluateOhioTdddLicense } from "../api/licenseOhioTdddClient";
+import { mapPractitionerFormToOhioTddd } from "../domain/licenseMapping";
+import { trackSandboxEvent } from "../devsupport/telemetry";
 
 // Vite-friendly helper: no `process` in the browser
 const getApiBase = (): string => {
@@ -249,6 +256,10 @@ export function PractitionerCsfSandbox() {
   const [ragAnswer, setRagAnswer] = useState<string | null>(null);
   const [isRagLoading, setIsRagLoading] = useState(false);
   const [ragError, setRagError] = useState<string | null>(null);
+  const [ohioTdddDecision, setOhioTdddDecision] =
+    useState<OhioTdddDecision | null>(null);
+  const [ohioTdddLoading, setOhioTdddLoading] = useState(false);
+  const [ohioTdddError, setOhioTdddError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [copilotResponse, setCopilotResponse] =
     useState<PractitionerFormCopilotResponse | null>(null);
@@ -508,6 +519,10 @@ export function PractitionerCsfSandbox() {
     setRegulatoryError(null);
     setIsLoadingRegulatory(false);
 
+    setOhioTdddDecision(null);
+    setOhioTdddError(null);
+    setOhioTdddLoading(false);
+
     setItemQuery("");
     setItemResult(null);
     setItemLoading(false);
@@ -516,6 +531,55 @@ export function PractitionerCsfSandbox() {
     setItemRagError(null);
     setNotice(null);
   };
+
+  async function handleOhioTdddCheck() {
+    if ((form as any).shipToState && (form as any).shipToState !== "OH") {
+      setOhioTdddError(
+        "Ohio TDDD license check is primarily relevant when ship-to state is OH."
+      );
+      setOhioTdddDecision(null);
+      return;
+    }
+
+    setOhioTdddLoading(true);
+    setOhioTdddError(null);
+    setOhioTdddDecision(null);
+
+    const payload: OhioTdddFormData = mapPractitionerFormToOhioTddd(form);
+
+    trackSandboxEvent("license_ohio_tddd_from_practitioner_csf_attempt", {
+      engine_family: "license",
+      decision_type: "license_ohio_tddd",
+      sandbox: "practitioner_csf",
+      ship_to_state: payload.shipToState,
+    });
+
+    try {
+      const result = await evaluateOhioTdddLicense(payload);
+      setOhioTdddDecision(result);
+
+      trackSandboxEvent("license_ohio_tddd_from_practitioner_csf_success", {
+        engine_family: "license",
+        decision_type: "license_ohio_tddd",
+        sandbox: "practitioner_csf",
+        status: result.status,
+      });
+    } catch (err: any) {
+      const message =
+        err?.message ??
+        "Ohio TDDD license evaluation could not run. Please try again.";
+      setOhioTdddError(message);
+
+      trackSandboxEvent("license_ohio_tddd_from_practitioner_csf_error", {
+        engine_family: "license",
+        decision_type: "license_ohio_tddd",
+        sandbox: "practitioner_csf",
+        error: String(err),
+      });
+    } finally {
+      setOhioTdddLoading(false);
+    }
+  }
 
   const handleExplain = async () => {
     if (!decision || apiBaseError) return;
@@ -1307,6 +1371,48 @@ export function PractitionerCsfSandbox() {
                 </div>
               </div>
             )}
+
+            <section className="sandbox-section sandbox-section--ohio-tddd">
+              <h3>Ohio TDDD License Check (Optional)</h3>
+              <p className="sandbox-helper">
+                Validate Ohio TDDD license information for this Practitioner
+                CSF. This is most relevant when <code>ship-to state = OH</code>.
+              </p>
+
+              <div className="sandbox-actions">
+                <button
+                  type="button"
+                  onClick={handleOhioTdddCheck}
+                  disabled={ohioTdddLoading}
+                >
+                  {ohioTdddLoading
+                    ? "Checking Ohio TDDD..."
+                    : "Run Ohio TDDD license check"}
+                </button>
+                <a href="/license/ohio-tddd" target="_blank" rel="noreferrer">
+                  Open full Ohio TDDD License Sandbox
+                </a>
+              </div>
+
+              {ohioTdddError && <p className="error">{ohioTdddError}</p>}
+
+              {ohioTdddDecision && (
+                <div className="decision-panel decision-panel--ohio-tddd">
+                  <p>
+                    <strong>Ohio TDDD status:</strong> {ohioTdddDecision.status}
+                  </p>
+                  <p>
+                    <strong>Reason:</strong> {ohioTdddDecision.reason}
+                  </p>
+                  {ohioTdddDecision.missingFields?.length > 0 && (
+                    <p>
+                      <strong>Missing fields:</strong>{" "}
+                      {ohioTdddDecision.missingFields.join(", ")}
+                    </p>
+                  )}
+                </div>
+              )}
+            </section>
 
             {/* ---- Form Copilot (beta) ---- */}
             <section className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
