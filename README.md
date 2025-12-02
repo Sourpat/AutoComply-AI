@@ -155,6 +155,7 @@ The engine is allowed to choose between needs_review and blocked, but the import
 - Architecture for the CSF Suite: [`docs/csf_suite_overview.md`](docs/csf_suite_overview.md)
 - Architecture for the License Suite: [`docs/license_suite_overview.md`](docs/license_suite_overview.md)
 - Combined CSF + Ohio TDDD journey: [`docs/compliance_journey_csf_license.md`](docs/compliance_journey_csf_license.md)
+- Case study walkthrough: [`docs/portfolio_case_study_autocomply_ai.md`](docs/portfolio_case_study_autocomply_ai.md)
 - Scenario tests that back this Quickstart:
   - `tests/test_scenario_ohio_hospital_schedule_ii.py`
   - `tests/test_order_mock_approval_api.py`
