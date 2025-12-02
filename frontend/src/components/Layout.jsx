@@ -44,6 +44,18 @@ export default function Layout({ children }) {
               CSF Playground
             </NavLink>
             <NavLink
+              to="/license"
+              className={({ isActive }) =>
+                `rounded-full px-2 py-1 transition ${
+                  isActive
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-700 hover:bg-slate-100"
+                }`
+              }
+            >
+              License Playground
+            </NavLink>
+            <NavLink
               to="/license/ohio-tddd"
               className={({ isActive }) =>
                 `rounded-full px-2 py-1 transition ${

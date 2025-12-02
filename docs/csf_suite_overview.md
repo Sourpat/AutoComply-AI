@@ -23,6 +23,21 @@ Front-end sandboxes are mounted on the **CSF Overview / Playground** page:
 - Component: `frontend/src/pages/CsfOverviewPage.tsx`
 - Route: `/csf`
 
+### License Overview / Playground Page
+
+The License Overview page provides a single entry point to license sandboxes, starting with Ohio TDDD.
+
+Key file:
+
+- `frontend/src/pages/LicenseOverviewPage.tsx`
+
+Routes:
+
+- `/license` – overview
+- `/license/ohio-tddd` – direct Ohio TDDD sandbox
+
+The Ohio TDDD sandbox uses the shared License Copilot service and the `ohio_tddd_rules` RAG document.
+
 ## Architecture Overview
 
 At a high level, each CSF type follows the same path:
