@@ -1,32 +1,23 @@
-const API_BASE =
-  (import.meta as any).env?.VITE_API_BASE ||
-  "";
+import { API_BASE } from "./csfHospitalClient";
 
-export type ApiHealthStatus = "online" | "offline" | "unknown";
+export interface HealthStatus {
+  status: string; // "ok" | "degraded" | "down"
+  service: string;
+  version: string;
+  checks: Record<string, string>;
+}
 
-export async function checkApiHealth(): Promise<ApiHealthStatus> {
-  // If API base isn’t configured, treat as offline
-  if (!API_BASE) {
-    return "offline";
+export async function fetchHealthStatus(): Promise<HealthStatus> {
+  const resp = await fetch(`${API_BASE}/health`, {
+    method: "GET",
+  });
+
+  if (!resp.ok) {
+    const message = await resp.text();
+    throw new Error(
+      `Health check failed with status ${resp.status}: ${message}`
+    );
   }
 
-  try {
-    const resp = await fetch(`${API_BASE}/health`, {
-      method: "GET",
-    });
-
-    if (!resp.ok) {
-      return "offline";
-    }
-
-    const data = await resp.json();
-
-    if (data && data.status === "ok") {
-      return "online";
-    }
-
-    return "offline";
-  } catch {
-    return "offline";
-  }
+  return (await resp.json()) as HealthStatus;
 }

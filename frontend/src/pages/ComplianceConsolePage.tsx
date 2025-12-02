@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { OhioHospitalOrderJourneyCard } from "../components/OhioHospitalOrderJourneyCard";
 import { DecisionStatusLegend } from "../components/DecisionStatusLegend";
+import { SystemStatusCard } from "../components/SystemStatusCard";
 
 export function ComplianceConsolePage() {
   return (
@@ -16,6 +17,10 @@ export function ComplianceConsolePage() {
           and end-to-end order approvals.
         </p>
       </header>
+
+      <section className="console-section console-section-status rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
+        <SystemStatusCard />
+      </section>
 
       <section className="console-grid grid gap-4 md:grid-cols-2">
         <div className="console-card space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
