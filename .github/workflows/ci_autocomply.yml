@@ -72,11 +72,13 @@ jobs:
       # ---------- Smoke test: start backend + run HTTP checks ----------
       - name: Start FastAPI backend (background)
         working-directory: backend
-        env:
-          PYTHONPATH: "${{ github.workspace }}/backend"
         run: |
+          # Ensure both the backend root (.) and src/ are on PYTHONPATH so
+          # imports like "src.api.main" and "autocomply.*" both work.
+          export PYTHONPATH=".:src:${PYTHONPATH}"
+
           # Start FastAPI with uvicorn and capture logs so we can debug failures.
-          # If your app is not defined in main.py, update "main:app" accordingly.
+          # The app entrypoint lives in src/api/main.py as app.
           python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 > ../uvicorn.log 2>&1 &
           echo $! > ../uvicorn_pid.txt
 
