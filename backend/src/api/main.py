@@ -24,6 +24,7 @@ from src.api.routes import controlled_substances_item_history
 from src.api.routes.license_validation import router as license_router
 from src.api.routes.ohio_tddd import router as ohio_tddd_router
 from src.api.routes.ohio_tddd_explain import router as ohio_tddd_explain_router
+from src.api.routes.license_ohio_tddd import router as license_ohio_tddd_router
 from src.api.routes.pdma_sample import router as pdma_sample_router
 from src.api.routes.rag_regulatory import router as rag_regulatory_router
 from src.api.routes import license_validation as license_validation_module
@@ -54,6 +55,7 @@ app.add_middleware(
 # Primary router – all JSON/manual and PDF endpoints live here under:
 #   /api/v1/licenses/...
 app.include_router(license_router)
+app.include_router(license_ohio_tddd_router)
 app.include_router(ohio_tddd_router)
 app.include_router(ohio_tddd_explain_router)
 app.include_router(compliance_router)

@@ -84,7 +84,7 @@ DOC_SPECS: List[Dict[str, str]] = [
     },
     {
         "filename": "Ohio TDDD.html",
-        "doc_type": "ohio_tddd",
+        "doc_type": "ohio_tddd_rules",
         "jurisdiction": "US-OH",
         "form_name": "Ohio Terminal Distributor of Dangerous Drugs (TDDD) guidance",
     },
