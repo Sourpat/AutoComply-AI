@@ -29,6 +29,7 @@ import {
   type HospitalFormCopilotResponse,
 } from "../api/csfHospitalCopilotClient";
 import { trackSandboxEvent } from "../devsupport/telemetry";
+import { FormCopilotDetailsCard } from "../components/FormCopilotDetailsCard";
 
 // Vite-friendly helper: no `process` in the browser
 const getApiBase = (): string => {
@@ -123,9 +124,6 @@ export function HospitalCsfSandbox() {
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotDecision, setCopilotDecision] =
     useState<HospitalFormCopilotResponse | null>(null);
-  const [copilotExplanation, setCopilotExplanation] = useState<string | null>(
-    null
-  );
   const [copilotError, setCopilotError] = useState<string | null>(null);
 
   function applyHospitalExample(example: HospitalExample) {
@@ -274,7 +272,6 @@ export function HospitalCsfSandbox() {
   const runHospitalCsfCopilot = async () => {
     setCopilotLoading(true);
     setCopilotError(null);
-    setCopilotExplanation(null);
     setCopilotDecision(null);
 
     try {
@@ -290,7 +287,6 @@ export function HospitalCsfSandbox() {
       });
 
       setCopilotDecision(copilotResponse);
-      setCopilotExplanation(copilotResponse.rag_explanation);
 
       emitCodexCommand("csf_hospital_form_copilot_run", {
         engine_family: "csf",
@@ -862,73 +858,31 @@ export function HospitalCsfSandbox() {
           )}
 
           {copilotDecision && (
-            <div className="mb-1 rounded-md bg-slate-50 p-2 text-[10px] text-slate-800">
-              <div className="mb-1 flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-slate-700">Decision outcome:</span>
-                <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[9px] font-medium text-slate-50">
-                  {copilotDecision.status ?? "See details below"}
-                </span>
-              </div>
-              {copilotDecision.reason && (
-                <p className="text-[10px] text-slate-600">
-                  Reason: {String(copilotDecision.reason)}
-                </p>
-              )}
-
-              {copilotDecision.missing_fields?.length > 0 && (
-                <div className="mt-1">
-                  <div className="text-[10px] font-semibold text-slate-700">
-                    Missing fields
-                  </div>
-                  <ul className="list-inside list-disc text-[10px] text-slate-600">
-                    {copilotDecision.missing_fields.map((field) => (
-                      <li key={field}>{field}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {copilotDecision.regulatory_references?.length > 0 && (
-                <div className="mt-1 text-[10px] text-slate-600">
-                  <span className="font-semibold text-slate-700">Regulatory references:</span>{" "}
-                  {copilotDecision.regulatory_references.join(", ")}
-                </div>
-              )}
-            </div>
+            <FormCopilotDetailsCard
+              title="Hospital CSF Copilot explanation"
+              status={copilotDecision.status ?? "unknown"}
+              reason={copilotDecision.reason}
+              missingFields={copilotDecision.missing_fields ?? []}
+              regulatoryReferences={copilotDecision.regulatory_references ?? []}
+              ragExplanation={copilotDecision.rag_explanation ?? null}
+              artifactsUsed={copilotDecision.artifacts_used ?? []}
+              ragSources={
+                copilotDecision.rag_sources?.map((src) =>
+                  typeof src === "string"
+                    ? src
+                    : src.title || src.id || JSON.stringify(src)
+                ) ?? []
+              }
+            />
           )}
 
-          {copilotExplanation && (
-            <div className="mt-1 rounded-md bg-slate-50 p-2 text-[10px] leading-snug text-slate-800">
-              <div className="mb-1 text-[10px] font-semibold text-slate-700">
-                Copilot explanation
-              </div>
-              <p className="whitespace-pre-wrap">{copilotExplanation}</p>
-
-              {copilotDecision?.rag_sources?.length ? (
-                <div className="mt-2 space-y-1">
-                  <div className="text-[10px] font-semibold text-slate-700">
-                    RAG details
-                  </div>
-                  <ul className="list-inside list-disc text-[10px] text-slate-600">
-                    {copilotDecision.rag_sources.map((src) => (
-                      <li key={`${src.id}-${src.title}`}>{src.title || src.id}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
+          {!copilotDecision && !copilotLoading && !copilotError && (
+            <p className="text-[10px] text-slate-400">
+              Click <span className="font-semibold">“Check &amp; Explain”</span>{" "}
+              to have AutoComply run the Hospital CSF engine on this form and summarize
+              what it thinks, including required hospital licenses and missing information.
+            </p>
           )}
-
-          {!copilotDecision &&
-            !copilotExplanation &&
-            !copilotLoading &&
-            !copilotError && (
-              <p className="text-[10px] text-slate-400">
-                Click <span className="font-semibold">“Check &amp; Explain”</span>{" "}
-                to have AutoComply run the Hospital CSF engine on this form and summarize
-                what it thinks, including required hospital licenses and missing information.
-              </p>
-            )}
         </section>
 
         {/* Right: Controlled Substances panel */}
