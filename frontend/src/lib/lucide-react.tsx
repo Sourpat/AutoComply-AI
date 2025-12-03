@@ -171,4 +171,19 @@ export const Copy = createIcon(
   </>
 );
 
+export const Sparkles = createIcon(
+  <>
+    <path d="M12 3v2" />
+    <path d="M12 19v2" />
+    <path d="M19 12h2" />
+    <path d="M3 12h2" />
+    <path d="m17.657 6.343 1.414 1.414" />
+    <path d="m4.929 16.243 1.414 1.414" />
+    <path d="m4.929 7.757 1.414-1.414" />
+    <path d="m17.657 17.657 1.414-1.414" />
+    <path d="M10 9c.5 1.5 1.5 1.5 2 0s1.5-1.5 2 0" />
+    <path d="M10 15c.5-1.5 1.5-1.5 2 0s1.5 1.5 2 0" />
+  </>
+);
+
 export { Component as ComponentIcon };

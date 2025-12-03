@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { DocsLinksCard } from "../components/DocsLinksCard";
+import { HomeDemoBanner } from "../components/HomeDemoBanner";
 
 export function HomePage() {
   return (
@@ -41,6 +42,10 @@ export function HomePage() {
           </div>
         </div>
       </header>
+
+      <section>
+        <HomeDemoBanner />
+      </section>
 
       <section className="space-y-4">
         <div className="flex items-center justify-between gap-3">
