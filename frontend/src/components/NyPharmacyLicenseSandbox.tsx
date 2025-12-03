@@ -17,6 +17,7 @@ import { copyToClipboard } from "../utils/clipboard";
 import { buildCurlCommand } from "../utils/curlBuilder";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
+import { UnderTheHoodInfo } from "../components/UnderTheHoodInfo";
 
 const NY_PHARMACY_ENGINE_FAMILY = "license";
 const NY_PHARMACY_DECISION_TYPE = "license_ny_pharmacy";
@@ -486,7 +487,16 @@ export function NyPharmacyLicenseSandbox() {
 
       {orderTraceEnabled && orderTrace && (
         <section className="order-journey-trace space-y-3 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-800 shadow-sm">
-          <h3 className="text-sm font-semibold">NY License-Only Order Trace</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">NY License-Only Order Trace</h3>
+            <UnderTheHoodInfo
+              lines={[
+                "Calls /license/ny-pharmacy/evaluate to determine the NY pharmacy license status.",
+                "Uses /orders/mock/ny-pharmacy-approval to run a license-only order decision based on that status.",
+                "Normalizes outputs to ok_to_ship, needs_review, or blocked for consistency with other engines.",
+              ]}
+            />
+          </div>
 
           <div className="trace-actions">
             <button type="button" onClick={handleCopyNyOrderRequestCurl}>

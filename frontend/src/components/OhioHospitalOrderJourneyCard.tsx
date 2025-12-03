@@ -9,6 +9,7 @@ import { trackSandboxEvent } from "../devsupport/telemetry";
 import { copyToClipboard } from "../utils/clipboard";
 import { buildCurlCommand } from "../utils/curlBuilder";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
+import { UnderTheHoodInfo } from "../components/UnderTheHoodInfo";
 
 export function OhioHospitalOrderJourneyCard() {
   const [result, setResult] = useState<OhioHospitalOrderApprovalResult | null>(
@@ -100,9 +101,18 @@ export function OhioHospitalOrderJourneyCard() {
   return (
     <div className="sandbox-card order-journey-card space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <header className="space-y-2">
-        <h3 className="text-base font-semibold text-slate-900">
-          Ohio Hospital Order Journey
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-base font-semibold text-slate-900">
+            Ohio Hospital Order Journey
+          </h3>
+          <UnderTheHoodInfo
+            lines={[
+              "Calls /csf/hospital/evaluate to decide if the Hospital CSF is ok_to_ship, needs_review, or blocked.",
+              "Calls /license/ohio-tddd/evaluate to validate the Ohio TDDD license when the ship-to state is OH.",
+              "Combines both decisions via /orders/mock/ohio-hospital-approval to produce the final order decision.",
+            ]}
+          />
+        </div>
         <p className="text-sm text-slate-600">
           Run a mock Schedule II order for an Ohio hospital and see how the
           Hospital CSF and Ohio TDDD license engines combine into a final order
