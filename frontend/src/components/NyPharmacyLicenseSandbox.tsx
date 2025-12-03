@@ -14,7 +14,7 @@ import { OhioTdddFormCopilotResponse as LicenseCopilotResponse } from "../domain
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { API_BASE } from "../api/csfHospitalClient";
 import { copyToClipboard } from "../utils/clipboard";
-import { buildCurlCommand } from "../utils/curlBuilder";
+import { buildCurlCommand } from "../utils/curl";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { UnderTheHoodInfo } from "../components/UnderTheHoodInfo";
@@ -665,11 +665,10 @@ export function NyPharmacyLicenseSandbox() {
     null,
     2
   )}'`}</pre>
-          <div className="mt-2">
-            <CopyCurlButton
-              endpoint="/license/ny-pharmacy/evaluate"
-              method="POST"
-              body={{
+        <div className="mt-2">
+          <CopyCurlButton
+            getCommand={() =>
+              buildCurlCommand("/license/ny-pharmacy/evaluate", {
                 pharmacy_name: form.pharmacyName,
                 account_number: form.accountNumber,
                 ship_to_state: form.shipToState,
@@ -677,12 +676,10 @@ export function NyPharmacyLicenseSandbox() {
                 ny_state_license_number: form.nyStateLicenseNumber,
                 attestation_accepted: form.attestationAccepted,
                 internal_notes: form.internalNotes ?? "",
-              }}
-              sandboxId={NY_PHARMACY_SANDBOX_ID}
-              decisionType={NY_PHARMACY_DECISION_TYPE}
-              engineFamily={NY_PHARMACY_ENGINE_FAMILY}
-            />
-          </div>
+              })
+            }
+          />
+        </div>
         </div>
       </section>
     </div>

@@ -2,6 +2,7 @@ import { type ChangeEvent, type ReactNode, useState } from "react";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 import { emitCodexCommand } from "../utils/codexLogger";
+import { buildCurlCommand } from "../utils/curl";
 
 const API_BASE =
   (import.meta as any).env?.VITE_API_BASE || "";
@@ -589,9 +590,7 @@ export function PdmaSampleSandbox() {
 
             <CopyCurlButton
               label="Copy cURL (evaluate)"
-              endpoint="/pdma-sample/evaluate"
-              body={form}
-              disabled={isEvaluating}
+              getCommand={() => buildCurlCommand("/pdma-sample/evaluate", form)}
             />
           </div>
         </div>
@@ -630,9 +629,11 @@ export function PdmaSampleSandbox() {
 
               <CopyCurlButton
                 label="Copy cURL (explain)"
-                endpoint="/pdma-sample/explain"
-                body={verdict ? { decision: verdict } : null}
-                disabled={!verdict || isExplaining}
+                getCommand={() =>
+                  buildCurlCommand("/pdma-sample/explain", {
+                    decision: verdict,
+                  })
+                }
               />
             </div>
 
@@ -667,19 +668,14 @@ export function PdmaSampleSandbox() {
 
               <CopyCurlButton
                 label="Copy cURL (RAG explain)"
-                endpoint="/rag/regulatory-explain"
-                body={
-                  verdict
-                    ? {
-                        question: ragQuestion,
-                        decision: verdict,
-                        regulatory_references:
-                          verdict.regulatory_references?.map((ref) => ref.id) ??
-                          [],
-                      }
-                    : null
+                getCommand={() =>
+                  buildCurlCommand("/rag/regulatory-explain", {
+                    question: ragQuestion,
+                    decision: verdict,
+                    regulatory_references:
+                      verdict?.regulatory_references?.map((ref) => ref.id) ?? [],
+                  })
                 }
-                disabled={!verdict || isRagLoading}
               />
             </div>
 

@@ -10,6 +10,7 @@ import { callOhioTdddFormCopilot } from "../api/licenseOhioTdddCopilotClient";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { API_BASE } from "../api/csfHospitalClient";
+import { buildCurlCommand } from "../utils/curl";
 
 const OHIO_TDDD_ENGINE_FAMILY = "license";
 const OHIO_TDDD_DECISION_TYPE = "license_ohio_tddd";
@@ -342,12 +343,9 @@ export function OhioTdddSandbox() {
           </pre>
           <div className="mt-2">
             <CopyCurlButton
-              endpoint="/license/ohio-tddd/evaluate"
-              method="POST"
-              body={form}
-              sandboxId={OHIO_TDDD_SANDBOX_ID}
-              decisionType={OHIO_TDDD_DECISION_TYPE}
-              engineFamily={OHIO_TDDD_ENGINE_FAMILY}
+              getCommand={() =>
+                buildCurlCommand("/license/ohio-tddd/evaluate", form)
+              }
             />
           </div>
         </div>
