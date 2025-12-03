@@ -276,6 +276,14 @@ export function OhioHospitalOrderJourneyCard() {
             </div>
           </div>
 
+          <p className="text-xs text-slate-600">
+            This endpoint is listed in the API reference as{" "}
+            <span className="font-mono text-slate-800">
+              Mock orders → Ohio hospital mock order
+            </span>
+            .
+          </p>
+
           <div className="order-journey-notes space-y-2">
             <h5 className="text-sm font-semibold text-slate-900">Notes</h5>
             <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">

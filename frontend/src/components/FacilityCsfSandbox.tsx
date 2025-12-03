@@ -1283,6 +1283,13 @@ export function FacilityCsfSandbox() {
             <p className="mt-2 text-[11px] leading-relaxed text-slate-200">
               {ohioFacilityOrderDecision.explanation}
             </p>
+            <p className="mt-1 text-[10px] text-slate-500">
+              You can also find this endpoint in the API reference under{" "}
+              <span className="font-mono text-slate-200">
+                Mock orders → Ohio facility mock order
+              </span>
+              .
+            </p>
           </div>
         )}
 
