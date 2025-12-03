@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { ApiStatusChip } from "./ApiStatusChip";
+import { AppFooter } from "./AppFooter";
 import { DevSupportLogPanel } from "./DevSupportLogPanel";
 
 export default function Layout({ children }) {
   const [isDevSupportOpen, setIsDevSupportOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-[11px] text-gray-900">
+    <div className="flex min-h-screen flex-col bg-slate-50 text-[11px] text-gray-900">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-2">
         <div className="flex items-center gap-3">
           <Link to="/" className="flex items-center gap-2">
@@ -111,7 +112,11 @@ export default function Layout({ children }) {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 pb-12">{children}</main>
+      <main className="flex-1">
+        <div className="mx-auto max-w-5xl px-6 pb-12">{children}</div>
+      </main>
+
+      <AppFooter />
 
       <DevSupportLogPanel
         isOpen={isDevSupportOpen}
