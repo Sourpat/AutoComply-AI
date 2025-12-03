@@ -110,6 +110,28 @@ export const Info = createIcon(
   </>
 );
 
+export const CheckCircle2 = createIcon(
+  <>
+    <path d="M22 11.5a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z" />
+    <path d="m9 12 2 2 4-4" />
+  </>
+);
+
+export const AlertTriangle = createIcon(
+  <>
+    <path d="M10.3 2.3 1.8 16a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.3a2 2 0 0 0-3.4 0Z" />
+    <path d="M12 9v4" />
+    <path d="M12 17h.01" />
+  </>
+);
+
+export const Ban = createIcon(
+  <>
+    <circle cx="12" cy="12" r="10" />
+    <path d="m4.9 4.9 14.2 14.2" />
+  </>
+);
+
 export const FileText = createIcon(
   <>
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
