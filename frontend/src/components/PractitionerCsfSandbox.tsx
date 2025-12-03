@@ -27,6 +27,7 @@ import {
 import { evaluateOhioTdddLicense } from "../api/licenseOhioTdddClient";
 import { mapPractitionerFormToOhioTddd } from "../domain/licenseMapping";
 import { trackSandboxEvent } from "../devsupport/telemetry";
+import { TestCoverageNote } from "./TestCoverageNote";
 
 // Vite-friendly helper: no `process` in the browser
 const getApiBase = (): string => {
@@ -867,6 +868,12 @@ export function PractitionerCsfSandbox() {
           <p className="text-[10px] text-gray-500">
             Test practitioner controlled substance forms end-to-end.
           </p>
+          <div className="mt-1">
+            <TestCoverageNote
+              size="sm"
+              files={["backend/tests/test_csf_practitioner_api.py"]}
+            />
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <SourceDocumentChip
