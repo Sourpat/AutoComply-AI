@@ -5,6 +5,7 @@ import { OhioHospitalOrderJourneyCard } from "../components/OhioHospitalOrderJou
 import { DecisionStatusLegend } from "../components/DecisionStatusLegend";
 import { SystemStatusCard } from "../components/SystemStatusCard";
 import { DocsLinksCard } from "../components/DocsLinksCard";
+import { ApiReferenceCard } from "../components/ApiReferenceCard";
 
 const CSF_CONSOLE_CARDS = [
   {
@@ -183,6 +184,89 @@ export function ComplianceConsolePage() {
         </p>
 
         <OhioHospitalOrderJourneyCard />
+      </section>
+
+      <section className="console-section console-section-api">
+        <h2 className="text-lg font-semibold text-white md:text-xl">API reference (quick view)</h2>
+        <p className="mt-1 text-sm text-slate-300">
+          These are the main endpoints behind the CSF, license, and order journeys. Use them when you want to talk about the system
+          as an API, not just a UI.
+        </p>
+
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          <ApiReferenceCard
+            groupLabel="CSF engine"
+            title="Hospital CSF evaluation"
+            summary="Evaluates a hospital controlled substance form and normalizes the result to ok_to_ship, needs_review, or blocked."
+            method="POST"
+            path="/csf/hospital/evaluate"
+            curlSnippet={`curl -X POST http://localhost:8000/csf/hospital/evaluate \\
+-H "Content-Type: application/json" \\
+-d '{
+  "hospital_name": "Riverside General Hospital",
+  "account_number": "ACCT-123456",
+  "ship_to_state": "OH",
+  "attestation_accepted": true
+}'`}
+            requestJson={{
+              hospital_name: "Riverside General Hospital",
+              account_number: "ACCT-123456",
+              ship_to_state: "OH",
+              attestation_accepted: true,
+            }}
+            responseJson={{
+              status: "ok_to_ship",
+              reason: "Hospital CSF is valid for Ohio; all required fields were provided.",
+              regulatory_references: ["csf_hospital_form"],
+            }}
+          />
+
+          <ApiReferenceCard
+            groupLabel="License engine"
+            title="Ohio TDDD license evaluation"
+            summary="Checks an Ohio TDDD license and decides whether this account is allowed to receive controlled substances in Ohio."
+            method="POST"
+            path="/license/ohio-tddd/evaluate"
+            curlSnippet={`curl -X POST http://localhost:8000/license/ohio-tddd/evaluate \\
+-H "Content-Type: application/json" \\
+-d '{
+  "account_number": "ACCT-445210",
+  "tddd_number": "TDDD-1234567",
+  "ship_to_state": "OH"
+}'`}
+            requestJson={{
+              account_number: "ACCT-445210",
+              tddd_number: "TDDD-1234567",
+              ship_to_state: "OH",
+            }}
+            responseJson={{
+              status: "ok_to_ship",
+              reason: "Ohio TDDD license is active and valid for this ship-to location.",
+            }}
+          />
+
+          <ApiReferenceCard
+            groupLabel="Mock order"
+            title="Ohio hospital mock order decision"
+            summary="Combines Hospital CSF + Ohio TDDD outputs into one mock order decision for demo purposes."
+            method="POST"
+            path="/orders/mock/ohio-hospital-approval"
+            curlSnippet={`curl -X POST http://localhost:8000/orders/mock/ohio-hospital-approval \\
+-H "Content-Type: application/json" \\
+-d '{
+  "csf_decision": "ok_to_ship",
+  "license_decision": "ok_to_ship"
+}'`}
+            requestJson={{
+              csf_decision: "ok_to_ship",
+              license_decision: "ok_to_ship",
+            }}
+            responseJson={{
+              final_decision: "ok_to_ship",
+              explanation: "Both CSF and Ohio TDDD license are satisfied, so the mock order is approved.",
+            }}
+          />
+        </div>
       </section>
 
       <section className="console-section console-section-legend rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
