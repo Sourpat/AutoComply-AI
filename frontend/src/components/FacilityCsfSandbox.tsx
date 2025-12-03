@@ -29,6 +29,7 @@ import { evaluateOhioTdddLicense } from "../api/licenseOhioTdddClient";
 import { mapFacilityFormToOhioTddd } from "../domain/licenseMapping";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { FormCopilotDetailsCard } from "../components/FormCopilotDetailsCard";
+import { TestCoverageNote } from "./TestCoverageNote";
 
 const FACILITY_ENGINE_FAMILY = "csf";
 const FACILITY_DECISION_TYPE = "csf_facility";
@@ -180,6 +181,10 @@ export function FacilityCsfSandbox() {
     useState<FacilityFormCopilotResponse | null>(null);
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
+
+  useEffect(() => {
+    trackSandboxEvent("facility_csf_test_coverage_note_shown");
+  }, []);
 
   function applyFacilityExample(example: FacilityCsfExample) {
     setSelectedExampleId(example.id);
@@ -454,7 +459,7 @@ export function FacilityCsfSandbox() {
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-3 text-[11px] shadow-sm">
-      <header className="mb-2 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+      <header className="mb-2 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
           <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-700">
             Facility CSF Sandbox
@@ -463,6 +468,11 @@ export function FacilityCsfSandbox() {
             Test facility controlled substance forms with live decisioning and
             RAG explain.
           </p>
+
+          <TestCoverageNote
+            size="sm"
+            files={["backend/tests/test_csf_facility_api.py"]}
+          />
         </div>
         <div className="flex items-center gap-2">
           <SourceDocumentChip
