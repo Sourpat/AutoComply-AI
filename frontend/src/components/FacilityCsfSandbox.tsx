@@ -28,6 +28,7 @@ import {
 import { evaluateOhioTdddLicense } from "../api/licenseOhioTdddClient";
 import { mapFacilityFormToOhioTddd } from "../domain/licenseMapping";
 import { trackSandboxEvent } from "../devsupport/telemetry";
+import { FormCopilotDetailsCard } from "../components/FormCopilotDetailsCard";
 
 const FACILITY_ENGINE_FAMILY = "csf";
 const FACILITY_DECISION_TYPE = "csf_facility";
@@ -978,92 +979,21 @@ export function FacilityCsfSandbox() {
           )}
 
           {copilotResponse && !copilotLoading && (
-            <section className="rounded-md bg-slate-50 p-2 text-[10px] text-slate-800">
-              <h3 className="mb-1 text-[10px] font-semibold text-slate-700">
-                Facility CSF Copilot Explanation
-              </h3>
-
-              <div className="mb-2 space-y-0.5">
-                <p>
-                  <strong>Status:</strong> {copilotResponse.status}
-                </p>
-                <p>
-                  <strong>Reason:</strong> {copilotResponse.reason}
-                </p>
-              </div>
-
-              {copilotResponse.missing_fields?.length > 0 && (
-                <div className="mb-2">
-                  <h4 className="text-[10px] font-semibold text-slate-700">
-                    Missing or inconsistent fields
-                  </h4>
-                  <ul className="list-inside list-disc text-[10px] text-slate-700">
-                    {copilotResponse.missing_fields.map((field) => (
-                      <li key={field}>{field}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {copilotResponse.regulatory_references?.length > 0 && (
-                <div className="mb-2">
-                  <h4 className="text-[10px] font-semibold text-slate-700">
-                    Regulatory references
-                  </h4>
-                  <ul className="list-inside list-disc text-[10px] text-slate-700">
-                    {copilotResponse.regulatory_references.map((ref) => (
-                      <li key={ref}>{ref}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {copilotResponse.rag_explanation && (
-                <div className="mb-2">
-                  <h4 className="text-[10px] font-semibold text-slate-700">
-                    Explanation
-                  </h4>
-                  <p className="whitespace-pre-wrap text-[10px] leading-snug text-slate-800">
-                    {copilotResponse.rag_explanation}
-                  </p>
-                </div>
-              )}
-
-              {copilotResponse.rag_sources?.length > 0 && (
-                <div>
-                  <h4 className="text-[10px] font-semibold text-slate-700">
-                    Sources consulted
-                  </h4>
-                  <ul className="list-inside list-disc text-[10px] text-slate-700">
-                    {copilotResponse.rag_sources.map((source, idx) => (
-                      <li key={source.id ?? idx} className="mb-1">
-                        <div>
-                          <strong>{source.title}</strong>
-                          {source.url && (
-                            <>
-                              {" "}–{" "}
-                              <a
-                                href={source.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-slate-700 underline"
-                              >
-                                open
-                              </a>
-                            </>
-                          )}
-                        </div>
-                        {source.snippet && (
-                          <div className="text-[10px] text-slate-600">
-                            {source.snippet}
-                          </div>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </section>
+            <FormCopilotDetailsCard
+              title="Facility CSF Copilot explanation"
+              status={copilotResponse.status ?? "unknown"}
+              reason={copilotResponse.reason}
+              missingFields={copilotResponse.missing_fields ?? []}
+              regulatoryReferences={copilotResponse.regulatory_references ?? []}
+              ragExplanation={copilotResponse.rag_explanation ?? null}
+              artifactsUsed={copilotResponse.artifacts_used ?? []}
+              ragSources={
+                copilotResponse.rag_sources?.map((source, idx) => {
+                  if (typeof source === "string") return source;
+                  return source.title || source.id || String(idx);
+                }) ?? []
+              }
+            />
           )}
 
           {!copilotResponse && !copilotLoading && !copilotError && (
