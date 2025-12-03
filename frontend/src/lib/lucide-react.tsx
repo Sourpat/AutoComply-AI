@@ -54,6 +54,13 @@ export const ArrowUpRight = createIcon(
   </>
 );
 
+export const ArrowRight = createIcon(
+  <>
+    <path d="M5 12h14" />
+    <path d="m13 18 6-6-6-6" />
+  </>
+);
+
 export const Github = createIcon(
   <>
     <path d="M15 22v-3.5a3.5 3.5 0 0 0-1-2.5c3 0 6-2 6-5.5A5.5 5.5 0 0 0 18.5 5" />
