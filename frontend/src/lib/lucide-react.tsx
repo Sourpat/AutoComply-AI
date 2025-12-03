@@ -47,6 +47,19 @@ export const Activity = createIcon(
   </>
 );
 
+export const Bug = createIcon(
+  <>
+    <rect x="7" y="8" width="10" height="12" rx="3" />
+    <path d="m19 3-2.4 2.4" />
+    <path d="m5 3 2.4 2.4" />
+    <path d="M12 2v4" />
+    <path d="M20 9h-3" />
+    <path d="M4 9h3" />
+    <path d="M4 15h3" />
+    <path d="M17 15h3" />
+  </>
+);
+
 export const ArrowUpRight = createIcon(
   <>
     <path d="M7 17 17 7" />
