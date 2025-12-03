@@ -8,6 +8,7 @@ This script:
 - Sends a minimal Ohio TDDD evaluate request
 - Sends a minimal NY Pharmacy evaluate request
 - Calls the Ohio Hospital mock order endpoint
+- Calls the Ohio Facility mock order endpoint
 - Calls the NY Pharmacy license-only mock order endpoint
 
 It prints a summary table of pass/fail for each check.
@@ -275,6 +276,35 @@ def check_ohio_hospital_order(base_url: str) -> CheckResult:
         )
 
 
+def check_ohio_facility_order(base_url: str) -> CheckResult:
+    body = {
+        "facility_csf_decision": "ok_to_ship",
+        "ohio_tddd_decision": "ok_to_ship",
+    }
+    try:
+        status, resp = _request_json(
+            base_url, "/orders/mock/ohio-facility-approval", "POST", body
+        )
+        final = resp.get("final_decision")
+        ok = status == 200 and final in {"ok_to_ship", "needs_review", "blocked"}
+        detail = f"final_decision={final}"
+        return CheckResult(
+            name="order_mock_ohio_facility",
+            endpoint="/orders/mock/ohio-facility-approval",
+            ok=ok,
+            status_code=status,
+            detail=detail,
+        )
+    except Exception as e:
+        return CheckResult(
+            name="order_mock_ohio_facility",
+            endpoint="/orders/mock/ohio-facility-approval",
+            ok=False,
+            status_code=None,
+            detail=str(e),
+        )
+
+
 def check_ny_pharmacy_order(base_url: str) -> CheckResult:
     ny_payload = make_ny_pharmacy_payload(valid=True)
     body = {"ny_pharmacy": ny_payload}
@@ -340,6 +370,7 @@ def main(argv: List[str]) -> int:
         check_ohio_tddd(base_url),
         check_ny_pharmacy(base_url),
         check_ohio_hospital_order(base_url),
+        check_ohio_facility_order(base_url),
         check_ny_pharmacy_order(base_url),
     ]
 

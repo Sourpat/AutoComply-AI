@@ -1,4 +1,7 @@
+from enum import Enum
+
 from fastapi import APIRouter
+from pydantic import BaseModel
 
 from src.api.routes.csf_hospital import evaluate_hospital_csf_endpoint
 from src.api.routes.license_ohio_tddd import ohio_tddd_evaluate
@@ -8,6 +11,22 @@ from src.domain.order_mock_approval import (
 )
 
 router = APIRouter(tags=["orders_mock"])
+
+
+class DecisionStatus(str, Enum):
+    OK_TO_SHIP = "ok_to_ship"
+    NEEDS_REVIEW = "needs_review"
+    BLOCKED = "blocked"
+
+
+class MockOhioFacilityOrderApprovalRequest(BaseModel):
+    facility_csf_decision: DecisionStatus
+    ohio_tddd_decision: DecisionStatus
+
+
+class MockOhioFacilityOrderApprovalResponse(BaseModel):
+    final_decision: DecisionStatus
+    explanation: str
 
 
 @router.post(
@@ -86,4 +105,45 @@ async def ohio_hospital_mock_order_approval(
         ),
         final_decision=final_status,
         notes=notes,
+    )
+
+
+@router.post(
+    "/orders/mock/ohio-facility-approval",
+    response_model=MockOhioFacilityOrderApprovalResponse,
+    summary="Mock order decision for an Ohio facility (CSF + TDDD)",
+)
+async def mock_ohio_facility_approval(
+    payload: MockOhioFacilityOrderApprovalRequest,
+) -> MockOhioFacilityOrderApprovalResponse:
+    """
+    Combines Facility CSF decision + Ohio TDDD license decision into a single
+    mock order approval outcome.
+    """
+
+    csf = payload.facility_csf_decision
+    lic = payload.ohio_tddd_decision
+
+    if DecisionStatus.BLOCKED in (csf, lic):
+        final = DecisionStatus.BLOCKED
+        explanation = (
+            "Order blocked: at least one of Facility CSF or Ohio TDDD license "
+            "is blocked."
+        )
+    elif DecisionStatus.NEEDS_REVIEW in (csf, lic):
+        final = DecisionStatus.NEEDS_REVIEW
+        explanation = (
+            "Order needs manual review: Facility CSF and Ohio TDDD license "
+            "are not both ok_to_ship."
+        )
+    else:
+        final = DecisionStatus.OK_TO_SHIP
+        explanation = (
+            "Order approved: Facility CSF and Ohio TDDD license are both "
+            "ok_to_ship for this Ohio facility."
+        )
+
+    return MockOhioFacilityOrderApprovalResponse(
+        final_decision=final,
+        explanation=explanation,
     )

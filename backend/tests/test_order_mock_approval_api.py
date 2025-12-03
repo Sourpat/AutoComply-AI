@@ -1,8 +1,17 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from src.api.main import app
 
 client = TestClient(app)
+
+
+@pytest.fixture
+def ohio_facility_ok_payload() -> dict:
+    return {
+        "facility_csf_decision": "ok_to_ship",
+        "ohio_tddd_decision": "ok_to_ship",
+    }
 
 
 def make_ohio_hospital_csf_payload() -> dict:
@@ -217,3 +226,42 @@ def test_mock_order_non_ohio_hospital_no_tddd_still_ok_to_ship() -> None:
     assert isinstance(notes, list)
     # Soft check that notes mention skipping TDDD.
     assert any("skipping license evaluation" in n.lower() for n in notes)
+
+
+def test_mock_ohio_facility_order_ok(
+    ohio_facility_ok_payload: dict,
+) -> None:
+    resp = client.post("/orders/mock/ohio-facility-approval", json=ohio_facility_ok_payload)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["final_decision"] == "ok_to_ship"
+    assert "facility" in body["explanation"].lower()
+
+
+def test_mock_ohio_facility_order_blocked_when_any_blocked(
+    ohio_facility_ok_payload: dict,
+) -> None:
+    payload = dict(ohio_facility_ok_payload)
+    payload["facility_csf_decision"] = "blocked"
+    resp = client.post("/orders/mock/ohio-facility-approval", json=payload)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["final_decision"] == "blocked"
+
+    payload2 = dict(ohio_facility_ok_payload)
+    payload2["ohio_tddd_decision"] = "blocked"
+    resp2 = client.post("/orders/mock/ohio-facility-approval", json=payload2)
+    assert resp2.status_code == 200
+    body2 = resp2.json()
+    assert body2["final_decision"] == "blocked"
+
+
+def test_mock_ohio_facility_order_needs_review_when_no_blocked(
+    ohio_facility_ok_payload: dict,
+) -> None:
+    payload = dict(ohio_facility_ok_payload)
+    payload["facility_csf_decision"] = "needs_review"
+    resp = client.post("/orders/mock/ohio-facility-approval", json=payload)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["final_decision"] == "needs_review"
