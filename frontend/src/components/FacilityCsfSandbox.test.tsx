@@ -59,13 +59,13 @@ describe("Facility CSF Sandbox", () => {
     render(<FacilityCsfSandbox />);
 
     expect(
-      screen.getByText(/Happy Path – NJ Surgery Center/i)
+      screen.getByText(/Multi-site clinic chain \(happy path\)/i)
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Needs Review – CA LTC \(Missing DEA\)/i)
+      screen.getByText(/Long-term care facility \(needs review\)/i)
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Blocked – TX Clinic \(No License \/ No Attestation\)/i)
+      screen.getByText(/Ambulatory surgery center \(blocked\)/i)
     ).toBeInTheDocument();
   });
 
