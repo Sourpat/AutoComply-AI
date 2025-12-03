@@ -33,72 +33,104 @@ const FACILITY_ENGINE_FAMILY = "csf";
 const FACILITY_DECISION_TYPE = "csf_facility";
 const FACILITY_SANDBOX_ID = "facility";
 
+type FacilityCsfExampleId =
+  | "clinic_chain"
+  | "long_term_care"
+  | "ambulatory_surgery";
 
-type FacilityExample = {
-  id: string;
+type FacilityCsfExample = {
+  id: FacilityCsfExampleId;
   label: string;
-  overrides: Partial<FacilityCsfFormData>;
+  description: string;
+  formData: FacilityCsfFormData;
 };
 
-const FACILITY_EXAMPLES: FacilityExample[] = [
+const FACILITY_EXAMPLES: FacilityCsfExample[] = [
   {
-    id: "facility_happy_path",
-    label: "Happy Path – NJ Surgery Center",
-    overrides: {
-      facilityName: "Garden State Surgical Center – NJ",
+    id: "clinic_chain",
+    label: "Multi-site clinic chain (happy path)",
+    description:
+      "Multi-location outpatient clinic in Ohio with a clean CSF and an active TDDD license. Should come back ok_to_ship.",
+    formData: {
+      facilityName: "SummitCare Clinics – East Region",
       facilityType: "facility",
-      accountNumber: "800123456",
-      pharmacyLicenseNumber: "NJ-SC-2025-001",
-      deaNumber: "FG1234567",
-      pharmacistInChargeName: "Dr. Alice Example",
-      pharmacistContactPhone: "555-201-9001",
-      shipToState: "NJ",
+      accountNumber: "ACCT-445210",
+      pharmacyLicenseNumber: "PHOH-76321",
+      deaNumber: "BS1234567",
+      pharmacistInChargeName: "Dr. Alexis Monroe",
+      pharmacistContactPhone: "614-555-0198",
+      shipToState: "OH",
       attestationAccepted: true,
       internalNotes:
-        "Happy path Facility CSF – surgery center in NJ with valid license and DEA.",
+        "Multi-site clinic chain using central inventory with strict CS controls.",
       controlledSubstances: [
-        { id: "hydrocodone", name: "Hydrocodone" },
-        { id: "oxycodone", name: "Oxycodone" },
+        {
+          id: "oxycodone_5mg",
+          name: "Oxycodone 5mg",
+          ndc: "00406-0512-01",
+          dea_schedule: "II",
+        },
+        {
+          id: "morphine_10mg_ml",
+          name: "Morphine 10mg/mL",
+          ndc: "00517-5510-25",
+          dea_schedule: "II",
+        },
       ],
     },
   },
   {
-    id: "facility_needs_review",
-    label: "Needs Review – CA LTC (Missing DEA)",
-    overrides: {
-      facilityName: "Sunrise Long-Term Care – CA",
+    id: "long_term_care",
+    label: "Long-term care facility (needs review)",
+    description:
+      "Long-term care facility in Ohio with a valid CSF but TDDD license expiring soon. Good for a needs_review outcome.",
+    formData: {
+      facilityName: "Maple Grove Long-Term Care",
       facilityType: "facility",
-      accountNumber: "800987654",
-      pharmacyLicenseNumber: "CA-LTC-778899",
-      deaNumber: "",
-      pharmacistInChargeName: "Dr. Brian Example",
-      pharmacistContactPhone: "555-201-9002",
-      shipToState: "CA",
+      accountNumber: "ACCT-882901",
+      pharmacyLicenseNumber: "PHOH-99872",
+      deaNumber: "BM2345678",
+      pharmacistInChargeName: "Dr. Priya Narayan",
+      pharmacistContactPhone: "330-555-0144",
+      shipToState: "OH",
       attestationAccepted: true,
       internalNotes:
-        "Missing DEA number; should trigger needs_review or additional documentation.",
+        "TDDD license flagged as expiring within 30 days. Staff requested review before large CS shipment.",
       controlledSubstances: [
-        { id: "morphine", name: "Morphine" },
-        { id: "fentanyl", name: "Fentanyl" },
+        {
+          id: "hydromorphone_2mg",
+          name: "Hydromorphone 2mg",
+          ndc: "0409-2041-01",
+          dea_schedule: "II",
+        },
       ],
     },
   },
   {
-    id: "facility_blocked",
-    label: "Blocked – TX Clinic (No License / No Attestation)",
-    overrides: {
-      facilityName: "Metro Outpatient Clinic – TX",
+    id: "ambulatory_surgery",
+    label: "Ambulatory surgery center (blocked)",
+    description:
+      "Out-of-state surgery center trying to ship into Ohio without any TDDD on file. Good for a blocked outcome.",
+    formData: {
+      facilityName: "HarborView Ambulatory Surgery Center",
       facilityType: "facility",
-      accountNumber: "800555777",
+      accountNumber: "ACCT-331507",
       pharmacyLicenseNumber: "",
-      deaNumber: "",
-      pharmacistInChargeName: "Dr. Carol Example",
-      pharmacistContactPhone: "555-201-9003",
-      shipToState: "TX",
+      deaNumber: "BN3456789",
+      pharmacistInChargeName: "Dr. Michael Chen",
+      pharmacistContactPhone: "412-555-0113",
+      shipToState: "OH",
       attestationAccepted: false,
       internalNotes:
-        "No license/DEA and attestation not accepted – expected to be blocked.",
-      controlledSubstances: [{ id: "oxycodone", name: "Oxycodone" }],
+        "New account requesting CS shipment into Ohio. No TDDD or state-level registration on file.",
+      controlledSubstances: [
+        {
+          id: "fentanyl_100mcg",
+          name: "Fentanyl 100 mcg",
+          ndc: "0548-0009-00",
+          dea_schedule: "II",
+        },
+      ],
     },
   },
 ];
@@ -139,6 +171,8 @@ export function FacilityCsfSandbox() {
     useState<OhioTdddDecision | null>(null);
   const [ohioTdddLoading, setOhioTdddLoading] = useState(false);
   const [ohioTdddError, setOhioTdddError] = useState<string | null>(null);
+  const [selectedExampleId, setSelectedExampleId] =
+    useState<FacilityCsfExampleId>("clinic_chain");
 
   // ---- Facility CSF Form Copilot state ----
   const [copilotResponse, setCopilotResponse] =
@@ -146,17 +180,10 @@ export function FacilityCsfSandbox() {
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
 
-  function applyFacilityExample(example: FacilityExample) {
-    const nextForm = {
-      ...initialForm,
-      ...form,
-      ...example.overrides,
-    };
-
-    setForm(nextForm);
-    if (example.overrides.controlledSubstances) {
-      setControlledSubstances(example.overrides.controlledSubstances);
-    }
+  function applyFacilityExample(example: FacilityCsfExample) {
+    setSelectedExampleId(example.id);
+    setForm(example.formData);
+    setControlledSubstances(example.formData.controlledSubstances ?? []);
 
     emitCodexCommand("csf_facility_example_selected", {
       engine_family: FACILITY_ENGINE_FAMILY,
@@ -164,8 +191,8 @@ export function FacilityCsfSandbox() {
       sandbox: FACILITY_SANDBOX_ID,
       example_id: example.id,
       example_label: example.label,
-      facility_type: nextForm.facilityType,
-      ship_to_state: nextForm.shipToState,
+      facility_type: example.formData.facilityType,
+      ship_to_state: example.formData.shipToState,
     });
   }
 
@@ -435,19 +462,6 @@ export function FacilityCsfSandbox() {
             Test facility controlled substance forms with live decisioning and
             RAG explain.
           </p>
-
-          <div className="mt-1 flex flex-wrap gap-1">
-            {FACILITY_EXAMPLES.map((ex) => (
-              <button
-                key={ex.id}
-                type="button"
-                onClick={() => applyFacilityExample(ex)}
-                className="rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
-              >
-                {ex.label}
-              </button>
-            ))}
-          </div>
         </div>
         <div className="flex items-center gap-2">
           <SourceDocumentChip
@@ -463,6 +477,39 @@ export function FacilityCsfSandbox() {
           </button>
         </div>
       </header>
+
+      <section className="mt-3">
+        <p className="text-xs font-medium text-slate-300">
+          Realistic facility examples
+        </p>
+        <p className="mt-1 text-[11px] text-slate-400">
+          Use these presets when you&apos;re demoing the Facility CSF engine:
+          clinic chain, long-term care, and an out-of-state surgery center.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {FACILITY_EXAMPLES.map((example) => {
+            const isActive = example.id === selectedExampleId;
+            return (
+              <button
+                key={example.id}
+                type="button"
+                onClick={() => applyFacilityExample(example)}
+                className={[
+                  "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-medium transition",
+                  isActive
+                    ? "border-cyan-400 bg-cyan-500/15 text-cyan-100"
+                    : "border-slate-700 bg-slate-900/80 text-slate-200 hover:border-slate-500 hover:bg-slate-800",
+                ].join(" ")}
+              >
+                <span>{example.label}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-1 text-[11px] text-slate-400">
+          {FACILITY_EXAMPLES.find((ex) => ex.id === selectedExampleId)?.description}
+        </div>
+      </section>
 
       <div className="grid gap-3 md:grid-cols-2">
         {/* Left: form + evaluate + decision */}
