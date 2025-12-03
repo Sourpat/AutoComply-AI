@@ -61,6 +61,12 @@ export const ArrowRight = createIcon(
   </>
 );
 
+export const ChevronDown = createIcon(
+  <>
+    <polyline points="6 9 12 15 18 9" />
+  </>
+);
+
 export const Github = createIcon(
   <>
     <path d="M15 22v-3.5a3.5 3.5 0 0 0-1-2.5c3 0 6-2 6-5.5A5.5 5.5 0 0 0 18.5 5" />
@@ -149,11 +155,28 @@ export const FileText = createIcon(
   </>
 );
 
+export const Code2 = createIcon(
+  <>
+    <path d="m18 16 4-4-4-4" />
+    <path d="m6 8-4 4 4 4" />
+    <path d="m14.5 4-5 16" />
+  </>
+);
+
 export const BookOpen = createIcon(
   <>
     <path d="M12 4H5a2 2 0 0 0-2 2v14" />
     <path d="M19 20V6a2 2 0 0 0-2-2h-7" />
     <path d="M12 4v16" />
+  </>
+);
+
+export const Server = createIcon(
+  <>
+    <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+    <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+    <line x1="6" y1="6" x2="6.01" y2="6" />
+    <line x1="6" y1="18" x2="6.01" y2="18" />
   </>
 );
 
