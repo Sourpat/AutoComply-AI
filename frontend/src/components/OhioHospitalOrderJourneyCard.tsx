@@ -12,6 +12,35 @@ import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { UnderTheHoodInfo } from "../components/UnderTheHoodInfo";
 import { DecisionStatusLegend } from "./DecisionStatusLegend";
 
+type OhioJourneyScenarioId = OrderScenarioKind;
+
+const OHIO_JOURNEY_SCENARIOS: {
+  id: OhioJourneyScenarioId;
+  label: string;
+  badge?: string;
+  description: string;
+}[] = [
+  {
+    id: "happy_path",
+    label: "Happy path",
+    badge: "Recommended",
+    description:
+      "Ohio hospital with valid CSF and valid TDDD → final decision ok_to_ship.",
+  },
+  {
+    id: "missing_tddd",
+    label: "Missing TDDD",
+    description:
+      "Ohio hospital with valid CSF but no valid TDDD → final decision is not ok_to_ship.",
+  },
+  {
+    id: "non_ohio_no_tddd",
+    label: "Non-Ohio (no TDDD)",
+    description:
+      "Non-Ohio hospital with valid CSF only → final decision ok_to_ship without TDDD.",
+  },
+];
+
 export function OhioHospitalOrderJourneyCard() {
   const [result, setResult] = useState<OhioHospitalOrderApprovalResult | null>(
     null
@@ -23,6 +52,8 @@ export function OhioHospitalOrderJourneyCard() {
     null
   );
   const [traceCopyMessage, setTraceCopyMessage] = useState<string | null>(null);
+  const [selectedScenarioId, setSelectedScenarioId] =
+    React.useState<OhioJourneyScenarioId>("happy_path");
 
   async function runScenario(kind: OrderScenarioKind) {
     setLoading(kind);
@@ -63,6 +94,11 @@ export function OhioHospitalOrderJourneyCard() {
     } finally {
       setLoading(null);
     }
+  }
+
+  function runScenarioFromChip(id: OhioJourneyScenarioId) {
+    setSelectedScenarioId(id);
+    runScenario(id);
   }
 
   async function handleCopyRequestCurl() {
@@ -124,42 +160,44 @@ export function OhioHospitalOrderJourneyCard() {
           <li>Ohio TDDD license decision (when applicable)</li>
           <li>Final order-level decision</li>
         </ul>
+        <div className="mt-3">
+          <p className="text-xs font-medium text-slate-300">Quick scenarios</p>
+          <p className="text-[11px] text-slate-400">
+            Pick a preset to simulate an Ohio hospital order with different CSF
+            and TDDD combinations.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {OHIO_JOURNEY_SCENARIOS.map((scenario) => {
+              const isActive = scenario.id === selectedScenarioId;
+              return (
+                <button
+                  key={scenario.id}
+                  type="button"
+                  onClick={() => runScenarioFromChip(scenario.id)}
+                  disabled={loading !== null}
+                  className={[
+                    "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60",
+                    isActive
+                      ? "border-cyan-400 bg-cyan-500/15 text-cyan-100"
+                      : "border-slate-700 bg-slate-900/80 text-slate-200 hover:border-slate-500 hover:bg-slate-800",
+                  ].join(" ")}
+                >
+                  <span>{scenario.label}</span>
+                  {scenario.badge && (
+                    <span className="rounded-full bg-cyan-500/20 px-2 py-[1px] text-[9px] font-semibold uppercase tracking-wide text-cyan-200">
+                      {scenario.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-1 text-[11px] text-slate-400">
+            {OHIO_JOURNEY_SCENARIOS.find((s) => s.id === selectedScenarioId)
+              ?.description ?? ""}
+          </div>
+        </div>
       </header>
-
-      <section className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={() => runScenario("happy_path")}
-          disabled={loading !== null}
-          className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          {loading === "happy_path"
-            ? "Running happy path..."
-            : "Run happy path (everything valid)"}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => runScenario("missing_tddd")}
-          disabled={loading !== null}
-          className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          {loading === "missing_tddd"
-            ? "Running negative path..."
-            : "Run negative path (missing TDDD)"}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => runScenario("non_ohio_no_tddd")}
-          disabled={loading !== null}
-          className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          {loading === "non_ohio_no_tddd"
-            ? "Running non-Ohio scenario..."
-            : "Run non-Ohio hospital (no TDDD)"}
-        </button>
-      </section>
 
       <section className="sandbox-trace-toggle">
         <label className="flex items-center gap-2 text-sm text-slate-700">
