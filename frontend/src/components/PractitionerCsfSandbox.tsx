@@ -17,9 +17,9 @@ import { callPractitionerFormCopilot } from "../api/csfPractitionerCopilotClient
 import { ControlledSubstancesPanel } from "./ControlledSubstancesPanel";
 import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
+import { FormCopilotDetailsCard } from "../components/FormCopilotDetailsCard";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { emitCodexCommand } from "../utils/codexLogger";
-import { RegulatorySourcesList, RegulatorySource } from "./RegulatorySourcesList";
 import {
   OhioTdddDecision,
   OhioTdddFormData,
@@ -157,66 +157,99 @@ type ItemHistory = {
   source_documents: string[];
 };
 
-type PractitionerExample = {
-  id: string;
+type PractitionerCsfExampleId =
+  | "primary_care"
+  | "pain_clinic"
+  | "telehealth_only";
+
+type PractitionerCsfExample = {
+  id: PractitionerCsfExampleId;
   label: string;
-  description?: string;
-  overrides: Partial<PractitionerCsfFormData>;
-  controlledSubstances?: ControlledSubstance[];
+  description: string;
+  formData: PractitionerCsfFormData;
 };
 
-const PRACTITIONER_EXAMPLES: PractitionerExample[] = [
+const PRACTITIONER_EXAMPLES: PractitionerCsfExample[] = [
   {
-    id: "fl_schedule_ii_new_practice",
-    label: "FL – New practice, Schedule II",
+    id: "primary_care",
+    label: "Primary care prescriber (happy path)",
     description:
-      "Florida dental practice requesting Oxycodone Schedule II with incomplete license history.",
-    overrides: {
-      facilityName: "Sunrise Dental Practice",
-      facilityType: "dental_practice",
-      accountNumber: "ACC-123",
-      practitionerName: "Dr. Jane Example",
-      stateLicenseNumber: "FL-DENT-12345",
-      deaNumber: "DEA1234567",
-      shipToState: "FL",
+      "Board-certified internal medicine physician in NY with clean DEA and state license. Good for an ok_to_ship decision.",
+    formData: {
+      facilityName: "Hudson Valley Primary Care",
+      facilityType: "group_practice",
+      accountNumber: "ACCT-22001",
+      practitionerName: "Dr. Alicia Patel",
+      stateLicenseNumber: "NY-1023498",
+      deaNumber: "AP1234567",
+      shipToState: "NY",
       attestationAccepted: true,
+      internalNotes:
+        "Established primary care practice with stable CS prescribing patterns.",
+      controlledSubstances: [
+        {
+          id: "cs_clonazepam_0_5mg",
+          name: "Clonazepam 0.5mg",
+          ndc: "00093-0063-01",
+          dea_schedule: "IV",
+          schedule: "IV",
+        },
+      ],
     },
-    controlledSubstances: [
-      {
-        id: "cs_oxycodone_5mg_tab",
-        name: "Oxycodone 5 mg tablet",
-        strength: "5",
-        unit: "mg",
-        schedule: "II",
-        dea_code: "9143",
-      },
-    ],
   },
   {
-    id: "oh_schedule_ii_clean_history",
-    label: "OH – Clean history, Schedule II",
+    id: "pain_clinic",
+    label: "Pain clinic (needs review)",
     description:
-      "Ohio practice with prior Schedule II history and fully populated licenses.",
-    overrides: {
-      facilityName: "Buckeye Dental Clinic",
-      facilityType: "dental_practice",
-      accountNumber: "ACC-123",
-      practitionerName: "Dr. John Example",
-      stateLicenseNumber: "OH-DENT-67890",
-      deaNumber: "DEA7654321",
+      "Pain management clinic with heavy Schedule II prescribing and prior audit notes. Good for a needs_review outcome.",
+    formData: {
+      facilityName: "Central Ohio Pain Clinic",
+      facilityType: "clinic",
+      accountNumber: "ACCT-44110",
+      practitionerName: "Dr. Jordan Reyes",
+      stateLicenseNumber: "OH-4432109",
+      deaNumber: "BR2345678",
       shipToState: "OH",
       attestationAccepted: true,
+      internalNotes:
+        "Clinic flagged for periodic review due to high volume of Schedule II prescriptions.",
+      controlledSubstances: [
+        {
+          id: "cs_oxycodone_10mg",
+          name: "Oxycodone 10mg",
+          ndc: "00406-0512-02",
+          dea_schedule: "II",
+          schedule: "II",
+        },
+      ],
     },
-    controlledSubstances: [
-      {
-        id: "cs_hydrocodone_10_325_tab",
-        name: "Hydrocodone/Acetaminophen 10mg/325mg tablet",
-        strength: "10/325",
-        unit: "mg",
-        schedule: "II",
-        dea_code: "9193",
-      },
-    ],
+  },
+  {
+    id: "telehealth_only",
+    label: "Telehealth-only prescriber (blocked)",
+    description:
+      "Telehealth-only prescriber trying to ship certain CS into a restricted state with incomplete license details. Good for a blocked outcome.",
+    formData: {
+      facilityName: "Bridgeway Telehealth",
+      facilityType: "individual_practitioner",
+      accountNumber: "ACCT-88990",
+      practitionerName: "Dr. Emily Novak",
+      stateLicenseNumber: "",
+      deaNumber: "BN3456789",
+      shipToState: "OH",
+      attestationAccepted: false,
+      internalNotes:
+        "Telehealth-only practice; state-level restrictions may apply for Schedule II shipments.",
+      controlledSubstances: [
+        {
+          id: "cs_adderall_xr_20mg",
+          name: "Adderall XR 20mg",
+          ndc: "54092-0381-01",
+          dea_schedule: "II",
+          schedule: "II",
+        },
+      ],
+    },
   },
 ];
 
@@ -234,6 +267,8 @@ const initialForm: PractitionerCsfFormData = {
 
 export function PractitionerCsfSandbox() {
   const [form, setForm] = useState<PractitionerCsfFormData>(initialForm);
+  const [selectedExampleId, setSelectedExampleId] =
+    React.useState<PractitionerCsfExampleId>("primary_care");
   const [decision, setDecision] = useState<PractitionerCsfDecision | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -292,25 +327,17 @@ export function PractitionerCsfSandbox() {
     }
   }, [API_BASE]);
 
-  function applyPractitionerExample(example: PractitionerExample) {
-    const nextForm = {
-      ...initialForm,
-      ...form,
-      ...example.overrides,
-    };
-
-    setForm(nextForm);
-
-    if (example.controlledSubstances) {
-      setControlledSubstances(example.controlledSubstances);
-    }
+  function applyPractitionerExample(example: PractitionerCsfExample) {
+    setSelectedExampleId(example.id);
+    setForm(example.formData);
+    setControlledSubstances(example.formData.controlledSubstances ?? []);
 
     emitCodexCommand("csf_practitioner_example_selected", {
       example_id: example.id,
       label: example.label,
       description: example.description,
-      form: nextForm,
-      controlled_substances: example.controlledSubstances ?? [],
+      form: example.formData,
+      controlled_substances: example.formData.controlledSubstances ?? [],
       source_document:
         "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf",
     });
@@ -530,6 +557,7 @@ export function PractitionerCsfSandbox() {
     setItemRagAnswer(null);
     setItemRagError(null);
     setNotice(null);
+    setSelectedExampleId("primary_care");
   };
 
   async function handleOhioTdddCheck() {
@@ -808,6 +836,22 @@ export function PractitionerCsfSandbox() {
     };
   }, [decision]);
 
+  const copilotArtifactsUsed = copilotResponse?.artifacts_used ?? [];
+  const copilotRegulatoryReferences = (
+    copilotResponse?.regulatory_references ?? []
+  ).filter(
+    (ref, idx, arr) =>
+      arr.indexOf(ref) === idx && !copilotArtifactsUsed.includes(ref)
+  );
+  const copilotRagSources = (copilotResponse?.rag_sources ?? [])
+    .map((source: PractitionerFormCopilotResponse["rag_sources"][number]) =>
+      source.title || source.url || JSON.stringify(source)
+    )
+    .filter(
+      (src, idx, arr) =>
+        arr.indexOf(src) === idx && !copilotArtifactsUsed.includes(src)
+    );
+
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-3 text-[11px] shadow-sm">
       {apiBaseError && (
@@ -823,19 +867,6 @@ export function PractitionerCsfSandbox() {
           <p className="text-[10px] text-gray-500">
             Test practitioner controlled substance forms end-to-end.
           </p>
-
-          <div className="mt-1 flex flex-wrap gap-1">
-            {PRACTITIONER_EXAMPLES.map((ex) => (
-              <button
-                key={ex.id}
-                type="button"
-                onClick={() => applyPractitionerExample(ex)}
-                className="rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
-              >
-                {ex.label}
-              </button>
-            ))}
-          </div>
         </div>
         <div className="flex items-center gap-2">
           <SourceDocumentChip
@@ -855,6 +886,42 @@ export function PractitionerCsfSandbox() {
       <div className="grid gap-3 md:grid-cols-2">
         {/* Left: form + results */}
         <div className="space-y-3">
+          <section className="mt-3">
+            <p className="text-xs font-medium text-slate-300">
+              Realistic practitioner examples
+            </p>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Use these presets when you&apos;re demoing the Practitioner CSF engine:
+              primary care, pain management, and telehealth-only prescribing.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {PRACTITIONER_EXAMPLES.map((example) => {
+                const isActive = example.id === selectedExampleId;
+                return (
+                  <button
+                    key={example.id}
+                    type="button"
+                    onClick={() => applyPractitionerExample(example)}
+                    className={[
+                      "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-medium transition",
+                      isActive
+                        ? "border-cyan-400 bg-cyan-500/15 text-cyan-100"
+                        : "border-slate-700 bg-slate-900/80 text-slate-200 hover:border-slate-500 hover:bg-slate-800",
+                    ].join(" ")}
+                  >
+                    <span>{example.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-1 text-[11px] text-slate-400">
+              {
+                PRACTITIONER_EXAMPLES.find((ex) => ex.id === selectedExampleId)
+                  ?.description
+              }
+            </div>
+          </section>
+
           <form onSubmit={onSubmit} className="space-y-3">
             {/* Facility info */}
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -1449,61 +1516,16 @@ export function PractitionerCsfSandbox() {
               )}
 
               {copilotResponse && (
-                <div className="mb-1 rounded-md bg-slate-50 p-2 text-[10px] text-slate-800">
-                  <div className="mb-1 flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-slate-700">
-                      Decision outcome:
-                    </span>
-                    <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[9px] font-medium text-slate-50">
-                      {copilotResponse.status || "See details below"}
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-slate-600">
-                    Reason: {copilotResponse.reason}
-                  </p>
-
-                  <div className="mt-1 text-[10px] text-slate-700">
-                    <p className="font-semibold text-slate-700">RAG explanation</p>
-                    <p className="whitespace-pre-line text-[10px] text-slate-700">
-                      {copilotResponse.rag_explanation}
-                    </p>
-                  </div>
-
-                  {copilotResponse.missing_fields?.length > 0 && (
-                    <div className="mt-2">
-                      <h4 className="text-[10px] font-semibold text-slate-700">
-                        Missing or inconsistent fields
-                      </h4>
-                      <ul className="list-inside list-disc text-[10px] text-slate-700">
-                        {copilotResponse.missing_fields.map((field) => (
-                          <li key={field}>{field}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {copilotResponse.regulatory_references?.length > 0 && (
-                    <div className="mt-2">
-                      <h4 className="text-[10px] font-semibold text-slate-700">
-                        Regulatory references
-                      </h4>
-                      <ul className="list-inside list-disc text-[10px] text-slate-700">
-                        {copilotResponse.regulatory_references.map((ref) => (
-                          <li key={ref}>{ref}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {copilotResponse.rag_sources?.length > 0 && (
-                    <div className="mt-2">
-                      <h4 className="text-[10px] font-semibold text-slate-700">
-                        RAG sources
-                      </h4>
-                      <RegulatorySourcesList sources={copilotResponse.rag_sources as RegulatorySource[]} />
-                    </div>
-                  )}
-                </div>
+                <FormCopilotDetailsCard
+                  title="Practitioner CSF Copilot explanation"
+                  status={copilotResponse.status}
+                  reason={copilotResponse.reason}
+                  missingFields={copilotResponse.missing_fields ?? []}
+                  regulatoryReferences={copilotRegulatoryReferences}
+                  ragExplanation={copilotResponse.rag_explanation ?? null}
+                  artifactsUsed={copilotArtifactsUsed}
+                  ragSources={copilotRagSources}
+                />
               )}
 
               {!copilotResponse && !copilotLoading && !copilotError && (
