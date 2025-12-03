@@ -1,39 +1,8 @@
 import React, { useEffect } from "react";
 
-import { OhioTdddSandbox } from "../components/OhioTdddSandbox";
+import { CsfSuiteCard } from "../components/CsfSuiteCard";
 import { OhioHospitalOrderJourneyCard } from "../components/OhioHospitalOrderJourneyCard";
 import { trackSandboxEvent } from "../devsupport/telemetry";
-
-type LicenseSandboxMeta = {
-  id: string;
-  title: string;
-  description: string;
-  evaluateEndpoint: string;
-  copilotEndpoint: string;
-  ragDocId: string;
-};
-
-const LICENSE_SANDBOXES: LicenseSandboxMeta[] = [
-  {
-    id: "ohio_tddd",
-    title: "Ohio TDDD License Sandbox",
-    description:
-      "Evaluate and explain Ohio TDDD (Terminal Distributor of Dangerous Drugs) license information.",
-    evaluateEndpoint: "/license/ohio-tddd/evaluate",
-    copilotEndpoint: "/license/ohio-tddd/form-copilot",
-    ragDocId: "ohio_tddd_rules",
-  },
-  {
-    id: "ny_pharmacy",
-    title: "NY Pharmacy License Sandbox",
-    description:
-      "Evaluate and explain New York Pharmacy license payloads using the ny_pharmacy engine.",
-    evaluateEndpoint: "/license/ny-pharmacy/evaluate",
-    copilotEndpoint: "/license/ny-pharmacy/form-copilot",
-    ragDocId: "ny_pharmacy_rules",
-  },
-  // Future: add more license engines here (e.g., other states, DEA, etc.)
-];
 
 export function LicenseOverviewPage() {
   useEffect(() => {
@@ -56,83 +25,28 @@ export function LicenseOverviewPage() {
         </p>
       </header>
 
-      <div className="license-overview-grid space-y-6">
-        {LICENSE_SANDBOXES.map((meta) => (
-          <section
-            key={meta.id}
-            id={`license-${meta.id}`}
-            className="license-section space-y-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm backdrop-blur-sm"
-          >
-            <div className="license-section-header space-y-2">
-              <h2 className="text-sm font-semibold text-slate-900">{meta.title}</h2>
-              <p className="text-[11px] text-slate-600">{meta.description}</p>
+      <div className="license-overview-grid grid gap-4 md:grid-cols-2">
+        <CsfSuiteCard
+          title="Ohio TDDD License Sandbox"
+          subtitle="Evaluate Ohio Terminal Distributor of Dangerous Drugs licenses and see exactly when an account is ok_to_ship, needs_review, or blocked."
+          bullets={[
+            "Calls /license/ohio-tddd/evaluate to validate TDDD number, status, and ship-to state.",
+            "Plugs into the Ohio Hospital mock order approval journey for end-to-end demos.",
+            "Shows how state-specific license rules can live in their own engine but share the same decision model.",
+          ]}
+          to="/license/ohio-tddd"
+        />
 
-              <dl className="license-metadata grid gap-3 rounded-xl bg-slate-50 p-3 text-[11px] text-slate-700 md:grid-cols-3">
-                <div className="space-y-0.5">
-                  <dt className="font-semibold text-slate-900">Evaluate endpoint</dt>
-                  <dd>
-                    <code className="rounded bg-white px-2 py-1 text-[10px] ring-1 ring-slate-200">
-                      {meta.evaluateEndpoint}
-                    </code>
-                  </dd>
-                </div>
-                <div className="space-y-0.5">
-                  <dt className="font-semibold text-slate-900">Form Copilot endpoint</dt>
-                  <dd>
-                    <code className="rounded bg-white px-2 py-1 text-[10px] ring-1 ring-slate-200">
-                      {meta.copilotEndpoint}
-                    </code>
-                  </dd>
-                </div>
-                <div className="space-y-0.5">
-                  <dt className="font-semibold text-slate-900">RAG doc id</dt>
-                  <dd>
-                    <code className="rounded bg-white px-2 py-1 text-[10px] ring-1 ring-slate-200">
-                      {meta.ragDocId}
-                    </code>
-                  </dd>
-                </div>
-              </dl>
-            </div>
-
-            <div
-              id={`license-${meta.id}-sandbox`}
-              className="license-section-sandbox-wrapper overflow-hidden rounded-xl border border-slate-200 bg-white"
-            >
-              {meta.id === "ohio_tddd" && <OhioTdddSandbox />}
-              {meta.id === "ny_pharmacy" && (
-                <div className="space-y-3 p-4 text-sm text-slate-800">
-                  <p>
-                    This sandbox exercises the <code>ny_pharmacy</code> license
-                    engine for New York pharmacies.
-                  </p>
-                  <ul className="list-disc space-y-1 pl-5 text-[12px]">
-                    <li>
-                      Evaluate NY Pharmacy license payloads via
-                      <code className="ml-1">POST /license/ny-pharmacy/evaluate</code>.
-                    </li>
-                    <li>
-                      Use the NY Pharmacy License Copilot to get RAG-backed
-                      explanations grounded in <code>ny_pharmacy_rules</code>.
-                    </li>
-                    <li>
-                      Experiment with missing or incorrect fields to see
-                      <code className="ml-1">needs_review</code> decisions.
-                    </li>
-                  </ul>
-                  <p className="text-[12px] font-semibold">
-                    <a
-                      href="/license/ny-pharmacy"
-                      className="text-slate-900 underline underline-offset-2"
-                    >
-                      Open NY Pharmacy License Sandbox →
-                    </a>
-                  </p>
-                </div>
-              )}
-            </div>
-          </section>
-        ))}
+        <CsfSuiteCard
+          title="NY Pharmacy License Sandbox"
+          subtitle="Run New York pharmacy license checks and understand how license status drives downstream order decisions."
+          bullets={[
+            "Uses /license/ny-pharmacy/evaluate to classify license status for NY pharmacies.",
+            "Feeds the NY license-only mock order endpoint at /orders/mock/ny-pharmacy-approval.",
+            "Perfect for explaining how adding a new license engine follows the same pattern as Ohio TDDD.",
+          ]}
+          to="/license/ny-pharmacy"
+        />
       </div>
 
       <section className="license-section license-section--order-journey space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm backdrop-blur-sm">
