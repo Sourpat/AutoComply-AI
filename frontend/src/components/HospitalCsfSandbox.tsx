@@ -30,6 +30,7 @@ import {
 } from "../api/csfHospitalCopilotClient";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { FormCopilotDetailsCard } from "../components/FormCopilotDetailsCard";
+import { TestCoverageNote } from "./TestCoverageNote";
 
 // Vite-friendly helper: no `process` in the browser
 const getApiBase = (): string => {
@@ -365,6 +366,10 @@ export function HospitalCsfSandbox() {
             Test hospital controlled substance forms with live decision and RAG
             explain.
           </p>
+          <TestCoverageNote
+            size="sm"
+            files={["backend/tests/test_csf_hospital_api.py"]}
+          />
 
           <div className="mt-1 flex flex-wrap gap-1">
             {HOSPITAL_EXAMPLES.map((ex) => (
