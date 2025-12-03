@@ -99,6 +99,8 @@ Hospital, Facility, Practitioner, EMS, Researcher sandboxes.
 
 Each calls /csf/{type}/evaluate and /csf/{type}/form-copilot.
 
+- Facility CSF – reuses the Hospital CSF regulatory document, but exposes a facility-specific sandbox with its own payload and copy (`/csf/facility/evaluate`, `/csf/facility/form-copilot`).
+
 License Suite:
 
 Ohio TDDD sandbox.

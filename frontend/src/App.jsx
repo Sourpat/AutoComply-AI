@@ -15,6 +15,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/csf" element={<CsfOverviewPage />} />
+          <Route path="/csf/:sandboxId" element={<CsfOverviewPage />} />
           <Route path="/license" element={<LicenseOverviewPage />} />
           <Route path="/console" element={<ComplianceConsolePage />} />
           <Route path="/license/ohio-tddd" element={<OhioTdddSandbox />} />
