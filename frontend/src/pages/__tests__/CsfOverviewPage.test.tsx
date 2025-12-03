@@ -1,9 +1,14 @@
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { CsfOverviewPage } from "../CsfOverviewPage";
 
 describe("CsfOverviewPage", () => {
   it("renders CSF overview header and all sandbox sections", () => {
-    render(<CsfOverviewPage />);
+    render(
+      <MemoryRouter>
+        <CsfOverviewPage />
+      </MemoryRouter>
+    );
 
     expect(
       screen.getByText(

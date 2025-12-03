@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Link, useParams } from "react-router-dom";
 import { EmsCsfSandbox } from "../components/EmsCsfSandbox";
 import { FacilityCsfSandbox } from "../components/FacilityCsfSandbox";
 import { HospitalCsfSandbox } from "../components/HospitalCsfSandbox";
@@ -15,6 +16,89 @@ type CsfSandboxMeta = {
   ragDocId: string;
   component: JSX.Element;
 };
+
+const CSF_OVERVIEW_CARDS = [
+  {
+    id: "hospital",
+    title: "Hospital CSF Sandbox",
+    subtitle:
+      "Evaluate hospital pharmacy controlled substance forms with the primary CSF engine.",
+    bullets: [
+      (
+        <>
+          • Uses <code>/csf/hospital/evaluate</code> and <code>/csf/hospital/form-copilot</code>.
+        </>
+      ),
+      "• Core sandbox for inpatient pharmacies and IDNs.",
+      "• Shows ok_to_ship, needs_review, or blocked decisions with RAG-backed context.",
+    ],
+    link: "/csf/hospital",
+  },
+  {
+    id: "practitioner",
+    title: "Practitioner CSF Sandbox",
+    subtitle:
+      "Run practitioner CSF payloads, including addendums and controlled substance lookups.",
+    bullets: [
+      (
+        <>
+          • Uses <code>/csf/practitioner/evaluate</code> and <code>/csf/practitioner/form-copilot</code>.
+        </>
+      ),
+      "• Mirrors the hospital decision contract for outpatient workflows.",
+      "• Helpful for independent prescribers and office-based clinics.",
+    ],
+    link: "/csf/practitioner",
+  },
+  {
+    id: "facility",
+    title: "Facility CSF Sandbox",
+    subtitle:
+      "Test controlled substance forms for non-hospital facilities using the same regulatory engine as Hospital CSF, but with a facility-specific payload and copy.",
+    bullets: [
+      (
+        <>
+          • Uses <code>/csf/facility/evaluate</code> and <code>/csf/facility/form-copilot</code>.
+        </>
+      ),
+      "• Shares the Hospital CSF regulatory doc, but labels responses as “Facility CSF”.",
+      "• Good for clinics, long-term care, and other non-hospital sites.",
+    ],
+    link: "/csf/facility",
+  },
+  {
+    id: "ems",
+    title: "EMS CSF Sandbox",
+    subtitle:
+      "Evaluate EMS medication forms with transport-specific payloads and decisions.",
+    bullets: [
+      (
+        <>
+          • Uses <code>/csf/ems/evaluate</code> and <code>/csf/ems/form-copilot</code>.
+        </>
+      ),
+      "• RAG-backed explanations tuned for emergency services.",
+      "• Highlights how the CSF engine adapts to EMS workflows.",
+    ],
+    link: "/csf/ems",
+  },
+  {
+    id: "researcher",
+    title: "Researcher CSF Sandbox",
+    subtitle:
+      "Show R&D teams how CSF applies to lab and research controlled substance requests.",
+    bullets: [
+      (
+        <>
+          • Uses <code>/csf/researcher/evaluate</code> and <code>/csf/researcher/form-copilot</code>.
+        </>
+      ),
+      "• Uses the same decision contract with research-specific payloads.",
+      "• Demonstrates sandbox flexibility across regulated environments.",
+    ],
+    link: "/csf/researcher",
+  },
+];
 
 const CSF_SANDBOXES: CsfSandboxMeta[] = [
   {
@@ -69,12 +153,21 @@ const CSF_SANDBOXES: CsfSandboxMeta[] = [
 ];
 
 export function CsfOverviewPage() {
+  const { sandboxId } = useParams();
+
   useEffect(() => {
     trackSandboxEvent("csf_overview_page_view", {
       engine_family: "csf",
       sandbox: "overview",
     });
   }, []);
+
+  useEffect(() => {
+    if (!sandboxId) return;
+
+    const section = document.getElementById(`csf-${sandboxId}`);
+    section?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [sandboxId]);
 
   return (
     <div className="space-y-6 py-6">
@@ -94,6 +187,26 @@ export function CsfOverviewPage() {
       </header>
 
       <div className="space-y-6">
+        <div className="grid gap-3 md:grid-cols-2">
+          {CSF_OVERVIEW_CARDS.map((card) => (
+            <div
+              key={card.id}
+              className="csf-card space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+            >
+              <h3 className="text-sm font-semibold text-slate-900">{card.title}</h3>
+              <p className="csf-card-subtitle text-[11px] leading-relaxed text-slate-600">{card.subtitle}</p>
+              <ul className="csf-card-bullets space-y-1 text-[11px] leading-relaxed text-slate-700">
+                {card.bullets.map((bullet, idx) => (
+                  <li key={idx}>{bullet}</li>
+                ))}
+              </ul>
+              <Link to={card.link} className="csf-card-link text-[11px] font-semibold text-sky-600 hover:text-sky-700">
+                Open {card.title} →
+              </Link>
+            </div>
+          ))}
+        </div>
+
         {CSF_SANDBOXES.map((meta) => (
           <section
             key={meta.id}
