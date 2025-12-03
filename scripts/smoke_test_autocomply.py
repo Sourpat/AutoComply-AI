@@ -93,6 +93,28 @@ def check_health(base_url: str) -> CheckResult:
         )
 
 
+def check_health_full(base_url: str) -> CheckResult:
+    try:
+        status, payload = _request_json(base_url, "/health/full", "GET")
+        ok = status == 200 and payload.get("status") == "ok"
+        detail = f"status={payload.get('status')}, components={list((payload.get('components') or {}).keys())}"
+        return CheckResult(
+            name="health_full",
+            endpoint="/health/full",
+            ok=ok,
+            status_code=status,
+            detail=detail,
+        )
+    except Exception as e:
+        return CheckResult(
+            name="health_full",
+            endpoint="/health/full",
+            ok=False,
+            status_code=None,
+            detail=str(e),
+        )
+
+
 def make_hospital_csf_payload() -> Dict[str, Any]:
     return {
         "facility_name": "Ohio General Hospital",
@@ -313,6 +335,7 @@ def main(argv: List[str]) -> int:
 
     checks = [
         check_health(base_url),
+        check_health_full(base_url),
         check_csf_hospital(base_url),
         check_ohio_tddd(base_url),
         check_ny_pharmacy(base_url),

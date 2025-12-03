@@ -8,6 +8,7 @@ import { DocsLinksCard } from "../components/DocsLinksCard";
 import { ApiReferenceCard } from "../components/ApiReferenceCard";
 import { RagOverviewCard } from "../components/RagOverviewCard";
 import { TestingReliabilityCard } from "../components/TestingReliabilityCard";
+import { SystemHealthCard } from "../components/SystemHealthCard";
 
 const CSF_CONSOLE_CARDS = [
   {
@@ -273,6 +274,10 @@ export function ComplianceConsolePage() {
 
       <section className="console-section console-section-rag">
         <RagOverviewCard />
+      </section>
+
+      <section className="console-section console-section-health">
+        <SystemHealthCard />
       </section>
 
       <section className="console-section console-section-testing">

@@ -1,23 +1,23 @@
 import { API_BASE } from "./csfHospitalClient";
 
-export interface HealthStatus {
-  status: string; // "ok" | "degraded" | "down"
-  service: string;
-  version: string;
-  checks: Record<string, string>;
-}
+export type HealthComponentStatus = {
+  status: string;
+  details?: string;
+  error?: string;
+};
 
-export async function fetchHealthStatus(): Promise<HealthStatus> {
-  const resp = await fetch(`${API_BASE}/health`, {
-    method: "GET",
-  });
+export type FullHealthResponse = {
+  status: string;
+  components: Record<string, HealthComponentStatus>;
+};
 
+export async function fetchFullHealth(): Promise<FullHealthResponse> {
+  const resp = await fetch(`${API_BASE}/health/full`);
   if (!resp.ok) {
-    const message = await resp.text();
+    const text = await resp.text();
     throw new Error(
-      `Health check failed with status ${resp.status}: ${message}`
+      `Full health check failed with status ${resp.status}: ${text || "no body"}`
     );
   }
-
-  return (await resp.json()) as HealthStatus;
+  return (await resp.json()) as FullHealthResponse;
 }
