@@ -48,6 +48,17 @@ type OhioFacilityMockOrderDecision = {
   explanation: string;
 };
 
+type OhioFacilityOrderTrace = {
+  endpoint: string;
+  payload: {
+    facility_csf_decision: DecisionStatusString;
+    ohio_tddd_decision: DecisionStatusString;
+  };
+  response: OhioFacilityMockOrderDecision | null;
+  error: string | null;
+  at: string;
+};
+
 const OHIO_TDDD_DECISION_OPTIONS: {
   value: DecisionStatusString;
   label: string;
@@ -213,6 +224,11 @@ export function FacilityCsfSandbox() {
     React.useState<string | null>(null);
   const [isRunningOhioFacilityOrder, setIsRunningOhioFacilityOrder] =
     React.useState(false);
+  const [ohioFacilityOrderTrace, setOhioFacilityOrderTrace] = React.useState<
+    OhioFacilityOrderTrace | null
+  >(null);
+  const [showOhioFacilityDevTrace, setShowOhioFacilityDevTrace] =
+    React.useState(false);
 
   // ---- Facility CSF Form Copilot state ----
   const [copilotResponse, setCopilotResponse] =
@@ -242,6 +258,14 @@ export function FacilityCsfSandbox() {
         ohio_tddd_decision: selectedOhioTdddDecision,
       };
 
+      setOhioFacilityOrderTrace({
+        endpoint: "/orders/mock/ohio-facility-approval",
+        payload,
+        response: null,
+        error: null,
+        at: new Date().toISOString(),
+      });
+
       const resp = await fetch(
         `${API_BASE}/orders/mock/ohio-facility-approval`,
         {
@@ -264,9 +288,39 @@ export function FacilityCsfSandbox() {
 
       const data = (await resp.json()) as OhioFacilityMockOrderDecision;
       setOhioFacilityOrderDecision(data);
+
+      setOhioFacilityOrderTrace((prev) =>
+        prev
+          ? {
+              ...prev,
+              response: data,
+              error: null,
+            }
+          : {
+              endpoint: "/orders/mock/ohio-facility-approval",
+              payload,
+              response: data,
+              error: null,
+              at: new Date().toISOString(),
+            }
+      );
     } catch (err: any) {
       setOhioFacilityOrderError(err?.message ?? "Unknown error");
       setOhioFacilityOrderDecision(null);
+      setOhioFacilityOrderTrace((prev) =>
+        prev
+          ? { ...prev, error: err?.message ?? "Unknown error" }
+          : {
+              endpoint: "/orders/mock/ohio-facility-approval",
+              payload: {
+                facility_csf_decision: decision.status as DecisionStatusString,
+                ohio_tddd_decision: selectedOhioTdddDecision,
+              },
+              response: null,
+              error: err?.message ?? "Unknown error",
+              at: new Date().toISOString(),
+            }
+      );
     } finally {
       setIsRunningOhioFacilityOrder(false);
     }
@@ -1229,6 +1283,35 @@ export function FacilityCsfSandbox() {
             <p className="mt-2 text-[11px] leading-relaxed text-slate-200">
               {ohioFacilityOrderDecision.explanation}
             </p>
+          </div>
+        )}
+
+        {ohioFacilityOrderTrace && (
+          <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/90 px-3 py-3 text-[11px]">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-slate-100">
+                Developer trace
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowOhioFacilityDevTrace((prev) => !prev)}
+                className="text-[10px] font-medium text-slate-300 underline underline-offset-2 hover:text-slate-100"
+              >
+                {showOhioFacilityDevTrace ? "Hide JSON" : "Show JSON"}
+              </button>
+            </div>
+            <p className="mt-1 text-[10px] text-slate-400">
+              Raw payload and response for{" "}
+              <span className="font-mono text-slate-200">
+                /orders/mock/ohio-facility-approval
+              </span>
+              . Mirrors what you&apos;d send from Postman, another app, or Codex.
+            </p>
+            {showOhioFacilityDevTrace && (
+              <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-black/80 px-2 py-2 text-[10px] leading-relaxed text-slate-100">
+                {JSON.stringify(ohioFacilityOrderTrace, null, 2)}
+              </pre>
+            )}
           </div>
         )}
       </section>
