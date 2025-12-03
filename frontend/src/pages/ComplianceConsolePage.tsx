@@ -6,6 +6,7 @@ import { DecisionStatusLegend } from "../components/DecisionStatusLegend";
 import { SystemStatusCard } from "../components/SystemStatusCard";
 import { DocsLinksCard } from "../components/DocsLinksCard";
 import { ApiReferenceCard } from "../components/ApiReferenceCard";
+import { TestingReliabilityCard } from "../components/TestingReliabilityCard";
 
 const CSF_CONSOLE_CARDS = [
   {
@@ -267,6 +268,10 @@ export function ComplianceConsolePage() {
             }}
           />
         </div>
+      </section>
+
+      <section className="console-section console-section-testing">
+        <TestingReliabilityCard />
       </section>
 
       <section className="console-section console-section-legend rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
