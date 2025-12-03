@@ -9,6 +9,7 @@ import { ApiReferenceCard } from "../components/ApiReferenceCard";
 import { RagOverviewCard } from "../components/RagOverviewCard";
 import { TestingReliabilityCard } from "../components/TestingReliabilityCard";
 import { SystemHealthCard } from "../components/SystemHealthCard";
+import { RunLocallyCard } from "../components/RunLocallyCard";
 
 const CSF_CONSOLE_CARDS = [
   {
@@ -282,6 +283,10 @@ export function ComplianceConsolePage() {
 
       <section className="console-section console-section-testing">
         <TestingReliabilityCard />
+      </section>
+
+      <section className="console-section console-section-run-locally">
+        <RunLocallyCard />
       </section>
 
       <section className="console-section console-section-legend rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
