@@ -21,6 +21,7 @@ import { emitCodexCommand } from "../utils/codexLogger";
 import { callFacilityFormCopilot } from "../api/csfFacilityCopilotClient";
 import type { FacilityFormCopilotResponse } from "../domain/csfFacility";
 import { API_BASE } from "../api/csfHospitalClient";
+import { buildCurlCommand } from "../utils/curl";
 import {
   OhioTdddDecision,
   OhioTdddFormData,
@@ -324,6 +325,26 @@ export function FacilityCsfSandbox() {
     } finally {
       setIsRunningOhioFacilityOrder(false);
     }
+  }
+
+  function buildOhioFacilityMockOrderCurl(trace: any | null): string {
+    const endpoint =
+      (trace && trace.endpoint) || "/orders/mock/ohio-facility-approval";
+    const payload =
+      (trace && trace.payload) || {
+        facility_csf_decision: "ok_to_ship",
+        ohio_tddd_decision: "ok_to_ship",
+      };
+
+    const json = JSON.stringify(payload);
+
+    return [
+      "curl",
+      "-X POST",
+      `"${API_BASE}${endpoint}"`,
+      '-H "Content-Type: application/json"',
+      `-d '${json}'`,
+    ].join(" ");
   }
 
   function applyFacilityExample(example: FacilityCsfExample) {
@@ -824,12 +845,9 @@ export function FacilityCsfSandbox() {
 
               <CopyCurlButton
                 label="Copy cURL (evaluate)"
-                endpoint="/csf/facility/evaluate"
-                body={form}
-                disabled={isLoading}
-                sandboxId={FACILITY_SANDBOX_ID}
-                decisionType={FACILITY_DECISION_TYPE}
-                engineFamily={FACILITY_ENGINE_FAMILY}
+                getCommand={() =>
+                  buildCurlCommand("/csf/facility/evaluate", form)
+                }
               />
             </div>
           </form>
@@ -880,12 +898,9 @@ export function FacilityCsfSandbox() {
 
                     <CopyCurlButton
                       label="Copy cURL (explain)"
-                      endpoint="/csf/explain"
-                      body={{ decision }}
-                      disabled={isExplaining}
-                      sandboxId={FACILITY_SANDBOX_ID}
-                      decisionType={FACILITY_DECISION_TYPE}
-                      engineFamily={FACILITY_ENGINE_FAMILY}
+                      getCommand={() =>
+                        buildCurlCommand("/csf/explain", { decision })
+                      }
                     />
                   </div>
 
@@ -1290,6 +1305,18 @@ export function FacilityCsfSandbox() {
               </span>
               .
             </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <CopyCurlButton
+                getCommand={() =>
+                  buildOhioFacilityMockOrderCurl(ohioFacilityOrderTrace)
+                }
+                label="Copy mock order cURL"
+              />
+              <p className="text-[10px] text-slate-500">
+                Paste into a terminal or Postman to replay the last mock order
+                call.
+              </p>
+            </div>
           </div>
         )}
 

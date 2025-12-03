@@ -7,6 +7,7 @@ import {
 } from "../api/complianceArtifactsClient";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { emitCodexCommand } from "../utils/codexLogger";
+import { buildCurlCommand } from "../utils/curl";
 
 type Mode = "idle" | "loading" | "done" | "error";
 
@@ -316,14 +317,13 @@ export function RagRegulatorySandbox() {
             </button>
             <CopyCurlButton
               label="Copy cURL (RAG explain)"
-              endpoint="/rag/regulatory-explain"
-              body={{
-                question,
-                regulatory_references: selectedRefs,
-                decision: decisionPayload,
-              }}
-              disabled={!question.trim()}
-              size="sm"
+              getCommand={() =>
+                buildCurlCommand("/rag/regulatory-explain", {
+                  question,
+                  regulatory_references: selectedRefs,
+                  decision: decisionPayload,
+                })
+              }
             />
             <button
               type="button"

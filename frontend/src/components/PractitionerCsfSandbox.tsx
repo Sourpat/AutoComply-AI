@@ -28,6 +28,7 @@ import { evaluateOhioTdddLicense } from "../api/licenseOhioTdddClient";
 import { mapPractitionerFormToOhioTddd } from "../domain/licenseMapping";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { TestCoverageNote } from "./TestCoverageNote";
+import { buildCurlCommand } from "../utils/curl";
 
 // Vite-friendly helper: no `process` in the browser
 const getApiBase = (): string => {
@@ -1211,9 +1212,9 @@ export function PractitionerCsfSandbox() {
 
               <CopyCurlButton
                 label="Copy cURL (evaluate)"
-                endpoint="/csf/practitioner/evaluate"
-                body={form}
-                disabled={isLoading}
+                getCommand={() =>
+                  buildCurlCommand("/csf/practitioner/evaluate", form)
+                }
               />
             </div>
           </form>
@@ -1277,9 +1278,9 @@ export function PractitionerCsfSandbox() {
 
                     <CopyCurlButton
                       label="Copy cURL (explain)"
-                      endpoint="/csf/explain"
-                      body={{ decision }}
-                      disabled={isExplaining}
+                      getCommand={() =>
+                        buildCurlCommand("/csf/explain", { decision })
+                      }
                     />
                   </div>
 

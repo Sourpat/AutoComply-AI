@@ -21,6 +21,7 @@ import { CopyCurlButton } from "./CopyCurlButton";
 import { callEmsFormCopilot } from "../api/csfEmsCopilotClient";
 import { API_BASE } from "../api/csfHospitalClient";
 import { trackSandboxEvent } from "../devsupport/telemetry";
+import { buildCurlCommand } from "../utils/curl";
 
 const EMS_ENGINE_FAMILY = "csf";
 const EMS_DECISION_TYPE = "csf_ems";
@@ -556,12 +557,7 @@ export function EmsCsfSandbox() {
 
               <CopyCurlButton
                 label="Copy cURL (evaluate)"
-                endpoint="/csf/ems/evaluate"
-                body={form}
-                disabled={isLoading}
-                sandboxId={EMS_SANDBOX_ID}
-                decisionType={EMS_DECISION_TYPE}
-                engineFamily={EMS_ENGINE_FAMILY}
+                getCommand={() => buildCurlCommand("/csf/ems/evaluate", form)}
               />
             </div>
           </form>
@@ -612,12 +608,9 @@ export function EmsCsfSandbox() {
 
                     <CopyCurlButton
                       label="Copy cURL (explain)"
-                      endpoint="/csf/explain"
-                      body={{ decision }}
-                      disabled={isExplaining}
-                      sandboxId={EMS_SANDBOX_ID}
-                      decisionType={EMS_DECISION_TYPE}
-                      engineFamily={EMS_ENGINE_FAMILY}
+                      getCommand={() =>
+                        buildCurlCommand("/csf/explain", { decision })
+                      }
                     />
                   </div>
 

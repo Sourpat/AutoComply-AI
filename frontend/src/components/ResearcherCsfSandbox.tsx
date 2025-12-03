@@ -20,6 +20,7 @@ import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { trackSandboxEvent } from "../devsupport/telemetry";
+import { buildCurlCommand } from "../utils/curl";
 
 const RESEARCHER_ENGINE_FAMILY = "csf";
 const RESEARCHER_DECISION_TYPE = "csf_researcher";
@@ -533,15 +534,10 @@ export function ResearcherCsfSandbox() {
             {isLoading ? "Evaluating…" : "Evaluate Researcher CSF"}
           </button>
 
-          <CopyCurlButton
-            endpoint="/csf/researcher/evaluate"
-            method="POST"
-            body={form}
-            sandboxId={RESEARCHER_SANDBOX_ID}
-            decisionType={RESEARCHER_DECISION_TYPE}
-            engineFamily={RESEARCHER_ENGINE_FAMILY}
-          />
-        </div>
+        <CopyCurlButton
+          getCommand={() => buildCurlCommand("/csf/researcher/evaluate", form)}
+        />
+      </div>
       </form>
 
       {/* Decision results */}

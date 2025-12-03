@@ -1,98 +1,60 @@
-// src/components/CopyCurlButton.tsx
 import React from "react";
-import { emitCodexCommand } from "../utils/codexLogger";
+import { Copy } from "lucide-react";
 
-const API_BASE =
-  (import.meta as any).env?.VITE_API_BASE || "";
-
-type HttpMethod = "GET" | "POST";
-
-interface CopyCurlButtonProps {
+type CopyCurlButtonProps = {
+  getCommand: () => string;
   label?: string;
-  endpoint: string; // e.g. "/csf/practitioner/evaluate"
-  method?: HttpMethod;
-  body?: unknown | null;
-  disabled?: boolean;
-  size?: "xs" | "sm";
-  sandboxId?: string;
-  decisionType?: string;
-  engineFamily?: string;
-}
+};
 
-function buildCurlCommand(
-  endpoint: string,
-  method: HttpMethod,
-  body?: unknown | null
-): string {
-  const url = `${API_BASE}${endpoint}`;
-  const parts: string[] = [`curl -X ${method} "${url}"`];
+export function CopyCurlButton({
+  getCommand,
+  label = "Copy as cURL",
+}: CopyCurlButtonProps) {
+  const [copied, setCopied] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
-  if (method === "POST") {
-    parts.push('-H "Content-Type: application/json"');
-    if (body != null) {
-      const json = JSON.stringify(body, null, 2);
-
-      // Escape single quotes for POSIX shell: '...\''...'
-      const escaped = json.replace(/'/g, "'\"'\"'");
-      parts.push(`-d '${escaped}'`);
+  async function handleClick() {
+    setError(null);
+    try {
+      const command = getCommand();
+      if (!command) {
+        throw new Error("Nothing to copy");
+      }
+      if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(command);
+      } else {
+        // Fallback: create a temporary textarea
+        const textarea = document.createElement("textarea");
+        textarea.value = command;
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to copy");
     }
   }
 
-  return parts.join(" \\\n  ");
-}
-
-export function CopyCurlButton({
-  label,
-  endpoint,
-  method = "POST",
-  body,
-  disabled,
-  size = "xs",
-  sandboxId,
-  decisionType,
-  engineFamily,
-}: CopyCurlButtonProps) {
-  const handleClick = async () => {
-    const curl = buildCurlCommand(endpoint, method, body);
-
-    const eventName = sandboxId ? `csf_${sandboxId}_curl_copied` : "copy_curl";
-
-    emitCodexCommand(eventName, {
-      endpoint: `${API_BASE}${endpoint}`,
-      method,
-      body,
-      engine_family: engineFamily,
-      decision_type: decisionType,
-      sandbox: sandboxId,
-    });
-
-    try {
-      await navigator.clipboard.writeText(curl);
-    } catch (err) {
-      console.error("Failed to copy cURL to clipboard", err);
-      // Fallback: show in an alert so it can be copied manually
-      alert("Copy this cURL command:\n\n" + curl);
-    }
-  };
-
-  const baseClasses =
-    "inline-flex items-center rounded-full border text-[10px] font-medium shadow-sm";
-  const sizeClasses =
-    size === "xs"
-      ? "px-2 py-0.5"
-      : "px-3 py-1";
-  const colorClasses =
-    "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40";
-
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={disabled}
-      className={`${baseClasses} ${sizeClasses} ${colorClasses}`}
-      title="Copy this request as a cURL command"
-    >
-      {label ?? "Copy cURL"}
-    </button>
+    <div className="inline-flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={handleClick}
+        className="inline-flex items-center gap-1.5 rounded-full border border-slate-600 bg-slate-900 px-2.5 py-1 text-[10px] font-medium text-slate-100 hover:border-cyan-400 hover:bg-slate-800"
+      >
+        <Copy className="h-3 w-3" />
+        <span>{copied ? "Copied!" : label}</span>
+      </button>
+      {error && (
+        <span className="text-[9px] text-rose-300">
+          Couldn&apos;t copy: {error}
+        </span>
+      )}
+    </div>
   );
 }
