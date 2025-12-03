@@ -1,10 +1,11 @@
 import { useEffect } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { EmsCsfSandbox } from "../components/EmsCsfSandbox";
 import { FacilityCsfSandbox } from "../components/FacilityCsfSandbox";
 import { HospitalCsfSandbox } from "../components/HospitalCsfSandbox";
 import { PractitionerCsfSandbox } from "../components/PractitionerCsfSandbox";
 import { ResearcherCsfSandbox } from "../components/ResearcherCsfSandbox";
+import { CsfSuiteCard } from "../components/CsfSuiteCard";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 
 type CsfSandboxMeta = {
@@ -22,81 +23,60 @@ const CSF_OVERVIEW_CARDS = [
     id: "hospital",
     title: "Hospital CSF Sandbox",
     subtitle:
-      "Evaluate hospital pharmacy controlled substance forms with the primary CSF engine.",
+      "Evaluate controlled substance forms for hospitals and see which fields drive an ok_to_ship, needs_review, or blocked decision.",
     bullets: [
-      (
-        <>
-          • Uses <code>/csf/hospital/evaluate</code> and <code>/csf/hospital/form-copilot</code>.
-        </>
-      ),
-      "• Core sandbox for inpatient pharmacies and IDNs.",
-      "• Shows ok_to_ship, needs_review, or blocked decisions with RAG-backed context.",
+      "Backed by the hospital controlled substance form and decision engine.",
+      "Includes a CSF Form Copilot with RAG-based explanations.",
+      "Great starting point for explaining how CSF decisions work end-to-end.",
     ],
-    link: "/csf/hospital",
+    to: "/csf/hospital",
   },
   {
     id: "practitioner",
     title: "Practitioner CSF Sandbox",
     subtitle:
-      "Run practitioner CSF payloads, including addendums and controlled substance lookups.",
+      "Run controlled substance checks for individual prescribers and see how practitioner details drive the decision.",
     bullets: [
-      (
-        <>
-          • Uses <code>/csf/practitioner/evaluate</code> and <code>/csf/practitioner/form-copilot</code>.
-        </>
-      ),
-      "• Mirrors the hospital decision contract for outpatient workflows.",
-      "• Helpful for independent prescribers and office-based clinics.",
+      "Focuses on practitioner-specific fields and DEA information.",
+      "Includes a Practitioner CSF Form Copilot with regulatory references.",
+      "Useful when explaining prescriber onboarding and compliance checks.",
     ],
-    link: "/csf/practitioner",
+    to: "/csf/practitioner",
   },
   {
     id: "facility",
     title: "Facility CSF Sandbox",
     subtitle:
-      "Test controlled substance forms for non-hospital facilities using the same regulatory engine as Hospital CSF, but with a facility-specific payload and copy.",
+      "Mirror the hospital engine but with a facility-specific payload and copy for clinics, long-term care, and other non-hospital sites.",
     bullets: [
-      (
-        <>
-          • Uses <code>/csf/facility/evaluate</code> and <code>/csf/facility/form-copilot</code>.
-        </>
-      ),
-      "• Shares the Hospital CSF regulatory doc, but labels responses as “Facility CSF”.",
-      "• Good for clinics, long-term care, and other non-hospital sites.",
+      "Uses /csf/facility/evaluate and /csf/facility/form-copilot.",
+      "Shares the same regulatory document as Hospital CSF (for now).",
+      "Shows how the pattern scales to new facility types with minimal changes.",
     ],
-    link: "/csf/facility",
+    to: "/csf/facility",
+    tag: "New",
   },
   {
     id: "ems",
     title: "EMS CSF Sandbox",
     subtitle:
-      "Evaluate EMS medication forms with transport-specific payloads and decisions.",
+      "Model controlled substance checks for EMS and similar emergency services.",
     bullets: [
-      (
-        <>
-          • Uses <code>/csf/ems/evaluate</code> and <code>/csf/ems/form-copilot</code>.
-        </>
-      ),
-      "• RAG-backed explanations tuned for emergency services.",
-      "• Highlights how the CSF engine adapts to EMS workflows.",
+      "Captures EMS-specific fields and constraints.",
+      "Matches the same normalized decision model as other engines.",
     ],
-    link: "/csf/ems",
+    to: "/csf/ems",
   },
   {
     id: "researcher",
     title: "Researcher CSF Sandbox",
     subtitle:
-      "Show R&D teams how CSF applies to lab and research controlled substance requests.",
+      "Evaluate research-related controlled substance forms with clear, explainable decisions.",
     bullets: [
-      (
-        <>
-          • Uses <code>/csf/researcher/evaluate</code> and <code>/csf/researcher/form-copilot</code>.
-        </>
-      ),
-      "• Uses the same decision contract with research-specific payloads.",
-      "• Demonstrates sandbox flexibility across regulated environments.",
+      "Targets researchers and clinical trial scenarios.",
+      "Shares the same CSF engine patterns for easier maintenance.",
     ],
-    link: "/csf/researcher",
+    to: "/csf/researcher",
   },
 ];
 
@@ -189,21 +169,14 @@ export function CsfOverviewPage() {
       <div className="space-y-6">
         <div className="grid gap-3 md:grid-cols-2">
           {CSF_OVERVIEW_CARDS.map((card) => (
-            <div
+            <CsfSuiteCard
               key={card.id}
-              className="csf-card space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-            >
-              <h3 className="text-sm font-semibold text-slate-900">{card.title}</h3>
-              <p className="csf-card-subtitle text-[11px] leading-relaxed text-slate-600">{card.subtitle}</p>
-              <ul className="csf-card-bullets space-y-1 text-[11px] leading-relaxed text-slate-700">
-                {card.bullets.map((bullet, idx) => (
-                  <li key={idx}>{bullet}</li>
-                ))}
-              </ul>
-              <Link to={card.link} className="csf-card-link text-[11px] font-semibold text-sky-600 hover:text-sky-700">
-                Open {card.title} →
-              </Link>
-            </div>
+              title={card.title}
+              subtitle={card.subtitle}
+              bullets={card.bullets}
+              to={card.to}
+              tag={card.tag}
+            />
           ))}
         </div>
 
