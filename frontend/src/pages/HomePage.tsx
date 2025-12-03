@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { DocsLinksCard } from "../components/DocsLinksCard";
 import { HomeDemoBanner } from "../components/HomeDemoBanner";
+import { HomeNextSteps } from "../components/HomeNextSteps";
 
 export function HomePage() {
   return (
@@ -45,6 +46,10 @@ export function HomePage() {
 
       <section>
         <HomeDemoBanner />
+      </section>
+
+      <section>
+        <HomeNextSteps />
       </section>
 
       <section className="space-y-4">
