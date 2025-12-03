@@ -1,5 +1,6 @@
 import React from "react";
 import { ShieldCheck, Activity, Bug } from "lucide-react";
+import { TestCoverageNote } from "./TestCoverageNote";
 
 function BulletRow({
   icon,
@@ -37,6 +38,16 @@ export function TestingReliabilityCard() {
             How AutoComply AI keeps its CSF, license, and mock order engines
             honest before you ever hit a browser.
           </p>
+          <TestCoverageNote
+            size="md"
+            files={[
+              "backend/tests/test_health_api.py",
+              "backend/tests/test_csf_hospital_api.py",
+              "backend/tests/test_csf_facility_api.py",
+              "backend/tests/test_csf_practitioner_api.py",
+              "backend/tests/test_order_mock_approval_api.py",
+            ]}
+          />
         </div>
         <span className="inline-flex items-center gap-1 rounded-full bg-slate-800/80 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-emerald-200 border border-emerald-500/40">
           <ShieldCheck className="h-3 w-3" />
