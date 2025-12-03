@@ -30,6 +30,7 @@ import { mapFacilityFormToOhioTddd } from "../domain/licenseMapping";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { FormCopilotDetailsCard } from "../components/FormCopilotDetailsCard";
 import { TestCoverageNote } from "./TestCoverageNote";
+import { DecisionStatusBadge } from "./DecisionStatusBadge";
 
 const FACILITY_ENGINE_FAMILY = "csf";
 const FACILITY_DECISION_TYPE = "csf_facility";
@@ -39,6 +40,35 @@ type FacilityCsfExampleId =
   | "clinic_chain"
   | "long_term_care"
   | "ambulatory_surgery";
+
+type DecisionStatusString = "ok_to_ship" | "needs_review" | "blocked";
+
+type OhioFacilityMockOrderDecision = {
+  final_decision: DecisionStatusString;
+  explanation: string;
+};
+
+const OHIO_TDDD_DECISION_OPTIONS: {
+  value: DecisionStatusString;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    value: "ok_to_ship",
+    label: "Ohio TDDD ok_to_ship",
+    hint: "License is active and valid for this facility/ship-to.",
+  },
+  {
+    value: "needs_review",
+    label: "Ohio TDDD needs_review",
+    hint: "Something about the license warrants manual review.",
+  },
+  {
+    value: "blocked",
+    label: "Ohio TDDD blocked",
+    hint: "License is expired, mismatched, or otherwise blocked for shipment.",
+  },
+];
 
 type FacilityCsfExample = {
   id: FacilityCsfExampleId;
@@ -175,6 +205,14 @@ export function FacilityCsfSandbox() {
   const [ohioTdddError, setOhioTdddError] = useState<string | null>(null);
   const [selectedExampleId, setSelectedExampleId] =
     useState<FacilityCsfExampleId>("clinic_chain");
+  const [selectedOhioTdddDecision, setSelectedOhioTdddDecision] =
+    React.useState<DecisionStatusString>("ok_to_ship");
+  const [ohioFacilityOrderDecision, setOhioFacilityOrderDecision] =
+    React.useState<OhioFacilityMockOrderDecision | null>(null);
+  const [ohioFacilityOrderError, setOhioFacilityOrderError] =
+    React.useState<string | null>(null);
+  const [isRunningOhioFacilityOrder, setIsRunningOhioFacilityOrder] =
+    React.useState(false);
 
   // ---- Facility CSF Form Copilot state ----
   const [copilotResponse, setCopilotResponse] =
@@ -185,6 +223,54 @@ export function FacilityCsfSandbox() {
   useEffect(() => {
     trackSandboxEvent("facility_csf_test_coverage_note_shown");
   }, []);
+
+  async function runOhioFacilityMockOrderTrace() {
+    if (!decision || !decision.status) {
+      setOhioFacilityOrderError(
+        "Run a Facility CSF evaluation first so we know the CSF decision."
+      );
+      setOhioFacilityOrderDecision(null);
+      return;
+    }
+
+    setIsRunningOhioFacilityOrder(true);
+    setOhioFacilityOrderError(null);
+
+    try {
+      const payload = {
+        facility_csf_decision: decision.status as DecisionStatusString,
+        ohio_tddd_decision: selectedOhioTdddDecision,
+      };
+
+      const resp = await fetch(
+        `${API_BASE}/orders/mock/ohio-facility-approval`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(
+          `Mock Ohio facility order failed with status ${
+            resp.status
+          }: ${text || "no body"}`
+        );
+      }
+
+      const data = (await resp.json()) as OhioFacilityMockOrderDecision;
+      setOhioFacilityOrderDecision(data);
+    } catch (err: any) {
+      setOhioFacilityOrderError(err?.message ?? "Unknown error");
+      setOhioFacilityOrderDecision(null);
+    } finally {
+      setIsRunningOhioFacilityOrder(false);
+    }
+  }
 
   function applyFacilityExample(example: FacilityCsfExample) {
     setSelectedExampleId(example.id);
@@ -274,6 +360,11 @@ export function FacilityCsfSandbox() {
     setOhioTdddDecision(null);
     setOhioTdddError(null);
     setOhioTdddLoading(false);
+
+    setSelectedOhioTdddDecision("ok_to_ship");
+    setOhioFacilityOrderDecision(null);
+    setOhioFacilityOrderError(null);
+    setIsRunningOhioFacilityOrder(false);
 
     setRegulatoryArtifacts([]);
     setRegulatoryError(null);
@@ -1006,21 +1097,148 @@ export function FacilityCsfSandbox() {
             />
           )}
 
-          {!copilotResponse && !copilotLoading && !copilotError && (
-            <p className="text-[10px] text-slate-400">
-              Click <span className="font-semibold">“Check &amp; Explain”</span>{" "}
-              to have AutoComply run the Facility CSF engine on this form and summarize
-              what it thinks, including required facility licenses and missing information.
+        {!copilotResponse && !copilotLoading && !copilotError && (
+          <p className="text-[10px] text-slate-400">
+            Click <span className="font-semibold">“Check &amp; Explain”</span>{" "}
+            to have AutoComply run the Facility CSF engine on this form and summarize
+            what it thinks, including required facility licenses and missing information.
+          </p>
+        )}
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-white/10 bg-slate-900/80 p-4 text-sm text-slate-100 shadow-md shadow-black/30">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-50">
+              Mock Ohio Facility Order Trace
+            </h2>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Combine the Facility CSF decision with an Ohio TDDD license decision
+              to see the final mock order outcome for an Ohio facility.
+            </p>
+          </div>
+          <span className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-950 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-slate-200">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <span>Engine: /orders/mock/ohio-facility-approval</span>
+          </span>
+        </div>
+
+        {/* Current Facility CSF decision row */}
+        <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/80 px-3 py-2 text-[11px]">
+          <p className="text-slate-300">Current Facility CSF decision</p>
+          {decision && decision.status ? (
+            <div className="mt-1 flex items-center gap-2">
+              <DecisionStatusBadge status={decision.status} />
+              <p className="text-[11px] text-slate-400">
+                This comes from the last run of{" "}
+                <span className="font-medium">Evaluate Facility CSF</span>.
+              </p>
+            </div>
+          ) : (
+            <p className="mt-1 text-[11px] text-slate-500">
+              No Facility CSF decision yet. Run an evaluation above, then come back
+              here to trace the order.
             </p>
           )}
-        </section>
+        </div>
 
-        {/* Right: Controlled Substances panel */}
-        <ControlledSubstancesPanel
-          accountNumber={form.accountNumber ?? ""}
-          value={controlledSubstances}
-          onChange={setControlledSubstances}
-        />
+        {/* Ohio TDDD decision chips */}
+        <div className="mt-3">
+          <p className="text-xs font-medium text-slate-300">
+            Ohio TDDD license decision (demo)
+          </p>
+          <p className="mt-1 text-[11px] text-slate-400">
+            Pick how the Ohio TDDD engine behaves for this facility in the mock
+            order. In a full build, this would come from{" "}
+            <span className="font-mono text-slate-200">
+              /license/ohio-tddd/evaluate
+            </span>
+            .
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {OHIO_TDDD_DECISION_OPTIONS.map((opt) => {
+              const isActive = opt.value === selectedOhioTdddDecision;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setSelectedOhioTdddDecision(opt.value)}
+                  className={[
+                    "inline-flex flex-col items-start rounded-xl border px-3 py-2 text-left text-[11px] transition",
+                    isActive
+                      ? "border-cyan-400 bg-cyan-500/15 text-cyan-50"
+                      : "border-slate-700 bg-slate-950/80 text-slate-200 hover:border-slate-500 hover:bg-slate-900",
+                  ].join(" ")}
+                >
+                  <span className="font-medium">{opt.label}</span>
+                  <span className="mt-0.5 text-[10px] text-slate-400">
+                    {opt.hint}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Run trace button + error */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={runOhioFacilityMockOrderTrace}
+            disabled={isRunningOhioFacilityOrder || !decision || !decision.status}
+            className="inline-flex items-center gap-2 rounded-full border border-cyan-500/60 bg-cyan-500/15 px-3 py-1.5 text-[11px] font-medium text-cyan-50 hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-400"
+          >
+            {isRunningOhioFacilityOrder ? (
+              <>
+                <span className="h-3 w-3 animate-spin rounded-full border border-cyan-300 border-t-transparent" />
+                <span>Running mock order trace…</span>
+              </>
+            ) : (
+              <>
+                <span>Run mock order trace</span>
+              </>
+            )}
+          </button>
+          <p className="text-[10px] text-slate-500">
+            Uses the last Facility CSF decision + the selected Ohio TDDD outcome.
+          </p>
+        </div>
+
+        {ohioFacilityOrderError && (
+          <p className="mt-2 text-[11px] text-rose-300">
+            {ohioFacilityOrderError}
+          </p>
+        )}
+
+        {/* Final decision card */}
+        {ohioFacilityOrderDecision && (
+          <div className="mt-3 rounded-xl border border-white/10 bg-slate-950/90 px-3 py-3 text-[11px]">
+            <p className="text-xs font-semibold text-slate-100">
+              Final mock order decision
+            </p>
+            <div className="mt-1 flex items-center gap-2">
+              <DecisionStatusBadge status={ohioFacilityOrderDecision.final_decision} />
+              <span className="text-[11px] text-slate-400">
+                Result from{" "}
+                <span className="font-mono text-slate-200">
+                  /orders/mock/ohio-facility-approval
+                </span>
+                .
+              </span>
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-200">
+              {ohioFacilityOrderDecision.explanation}
+            </p>
+          </div>
+        )}
+      </section>
+
+      {/* Right: Controlled Substances panel */}
+      <ControlledSubstancesPanel
+        accountNumber={form.accountNumber ?? ""}
+        value={controlledSubstances}
+        onChange={setControlledSubstances}
+      />
       </div>
     </section>
   );
