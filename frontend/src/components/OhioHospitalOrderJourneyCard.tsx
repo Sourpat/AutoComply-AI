@@ -10,6 +10,7 @@ import { copyToClipboard } from "../utils/clipboard";
 import { buildCurlCommand } from "../utils/curlBuilder";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { UnderTheHoodInfo } from "../components/UnderTheHoodInfo";
+import { DecisionStatusLegend } from "./DecisionStatusLegend";
 
 export function OhioHospitalOrderJourneyCard() {
   const [result, setResult] = useState<OhioHospitalOrderApprovalResult | null>(
@@ -284,6 +285,10 @@ export function OhioHospitalOrderJourneyCard() {
           </details>
         </section>
       )}
+
+      <div className="mt-4">
+        <DecisionStatusLegend />
+      </div>
     </div>
   );
 }
