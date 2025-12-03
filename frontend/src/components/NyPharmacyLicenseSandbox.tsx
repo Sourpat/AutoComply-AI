@@ -19,6 +19,38 @@ import { CopyCurlButton } from "./CopyCurlButton";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { UnderTheHoodInfo } from "../components/UnderTheHoodInfo";
 
+type NyLicenseScenarioId =
+  | "valid_ny_active"
+  | "expired_or_suspended"
+  | "non_ny_ship_to";
+
+const NY_LICENSE_SCENARIOS: {
+  id: NyLicenseScenarioId;
+  label: string;
+  badge?: string;
+  description: string;
+}[] = [
+  {
+    id: "valid_ny_active",
+    label: "Valid NY license (active)",
+    badge: "Happy path",
+    description:
+      "NY pharmacy with an active license shipping to NY. Both the license engine and mock order should come back ok_to_ship.",
+  },
+  {
+    id: "expired_or_suspended",
+    label: "Expired / suspended",
+    description:
+      "NY pharmacy with a license that is expired or flagged. Good for a needs_review or blocked outcome in the mock order.",
+  },
+  {
+    id: "non_ny_ship_to",
+    label: "Non-NY ship-to",
+    description:
+      "Account with a NY-style profile trying to ship to a non-NY state. Useful to show how the mock order treats license-not-required scenarios.",
+  },
+];
+
 const NY_PHARMACY_ENGINE_FAMILY = "license";
 const NY_PHARMACY_DECISION_TYPE = "license_ny_pharmacy";
 const NY_PHARMACY_SANDBOX_ID = "ny_pharmacy";
@@ -34,6 +66,36 @@ const NY_PHARMACY_EXAMPLES: NyPharmacyFormData[] = [
     internalNotes: "Happy path NY Pharmacy license example.",
   },
 ];
+
+const NY_LICENSE_SCENARIO_FORMS: Record<NyLicenseScenarioId, NyPharmacyFormData> = {
+  valid_ny_active: {
+    pharmacyName: "Manhattan Pharmacy",
+    accountNumber: "900123456",
+    shipToState: "NY",
+    deaNumber: "FG1234567",
+    nyStateLicenseNumber: "NYPHARM-001234",
+    attestationAccepted: true,
+    internalNotes: "Active NY license shipping to NY.",
+  },
+  expired_or_suspended: {
+    pharmacyName: "Hudson Apothecary",
+    accountNumber: "900987654",
+    shipToState: "NY",
+    deaNumber: "FG7654321",
+    nyStateLicenseNumber: "NYPHARM-009999",
+    attestationAccepted: true,
+    internalNotes: "License flagged as expired/suspended.",
+  },
+  non_ny_ship_to: {
+    pharmacyName: "Brooklyn Care Pharmacy",
+    accountNumber: "901111111",
+    shipToState: "NJ",
+    deaNumber: "FG2222222",
+    nyStateLicenseNumber: "NYPHARM-007777",
+    attestationAccepted: true,
+    internalNotes: "Shipping outside NY where license is not required.",
+  },
+};
 
 export function NyPharmacyLicenseSandbox() {
   const [form, setForm] = useState<NyPharmacyFormData>(NY_PHARMACY_EXAMPLES[0]);
@@ -54,6 +116,8 @@ export function NyPharmacyLicenseSandbox() {
   const [orderTraceCopyMessage, setOrderTraceCopyMessage] = useState<
     string | null
   >(null);
+  const [selectedScenarioId, setSelectedScenarioId] =
+    React.useState<NyLicenseScenarioId>("valid_ny_active");
 
   function handleChange(
     field: keyof NyPharmacyFormData,
@@ -160,19 +224,34 @@ export function NyPharmacyLicenseSandbox() {
     }
   }
 
-  async function handleOrderMock() {
+  function runNyLicenseScenario(id: NyLicenseScenarioId) {
+    setSelectedScenarioId(id);
+
+    const scenarioForm = NY_LICENSE_SCENARIO_FORMS[id];
+    if (scenarioForm) {
+      setForm(scenarioForm);
+      setDecision(null);
+      setCopilot(null);
+    }
+
+    handleOrderMock(scenarioForm);
+  }
+
+  async function handleOrderMock(formOverride?: NyPharmacyFormData) {
     setOrderLoading(true);
     setOrderError(null);
     setOrderResult(null);
 
+    const payload = formOverride ?? form;
+
     trackSandboxEvent("ny_pharmacy_order_mock_run", {
       engine_family: "order",
       license_type: "ny_pharmacy",
-      ship_to_state: form.shipToState,
+      ship_to_state: payload.shipToState,
     });
 
     try {
-      const run = await runNyPharmacyOrderMock(form);
+      const run = await runNyPharmacyOrderMock(payload);
       setOrderTrace(run);
       setOrderResult(run.response);
 
@@ -496,6 +575,45 @@ export function NyPharmacyLicenseSandbox() {
                 "Normalizes outputs to ok_to_ship, needs_review, or blocked for consistency with other engines.",
               ]}
             />
+          </div>
+
+          <div className="mt-3">
+            <p className="text-xs font-medium text-slate-300">Quick scenarios</p>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Pick a preset to simulate how the NY license engine and mock order
+              behave in a few realistic cases.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {NY_LICENSE_SCENARIOS.map((scenario) => {
+                const isActive = scenario.id === selectedScenarioId;
+                return (
+                  <button
+                    key={scenario.id}
+                    type="button"
+                    onClick={() => runNyLicenseScenario(scenario.id)}
+                    className={[
+                      "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-medium transition",
+                      isActive
+                        ? "border-cyan-400 bg-cyan-500/15 text-cyan-100"
+                        : "border-slate-700 bg-slate-900/80 text-slate-200 hover:border-slate-500 hover:bg-slate-800",
+                    ].join(" ")}
+                  >
+                    <span>{scenario.label}</span>
+                    {scenario.badge && (
+                      <span className="rounded-full bg-cyan-500/20 px-2 py-[1px] text-[9px] font-semibold uppercase tracking-wide text-cyan-200">
+                        {scenario.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-1 text-[11px] text-slate-400">
+              {
+                NY_LICENSE_SCENARIOS.find((s) => s.id === selectedScenarioId)
+                  ?.description
+              }
+            </div>
           </div>
 
           <div className="trace-actions">
