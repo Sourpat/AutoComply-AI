@@ -1,4 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
+import { Github, FileText, BookOpen, Terminal, Copy } from "lucide-react";
+import { copyToClipboard } from "../utils/clipboard";
 
 type DocsLinksCardProps = {
   repoUrl?: string;
@@ -17,6 +19,34 @@ export function DocsLinksCard({
   portfolioCaseStudyPath = "docs/portfolio_case_study_autocomply_ai.md",
   architectureDocPath = "docs/system_architecture_autocomply_ai.md",
 }: DocsLinksCardProps) {
+  const [copyStatus, setCopyStatus] = useState<"idle" | "success" | "error">(
+    "idle"
+  );
+
+  const localRunSnippet = `# backend
+cd backend
+pip install -r requirements.txt
+uvicorn src.api.main:app --reload
+
+# frontend
+cd frontend
+pnpm install
+pnpm dev
+
+# smoke test (backend running)
+python scripts/smoke_test_autocomply.py --base-url http://localhost:8000`;
+
+  async function handleCopyLocalRun() {
+    try {
+      const ok = await copyToClipboard(localRunSnippet);
+      setCopyStatus(ok ? "success" : "error");
+      setTimeout(() => setCopyStatus("idle"), 2000);
+    } catch {
+      setCopyStatus("error");
+      setTimeout(() => setCopyStatus("idle"), 2000);
+    }
+  }
+
   return (
     <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-4 text-sm text-slate-200 shadow-md shadow-black/30 backdrop-blur">
       <div className="flex items-center justify-between gap-2">
@@ -81,29 +111,39 @@ export function DocsLinksCard({
         </div>
 
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <IconBadge label="CLI" />
-            <div>
-              <p className="text-xs font-medium text-slate-100">Run it locally (quick)</p>
-              <p className="text-[11px] text-slate-400">
-                Use these commands when you’re setting up the demo on a new machine.
-              </p>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-slate-800">
+                  <Terminal className="h-3.5 w-3.5 text-amber-200" />
+                </span>
+                <div>
+                  <p className="text-xs font-medium text-slate-100">
+                    Run it locally (quick)
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    Use these commands when you're setting up the demo on a new
+                    machine.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyLocalRun}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] font-medium text-slate-200 hover:border-slate-500 hover:bg-slate-800"
+              >
+                <Copy className="h-3 w-3" />
+                {copyStatus === "success"
+                  ? "Copied!"
+                  : copyStatus === "error"
+                  ? "Error"
+                  : "Copy"}
+              </button>
             </div>
+            <pre className="mt-1 overflow-auto rounded-lg bg-slate-950/80 p-2 text-[10px] leading-relaxed text-slate-200">
+              {localRunSnippet}
+            </pre>
           </div>
-          <pre className="mt-1 overflow-auto rounded-lg bg-slate-950/80 p-2 text-[10px] leading-relaxed text-slate-200">
-{`# backend
-cd backend
-pip install -r requirements.txt
-uvicorn backend.main:app --reload
-
-# frontend
-cd frontend
-pnpm install
-pnpm dev
-
-# smoke test (in another shell, backend running)
-python scripts/smoke_test_autocomply.py --base-url http://localhost:8000`}
-          </pre>
         </div>
       </div>
     </div>
