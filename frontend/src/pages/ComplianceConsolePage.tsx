@@ -11,6 +11,260 @@ import { TestingReliabilityCard } from "../components/TestingReliabilityCard";
 import { SystemHealthCard } from "../components/SystemHealthCard";
 import { RunLocallyCard } from "../components/RunLocallyCard";
 
+type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
+  id: string;
+};
+
+const API_REFERENCE_CARDS: ApiReferenceCardConfig[] = [
+  {
+    id: "csf-hospital-eval",
+    groupLabel: "CSF engine",
+    title: "Hospital CSF evaluation",
+    summary:
+      "Evaluates a hospital controlled substance form and normalizes the result to ok_to_ship, needs_review, or blocked.",
+    method: "POST",
+    path: "/csf/hospital/evaluate",
+    curlSnippet: `curl -X POST http://localhost:8000/csf/hospital/evaluate \\\n  -H "Content-Type: application/json" \\\n  -d '{
+  "hospital_name": "Riverside General Hospital",
+  "account_number": "ACCT-123456",
+  "ship_to_state": "OH",
+  "attestation_accepted": true
+}'`,
+    requestJson: {
+      hospital_name: "Riverside General Hospital",
+      account_number: "ACCT-123456",
+      ship_to_state: "OH",
+      attestation_accepted: true,
+    },
+    responseJson: {
+      status: "ok_to_ship",
+      reason: "Hospital CSF is valid for Ohio; all required fields were provided.",
+      regulatory_references: ["csf_hospital_form"],
+    },
+  },
+  {
+    id: "csf-facility-eval",
+    groupLabel: "CSF engine",
+    title: "Facility CSF evaluation",
+    summary:
+      "Evaluates facility-level controlled substance forms and outputs ok_to_ship, needs_review, or blocked decisions.",
+    method: "POST",
+    path: "/csf/facility/evaluate",
+    curlSnippet: `curl -X POST http://localhost:8000/csf/facility/evaluate \\\n  -H "Content-Type: application/json" \\\n  -d '{
+  "facility_name": "SummitCare Clinics – East Region",
+  "account_number": "FAC-445210",
+  "ship_to_state": "OH",
+  "attestation_accepted": true
+}'`,
+    requestJson: {
+      facility_name: "SummitCare Clinics – East Region",
+      account_number: "FAC-445210",
+      ship_to_state: "OH",
+      attestation_accepted: true,
+    },
+    responseJson: {
+      status: "ok_to_ship",
+      reason: "Facility CSF is valid for Ohio; all required fields were provided.",
+      regulatory_references: ["csf_facility_form"],
+    },
+  },
+  {
+    id: "csf-facility-copilot",
+    groupLabel: "CSF engine",
+    title: "Facility CSF – form copilot",
+    summary:
+      "Returns a human-friendly explanation of the Facility CSF decision, plus any missing or corrective fields.",
+    method: "POST",
+    path: "/csf/facility/form-copilot",
+    curlSnippet: `curl -X POST http://localhost:8000/csf/facility/form-copilot \\\n  -H "Content-Type: application/json" \\\n  -d '{
+  "facility_name": "SummitCare Clinics – East Region",
+  "account_number": "FAC-445210",
+  "ship_to_state": "OH",
+  "attestation_accepted": false
+}'`,
+    requestJson: {
+      facility_name: "SummitCare Clinics – East Region",
+      account_number: "FAC-445210",
+      ship_to_state: "OH",
+      attestation_accepted: false,
+    },
+    responseJson: {
+      explanation:
+        "Facility CSF needs attestation before approval. Provide the missing attestation and resubmit for ok_to_ship.",
+      missing_fields: ["attestation_accepted"],
+      regulatory_references: ["csf_facility_form"],
+    },
+  },
+  {
+    id: "csf-practitioner-eval",
+    groupLabel: "CSF engine",
+    title: "Practitioner CSF evaluation",
+    summary:
+      "Evaluates a prescriber’s controlled substance form in the practitioner sandbox with the same normalized decision set.",
+    method: "POST",
+    path: "/csf/practitioner/evaluate",
+    curlSnippet: `curl -X POST http://localhost:8000/csf/practitioner/evaluate \\\n  -H "Content-Type: application/json" \\\n  -d '{
+  "practitioner_name": "Dr. Jamie Patel",
+  "npi": "1987654321",
+  "ship_to_state": "OH",
+  "attestation_accepted": true
+}'`,
+    requestJson: {
+      practitioner_name: "Dr. Jamie Patel",
+      npi: "1987654321",
+      ship_to_state: "OH",
+      attestation_accepted: true,
+    },
+    responseJson: {
+      status: "ok_to_ship",
+      reason: "Practitioner CSF is valid for Ohio; no missing fields detected.",
+      regulatory_references: ["csf_practitioner_form"],
+    },
+  },
+  {
+    id: "csf-practitioner-copilot",
+    groupLabel: "CSF engine",
+    title: "Practitioner CSF – form copilot",
+    summary:
+      "Explains practitioner CSF decisions with missing fields and regulatory references for prescriber-focused workflows.",
+    method: "POST",
+    path: "/csf/practitioner/form-copilot",
+    curlSnippet: `curl -X POST http://localhost:8000/csf/practitioner/form-copilot \\\n  -H "Content-Type: application/json" \\\n  -d '{
+  "practitioner_name": "Dr. Jamie Patel",
+  "npi": "1987654321",
+  "ship_to_state": "OH",
+  "attestation_accepted": false
+}'`,
+    requestJson: {
+      practitioner_name: "Dr. Jamie Patel",
+      npi: "1987654321",
+      ship_to_state: "OH",
+      attestation_accepted: false,
+    },
+    responseJson: {
+      explanation:
+        "Practitioner CSF requires attestation acceptance. Add attestation_accepted: true to complete the submission.",
+      missing_fields: ["attestation_accepted"],
+      regulatory_references: ["csf_practitioner_form"],
+    },
+  },
+  {
+    id: "license-ohio-tddd",
+    groupLabel: "License engine",
+    title: "Ohio TDDD license evaluation",
+    summary:
+      "Checks an Ohio TDDD license and decides whether this account is allowed to receive controlled substances in Ohio.",
+    method: "POST",
+    path: "/license/ohio-tddd/evaluate",
+    curlSnippet: `curl -X POST http://localhost:8000/license/ohio-tddd/evaluate \\\n  -H "Content-Type: application/json" \\\n  -d '{
+  "account_number": "ACCT-445210",
+  "tddd_number": "TDDD-1234567",
+  "ship_to_state": "OH"
+}'`,
+    requestJson: {
+      account_number: "ACCT-445210",
+      tddd_number: "TDDD-1234567",
+      ship_to_state: "OH",
+    },
+    responseJson: {
+      status: "ok_to_ship",
+      reason: "Ohio TDDD license is active and valid for this ship-to location.",
+    },
+  },
+  {
+    id: "license-ny-pharmacy",
+    groupLabel: "License engine",
+    title: "NY pharmacy license evaluation",
+    summary:
+      "Evaluates pharmacy licensing for New York scenarios in the NY sandbox, including DEA and state license checks.",
+    method: "POST",
+    path: "/license/ny-pharmacy/evaluate",
+    curlSnippet: `curl -X POST http://localhost:8000/license/ny-pharmacy/evaluate \\\n  -H "Content-Type: application/json" \\\n  -d '{
+  "pharmacy_name": "Hudson Pharmacy",
+  "account_number": "ACCT-889910",
+  "ship_to_state": "NY",
+  "dea_number": "FD1234567",
+  "ny_state_license_number": "NY-7654321",
+  "attestation_accepted": true,
+  "internal_notes": "Demo request"
+}'`,
+    requestJson: {
+      pharmacy_name: "Hudson Pharmacy",
+      account_number: "ACCT-889910",
+      ship_to_state: "NY",
+      dea_number: "FD1234567",
+      ny_state_license_number: "NY-7654321",
+      attestation_accepted: true,
+      internal_notes: "Demo request",
+    },
+    responseJson: {
+      status: "license_active",
+      reason: "NY pharmacy license and DEA number are valid for this order.",
+    },
+  },
+  {
+    id: "mock-ohio-hospital",
+    groupLabel: "Mock order",
+    title: "Ohio hospital mock order decision",
+    summary:
+      "Combines Hospital CSF + Ohio TDDD outputs into one mock order decision for demo purposes.",
+    method: "POST",
+    path: "/orders/mock/ohio-hospital-approval",
+    curlSnippet: `curl -X POST http://localhost:8000/orders/mock/ohio-hospital-approval \\\n  -H "Content-Type: application/json" \\\n  -d '{
+  "csf_decision": "ok_to_ship",
+  "license_decision": "ok_to_ship"
+}'`,
+    requestJson: {
+      csf_decision: "ok_to_ship",
+      license_decision: "ok_to_ship",
+    },
+    responseJson: {
+      final_decision: "ok_to_ship",
+      explanation: "Both CSF and Ohio TDDD license are satisfied, so the mock order is approved.",
+    },
+  },
+  {
+    id: "mock-ohio-facility",
+    groupLabel: "Mock order",
+    title: "Ohio facility mock order decision",
+    summary:
+      "Combines Facility CSF + Ohio TDDD license into a mock order decision for facilities.",
+    method: "POST",
+    path: "/orders/mock/ohio-facility-approval",
+    curlSnippet: `curl -X POST http://localhost:8000/orders/mock/ohio-facility-approval \\\n  -H "Content-Type: application/json" \\\n  -d '{
+  "csf_decision": "ok_to_ship",
+  "license_decision": "ok_to_ship"
+}'`,
+    requestJson: {
+      csf_decision: "ok_to_ship",
+      license_decision: "ok_to_ship",
+    },
+    responseJson: {
+      final_decision: "ok_to_ship",
+      explanation: "Facility CSF and Ohio TDDD license are satisfied, so the mock order is approved.",
+    },
+  },
+  {
+    id: "mock-ny-pharmacy",
+    groupLabel: "Mock order",
+    title: "NY pharmacy mock order decision",
+    summary:
+      "Combines NY license engine outputs into a single mock order decision.",
+    method: "POST",
+    path: "/orders/mock/ny-pharmacy-approval",
+    curlSnippet: `curl -X POST http://localhost:8000/orders/mock/ny-pharmacy-approval \\\n  -H "Content-Type: application/json" \\\n  -d '{
+  "license_decision": "license_active"
+}'`,
+    requestJson: {
+      license_decision: "license_active",
+    },
+    responseJson: {
+      final_decision: "ok_to_ship",
+      explanation: "NY pharmacy license is active for this order, so the mock order is approved.",
+    },
+  },
+];
+
 const CSF_CONSOLE_CARDS = [
   {
     id: "hospital",
@@ -198,78 +452,9 @@ export function ComplianceConsolePage() {
         </p>
 
         <div className="mt-3 grid gap-3 md:grid-cols-3">
-          <ApiReferenceCard
-            groupLabel="CSF engine"
-            title="Hospital CSF evaluation"
-            summary="Evaluates a hospital controlled substance form and normalizes the result to ok_to_ship, needs_review, or blocked."
-            method="POST"
-            path="/csf/hospital/evaluate"
-            curlSnippet={`curl -X POST http://localhost:8000/csf/hospital/evaluate \\
--H "Content-Type: application/json" \\
--d '{
-  "hospital_name": "Riverside General Hospital",
-  "account_number": "ACCT-123456",
-  "ship_to_state": "OH",
-  "attestation_accepted": true
-}'`}
-            requestJson={{
-              hospital_name: "Riverside General Hospital",
-              account_number: "ACCT-123456",
-              ship_to_state: "OH",
-              attestation_accepted: true,
-            }}
-            responseJson={{
-              status: "ok_to_ship",
-              reason: "Hospital CSF is valid for Ohio; all required fields were provided.",
-              regulatory_references: ["csf_hospital_form"],
-            }}
-          />
-
-          <ApiReferenceCard
-            groupLabel="License engine"
-            title="Ohio TDDD license evaluation"
-            summary="Checks an Ohio TDDD license and decides whether this account is allowed to receive controlled substances in Ohio."
-            method="POST"
-            path="/license/ohio-tddd/evaluate"
-            curlSnippet={`curl -X POST http://localhost:8000/license/ohio-tddd/evaluate \\
--H "Content-Type: application/json" \\
--d '{
-  "account_number": "ACCT-445210",
-  "tddd_number": "TDDD-1234567",
-  "ship_to_state": "OH"
-}'`}
-            requestJson={{
-              account_number: "ACCT-445210",
-              tddd_number: "TDDD-1234567",
-              ship_to_state: "OH",
-            }}
-            responseJson={{
-              status: "ok_to_ship",
-              reason: "Ohio TDDD license is active and valid for this ship-to location.",
-            }}
-          />
-
-          <ApiReferenceCard
-            groupLabel="Mock order"
-            title="Ohio hospital mock order decision"
-            summary="Combines Hospital CSF + Ohio TDDD outputs into one mock order decision for demo purposes."
-            method="POST"
-            path="/orders/mock/ohio-hospital-approval"
-            curlSnippet={`curl -X POST http://localhost:8000/orders/mock/ohio-hospital-approval \\
--H "Content-Type: application/json" \\
--d '{
-  "csf_decision": "ok_to_ship",
-  "license_decision": "ok_to_ship"
-}'`}
-            requestJson={{
-              csf_decision: "ok_to_ship",
-              license_decision: "ok_to_ship",
-            }}
-            responseJson={{
-              final_decision: "ok_to_ship",
-              explanation: "Both CSF and Ohio TDDD license are satisfied, so the mock order is approved.",
-            }}
-          />
+          {API_REFERENCE_CARDS.map((card) => (
+            <ApiReferenceCard key={card.id} {...card} />
+          ))}
         </div>
       </section>
 
