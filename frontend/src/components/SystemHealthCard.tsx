@@ -1,6 +1,7 @@
 import React from "react";
 import { Activity, ShieldCheck, AlertTriangle, XCircle } from "lucide-react";
 import { fetchFullHealth, FullHealthResponse } from "../api/healthClient";
+import { TestCoverageNote } from "./TestCoverageNote";
 
 type LoadState = "idle" | "loading" | "success" | "error";
 
@@ -67,6 +68,7 @@ export function SystemHealthCard() {
           <p className="mt-1 text-[11px] text-slate-400">
             Live view of the health endpoints behind CSF, license, and mock order engines.
           </p>
+          <TestCoverageNote size="sm" files={["backend/tests/test_health_api.py"]} />
         </div>
         <div className="flex flex-col items-end gap-1">
           {loadState === "loading" && (
