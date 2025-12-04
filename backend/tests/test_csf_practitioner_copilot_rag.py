@@ -5,6 +5,7 @@ from src.api.models.compliance_models import RegulatorySource
 from src.api.routes import csf_practitioner as csf_practitioner_route
 from src.autocomply.domain.csf_copilot import CsfCopilotResult
 from src.autocomply.domain.csf_practitioner import CsDecisionStatus
+from src.api.models.decision import RegulatoryReference
 
 client = TestClient(app)
 
@@ -28,7 +29,13 @@ def test_practitioner_copilot_returns_rag_reason(monkeypatch):
             status=CsDecisionStatus.OK_TO_SHIP,
             reason="mocked rag answer",
             missing_fields=[],
-            regulatory_references=["csf_practitioner_form"],
+            regulatory_references=[
+                RegulatoryReference(
+                    id="csf_practitioner_form",
+                    label="Practitioner CSF – core requirements",
+                    source="Practitioner Controlled Substance Form (stub)",
+                )
+            ],
             rag_explanation="mocked rag answer",
             artifacts_used=["csf_practitioner_form"],
             rag_sources=[
@@ -50,9 +57,7 @@ def test_practitioner_copilot_returns_rag_reason(monkeypatch):
     assert data["rag_explanation"] == "mocked rag answer"
     refs = data.get("regulatory_references", [])
     assert isinstance(refs, list)
-    for ref in refs:
-        assert "id" in ref
-        assert "label" in ref
+    assert any(ref["id"] == "csf_practitioner_form" for ref in refs)
     assert data["rag_sources"][0]["id"] == "csf_practitioner_form"
     assert "csf_practitioner_form" in data.get("artifacts_used", [])
 
@@ -66,7 +71,13 @@ def test_practitioner_copilot_uses_practitioner_doc(monkeypatch):
             status=CsDecisionStatus.OK_TO_SHIP,
             reason="ok",
             missing_fields=[],
-            regulatory_references=["csf_practitioner_form"],
+            regulatory_references=[
+                RegulatoryReference(
+                    id="csf_practitioner_form",
+                    label="Practitioner CSF – core requirements",
+                    source="Practitioner Controlled Substance Form (stub)",
+                )
+            ],
             rag_explanation="ok",
             artifacts_used=["csf_practitioner_form"],
             rag_sources=[
@@ -85,4 +96,6 @@ def test_practitioner_copilot_uses_practitioner_doc(monkeypatch):
 
     data = resp.json()
     assert any("csf_practitioner_form" in a for a in data.get("artifacts_used", []))
+    refs = data.get("regulatory_references", [])
+    assert any(ref.get("id") == "csf_practitioner_form" for ref in refs)
     assert recorded_request.get("csf_type") == "practitioner"

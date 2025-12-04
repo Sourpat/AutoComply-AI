@@ -5,6 +5,7 @@ from src.api.routes import csf_hospital
 from src.api.models.compliance_models import RegulatorySource
 from src.autocomply.domain.csf_copilot import CsfCopilotResult
 from src.autocomply.domain.csf_practitioner import CsDecisionStatus
+from src.api.models.decision import RegulatoryReference
 
 client = TestClient(app)
 
@@ -15,7 +16,13 @@ def test_hospital_copilot_returns_explanation(monkeypatch):
             status=CsDecisionStatus.OK_TO_SHIP,
             reason="Hospital CSF is approved to proceed.",
             missing_fields=[],
-            regulatory_references=["csf_hospital_form"],
+            regulatory_references=[
+                RegulatoryReference(
+                    id="csf_hospital_form",
+                    label="Hospital CSF – core requirements",
+                    source="Hospital Controlled Substance Form (stub)",
+                )
+            ],
             rag_explanation="stubbed hospital explanation",
             artifacts_used=["csf_hospital_form"],
             rag_sources=[
@@ -47,12 +54,16 @@ def test_hospital_copilot_returns_explanation(monkeypatch):
     data = resp.json()
     assert data["status"] == "ok_to_ship"
     assert "rag_explanation" in data
-    assert data["regulatory_references"]
-    assert data["rag_sources"][0]["id"] == "csf_hospital_form"
 
+    # New checks: regulatory_references are real objects with the CSF doc ID.
     refs = data["regulatory_references"]
     assert isinstance(refs, list)
     assert refs
-    first = refs[0]
-    assert "id" in first
-    assert "label" in first
+    assert refs[0]["id"] == "csf_hospital_form"
+    assert "label" in refs[0]
+
+    # RAG sources should be present and aligned with the doc ID.
+    rag_sources = data["rag_sources"]
+    assert isinstance(rag_sources, list)
+    assert rag_sources
+    assert rag_sources[0]["id"] == "csf_hospital_form"

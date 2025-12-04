@@ -2,6 +2,8 @@ from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
+from src.api.models.compliance_models import RegulatorySource
+from src.api.models.decision import RegulatoryReference
 from src.autocomply.domain.csf_facility import (
     FacilityCsfForm,
     FacilityFacilityType,
@@ -13,15 +15,15 @@ from src.autocomply.domain.csf_hospital import (
     HospitalFacilityType,
     evaluate_hospital_csf,
 )
-from src.autocomply.domain.csf_researcher import (
-    ResearcherCsfForm,
-    evaluate_researcher_csf,
-)
 from src.autocomply.domain.csf_practitioner import (
     CsDecisionStatus,
     PractitionerCsfForm,
     PractitionerFacilityType,
     evaluate_practitioner_csf,
+)
+from src.autocomply.domain.csf_researcher import (
+    ResearcherCsfForm,
+    evaluate_researcher_csf,
 )
 from src.autocomply.domain.rag_regulatory_explain import (
     RegulatoryRagAnswer,
@@ -29,8 +31,8 @@ from src.autocomply.domain.rag_regulatory_explain import (
     explain_csf_hospital_decision,
     explain_csf_practitioner_decision,
 )
+from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 from src.rag.csf_copilot_prompt import build_csf_copilot_prompt
-from src.api.models.compliance_models import RegulatorySource
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -62,10 +64,51 @@ class CsfCopilotResult(BaseModel):
     status: CsDecisionStatus
     reason: str
     missing_fields: List[str] = Field(default_factory=list)
-    regulatory_references: List[str] = Field(default_factory=list)
+    regulatory_references: List[RegulatoryReference] = Field(default_factory=list)
     rag_explanation: str
     artifacts_used: List[str] = Field(default_factory=list)
     rag_sources: List[RegulatorySource] = Field(default_factory=list)
+
+
+def build_csf_copilot_result(
+    *,
+    decision_status: CsDecisionStatus,
+    reason: str,
+    missing_fields: List[str],
+    decision_type: str,
+    doc_id: str,
+    rag_explanation: str,
+) -> CsfCopilotResult:
+    knowledge = get_regulatory_knowledge()
+    evidence_items = knowledge.get_regulatory_evidence(
+        decision_type=decision_type,
+        jurisdiction=None,
+        doc_ids=[doc_id],
+        context={},
+    )
+
+    regulatory_references: List[RegulatoryReference] = [
+        item.reference for item in evidence_items
+    ]
+
+    rag_sources: List[RegulatorySource] = [
+        RegulatorySource(
+            id=ref.id,
+            title=ref.label or ref.id,
+            snippet=item.snippet or "Stubbed CSF context",
+        )
+        for ref, item in zip(regulatory_references, evidence_items)
+    ]
+
+    return CsfCopilotResult(
+        status=decision_status,
+        reason=reason,
+        missing_fields=missing_fields,
+        regulatory_references=regulatory_references,
+        rag_explanation=rag_explanation,
+        artifacts_used=[doc_id],
+        rag_sources=rag_sources,
+    )
 
 
 def _facility_success_reason(reason: str) -> str:
@@ -131,11 +174,7 @@ async def run_csf_copilot(
 
         decision = evaluate_facility_csf(facility_form)
         decision.reason = _facility_success_reason(decision.reason)
-        references = decision.regulatory_references or ["csf_facility_form"]
-        references = [
-            "csf_facility_form" if ref == "csf_hospital_form" else ref
-            for ref in references
-        ]
+        references = decision.regulatory_references or [doc_id]
         rag_explanation = decision.reason
 
         logger.info(
@@ -179,14 +218,13 @@ async def run_csf_copilot(
                 f"Decision summary: {_facility_success_reason(decision.reason)}"
             )
 
-        return CsfCopilotResult(
-            status=decision.status,
+        return build_csf_copilot_result(
+            decision_status=decision.status,
             reason=decision.reason,
             missing_fields=decision.missing_fields,
-            regulatory_references=references,
+            decision_type="csf_facility",
+            doc_id=doc_id,
             rag_explanation=rag_explanation,
-            artifacts_used=artifacts_used,
-            rag_sources=rag_sources,
         )
 
     if csf_type == "ems":
@@ -247,14 +285,13 @@ async def run_csf_copilot(
                 f"Decision summary: {decision.reason}"
             )
 
-        return CsfCopilotResult(
-            status=decision.status,
+        return build_csf_copilot_result(
+            decision_status=decision.status,
             reason=decision.reason,
             missing_fields=decision.missing_fields,
-            regulatory_references=references,
+            decision_type="csf_ems",
+            doc_id=doc_id,
             rag_explanation=rag_explanation,
-            artifacts_used=artifacts_used,
-            rag_sources=rag_sources,
         )
 
     if csf_type == "researcher":
@@ -315,14 +352,13 @@ async def run_csf_copilot(
                 f"Decision summary: {decision.reason}"
             )
 
-        return CsfCopilotResult(
-            status=decision.status,
+        return build_csf_copilot_result(
+            decision_status=decision.status,
             reason=decision.reason,
             missing_fields=decision.missing_fields,
-            regulatory_references=references,
+            decision_type="csf_researcher",
+            doc_id=doc_id,
             rag_explanation=rag_explanation,
-            artifacts_used=artifacts_used,
-            rag_sources=rag_sources,
         )
 
     if csf_type == "practitioner":
@@ -344,7 +380,7 @@ async def run_csf_copilot(
         )
 
         decision = evaluate_practitioner_csf(practitioner_form)
-        references = decision.regulatory_references or ["csf_practitioner_form"]
+        references = decision.regulatory_references or [doc_id]
         rag_explanation = decision.reason
 
         logger.info(
@@ -386,14 +422,13 @@ async def run_csf_copilot(
                 f"Decision summary: {decision.reason}"
             )
 
-        return CsfCopilotResult(
-            status=decision.status,
+        return build_csf_copilot_result(
+            decision_status=decision.status,
             reason=decision.reason,
             missing_fields=decision.missing_fields,
-            regulatory_references=references,
+            decision_type="csf_practitioner",
+            doc_id=doc_id,
             rag_explanation=rag_explanation,
-            artifacts_used=artifacts_used,
-            rag_sources=rag_sources,
         )
 
     hospital_form = HospitalCsfForm(
@@ -415,7 +450,7 @@ async def run_csf_copilot(
     )
 
     decision = evaluate_hospital_csf(hospital_form)
-    references = decision.regulatory_references or ["csf_hospital_form"]
+    references = decision.regulatory_references or [doc_id]
     rag_explanation = decision.reason
 
     logger.info(
@@ -457,12 +492,11 @@ async def run_csf_copilot(
             f"Decision summary: {decision.reason}"
         )
 
-    return CsfCopilotResult(
-        status=decision.status,
+    return build_csf_copilot_result(
+        decision_status=decision.status,
         reason=decision.reason,
         missing_fields=decision.missing_fields,
-        regulatory_references=references,
+        decision_type="csf_hospital",
+        doc_id=doc_id,
         rag_explanation=rag_explanation,
-        artifacts_used=artifacts_used,
-        rag_sources=rag_sources,
     )

@@ -1,7 +1,6 @@
 from fastapi import APIRouter
 
-from src.api.models.compliance_models import EmsFormCopilotResponse
-from src.autocomply.domain.csf_copilot import run_csf_copilot
+from src.autocomply.domain.csf_copilot import CsfCopilotResult, run_csf_copilot
 from src.autocomply.domain.csf_ems import (
     EmsCsfDecision,
     EmsCsfForm,
@@ -26,8 +25,8 @@ async def evaluate_ems_csf_endpoint(form: EmsCsfForm) -> EmsCsfDecision:
     return evaluate_ems_csf(form)
 
 
-@router.post("/form-copilot", response_model=EmsFormCopilotResponse)
-async def ems_form_copilot(form: EmsCsfForm) -> EmsFormCopilotResponse:
+@router.post("/form-copilot", response_model=CsfCopilotResult)
+async def ems_form_copilot(form: EmsCsfForm) -> CsfCopilotResult:
     """EMS CSF Form Copilot backed by regulatory RAG."""
 
     copilot_request = {
@@ -56,13 +55,5 @@ async def ems_form_copilot(form: EmsCsfForm) -> EmsFormCopilotResponse:
         },
     )
 
-    return EmsFormCopilotResponse(
-        status=rag_result.status,
-        reason=rag_result.reason,
-        missing_fields=rag_result.missing_fields,
-        regulatory_references=rag_result.regulatory_references,
-        rag_explanation=rag_result.rag_explanation,
-        artifacts_used=rag_result.artifacts_used,
-        rag_sources=rag_result.rag_sources,
-    )
+    return rag_result
 

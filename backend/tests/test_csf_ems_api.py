@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from src.api.main import app
 from src.api.routes import csf_ems
 from src.api.models.compliance_models import RegulatorySource
+from src.api.models.decision import RegulatoryReference
 from src.autocomply.domain.csf_copilot import CsfCopilotResult
 from src.autocomply.domain.csf_practitioner import CsDecisionStatus
 
@@ -47,7 +48,13 @@ def test_csf_ems_form_copilot(monkeypatch):
             status=CsDecisionStatus.OK_TO_SHIP,
             reason="EMS CSF is approved to proceed.",
             missing_fields=[],
-            regulatory_references=["csf_ems_form"],
+            regulatory_references=[
+                RegulatoryReference(
+                    id="csf_ems_form",
+                    label="EMS CSF",
+                    source="EMS CSF (stub)",
+                )
+            ],
             rag_explanation="stubbed EMS explanation",
             artifacts_used=["csf_ems_form"],
             rag_sources=[
