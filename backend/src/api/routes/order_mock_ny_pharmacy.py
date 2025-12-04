@@ -1,9 +1,14 @@
+from typing import Dict, Optional
+
 from fastapi import APIRouter
 
+from src.api.models.decision import DecisionOutcome, DecisionStatus
 from src.api.routes.license_ny_pharmacy import ny_pharmacy_evaluate
-from src.domain.order_mock_ny_pharmacy import (
-    NyPharmacyOrderApprovalRequest,
-    NyPharmacyOrderApprovalResult,
+from src.domain.order_mock_ny_pharmacy import NyPharmacyOrderApprovalRequest
+from src.api.routes.order_mock_approval import (
+    MockOrderDecisionResponse,
+    _normalize_references,
+    _risk_level_for_status,
 )
 
 router = APIRouter(tags=["orders_mock"])
@@ -11,11 +16,11 @@ router = APIRouter(tags=["orders_mock"])
 
 @router.post(
     "/orders/mock/ny-pharmacy-approval",
-    response_model=NyPharmacyOrderApprovalResult,
+    response_model=MockOrderDecisionResponse,
 )
 async def ny_pharmacy_mock_order_approval(
     request: NyPharmacyOrderApprovalRequest,
-) -> NyPharmacyOrderApprovalResult:
+) -> MockOrderDecisionResponse:
     """
     Mock order-approval endpoint that uses only the NY Pharmacy license engine.
 
@@ -33,21 +38,47 @@ async def ny_pharmacy_mock_order_approval(
         f"NY Pharmacy license decision: {license_decision.status} – {license_decision.reason}"
     ]
 
-    license_status = license_decision.status
+    license_status = (
+        license_decision.status
+        if isinstance(license_decision.status, DecisionStatus)
+        else DecisionStatus(str(license_decision.status))
+    )
 
-    # Default result is conservative (needs_review) unless explicitly ok_to_ship.
-    final_status = "needs_review"
-    if license_status == "blocked":
-        final_status = "blocked"
-    elif license_status == "ok_to_ship":
-        final_status = "ok_to_ship"
+    final_status = DecisionStatus.NEEDS_REVIEW
+    if license_status == DecisionStatus.BLOCKED:
+        final_status = DecisionStatus.BLOCKED
+    elif license_status == DecisionStatus.OK_TO_SHIP:
+        final_status = DecisionStatus.OK_TO_SHIP
 
-    notes.append(f"Final mock order decision (NY-only): {final_status}")
+    notes.append(f"Final mock order decision (NY-only): {final_status.value}")
 
-    return NyPharmacyOrderApprovalResult(
-        license_status=license_decision.status,
+    if final_status == DecisionStatus.OK_TO_SHIP:
+        reason = "Order approved: NY Pharmacy license is ok_to_ship for this order."
+    elif final_status == DecisionStatus.BLOCKED:
+        reason = "Order blocked: NY Pharmacy license is blocked."
+    else:
+        reason = "Order needs manual review: NY Pharmacy license is not ok_to_ship."
+
+    decision = DecisionOutcome(
+        status=final_status,
+        reason=reason,
+        risk_level=_risk_level_for_status(final_status),
+        regulatory_references=_normalize_references(
+            getattr(license_decision, "regulatory_references", [])
+        ),
+        debug_info={"notes": notes},
+    )
+
+    developer_trace: Optional[Dict[str, str]] = {"notes": notes}
+
+    return MockOrderDecisionResponse(
+        decision=decision,
+        license_engine="ny-pharmacy",
+        scenario_id="ny-pharmacy-happy-path",
+        developer_trace=developer_trace,
+        license_status=license_status.value,
         license_reason=license_decision.reason,
-        license_missing_fields=license_decision.missing_fields,
-        final_decision=final_status,
+        license_missing_fields=getattr(license_decision, "missing_fields", None),
+        final_decision=decision.status.value,
         notes=notes,
     )
