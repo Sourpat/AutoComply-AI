@@ -14,6 +14,132 @@ AutoComply AI simulates a realistic compliance environment where:
 - **License Compliance Suite** – license evaluation + RAG-based explanations, starting with Ohio TDDD. See [`docs/license_suite_overview.md`](docs/license_suite_overview.md) for details.
 - **End-to-End Compliance Journey** – how CSF decisions and Ohio TDDD license checks work together, with explainable RAG copilots. See [`docs/compliance_journey_csf_license.md`](docs/compliance_journey_csf_license.md).
 
+## Compliance Console Overview
+
+The AutoComply AI **Compliance Console** is a developer-friendly “compliance lab” that sits on top of the core engines:
+
+- Controlled substance form (CSF) engines  
+- License engines (Ohio TDDD, NY pharmacy)  
+- Mock order engines that combine CSF + license outcomes  
+- Health & testing signals from the backend  
+
+It is built with **FastAPI** (backend) and **Vite + React + TypeScript** (frontend), and is designed to show how a regulated e-commerce platform can expose internal decision engines in a way that:
+
+- Business users can **experiment with scenarios**  
+- Engineers can **inspect payloads and responses**  
+- Everyone can see **which pytest files** back a given UI flow  
+- External tools (Postman, other apps) can call the same endpoints via **“Copy as cURL”**  
+
+### What you can do in the console
+
+**1. Controlled Substance Form (CSF) sandboxes**
+
+The console exposes three CSF engines:
+
+- **Hospital CSF sandbox** – `POST /csf/hospital/evaluate`  
+- **Facility CSF sandbox** – `POST /csf/facility/evaluate`  
+- **Practitioner CSF sandbox** – `POST /csf/practitioner/evaluate`  
+
+Each sandbox lets you:
+
+- Fill out a realistic CSF form (hospital, facility, or prescriber)  
+- Click **Evaluate** to run the decision engine  
+- Use **Form Copilot** to get an explanation + missing fields  
+- See a **DecisionStatusBadge** (ok_to_ship / needs_review / blocked)  
+- Click **“Copy as cURL”** to grab a ready-to-run request for the current form  
+- View a **TestCoverageNote** that points at the relevant pytest file (for example `backend/tests/test_csf_hospital_api.py`)  
+
+Behind the scenes, these sandboxes are wired to FastAPI routers and a RAG/regulations layer that can be extended with new DEA/state rules.
+
+**2. License engine sandboxes**
+
+The **License engines** section exposes two license evaluators that are reused by the mock order journeys:
+
+- **Ohio TDDD license sandbox** – `POST /license/ohio-tddd/evaluate`  
+- **NY pharmacy license sandbox** – `POST /license/ny-pharmacy/evaluate`  
+
+For each license engine you can:
+
+- Enter license number, DEA number, facility/pharmacy name, and ship-to state  
+- Run **Evaluate license** to see how the engine classifies the scenario  
+- Inspect a **developer trace** (raw JSON request + response)  
+- Click **“Copy … cURL”** to replay the call from a terminal or Postman  
+- See a **TestCoverageNote** pointing at the license pytest file (for example `backend/tests/test_license_ohio_tddd_api.py` and `backend/tests/test_license_ny_pharmacy_api.py`)  
+
+**3. Mock order journeys**
+
+The console also includes end-to-end mock orders that combine CSF + license engines into a single decision:
+
+- **Ohio hospital mock order** – `POST /orders/mock/ohio-hospital-approval`  
+- **Ohio facility mock order** – `POST /orders/mock/ohio-facility-approval`  
+- **NY pharmacy mock order** – `POST /orders/mock/ny-pharmacy-approval`  
+
+Each mock order panel shows:
+
+- Inputs from upstream engines (e.g., Hospital/Facility CSF + Ohio TDDD license)  
+- The final mock order decision with a status badge and human-readable explanation  
+- A **developer trace** panel with the combined payload and response  
+- A **“Copy mock order cURL”** button and a note that links back to the **API reference** card  
+
+This makes it very clear how a real e-commerce order would “see” the internal compliance engines.
+
+**4. Health, testing & API reference**
+
+The console also surfaces platform-level signals:
+
+- **System health card**  
+  - Calls `/health` and `/health/full` and shows component-level status (CSF, license, mock orders).  
+  - A **TestCoverageNote** points to `backend/tests/test_health_api.py`.  
+
+- **Testing & reliability card**  
+  - Summarizes pytest coverage for CSF, license, health, and mock order APIs.  
+  - Shows a consolidated **TestCoverageNote** listing key test files such as:  
+    - `backend/tests/test_csf_hospital_api.py`  
+    - `backend/tests/test_csf_facility_api.py`  
+    - `backend/tests/test_csf_practitioner_api.py`  
+    - `backend/tests/test_license_ohio_tddd_api.py`  
+    - `backend/tests/test_license_ny_pharmacy_api.py`  
+    - `backend/tests/test_order_mock_approval_api.py`  
+    - `backend/tests/test_order_mock_ny_pharmacy_api.py`  
+
+- **API reference card**  
+  - Lists the main backend endpoints grouped by category (CSF, Licenses, Mock orders).  
+  - Each mock order trace panel in the UI explicitly points back to the relevant row in this API reference, closing the loop between UI and HTTP APIs.
+
+---
+
+### How this helps demonstrate product + engineering thinking
+
+This project is intentionally structured to show more than just “I can call an API”:
+
+- **Product thinking** – The console is organized the way a real compliance stakeholder would explore the system: start with CSF and license decisions, then look at end-to-end mock orders, then inspect health and test coverage.  
+- **Engineering discipline** – Nearly every sandbox advertises its backing pytest files via `TestCoverageNote`, and smoke tests/health checks are wired into CI.  
+- **Developer experience (DX)** – “Copy as cURL”, developer traces, and an API reference card make it trivially easy for other tools (Postman, other services, agents) to reuse the same engines.  
+- **Regulated e-commerce context** – The flows are modeled on real-world controlled substance and license checks (e.g., DEA, Ohio TDDD, NY pharmacy), but implemented in a way that is safe to demo and extend.
+
+### Quick demo script (3–5 minutes)
+
+If you are using this project in interviews or portfolio reviews, a simple demo flow is:
+
+1. **Start with CSF sandboxes**  
+   - Open the Compliance Console and show Hospital / Facility / Practitioner CSF cards.  
+   - Run an evaluation, show the status badge and Form Copilot explanation.  
+   - Highlight the `TestCoverageNote` and mention the corresponding pytest file.
+
+2. **Jump to License engines**  
+   - Open the Ohio TDDD and NY pharmacy license sandboxes.  
+   - Change license values and re-evaluate to show how outputs change.  
+   - Use “Copy … cURL” to prove that this is just HTTP under the hood.
+
+3. **Show a mock order journey**  
+   - Navigate to an Ohio or NY mock order card.  
+   - Run a mock order and show the final decision + developer trace JSON.  
+   - Point at the API reference card row that matches the endpoint.  
+
+4. **Close with health & testing**  
+   - Show the System health and Testing & reliability cards.  
+   - Call out that health endpoints and engines are backed by pytest and surfaced directly in the UI.
+
 ---
 
 ## Quickstart – Ohio Hospital Order Demo
