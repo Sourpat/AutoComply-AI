@@ -8,7 +8,12 @@ from autocomply.domain.rag_regulatory_explain import (
     explain_csf_practitioner_decision,
     regulatory_rag_explain,
 )
+from src.api.models.decision import RegulatoryReference
 from src.api.models.compliance_models import RegulatoryExplainResponse
+from src.autocomply.regulations.knowledge import (
+    RegulatoryEvidenceItem,
+    get_regulatory_knowledge,
+)
 
 router = APIRouter(
     prefix="/rag",
@@ -68,6 +73,77 @@ class RegulatoryRagResponse(RegulatoryExplainResponse):
     """
 
     pass
+
+
+class RegulatoryPreviewRequest(BaseModel):
+    """
+    Request body for the regulatory preview endpoint.
+
+    All fields are optional; you can:
+    - provide doc_ids explicitly, or
+    - rely on decision_type + jurisdiction fallback logic.
+    """
+
+    decision_type: Optional[str] = None
+    jurisdiction: Optional[str] = None
+    doc_ids: Optional[List[str]] = None
+
+
+class RegulatoryPreviewItem(BaseModel):
+    """
+    Flattened version of RegulatoryEvidenceItem for public API.
+    """
+
+    id: str
+    jurisdiction: Optional[str] = None
+    source: Optional[str] = None
+    citation: Optional[str] = None
+    label: Optional[str] = None
+    snippet: Optional[str] = None
+
+
+class RegulatoryPreviewResponse(BaseModel):
+    items: List[RegulatoryPreviewItem]
+
+
+@router.post("/regulatory/preview", response_model=RegulatoryPreviewResponse)
+async def regulatory_preview(
+    payload: RegulatoryPreviewRequest,
+) -> RegulatoryPreviewResponse:
+    """
+    Return a preview of regulatory evidence available for a given decision type /
+    jurisdiction / doc_ids.
+
+    This is a read-only endpoint intended for:
+    - debugging
+    - integrations (n8n, agents)
+    - future UI cards to show the underlying regulatory basis.
+    """
+
+    knowledge = get_regulatory_knowledge()
+
+    evidence_items: List[RegulatoryEvidenceItem] = knowledge.get_regulatory_evidence(
+        decision_type=payload.decision_type,
+        jurisdiction=payload.jurisdiction,
+        doc_ids=payload.doc_ids,
+        context={},
+    )
+
+    items: List[RegulatoryPreviewItem] = []
+    for ev in evidence_items:
+        ref: RegulatoryReference = ev.reference
+        items.append(
+            RegulatoryPreviewItem(
+                id=ref.id,
+                jurisdiction=ref.jurisdiction,
+                source=ref.source,
+                citation=ref.citation,
+                label=ref.label,
+                snippet=ev.snippet,
+            )
+        )
+
+    return RegulatoryPreviewResponse(items=items)
 
 
 @router.post("/regulatory-explain", response_model=RegulatoryRagResponse)
