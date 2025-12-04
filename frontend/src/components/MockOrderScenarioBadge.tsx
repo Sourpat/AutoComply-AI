@@ -1,7 +1,10 @@
 import React from "react";
 import { CheckCircle2, AlertTriangle, Activity } from "lucide-react";
 
-type MockOrderScenarioSeverity = "happy_path" | "edge_case" | "investigate";
+export type MockOrderScenarioSeverity =
+  | "happy_path"
+  | "edge_case"
+  | "investigate";
 
 export type MockOrderScenarioBadgeProps = {
   label: string;

@@ -18,6 +18,24 @@ const OHIO_TDDD_SANDBOX_ID = "ohio_tddd";
 
 const OHIO_TDDD_EXAMPLES: OhioTdddFormData[] = [
   {
+    tdddNumber: "TDDD-123456",
+    facilityName: "Scenario Hospital – Happy path",
+    accountNumber: "ACC-TEST",
+    shipToState: "OH",
+    licenseType: "ohio_tddd",
+    attestationAccepted: true,
+    internalNotes: "Valid TDDD for Ohio hospital Schedule II happy path.",
+  },
+  {
+    tdddNumber: "TDDD-EXPIRED",
+    facilityName: "Scenario Hospital – Expired TDDD",
+    accountNumber: "ACC-TEST",
+    shipToState: "OH",
+    licenseType: "ohio_tddd",
+    attestationAccepted: true,
+    internalNotes: "Expired TDDD for Ohio hospital Schedule II investigate path.",
+  },
+  {
     tdddNumber: "01234567",
     facilityName: "Example Ohio Pharmacy",
     accountNumber: "800123456",
