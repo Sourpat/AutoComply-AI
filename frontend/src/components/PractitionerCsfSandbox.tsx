@@ -823,12 +823,8 @@ export function PractitionerCsfSandbox() {
   }, [decision]);
 
   const copilotArtifactsUsed = copilotResponse?.artifacts_used ?? [];
-  const copilotRegulatoryReferences = (
-    copilotResponse?.regulatory_references ?? []
-  ).filter(
-    (ref, idx, arr) =>
-      arr.indexOf(ref) === idx && !copilotArtifactsUsed.includes(ref)
-  );
+  const copilotRegulatoryReferences =
+    copilotResponse?.regulatory_references ?? [];
   const copilotRagSources = (copilotResponse?.rag_sources ?? [])
     .map((source: PractitionerFormCopilotResponse["rag_sources"][number]) =>
       source.title || source.url || JSON.stringify(source)

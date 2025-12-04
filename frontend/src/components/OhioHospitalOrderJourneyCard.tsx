@@ -12,6 +12,8 @@ import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { UnderTheHoodInfo } from "../components/UnderTheHoodInfo";
 import { DecisionStatusLegend } from "./DecisionStatusLegend";
 import { MockOrderScenarioBadge } from "./MockOrderScenarioBadge";
+import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
+import type { DecisionOutcome, RegulatoryReference } from "../types/decision";
 
 type OhioJourneyScenarioId = OrderScenarioKind;
 
@@ -76,9 +78,9 @@ export function OhioHospitalOrderJourneyCard() {
         scenario: kind,
         engine_family: "order",
         journey: "ohio_hospital_schedule_ii",
-        final_decision: run.response.final_decision,
-        csf_status: run.response.csf_status,
-        tddd_status: run.response.tddd_status,
+        final_decision: run.response.decision?.status,
+        csf_status: run.response.csf_decision?.status,
+        tddd_status: run.response.license_decision?.status,
       });
     } catch (err: any) {
       const message =
@@ -135,6 +137,21 @@ export function OhioHospitalOrderJourneyCard() {
     );
     setTimeout(() => setTraceCopyMessage(null), 2000);
   }
+
+  const missingFromDecision = (
+    decision?: Partial<DecisionOutcome> & {
+      missing_fields?: string[];
+      missingFields?: string[];
+    }
+  ) => decision?.missing_fields ?? decision?.missingFields ?? [];
+
+  const referencesFromDecision = (
+    decision?: Partial<DecisionOutcome>
+  ): RegulatoryReference[] => decision?.regulatory_references ?? [];
+
+  const finalDecision = result?.decision;
+  const csfDecision = result?.csf_decision;
+  const licenseDecision = result?.license_decision;
 
   return (
     <div className="sandbox-card order-journey-card space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -227,7 +244,7 @@ export function OhioHospitalOrderJourneyCard() {
         </section>
       )}
 
-      {result && (
+      {result && finalDecision && (
         <section className="space-y-3 rounded-lg border border-slate-100 bg-slate-50 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-sm font-semibold text-slate-900">Order Decision</h4>
@@ -235,25 +252,48 @@ export function OhioHospitalOrderJourneyCard() {
               <span className="text-xs uppercase tracking-wide text-slate-500">
                 Final decision
               </span>
-              <DecisionStatusBadge status={result.final_decision} />
+              <DecisionStatusBadge status={finalDecision.status} />
             </div>
           </div>
+
+          {finalDecision.reason && (
+            <p className="text-sm text-slate-700">{finalDecision.reason}</p>
+          )}
+
+          <RegulatoryInsightsPanel
+            title="Order-level regulatory references"
+            regulatoryReferences={referencesFromDecision(finalDecision)}
+          />
 
           <div className="grid gap-3 md:grid-cols-2">
             <div className="order-journey-panel rounded-md border border-slate-200 bg-white p-3 shadow-sm">
               <h5 className="text-sm font-semibold text-slate-900">
                 Hospital CSF Decision
               </h5>
-              <p className="text-sm text-slate-700">
-                <strong>Status:</strong>{" "}
-                <DecisionStatusBadge status={result.csf_status} />
-              </p>
-              <p className="text-sm text-slate-700">
-                <strong>Reason:</strong> {result.csf_reason}
-              </p>
-              {result.csf_missing_fields?.length > 0 && (
+              {csfDecision ? (
+                <div className="space-y-1 text-sm text-slate-700">
+                  <p>
+                    <strong>Status:</strong>{" "}
+                    <DecisionStatusBadge status={csfDecision.status} />
+                  </p>
+                  <p>
+                    <strong>Reason:</strong> {csfDecision.reason}
+                  </p>
+                  {missingFromDecision(csfDecision).length > 0 && (
+                    <p>
+                      <strong>Missing fields:</strong>{" "}
+                      {missingFromDecision(csfDecision).join(", ")}
+                    </p>
+                  )}
+                  <RegulatoryInsightsPanel
+                    title="CSF regulatory insights"
+                    regulatoryReferences={referencesFromDecision(csfDecision)}
+                    missingFields={missingFromDecision(csfDecision)}
+                  />
+                </div>
+              ) : (
                 <p className="text-sm text-slate-700">
-                  <strong>Missing fields:</strong> {result.csf_missing_fields.join(", ")}
+                  No Hospital CSF evaluation was returned for this scenario.
                 </p>
               )}
             </div>
@@ -262,21 +302,26 @@ export function OhioHospitalOrderJourneyCard() {
               <h5 className="text-sm font-semibold text-slate-900">
                 Ohio TDDD License Decision
               </h5>
-              {result.tddd_status ? (
+              {licenseDecision ? (
                 <div className="space-y-1 text-sm text-slate-700">
                   <p>
                     <strong>Status:</strong>{" "}
-                    <DecisionStatusBadge status={result.tddd_status ?? undefined} />
+                    <DecisionStatusBadge status={licenseDecision.status} />
                   </p>
                   <p>
-                    <strong>Reason:</strong> {result.tddd_reason}
+                    <strong>Reason:</strong> {licenseDecision.reason}
                   </p>
-                  {result.tddd_missing_fields &&
-                    result.tddd_missing_fields.length > 0 && (
-                      <p>
-                        <strong>Missing fields:</strong> {result.tddd_missing_fields.join(", ")}
-                      </p>
-                    )}
+                  {missingFromDecision(licenseDecision).length > 0 && (
+                    <p>
+                      <strong>Missing fields:</strong>{" "}
+                      {missingFromDecision(licenseDecision).join(", ")}
+                    </p>
+                  )}
+                  <RegulatoryInsightsPanel
+                    title="License regulatory insights"
+                    regulatoryReferences={referencesFromDecision(licenseDecision)}
+                    missingFields={missingFromDecision(licenseDecision)}
+                  />
                 </div>
               ) : (
                 <p className="text-sm text-slate-700">
@@ -294,14 +339,16 @@ export function OhioHospitalOrderJourneyCard() {
             .
           </p>
 
-          <div className="order-journey-notes space-y-2">
-            <h5 className="text-sm font-semibold text-slate-900">Notes</h5>
-            <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
-              {result.notes.map((note, idx) => (
-                <li key={idx}>{note}</li>
-              ))}
-            </ul>
-          </div>
+          {result.notes && result.notes.length > 0 && (
+            <div className="order-journey-notes space-y-2">
+              <h5 className="text-sm font-semibold text-slate-900">Notes</h5>
+              <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
+                {result.notes.map((note, idx) => (
+                  <li key={idx}>{note}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
       )}
 

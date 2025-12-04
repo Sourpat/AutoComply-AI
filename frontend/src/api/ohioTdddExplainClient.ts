@@ -1,20 +1,19 @@
 // src/api/ohioTdddExplainClient.ts
+import type { DecisionStatus, RegulatoryReference } from "../types/decision";
 
 const API_BASE =
   (import.meta as any).env?.VITE_API_BASE || "";
 
-export type OhioTdddDecisionStatus = "approved" | "blocked" | "manual_review";
-
 export interface OhioTdddDecisionSummary {
-  status: OhioTdddDecisionStatus;
+  status: DecisionStatus;
   reason: string;
   missing_fields: string[];
-  regulatory_references: string[];
+  regulatory_references: RegulatoryReference[];
 }
 
 export interface OhioTdddExplanation {
   explanation: string;
-  regulatory_references: string[];
+  regulatory_references: RegulatoryReference[];
 }
 
 export async function explainOhioTdddDecision(

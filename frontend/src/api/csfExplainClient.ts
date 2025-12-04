@@ -1,4 +1,5 @@
 // src/api/csfExplainClient.ts
+import type { DecisionStatus, RegulatoryReference } from "../types/decision";
 
 const API_BASE =
   (import.meta as any).env?.VITE_API_BASE ||
@@ -12,18 +13,16 @@ export type CsfType =
   | "surgery_center"
   | "ems";
 
-export type CsfDecisionStatus = "ok_to_ship" | "blocked" | "manual_review";
-
 export interface CsfDecisionSummary {
-  status: CsfDecisionStatus;
+  status: DecisionStatus;
   reason: string;
   missing_fields: string[];
-  regulatory_references: string[];
+  regulatory_references: RegulatoryReference[];
 }
 
 export interface CsfExplanation {
   explanation: string;
-  regulatory_references: string[];
+  regulatory_references: RegulatoryReference[];
 }
 
 export async function explainCsfDecision(

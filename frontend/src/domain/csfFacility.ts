@@ -1,5 +1,7 @@
 // src/domain/csfFacility.ts
 import { ControlledSubstanceItem } from "./controlledSubstances";
+import type { DecisionOutcome, DecisionStatus } from "../types/decision";
+import type { CsfCopilotResponse } from "../types/csfCopilot";
 
 export type FacilityFacilityType =
   | "facility"
@@ -29,31 +31,10 @@ export interface FacilityCsfFormData {
   controlledSubstances?: ControlledSubstanceItem[];
 }
 
-export type FacilityCsfDecisionStatus =
-  | "ok_to_ship"
-  | "blocked"
-  | "manual_review";
+export type FacilityCsfDecisionStatus = DecisionStatus;
 
-export interface FacilityCsfDecision {
-  status: FacilityCsfDecisionStatus;
-  reason: string;
-  missing_fields: string[];
-  regulatory_references: string[];
+export interface FacilityCsfDecision extends DecisionOutcome {
+  missing_fields?: string[];
 }
 
-export interface FacilityFormCopilotSource {
-  id?: string;
-  title: string;
-  url?: string;
-  snippet?: string;
-}
-
-export interface FacilityFormCopilotResponse {
-  status: FacilityCsfDecisionStatus;
-  reason: string;
-  missing_fields: string[];
-  regulatory_references: string[];
-  rag_explanation: string;
-  artifacts_used: string[];
-  rag_sources: FacilityFormCopilotSource[];
-}
+export type FacilityFormCopilotResponse = CsfCopilotResponse;

@@ -26,7 +26,14 @@ export async function evaluateNyPharmacyLicense(
     );
   }
 
-  return (await resp.json()) as NyPharmacyDecision;
+  const data = await resp.json();
+  const decision = (data?.decision ?? data) as NyPharmacyDecision;
+
+  return {
+    ...decision,
+    regulatory_references: decision.regulatory_references ?? [],
+    missingFields: decision.missingFields ?? (decision as any).missing_fields ?? [],
+  } as NyPharmacyDecision;
 }
 
 export async function callNyPharmacyFormCopilot(

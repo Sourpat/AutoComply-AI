@@ -32,5 +32,12 @@ export async function evaluateResearcherCsf(
     );
   }
 
-  return (await resp.json()) as ResearcherCsfDecision;
+  const data = await resp.json();
+  const decision = (data?.decision ?? data) as ResearcherCsfDecision;
+
+  return {
+    ...decision,
+    regulatory_references: decision.regulatory_references ?? [],
+    missing_fields: decision.missing_fields ?? [],
+  };
 }
