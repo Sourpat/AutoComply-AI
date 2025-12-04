@@ -18,6 +18,7 @@ import { buildCurlCommand } from "../utils/curl";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { UnderTheHoodInfo } from "../components/UnderTheHoodInfo";
+import { MockOrderScenarioBadge } from "./MockOrderScenarioBadge";
 
 type NyLicenseScenarioId =
   | "valid_ny_active"
@@ -575,6 +576,22 @@ export function NyPharmacyLicenseSandbox() {
                 "Normalizes outputs to ok_to_ship, needs_review, or blocked for consistency with other engines.",
               ]}
             />
+          </div>
+
+          <p className="text-[11px] text-slate-500">
+            Simulates a New York pharmacy order that evaluates the pharmacy
+            license and combines it with internal controlled substance rules.
+          </p>
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <MockOrderScenarioBadge
+              label="Scenario: NY pharmacy license ordering"
+              severity="edge_case"
+            />
+            <p className="text-[10px] text-slate-500">
+              Upstream: NY pharmacy license engine; suitable for exploring
+              out-of-state or expired-license behavior.
+            </p>
           </div>
 
           <div className="mt-3">
