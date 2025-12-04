@@ -1,11 +1,13 @@
 from fastapi.testclient import TestClient
+import pytest
 
 from src.api.main import app
 
 client = TestClient(app)
 
 
-def make_valid_ohio_tddd_payload() -> dict:
+@pytest.fixture()
+def ohio_tddd_happy_payload() -> dict:
     return {
         "tddd_number": "01234567",
         "facility_name": "Example Ohio Pharmacy",
@@ -17,20 +19,53 @@ def make_valid_ohio_tddd_payload() -> dict:
     }
 
 
-def test_ohio_tddd_evaluate_ok() -> None:
-    payload = make_valid_ohio_tddd_payload()
+def test_ohio_tddd_evaluate_ok_to_ship(ohio_tddd_happy_payload: dict) -> None:
+    resp = client.post("/license/ohio-tddd/evaluate", json=ohio_tddd_happy_payload)
+    assert resp.status_code == 200
+
+    data = resp.json()
+    assert data["status"] == "ok_to_ship"
+    assert data["reason"] == "Ohio TDDD license details appear complete for this request."
+    assert data["missing_fields"] == []
+
+
+def test_ohio_tddd_evaluate_missing_tddd_number(ohio_tddd_happy_payload: dict) -> None:
+    payload = {**ohio_tddd_happy_payload, "tddd_number": ""}
+
     resp = client.post("/license/ohio-tddd/evaluate", json=payload)
     assert resp.status_code == 200
 
     data = resp.json()
-    assert data["status"] in {"ok_to_ship", "needs_review", "blocked"}
-    assert "reason" in data
-    assert "missing_fields" in data
+    assert data["status"] == "needs_review"
+    assert "Missing required fields" in data["reason"]
+    assert "tddd_number" in data["missing_fields"]
 
 
-def test_ohio_tddd_form_copilot_ok() -> None:
-    payload = make_valid_ohio_tddd_payload()
-    resp = client.post("/license/ohio-tddd/form-copilot", json=payload)
+def test_ohio_tddd_evaluate_missing_required_field_returns_422(
+    ohio_tddd_happy_payload: dict,
+) -> None:
+    payload = {**ohio_tddd_happy_payload}
+    payload.pop("tddd_number")
+
+    resp = client.post("/license/ohio-tddd/evaluate", json=payload)
+    assert resp.status_code == 422
+
+
+def test_ohio_tddd_evaluate_attestation_not_accepted(
+    ohio_tddd_happy_payload: dict,
+) -> None:
+    payload = {**ohio_tddd_happy_payload, "attestation_accepted": False}
+
+    resp = client.post("/license/ohio-tddd/evaluate", json=payload)
+    assert resp.status_code == 200
+
+    data = resp.json()
+    assert data["status"] == "blocked"
+    assert data["reason"] == "Attestation was not accepted."
+
+
+def test_ohio_tddd_form_copilot_ok(ohio_tddd_happy_payload: dict) -> None:
+    resp = client.post("/license/ohio-tddd/form-copilot", json=ohio_tddd_happy_payload)
     assert resp.status_code == 200
 
     data = resp.json()
@@ -41,13 +76,3 @@ def test_ohio_tddd_form_copilot_ok() -> None:
     assert "rag_explanation" in data
     assert "artifacts_used" in data
     assert "rag_sources" in data
-
-
-def test_ohio_tddd_evaluate_missing_tddd_number() -> None:
-    payload = make_valid_ohio_tddd_payload()
-    payload["tddd_number"] = ""
-
-    resp = client.post("/license/ohio-tddd/evaluate", json=payload)
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["status"] in {"needs_review", "blocked"}

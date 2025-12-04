@@ -10,6 +10,7 @@ import { RagOverviewCard } from "../components/RagOverviewCard";
 import { TestingReliabilityCard } from "../components/TestingReliabilityCard";
 import { SystemHealthCard } from "../components/SystemHealthCard";
 import { RunLocallyCard } from "../components/RunLocallyCard";
+import { LicenseEnginesSandbox } from "../components/LicenseEnginesSandbox";
 
 type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
   id: string;
@@ -423,6 +424,8 @@ export function ComplianceConsolePage() {
           </p>
         </div>
       </section>
+
+      <LicenseEnginesSandbox />
 
       <section className="console-section console-section-order space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
         <div className="space-y-1">
