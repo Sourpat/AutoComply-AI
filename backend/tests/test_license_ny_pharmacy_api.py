@@ -2,6 +2,9 @@ from fastapi.testclient import TestClient
 import pytest
 
 from src.api.main import app
+from src.autocomply.domain.scenario_builders import (
+    make_ny_pharmacy_license_payload_happy,
+)
 
 
 client = TestClient(app)
@@ -16,6 +19,7 @@ def ny_pharmacy_happy_payload() -> dict:
         "dea_number": "FG1234567",
         "ny_state_license_number": "NYPHARM-001234",
         "attestation_accepted": True,
+        "expiration_date": "2099-12-31",
         "internal_notes": "Happy path NY Pharmacy license test.",
     }
 
@@ -29,6 +33,7 @@ def ny_pharmacy_incomplete_payload() -> dict:
         "dea_number": "FG1234567",
         "ny_state_license_number": "",
         "attestation_accepted": False,
+        "expiration_date": "2020-01-01",
         "internal_notes": "Negative NY Pharmacy license test.",
     }
 
@@ -45,7 +50,7 @@ def test_ny_pharmacy_evaluate_happy_path_ok_to_ship(
     assert data["status"] == "ok_to_ship"
     assert data["missing_fields"] == []
     assert (
-        data["reason"] == "NY Pharmacy license details appear complete for this request."
+        data["reason"] == "NY pharmacy license is active and matches the ship-to location."
     )
     assert isinstance(data["regulatory_references"], list)
     assert data["regulatory_references"]
@@ -57,6 +62,8 @@ def test_ny_pharmacy_evaluate_happy_path_ok_to_ship(
     assert decision["regulatory_references"]
     decision_ref_ids = {ref["id"] for ref in decision["regulatory_references"]}
     assert "ny-pharmacy-core" in decision_ref_ids
+    assert decision.get("risk_level") == "low"
+    assert isinstance(decision.get("risk_score"), (int, float))
 
 
 def test_ny_pharmacy_evaluate_incomplete_needs_review(
@@ -68,12 +75,26 @@ def test_ny_pharmacy_evaluate_incomplete_needs_review(
     assert resp.status_code == 200
 
     data = resp.json()
-    assert data["status"] == "blocked"
-    assert "Ship-to state is not NY" in data["reason"]
+    assert data["status"] == "needs_review"
+    assert "Ship-to state is not New York" in data["reason"]
     assert "attestation_accepted" in data["missing_fields"]
     decision = data["decision"]
-    assert decision["status"] == "blocked"
+    assert decision["status"] == "needs_review"
     assert isinstance(decision["regulatory_references"], list)
+
+
+def test_ny_pharmacy_happy_path_includes_risk() -> None:
+    payload = make_ny_pharmacy_license_payload_happy()
+
+    resp = client.post("/license/ny-pharmacy/evaluate", json=payload)
+    assert resp.status_code == 200
+
+    data = resp.json()
+    decision = data.get("decision", data)
+
+    assert decision["status"] == "ok_to_ship"
+    assert decision.get("risk_level") == "low"
+    assert isinstance(decision.get("risk_score"), (int, float))
 
 
 def test_ny_pharmacy_evaluate_needs_review_missing_license_number(

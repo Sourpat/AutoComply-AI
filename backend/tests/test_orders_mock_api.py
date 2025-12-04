@@ -186,3 +186,38 @@ def test_ohio_hospital_mock_order_wrong_state() -> None:
     if refs:
         assert "id" in refs[0]
         assert "label" in refs[0]
+
+
+def test_ny_pharmacy_mock_order_expired_license() -> None:
+    resp = client.get("/orders/mock/ny-pharmacy-expired-license")
+    assert resp.status_code == 200
+
+    data = resp.json()
+    assert "decision" in data
+    decision = data["decision"]
+
+    assert decision["status"] == "blocked"
+    assert decision.get("risk_level") == "high"
+    assert isinstance(decision.get("risk_score"), (int, float))
+
+    refs = decision["regulatory_references"]
+    assert isinstance(refs, list)
+    if refs:
+        assert "id" in refs[0]
+        assert "label" in refs[0]
+
+
+def test_ny_pharmacy_mock_order_wrong_state() -> None:
+    resp = client.get("/orders/mock/ny-pharmacy-wrong-state")
+    assert resp.status_code == 200
+
+    data = resp.json()
+    assert "decision" in data
+    decision = data["decision"]
+
+    assert decision["status"] == "needs_review"
+    assert decision.get("risk_level") == "medium"
+    assert isinstance(decision.get("risk_score"), (int, float))
+
+    refs = decision["regulatory_references"]
+    assert isinstance(refs, list)
