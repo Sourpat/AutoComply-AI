@@ -33,8 +33,8 @@ def test_ohio_tddd_evaluate_ok_to_ship(ohio_tddd_happy_payload: dict) -> None:
     assert decision["reason"] == data["reason"]
     assert isinstance(decision["regulatory_references"], list)
     assert decision["regulatory_references"]
-    first_ref = decision["regulatory_references"][0]
-    assert "id" in first_ref and "label" in first_ref
+    ids = {ref["id"] for ref in decision["regulatory_references"]}
+    assert "ohio-tddd-core" in ids
 
 
 def test_ohio_tddd_evaluate_missing_tddd_number(ohio_tddd_happy_payload: dict) -> None:
