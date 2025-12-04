@@ -3,7 +3,6 @@ import { Globe, ShieldCheck } from "lucide-react";
 
 import { API_BASE } from "../api/csfHospitalClient";
 import { CopyCurlButton } from "./CopyCurlButton";
-import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import { TestCoverageNote } from "./TestCoverageNote";
 import { useRagDebug } from "../devsupport/RagDebugContext";
@@ -163,6 +162,14 @@ function OhioTdddSandbox() {
   const [showTrace, setShowTrace] = React.useState(false);
   const [selectedScenarioId, setSelectedScenarioId] =
     React.useState<LicenseScenarioId>("custom");
+  const ohioDecisionWithDebug = decision
+    ? {
+        ...decision,
+        debug_info:
+          decision.debug_info ??
+          (decision.rag_sources ? { rag_sources: decision.rag_sources } : null),
+      }
+    : null;
 
   function applyOhioScenario(presetId: LicenseScenarioId) {
     if (presetId === "custom") {
@@ -421,31 +428,12 @@ function OhioTdddSandbox() {
 
       {error && <p className="mt-2 text-[11px] text-rose-300">{error}</p>}
 
-      {decision && (
-        <div className="mt-3 rounded-xl border border-white/10 bg-slate-950/90 px-3 py-3">
-          <p className="text-xs font-semibold text-slate-100">License decision</p>
-          <div className="mt-1 flex items-center gap-2">
-            <DecisionStatusBadge
-              status={decision.status}
-              riskLevel={decision.risk_level ?? undefined}
-            />
-            <span className="text-[11px] text-slate-400">
-              Result from <span className="font-mono text-slate-200">/license/ohio-tddd/evaluate</span>.
-            </span>
-          </div>
-          <p className="mt-2 text-[11px] leading-relaxed text-slate-200">{decision.reason}</p>
-        </div>
-      )}
-
-      {decision && (
+      {ohioDecisionWithDebug && (
         <RegulatoryInsightsPanel
-          title="Ohio TDDD – Regulatory insights"
-          statusLabel={`Decision: ${decision.status}`}
-          reason={null}
-          missingFields={decision.missing_fields ?? decision.missingFields ?? []}
-          regulatoryReferences={decision.regulatory_references ?? []}
-          ragExplanation={decision.rag_explanation}
-          ragSources={decision.rag_sources}
+          title="Ohio TDDD license decision"
+          decision={ohioDecisionWithDebug}
+          missingFields={decision?.missing_fields ?? decision?.missingFields ?? []}
+          aiDebugEnabled={ragDebugEnabled}
         />
       )}
 
@@ -493,6 +481,14 @@ function NyPharmacySandbox() {
   const [showTrace, setShowTrace] = React.useState(false);
   const [selectedScenarioId, setSelectedScenarioId] =
     React.useState<NyScenarioId>("ny_custom");
+  const nyDecisionWithDebug = decision
+    ? {
+        ...decision,
+        debug_info:
+          decision.debug_info ??
+          (decision.rag_sources ? { rag_sources: decision.rag_sources } : null),
+      }
+    : null;
 
   function applyNyScenario(presetId: NyScenarioId) {
     if (presetId === "ny_custom") {
@@ -761,31 +757,12 @@ function NyPharmacySandbox() {
 
       {error && <p className="mt-2 text-[11px] text-rose-300">{error}</p>}
 
-      {decision && (
-        <div className="mt-3 rounded-xl border border-white/10 bg-slate-950/90 px-3 py-3">
-          <p className="text-xs font-semibold text-slate-100">License decision</p>
-          <div className="mt-1 flex items-center gap-2">
-            <DecisionStatusBadge
-              status={decision.status}
-              riskLevel={decision.risk_level ?? undefined}
-            />
-            <span className="text-[11px] text-slate-400">
-              Result from <span className="font-mono text-slate-200">/license/ny-pharmacy/evaluate</span>.
-            </span>
-          </div>
-          <p className="mt-2 text-[11px] leading-relaxed text-slate-200">{decision.reason}</p>
-        </div>
-      )}
-
-      {decision && (
+      {nyDecisionWithDebug && (
         <RegulatoryInsightsPanel
-          title="NY pharmacy – Regulatory insights"
-          statusLabel={`Decision: ${decision.status}`}
-          reason={null}
-          missingFields={decision.missing_fields ?? decision.missingFields ?? []}
-          regulatoryReferences={decision.regulatory_references ?? []}
-          ragExplanation={decision.rag_explanation}
-          ragSources={decision.rag_sources}
+          title="NY pharmacy license decision"
+          decision={nyDecisionWithDebug}
+          missingFields={decision?.missing_fields ?? decision?.missingFields ?? []}
+          aiDebugEnabled={ragDebugEnabled}
         />
       )}
 

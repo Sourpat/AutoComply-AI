@@ -1,139 +1,138 @@
-import React from "react";
-import { BookOpen, AlertTriangle, Sparkles } from "lucide-react";
+import React, { useState } from "react";
+import type { DecisionOutcome, RegulatoryReference } from "../types/decision";
+import { DecisionStatusBadge } from "./DecisionStatusBadge";
+import { RiskPill } from "./RiskPill";
 
-import type { RegulatoryReference } from "../types/decision";
-
-export type RegulatoryInsightsPanelProps = {
+interface RegulatoryInsightsPanelProps {
   title?: string;
-  statusLabel?: string;
-  reason?: string | null;
-  missingFields?: string[] | null | undefined;
-  regulatoryReferences?: RegulatoryReference[] | null | undefined;
-  ragExplanation?: string | null | undefined;
-  ragSources?: any[] | null | undefined;
-};
+  decision?: DecisionOutcome | null;
+  missingFields?: string[] | null;
+  compact?: boolean;
+  aiDebugEnabled?: boolean;
+}
 
-export function RegulatoryInsightsPanel({
+export const RegulatoryInsightsPanel: React.FC<RegulatoryInsightsPanelProps> = ({
   title = "Regulatory insights",
-  statusLabel,
-  reason,
+  decision,
   missingFields,
-  regulatoryReferences,
-  ragExplanation,
-  ragSources,
-}: RegulatoryInsightsPanelProps) {
-  const hasMissing =
-    Array.isArray(missingFields) && missingFields.length > 0;
-  const normalizedReferences = (regulatoryReferences ?? []).filter(Boolean);
-  const hasReferences = normalizedReferences.length > 0;
-  const hasRagExplanation =
-    typeof ragExplanation === "string" && ragExplanation.trim().length > 0;
-  const hasSources = Array.isArray(ragSources) && ragSources.length > 0;
+  compact = false,
+  aiDebugEnabled = false,
+}) => {
+  const [showDebug, setShowDebug] = useState(false);
 
-  if (!hasMissing && !hasReferences && !hasRagExplanation && !hasSources) {
-    // Nothing to show – keep the UI quiet
-    return null;
+  if (!decision) {
+    return (
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 text-xs text-zinc-400">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-semibold text-zinc-200">{title}</span>
+        </div>
+        <p className="mt-1">
+          Run an evaluation to see decision details and regulatory evidence.
+        </p>
+      </div>
+    );
   }
 
+  const { status, reason, risk_level, regulatory_references, debug_info } = decision;
+
+  const refs: RegulatoryReference[] = regulatory_references ?? [];
+
   return (
-    <div className="mt-3 rounded-2xl border border-indigo-500/40 bg-slate-950/90 px-3 py-3 text-[11px] text-slate-100 shadow-inner shadow-indigo-900/40">
-      <div className="flex items-start justify-between gap-2">
+    <div
+      className={
+        "rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 " +
+        (compact ? "text-xs" : "text-sm")
+      }
+    >
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-3 w-3 text-indigo-300" />
-          <div>
-            <p className="text-xs font-semibold text-slate-50">{title}</p>
-            {statusLabel && (
-              <p className="text-[10px] text-slate-400">{statusLabel}</p>
-            )}
-          </div>
+          <span className="font-semibold text-zinc-100">{title}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <DecisionStatusBadge status={status} />
+          <RiskPill riskLevel={risk_level ?? undefined} />
         </div>
       </div>
 
-      {reason && (
-        <p className="mt-2 text-[11px] leading-relaxed text-slate-200">
-          {reason}
-        </p>
-      )}
+      <div className="mt-2">
+        <p className="text-xs text-zinc-300 leading-snug">{reason}</p>
+      </div>
 
-      {hasMissing && (
-        <div className="mt-2 rounded-xl bg-amber-950/40 px-3 py-2">
-          <div className="flex items-center gap-1.5">
-            <AlertTriangle className="h-3 w-3 text-amber-300" />
-            <p className="text-[10px] font-semibold text-amber-100">
-              Missing or unclear fields
-            </p>
-          </div>
-          <ul className="mt-1 list-disc pl-5 text-[10px] text-amber-100/90">
-            {missingFields!.map((field, idx) => (
-              <li key={idx}>{field}</li>
+      {missingFields && missingFields.length > 0 && (
+        <div className="mt-3">
+          <div className="text-[11px] font-semibold text-zinc-400">Missing fields</div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {missingFields.map((field) => (
+              <span
+                key={field}
+                className="rounded-full bg-amber-500/10 border border-amber-500/40 px-2 py-0.5 text-[10px] text-amber-200"
+              >
+                {field}
+              </span>
             ))}
-          </ul>
-        </div>
-      )}
-
-      {hasReferences && (
-        <div className="mt-2 rounded-xl bg-slate-900 px-3 py-2">
-          <div className="flex items-center gap-1.5">
-            <BookOpen className="h-3 w-3 text-cyan-300" />
-            <p className="text-[10px] font-semibold text-cyan-100">
-              Regulatory references
-            </p>
           </div>
-          <ul className="mt-1 flex flex-wrap gap-1.5 text-[10px]">
-            {normalizedReferences.map((ref, idx) => {
-              const label =
-                ref.label || ref.citation || ref.source || ref.id || `ref-${idx}`;
-
-              return (
-                <li
-                  key={ref.id ?? idx}
-                  className="rounded-full bg-slate-950/80 px-2 py-0.5 text-[10px] text-cyan-100 ring-1 ring-cyan-500/30"
-                >
-                  <span className="font-semibold">{label}</span>
-                  {ref.citation && ref.citation !== label && (
-                    <span className="ml-1 font-mono text-[9px] text-cyan-200/80">
-                      ({ref.citation})
-                    </span>
-                  )}
-                  {ref.jurisdiction && (
-                    <span className="ml-1 text-[9px] text-cyan-200/80">
-                      [{ref.jurisdiction}]
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
         </div>
       )}
 
-      {hasRagExplanation && (
-        <div className="mt-2 rounded-xl bg-slate-900/70 px-3 py-2">
-          <p className="text-[10px] font-semibold text-slate-100">
-            How the RAG layer interpreted this form
+      <div className="mt-3">
+        <div className="text-[11px] font-semibold text-zinc-400">Regulatory evidence</div>
+        {refs.length === 0 ? (
+          <p className="mt-1 text-[11px] text-zinc-500">
+            No regulatory references were attached to this decision.
           </p>
-          <p className="mt-1 text-[10px] leading-relaxed text-slate-200">
-            {ragExplanation}
-          </p>
-        </div>
-      )}
-
-      {hasSources && (
-        <div className="mt-2 rounded-xl bg-slate-900/70 px-3 py-2">
-          <p className="text-[10px] font-semibold text-slate-100">
-            Sources consulted
-          </p>
-          <ul className="mt-1 list-disc pl-5 text-[10px] text-slate-300">
-            {ragSources!.map((src, idx) => (
-              <li key={idx}>
-                {typeof src === "string"
-                  ? src
-                  : JSON.stringify(src)}
+        ) : (
+          <ul className="mt-1 space-y-1.5">
+            {refs.map((ref) => (
+              <li
+                key={ref.id}
+                className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-2 py-1.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] text-zinc-100 font-medium">
+                    {ref.label || ref.id}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {ref.jurisdiction && (
+                      <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-300">
+                        {ref.jurisdiction}
+                      </span>
+                    )}
+                    {ref.citation && (
+                      <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-300">
+                        {ref.citation}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {(ref.source || ref.citation) && (
+                  <div className="mt-0.5 text-[10px] text-zinc-400">
+                    {ref.source}
+                    {ref.source && ref.citation ? " · " : ""}
+                    {ref.citation}
+                  </div>
+                )}
               </li>
             ))}
           </ul>
+        )}
+      </div>
+
+      {aiDebugEnabled && debug_info && (
+        <div className="mt-3 border-t border-zinc-800 pt-2">
+          <button
+            type="button"
+            onClick={() => setShowDebug((v) => !v)}
+            className="text-[11px] text-zinc-400 hover:text-zinc-200 underline-offset-2 hover:underline"
+          >
+            {showDebug ? "Hide AI / RAG debug" : "Show AI / RAG debug"}
+          </button>
+          {showDebug && (
+            <pre className="mt-1 max-h-40 overflow-auto rounded-lg bg-black/60 p-2 text-[10px] text-zinc-300">
+              {JSON.stringify(debug_info, null, 2)}
+            </pre>
+          )}
         </div>
       )}
     </div>
   );
-}
+};

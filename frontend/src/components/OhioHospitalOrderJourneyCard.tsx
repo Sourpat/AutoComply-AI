@@ -8,7 +8,6 @@ import { OhioHospitalOrderApprovalResult } from "../domain/orderMockApproval";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { copyToClipboard } from "../utils/clipboard";
 import { buildCurlCommand } from "../utils/curl";
-import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { UnderTheHoodInfo } from "../components/UnderTheHoodInfo";
 import { DecisionStatusLegend } from "./DecisionStatusLegend";
 import { MockOrderScenarioBadge } from "./MockOrderScenarioBadge";
@@ -248,25 +247,18 @@ export function OhioHospitalOrderJourneyCard() {
         <section className="space-y-3 rounded-lg border border-slate-100 bg-slate-50 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-sm font-semibold text-slate-900">Order Decision</h4>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-xs uppercase tracking-wide text-slate-500">
-                Final decision
-              </span>
-              <DecisionStatusBadge
-                status={finalDecision.status}
-                riskLevel={finalDecision.risk_level ?? undefined}
-              />
-            </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-xs uppercase tracking-wide text-slate-500">
+              Final decision
+            </span>
           </div>
+        </div>
 
-          {finalDecision.reason && (
-            <p className="text-sm text-slate-700">{finalDecision.reason}</p>
-          )}
-
-          <RegulatoryInsightsPanel
-            title="Order-level regulatory references"
-            regulatoryReferences={referencesFromDecision(finalDecision)}
-          />
+        <RegulatoryInsightsPanel
+          title="Order decision"
+          decision={finalDecision}
+          missingFields={missingFromDecision(finalDecision)}
+        />
 
           <div className="grid gap-3 md:grid-cols-2">
             <div className="order-journey-panel rounded-md border border-slate-200 bg-white p-3 shadow-sm">
@@ -274,29 +266,11 @@ export function OhioHospitalOrderJourneyCard() {
                 Hospital CSF Decision
               </h5>
               {csfDecision ? (
-                <div className="space-y-1 text-sm text-slate-700">
-                  <p>
-                    <strong>Status:</strong>{" "}
-                    <DecisionStatusBadge
-                      status={csfDecision.status}
-                      riskLevel={csfDecision.risk_level ?? undefined}
-                    />
-                  </p>
-                  <p>
-                    <strong>Reason:</strong> {csfDecision.reason}
-                  </p>
-                  {missingFromDecision(csfDecision).length > 0 && (
-                    <p>
-                      <strong>Missing fields:</strong>{" "}
-                      {missingFromDecision(csfDecision).join(", ")}
-                    </p>
-                  )}
-                  <RegulatoryInsightsPanel
-                    title="CSF regulatory insights"
-                    regulatoryReferences={referencesFromDecision(csfDecision)}
-                    missingFields={missingFromDecision(csfDecision)}
-                  />
-                </div>
+                <RegulatoryInsightsPanel
+                  title="CSF regulatory insights"
+                  decision={csfDecision}
+                  missingFields={missingFromDecision(csfDecision)}
+                />
               ) : (
                 <p className="text-sm text-slate-700">
                   No Hospital CSF evaluation was returned for this scenario.
@@ -309,29 +283,11 @@ export function OhioHospitalOrderJourneyCard() {
                 Ohio TDDD License Decision
               </h5>
               {licenseDecision ? (
-                <div className="space-y-1 text-sm text-slate-700">
-                  <p>
-                    <strong>Status:</strong>{" "}
-                    <DecisionStatusBadge
-                      status={licenseDecision.status}
-                      riskLevel={licenseDecision.risk_level ?? undefined}
-                    />
-                  </p>
-                  <p>
-                    <strong>Reason:</strong> {licenseDecision.reason}
-                  </p>
-                  {missingFromDecision(licenseDecision).length > 0 && (
-                    <p>
-                      <strong>Missing fields:</strong>{" "}
-                      {missingFromDecision(licenseDecision).join(", ")}
-                    </p>
-                  )}
-                  <RegulatoryInsightsPanel
-                    title="License regulatory insights"
-                    regulatoryReferences={referencesFromDecision(licenseDecision)}
-                    missingFields={missingFromDecision(licenseDecision)}
-                  />
-                </div>
+                <RegulatoryInsightsPanel
+                  title="License regulatory insights"
+                  decision={licenseDecision}
+                  missingFields={missingFromDecision(licenseDecision)}
+                />
               ) : (
                 <p className="text-sm text-slate-700">
                   No Ohio TDDD evaluation was run for this scenario.

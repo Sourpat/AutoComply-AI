@@ -34,6 +34,7 @@ import { API_BASE } from "../api/csfHospitalClient";
 import { buildCurlCommand } from "../utils/curl";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import { useRagDebug } from "../devsupport/RagDebugContext";
+import type { DecisionOutcome } from "../types/decision";
 
 function buildHospitalCsfEvaluateCurl(form: any): string {
   const payload = form ?? {};
@@ -181,6 +182,19 @@ export function HospitalCsfSandbox() {
   const [copilotDecision, setCopilotDecision] =
     useState<HospitalFormCopilotResponse | null>(null);
   const [copilotError, setCopilotError] = useState<string | null>(null);
+  const copilotDecisionOutcome =
+    (copilotDecision as unknown as DecisionOutcome | null) ?? null;
+  const copilotDebugInfo =
+    copilotDecision?.debug_info ??
+    (copilotDecision?.rag_sources
+      ? { rag_sources: copilotDecision.rag_sources }
+      : null);
+  const copilotDecisionWithDebug = copilotDecisionOutcome
+    ? {
+        ...copilotDecisionOutcome,
+        debug_info: copilotDecisionOutcome.debug_info ?? copilotDebugInfo,
+      }
+    : null;
 
   function applyHospitalExample(example: HospitalExample) {
     const nextForm = {
@@ -925,33 +939,13 @@ export function HospitalCsfSandbox() {
             <p className="mb-1 text-[10px] text-rose-600">{copilotError}</p>
           )}
 
-          {copilotDecision && (
+          {copilotDecisionWithDebug && (
             <RegulatoryInsightsPanel
               title="Hospital CSF – Form Copilot"
-              statusLabel={
-                copilotDecision.status
-                  ? `Decision: ${copilotDecision.status}`
-                  : undefined
-              }
-              reason={copilotDecision.reason}
-              missingFields={copilotDecision.missing_fields}
-              regulatoryReferences={copilotDecision.regulatory_references}
-              ragExplanation={copilotDecision.rag_explanation}
-              ragSources={
-                copilotDecision.rag_sources ?? copilotDecision.artifacts_used
-              }
+              decision={copilotDecisionWithDebug}
+              missingFields={copilotDecision?.missing_fields}
+              aiDebugEnabled={ragDebugEnabled}
             />
-          )}
-
-          {ragDebugEnabled && copilotDecision && (
-            <div className="mt-2 rounded-xl border border-slate-800 bg-black/80 px-3 py-2">
-              <p className="text-[10px] font-semibold text-slate-100">
-                RAG debug (Hospital Form Copilot payload)
-              </p>
-              <pre className="mt-1 max-h-64 overflow-auto text-[10px] leading-relaxed text-slate-100">
-                {JSON.stringify(copilotDecision, null, 2)}
-              </pre>
-            </div>
           )}
 
           {!copilotDecision && !copilotLoading && !copilotError && (

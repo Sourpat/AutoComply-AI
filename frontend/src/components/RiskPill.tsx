@@ -3,6 +3,7 @@ import type { DecisionOutcome } from "../types/decision";
 
 interface RiskPillProps {
   riskLevel?: DecisionOutcome["risk_level"];
+  labelOverride?: string;
   className?: string;
 }
 
@@ -12,10 +13,15 @@ const LABELS: Record<string, string> = {
   high: "High risk",
 };
 
-export const RiskPill: React.FC<RiskPillProps> = ({ riskLevel, className }) => {
+export const RiskPill: React.FC<RiskPillProps> = ({
+  riskLevel,
+  labelOverride,
+  className,
+}) => {
   if (!riskLevel) return null;
 
-  const label = LABELS[riskLevel] ?? `Risk: ${riskLevel}`;
+  const baseLabel = LABELS[riskLevel] ?? `Risk: ${riskLevel}`;
+  const label = labelOverride ?? baseLabel;
 
   return (
     <span
