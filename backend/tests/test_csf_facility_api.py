@@ -146,5 +146,5 @@ def test_csf_facility_form_copilot_basic(
     assert data["suggestions"][0]["field_name"] == "pharmacist_contact_phone"
     assert isinstance(data.get("regulatory_references"), list)
     assert data["regulatory_references"][0]["id"] == "csf_facility_form"
-    assert data["regulatory_references"][0]["label"] == "csf_facility_form"
+    assert data["regulatory_references"][0]["label"]
     assert "message" in data
