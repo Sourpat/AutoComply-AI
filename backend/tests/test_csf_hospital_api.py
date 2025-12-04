@@ -23,8 +23,21 @@ def test_csf_hospital_evaluate_ok_to_ship():
     assert resp.status_code == 200
 
     data = resp.json()
-    assert data["status"] == "ok_to_ship"
+    assert "decision" in data
+
+    decision = data["decision"]
+    assert decision["status"] in ["ok_to_ship", "needs_review", "blocked"]
+    assert isinstance(decision["reason"], str) and len(decision["reason"]) > 0
+    assert isinstance(decision["regulatory_references"], list)
+
+    # Legacy passthrough fields should mirror the decision for backward compatibility.
+    assert data["status"] == decision["status"]
+    assert data["reason"] == decision["reason"]
     assert data["missing_fields"] == []
+
+    for ref in decision["regulatory_references"]:
+        assert isinstance(ref["id"], str)
+        assert isinstance(ref["label"], str)
 
 
 def test_csf_hospital_evaluate_blocked_when_core_fields_missing():
@@ -45,7 +58,12 @@ def test_csf_hospital_evaluate_blocked_when_core_fields_missing():
     assert resp.status_code == 200
 
     data = resp.json()
+    decision = data["decision"]
+
+    assert decision["status"] == "blocked"
     assert data["status"] == "blocked"
+    assert isinstance(decision["regulatory_references"], list)
+    assert data["missing_fields"]
     assert "facility_name" in data["missing_fields"]
     assert "pharmacy_license_number" in data["missing_fields"]
     assert "dea_number" in data["missing_fields"]
@@ -71,5 +89,10 @@ def test_csf_hospital_evaluate_blocked_when_attestation_not_accepted():
     assert resp.status_code == 200
 
     data = resp.json()
+    decision = data["decision"]
+
+    assert decision["status"] == "blocked"
     assert data["status"] == "blocked"
+    assert isinstance(decision["regulatory_references"], list)
+    assert isinstance(decision.get("reason"), str)
     assert "attestation_accepted" in data["missing_fields"]
