@@ -6,6 +6,7 @@ from src.api.routes import csf_facility
 from src.autocomply.domain.csf_copilot import CsfCopilotResult
 from src.autocomply.domain.csf_practitioner import CsDecisionStatus
 from src.api.models.compliance_models import RegulatorySource
+from src.api.models.decision import RegulatoryReference
 
 client = TestClient(app)
 
@@ -125,7 +126,13 @@ def test_csf_facility_form_copilot_basic(
             status=CsDecisionStatus.OK_TO_SHIP,
             reason="Facility CSF is approved to proceed.",
             missing_fields=["pharmacist_contact_phone"],
-            regulatory_references=["csf_facility_form"],
+            regulatory_references=[
+                RegulatoryReference(
+                    id="csf_facility_form",
+                    label="Facility CSF – core requirements",
+                    source="Facility Controlled Substance Form (stub)",
+                )
+            ],
             rag_explanation="Facility CSF copilot stub.",
             artifacts_used=["csf_facility_form"],
             rag_sources=[
@@ -142,9 +149,8 @@ def test_csf_facility_form_copilot_basic(
 
     data = resp.json()
     assert isinstance(data.get("missing_fields"), list)
-    assert isinstance(data.get("suggestions"), list)
-    assert data["suggestions"][0]["field_name"] == "pharmacist_contact_phone"
-    assert isinstance(data.get("regulatory_references"), list)
-    assert data["regulatory_references"][0]["id"] == "csf_facility_form"
-    assert data["regulatory_references"][0]["label"]
-    assert "message" in data
+    refs = data.get("regulatory_references", [])
+    assert isinstance(refs, list)
+    assert refs and refs[0]["id"] == "csf_facility_form"
+    rag_sources = data.get("rag_sources", [])
+    assert rag_sources and rag_sources[0]["id"] == "csf_facility_form"

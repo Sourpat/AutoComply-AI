@@ -99,24 +99,24 @@ _STATIC_REGISTRY: Dict[str, RegulatoryReference] = {
     ),
     "csf_hospital_form": RegulatoryReference(
         id="csf_hospital_form",
-        jurisdiction="US-OH",
-        source="Hospital CSF (stub)",
+        jurisdiction=None,
+        source="Hospital Controlled Substance Form (stub)",
         citation=None,
-        label="Hospital CSF information required for controlled substances evaluation",
+        label="Hospital CSF – core requirements",
     ),
     "csf_facility_form": RegulatoryReference(
         id="csf_facility_form",
-        jurisdiction="US-OH",
-        source="Facility CSF (stub)",
+        jurisdiction=None,
+        source="Facility Controlled Substance Form (stub)",
         citation=None,
-        label="Facility CSF information required for controlled substances evaluation",
+        label="Facility CSF – core requirements",
     ),
     "csf_practitioner_form": RegulatoryReference(
         id="csf_practitioner_form",
-        jurisdiction="US-OH",
-        source="Practitioner CSF (stub)",
+        jurisdiction=None,
+        source="Practitioner Controlled Substance Form (stub)",
         citation=None,
-        label="Practitioner CSF information required for controlled substances evaluation",
+        label="Practitioner CSF – core requirements",
     ),
     # Add more doc IDs here as we expand CSF & other states.
 }

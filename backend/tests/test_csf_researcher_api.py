@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from src.api.main import app
 from src.api.models.compliance_models import RegulatorySource
+from src.api.models.decision import RegulatoryReference
 from src.api.routes import csf_researcher
 from src.autocomply.domain.csf_copilot import CsfCopilotResult
 from src.autocomply.domain.csf_practitioner import CsDecisionStatus
@@ -47,7 +48,13 @@ def test_csf_researcher_form_copilot(monkeypatch):
             status=CsDecisionStatus.OK_TO_SHIP,
             reason="Researcher CSF is approved to proceed.",
             missing_fields=[],
-            regulatory_references=["csf_researcher_form"],
+            regulatory_references=[
+                RegulatoryReference(
+                    id="csf_researcher_form",
+                    label="Researcher CSF",
+                    source="Researcher CSF (stub)",
+                )
+            ],
             rag_explanation="stubbed Researcher explanation",
             artifacts_used=["csf_researcher_form"],
             rag_sources=[

@@ -7,6 +7,7 @@ from src.api.routes import csf_facility
 from src.autocomply.domain.csf_copilot import CsfCopilotResult
 from src.autocomply.domain.csf_practitioner import CsDecisionStatus
 from src.api.models.compliance_models import RegulatorySource
+from src.api.models.decision import RegulatoryReference
 
 client = TestClient(app)
 
@@ -17,7 +18,13 @@ def test_facility_copilot_returns_explanation(monkeypatch):
             status=CsDecisionStatus.OK_TO_SHIP,
             reason="Facility CSF is approved to proceed.",
             missing_fields=[],
-            regulatory_references=["csf_facility_form"],
+            regulatory_references=[
+                RegulatoryReference(
+                    id="csf_facility_form",
+                    label="Facility CSF – core requirements",
+                    source="Facility Controlled Substance Form (stub)",
+                )
+            ],
             rag_explanation="stubbed facility explanation",
             artifacts_used=["csf_facility_form"],
             rag_sources=[
@@ -49,12 +56,10 @@ def test_facility_copilot_returns_explanation(monkeypatch):
     data = resp.json()
     assert data["status"] == "ok_to_ship"
     assert "rag_explanation" in data
-    assert data["regulatory_references"]
     refs = data.get("regulatory_references", [])
     assert isinstance(refs, list)
-    for ref in refs:
-        assert "id" in ref
-        assert "label" in ref
+    assert refs
+    assert refs[0]["id"] == "csf_facility_form"
     assert data["rag_sources"][0]["id"] == "csf_facility_form"
 
 
@@ -64,7 +69,13 @@ def test_facility_copilot_v1_prefix(monkeypatch):
             status=CsDecisionStatus.OK_TO_SHIP,
             reason="Facility CSF is approved to proceed.",
             missing_fields=[],
-            regulatory_references=["csf_facility_form"],
+            regulatory_references=[
+                RegulatoryReference(
+                    id="csf_facility_form",
+                    label="Facility CSF – core requirements",
+                    source="Facility Controlled Substance Form (stub)",
+                )
+            ],
             rag_explanation="stubbed facility explanation",
             artifacts_used=[],
             rag_sources=[

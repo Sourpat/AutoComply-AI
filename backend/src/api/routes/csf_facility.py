@@ -3,15 +3,13 @@ from typing import List
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from src.api.models.copilot import CsfCopilotResponse, CsfCopilotSuggestion
 from src.api.models.decision import (
     DecisionOutcome,
     DecisionStatus,
     RegulatoryReference,
 )
-from src.autocomply.domain.csf_facility import FacilityCsfForm, evaluate_facility_csf
 from src.autocomply.domain.csf_copilot import CsfCopilotResult, run_csf_copilot
-from src.autocomply.regulations.knowledge import build_csf_evidence_from_sources
+from src.autocomply.domain.csf_facility import FacilityCsfForm, evaluate_facility_csf
 from src.utils.logger import get_logger
 
 # NOTE: All CSF evaluate endpoints now return a shared DecisionOutcome schema
@@ -103,8 +101,8 @@ async def evaluate_facility_csf_endpoint(
     )
 
 
-@router.post("/form-copilot", response_model=CsfCopilotResponse)
-async def facility_form_copilot(form: FacilityCsfForm) -> CsfCopilotResponse:
+@router.post("/form-copilot", response_model=CsfCopilotResult)
+async def facility_form_copilot(form: FacilityCsfForm) -> CsfCopilotResult:
     """Facility CSF Form Copilot backed by regulatory RAG."""
 
     copilot_request = {
@@ -133,47 +131,7 @@ async def facility_form_copilot(form: FacilityCsfForm) -> CsfCopilotResponse:
         },
     )
 
-    suggestions = [CsfCopilotSuggestion(field_name=field) for field in rag_result.missing_fields]
-
-    rag_sources_serialized = []
-    for source in rag_result.rag_sources or []:
-        if hasattr(source, "model_dump"):
-            rag_sources_serialized.append(source.model_dump())
-        elif hasattr(source, "dict"):
-            rag_sources_serialized.append(source.dict())
-        else:
-            rag_sources_serialized.append(source)
-
-    evidence_items = build_csf_evidence_from_sources(
-        decision_type="csf_facility",
-        jurisdiction=None,
-        doc_ids=rag_result.regulatory_references,
-        rag_sources=rag_sources_serialized,
-    )
-
-    regulatory_references = [item.reference for item in evidence_items]
-
-    debug_info = {
-        "status": rag_result.status.value if hasattr(rag_result.status, "value") else rag_result.status,
-        "reason": rag_result.reason,
-        "artifacts_used": rag_result.artifacts_used,
-        "rag_sources": rag_sources_serialized,
-        "regulatory_evidence_count": len(evidence_items),
-    }
-
-    return CsfCopilotResponse(
-        status=rag_result.status.value if hasattr(rag_result.status, "value") else rag_result.status,
-        reason=rag_result.reason,
-        rag_explanation=rag_result.rag_explanation,
-        artifacts_used=rag_result.artifacts_used or [],
-        rag_sources=rag_sources_serialized,
-        missing_fields=rag_result.missing_fields,
-        suggestions=suggestions,
-        message=rag_result.reason,
-        regulatory_references=regulatory_references,
-        debug_info=debug_info,
-        trace_id=None,
-    )
+    return rag_result
 
 
 @compat_router.post("/evaluate", response_model=FacilityCsfEvaluateResponse)
@@ -185,10 +143,10 @@ async def evaluate_facility_csf_endpoint_v1(
     return await evaluate_facility_csf_endpoint(form)
 
 
-@compat_router.post("/form-copilot", response_model=CsfCopilotResponse)
+@compat_router.post("/form-copilot", response_model=CsfCopilotResult)
 async def facility_form_copilot_v1(
     form: FacilityCsfForm,
-) -> CsfCopilotResponse:
+) -> CsfCopilotResult:
     """Versioned compatibility endpoint for Facility CSF Form Copilot."""
 
     return await facility_form_copilot(form)
