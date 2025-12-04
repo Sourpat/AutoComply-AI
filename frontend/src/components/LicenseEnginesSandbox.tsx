@@ -4,15 +4,20 @@ import { Globe, ShieldCheck } from "lucide-react";
 import { API_BASE } from "../api/csfHospitalClient";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
+import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import { TestCoverageNote } from "./TestCoverageNote";
 
 type LicenseDecisionStatus = "ok_to_ship" | "needs_review" | "blocked";
 
-interface LicenseDecisionResponse {
+type LicenseDecisionResponse = {
   status: LicenseDecisionStatus;
   reason: string;
+  // Optional, populated when the license engine returns richer regulatory data
   missing_fields?: string[];
-}
+  regulatory_references?: string[];
+  rag_explanation?: string;
+  rag_sources?: any[];
+};
 
 interface TraceShape {
   endpoint: string;
@@ -258,12 +263,19 @@ function OhioTdddSandbox() {
             </span>
           </div>
           <p className="mt-2 text-[11px] leading-relaxed text-slate-200">{decision.reason}</p>
-          {decision.missing_fields && decision.missing_fields.length > 0 && (
-            <p className="mt-1 text-[10px] text-slate-400">
-              Missing: {decision.missing_fields.join(", ")}
-            </p>
-          )}
         </div>
+      )}
+
+      {decision && (
+        <RegulatoryInsightsPanel
+          title="Ohio TDDD – Regulatory insights"
+          statusLabel={`Decision: ${decision.status}`}
+          reason={null}
+          missingFields={decision.missing_fields}
+          regulatoryReferences={decision.regulatory_references}
+          ragExplanation={decision.rag_explanation}
+          ragSources={decision.rag_sources}
+        />
       )}
 
       {trace && (
@@ -536,12 +548,19 @@ function NyPharmacySandbox() {
             </span>
           </div>
           <p className="mt-2 text-[11px] leading-relaxed text-slate-200">{decision.reason}</p>
-          {decision.missing_fields && decision.missing_fields.length > 0 && (
-            <p className="mt-1 text-[10px] text-slate-400">
-              Missing: {decision.missing_fields.join(", ")}
-            </p>
-          )}
         </div>
+      )}
+
+      {decision && (
+        <RegulatoryInsightsPanel
+          title="NY pharmacy – Regulatory insights"
+          statusLabel={`Decision: ${decision.status}`}
+          reason={null}
+          missingFields={decision.missing_fields}
+          regulatoryReferences={decision.regulatory_references}
+          ragExplanation={decision.rag_explanation}
+          ragSources={decision.rag_sources}
+        />
       )}
 
       {trace && (
