@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from src.api.models.decision import RegulatoryReference
 
@@ -103,3 +103,48 @@ _default_knowledge = RegulatoryKnowledge()
 
 def get_regulatory_knowledge() -> RegulatoryKnowledge:
     return _default_knowledge
+
+
+def build_csf_evidence_from_sources(
+    decision_type: str,
+    jurisdiction: Optional[str],
+    doc_ids: Optional[List[str]],
+    rag_sources: Optional[Iterable[Dict[str, Any]]],
+) -> List[RegulatoryEvidenceItem]:
+    """
+    Convenience helper for CSF copilot endpoints.
+
+    - Starts from the stubbed RegulatoryKnowledge (e.g. csf_hospital_form).
+    - Augments it with lightweight evidence derived from rag_sources (if present),
+      preserving their ids/titles/snippets as RegulatoryEvidenceItem entries.
+    """
+
+    knowledge = get_regulatory_knowledge()
+
+    base_items = knowledge.get_regulatory_evidence(
+        decision_type=decision_type,
+        jurisdiction=jurisdiction,
+        doc_ids=doc_ids,
+        context=None,
+    )
+
+    extra_items: List[RegulatoryEvidenceItem] = []
+    for src in rag_sources or []:
+        src_id = src.get("id") or "csf_source"
+        ref = RegulatoryReference(
+            id=str(src_id),
+            jurisdiction=jurisdiction,
+            source=src.get("title") or "CSF Copilot Source",
+            citation=None,
+            label=str(src_id),
+        )
+        extra_items.append(
+            RegulatoryEvidenceItem(
+                reference=ref,
+                snippet=src.get("snippet"),
+                source_title=src.get("title"),
+                raw_source=src,
+            )
+        )
+
+    return [*base_items, *extra_items]

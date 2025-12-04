@@ -12,6 +12,7 @@ from src.api.models.decision import (
 from src.autocomply.domain.csf_copilot import CsfCopilotResult, run_csf_copilot
 from src.autocomply.domain.csf_hospital import HospitalCsfForm, evaluate_hospital_csf
 from src.autocomply.domain.decision_risk import compute_risk_for_status
+from src.autocomply.regulations.knowledge import build_csf_evidence_from_sources
 from src.utils.logger import get_logger
 
 router = APIRouter(
@@ -106,11 +107,6 @@ async def hospital_form_copilot(form: HospitalCsfForm) -> CsfCopilotResponse:
         },
     )
 
-    suggestions = [CsfCopilotSuggestion(field_name=field) for field in rag_result.missing_fields]
-    regulatory_references = [
-        RegulatoryReference(id=ref, label=ref) for ref in rag_result.regulatory_references or []
-    ]
-
     rag_sources_serialized = []
     for source in rag_result.rag_sources or []:
         if hasattr(source, "model_dump"):
@@ -120,11 +116,22 @@ async def hospital_form_copilot(form: HospitalCsfForm) -> CsfCopilotResponse:
         else:
             rag_sources_serialized.append(source)
 
+    evidence_items = build_csf_evidence_from_sources(
+        decision_type="csf_hospital",
+        jurisdiction=None,
+        doc_ids=rag_result.regulatory_references,
+        rag_sources=rag_sources_serialized,
+    )
+
+    regulatory_references = [item.reference for item in evidence_items]
+    suggestions = [CsfCopilotSuggestion(field_name=field) for field in rag_result.missing_fields]
+
     debug_info = {
         "status": rag_result.status.value if hasattr(rag_result.status, "value") else rag_result.status,
         "reason": rag_result.reason,
         "artifacts_used": rag_result.artifacts_used,
         "rag_sources": rag_sources_serialized,
+        "regulatory_evidence_count": len(evidence_items),
     }
 
     return CsfCopilotResponse(
