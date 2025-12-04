@@ -14,6 +14,7 @@ def ohio_tddd_happy_payload() -> dict:
         "account_number": "800123456",
         "ship_to_state": "OH",
         "license_type": "ohio_tddd",
+        "expiration_date": "2099-12-31",
         "attestation_accepted": True,
         "internal_notes": "Happy path Ohio TDDD test payload.",
     }
@@ -25,7 +26,7 @@ def test_ohio_tddd_evaluate_ok_to_ship(ohio_tddd_happy_payload: dict) -> None:
 
     data = resp.json()
     assert data["status"] == "ok_to_ship"
-    assert data["reason"] == "Ohio TDDD license details appear complete for this request."
+    assert data["reason"] == "License active and matches Ohio TDDD requirements."
     assert data["missing_fields"] == []
 
     decision = data["decision"]
@@ -59,7 +60,12 @@ def test_ohio_tddd_evaluate_missing_required_field_returns_422(
     payload.pop("tddd_number")
 
     resp = client.post("/license/ohio-tddd/evaluate", json=payload)
-    assert resp.status_code == 422
+    assert resp.status_code == 200
+
+    data = resp.json()
+    assert data["status"] == "needs_review"
+    assert "Missing required fields" in data["reason"] or "Expiration date" in data["reason"]
+    assert "tddd_number" in data["missing_fields"]
 
 
 def test_ohio_tddd_evaluate_attestation_not_accepted(

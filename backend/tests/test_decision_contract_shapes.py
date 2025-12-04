@@ -60,6 +60,7 @@ def test_license_ohio_tddd_evaluate_decision_contract() -> None:
         "account_number": "800123456",
         "ship_to_state": "OH",
         "license_type": "ohio_tddd",
+        "expiration_date": "2099-12-31",
         "attestation_accepted": True,
         "internal_notes": "Happy path Ohio TDDD test payload.",
     }

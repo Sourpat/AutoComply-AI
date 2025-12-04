@@ -1,4 +1,5 @@
-from typing import List
+from datetime import date
+from typing import List, Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -37,20 +38,42 @@ async def ohio_tddd_evaluate(form: OhioTdddFormData) -> OhioTdddEvaluateResponse
     """
     missing = []
 
-    if not form.tddd_number:
+    license_number = form.normalized_license_number
+    if not license_number:
         missing.append("tddd_number")
 
+    parsed_expiration: Optional[date] = None
+    if form.expiration_date:
+        try:
+            parsed_expiration = (
+                form.expiration_date
+                if isinstance(form.expiration_date, date)
+                else date.fromisoformat(str(form.expiration_date))
+            )
+        except ValueError:
+            missing.append("expiration_date")
+    else:
+        missing.append("expiration_date")
+
     if form.ship_to_state != "OH":
-        reason = "Ship-to state is not OH; Ohio TDDD license does not apply."
-        status = DecisionStatus.BLOCKED
+        reason = "Ship-to state is not Ohio; TDDD logic may not apply."
+        status = DecisionStatus.NEEDS_REVIEW
     elif not form.attestation_accepted:
         reason = "Attestation was not accepted."
         status = DecisionStatus.BLOCKED
+    elif missing and "expiration_date" in missing:
+        reason = "Expiration date not provided for Ohio TDDD license; manual review required."
+        status = DecisionStatus.NEEDS_REVIEW
     elif missing:
         reason = "Missing required fields."
         status = DecisionStatus.NEEDS_REVIEW
+    elif parsed_expiration and parsed_expiration < date.today():
+        reason = (
+            "Ohio TDDD license is expired and cannot be used for controlled substances."
+        )
+        status = DecisionStatus.BLOCKED
     else:
-        reason = "Ohio TDDD license details appear complete for this request."
+        reason = "License active and matches Ohio TDDD requirements."
         status = DecisionStatus.OK_TO_SHIP
 
     knowledge = get_regulatory_knowledge()
@@ -60,7 +83,7 @@ async def ohio_tddd_evaluate(form: OhioTdddFormData) -> OhioTdddEvaluateResponse
         jurisdiction="US-OH",
         doc_ids=None,
         context={
-            "license_number": form.tddd_number,
+            "license_number": license_number,
             "ship_to_state": form.ship_to_state,
         },
     )

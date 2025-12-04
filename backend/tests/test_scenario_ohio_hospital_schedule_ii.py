@@ -53,6 +53,7 @@ def make_ohio_tddd_payload_from_csf(csf_payload: dict) -> dict:
         "account_number": csf_payload.get("account_number", "800123456"),
         "ship_to_state": csf_payload.get("ship_to_state", "OH"),
         "license_type": "ohio_tddd",
+        "expiration_date": "2099-12-31",
         "attestation_accepted": True,
         "internal_notes": (
             "Derived from Ohio hospital Schedule II scenario. "
@@ -75,6 +76,7 @@ def make_ohio_tddd_payload_missing_tddd(csf_payload: dict) -> dict:
         "account_number": csf_payload.get("account_number", "800123456"),
         "ship_to_state": csf_payload.get("ship_to_state", "OH"),
         "license_type": "ohio_tddd",
+        "expiration_date": "2099-12-31",
         "attestation_accepted": True,
         "internal_notes": (
             "Negative scenario: Ohio hospital Schedule II with missing TDDD. "
