@@ -52,9 +52,56 @@ type HospitalExample = {
   id: string;
   label: string;
   overrides: Partial<HospitalCsfFormData>;
+  controlledSubstances?: ControlledSubstance[];
 };
 
 const HOSPITAL_EXAMPLES: HospitalExample[] = [
+  {
+    id: "ohio_schedule_ii_happy",
+    label: "Ohio hospital – Schedule II (happy path)",
+    overrides: {
+      facilityName: "Scenario Hospital",
+      facilityType: "hospital",
+      accountNumber: "ACC-TEST",
+      pharmacyLicenseNumber: "TDDD-123456",
+      deaNumber: "DEA-123456",
+      pharmacistInChargeName: "Dr. Scenario",
+      pharmacistContactPhone: "555-0000",
+      shipToState: "OH",
+      attestationAccepted: true,
+      internalNotes: "Happy path hospital CSF for Ohio Schedule II order.",
+    },
+    controlledSubstances: [
+      {
+        id: "oh-sched-ii-happy",
+        name: "Schedule II Pain Med",
+        schedule: "II",
+      },
+    ],
+  },
+  {
+    id: "ohio_schedule_ii_expired",
+    label: "Ohio hospital – Schedule II (expired TDDD)",
+    overrides: {
+      facilityName: "Scenario Hospital",
+      facilityType: "hospital",
+      accountNumber: "ACC-TEST",
+      pharmacyLicenseNumber: "TDDD-EXPIRED",
+      deaNumber: "DEA-123456",
+      pharmacistInChargeName: "Dr. Scenario",
+      pharmacistContactPhone: "555-0000",
+      shipToState: "OH",
+      attestationAccepted: true,
+      internalNotes: "Expired TDDD license for Ohio Schedule II order.",
+    },
+    controlledSubstances: [
+      {
+        id: "oh-sched-ii-expired",
+        name: "Schedule II Pain Med",
+        schedule: "II",
+      },
+    ],
+  },
   {
     id: "fl_level1_trauma_schedule_ii",
     label: "FL – Level 1 trauma, Schedule II",
@@ -120,6 +167,7 @@ export function HospitalCsfSandbox() {
     };
 
     setForm(nextForm);
+    setControlledSubstances(example.controlledSubstances ?? []);
 
     emitCodexCommand("csf_hospital_example_selected", {
       example_id: example.id,

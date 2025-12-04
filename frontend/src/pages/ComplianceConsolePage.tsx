@@ -16,6 +16,7 @@ import { ConsoleTourCard } from "../components/ConsoleTourCard";
 import { IntegrationsCard } from "../components/IntegrationsCard";
 import { FutureWorkCard } from "../components/FutureWorkCard";
 import { RagDebugProvider, useRagDebug } from "../devsupport/RagDebugContext";
+import { MockOrderCards } from "../components/MockOrderCards";
 
 type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
   id: string;
@@ -479,6 +480,19 @@ function ComplianceConsolePageInner() {
         <MockOrderSeverityLegend />
 
         <OhioHospitalOrderJourneyCard />
+      </section>
+
+      <section className="console-section console-section-order space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
+        <div className="space-y-1">
+          <h2 className="text-sm font-semibold text-slate-900">Mock order scenarios</h2>
+          <p className="text-[11px] leading-relaxed text-slate-600">
+            Click into pre-baked mock order decisions, including the new Ohio hospital Schedule II scenarios for valid and expired TDDD licenses.
+          </p>
+        </div>
+
+        <MockOrderSeverityLegend />
+
+        <MockOrderCards />
       </section>
 
       <section className="console-section console-section-api">
