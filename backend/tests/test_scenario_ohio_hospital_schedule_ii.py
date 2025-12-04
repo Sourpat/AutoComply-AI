@@ -92,10 +92,13 @@ def test_ohio_hospital_schedule_ii_csf_and_ohio_tddd_flow() -> None:
     3) CSF Form Copilot explains the decision.
     4) The same scenario is used to run an Ohio TDDD license check.
     5) License Copilot explains the Ohio TDDD decision.
+    6) The mock order endpoint for Ohio hospital reflects a consistent final decision.
 
     Expected behavior in this happy path:
-    - Both CSF and Ohio TDDD decisions are 'ok_to_ship'.
-    - Responses have well-formed reasons and explanation fields.
+    - Both CSF and Ohio TDDD decisions are 'ok_to_ship' with 'low' risk.
+    - Responses have well-formed reasons, risk, and regulatory references.
+    - CSF copilot returns an explanation and references.
+    - Mock order decision is consistent with CSF + license (ok_to_ship, low risk).
     """
 
     csf_payload = make_ohio_hospital_csf_payload()
@@ -109,10 +112,21 @@ def test_ohio_hospital_schedule_ii_csf_and_ohio_tddd_flow() -> None:
     assert csf_eval_data["status"] in {"ok_to_ship", "needs_review", "blocked"}
     assert "reason" in csf_eval_data
     assert "missing_fields" in csf_eval_data
+    assert "regulatory_references" in csf_eval_data
 
-    # In our happy path scenario we *expect* ok_to_ship, but we keep the assertion
-    # a bit flexible in case business rules evolve.
+    # Happy path expectations
     assert csf_eval_data["status"] == "ok_to_ship"
+    csf_decision = csf_eval_data.get("decision", csf_eval_data)
+    assert csf_decision.get("risk_level") in {"low", "medium", "high"}
+    assert csf_decision.get("risk_level") == "low"
+    assert isinstance(csf_decision.get("risk_score"), (int, float))
+
+    # At least one regulatory reference
+    csf_refs = csf_decision.get("regulatory_references", [])
+    assert isinstance(csf_refs, list)
+    assert csf_refs
+    assert "id" in csf_refs[0]
+    assert "label" in csf_refs[0]
 
     # --- Step 2: CSF Form Copilot explanation ---
     csf_copilot_resp = client.post(
@@ -136,6 +150,13 @@ def test_ohio_hospital_schedule_ii_csf_and_ohio_tddd_flow() -> None:
 
     # We expect the copilot to agree with the decision engine in this happy path.
     assert csf_copilot_data["status"] == "ok_to_ship"
+    assert csf_copilot_data["rag_explanation"]
+
+    csf_copilot_refs = csf_copilot_data["regulatory_references"]
+    assert isinstance(csf_copilot_refs, list)
+    if csf_copilot_refs:
+        assert "id" in csf_copilot_refs[0]
+        assert "label" in csf_copilot_refs[0]
 
     # --- Step 3: Ohio TDDD license evaluation ---
     tddd_eval_resp = client.post(
@@ -145,12 +166,22 @@ def test_ohio_hospital_schedule_ii_csf_and_ohio_tddd_flow() -> None:
     assert tddd_eval_resp.status_code == 200
 
     tddd_eval_data = tddd_eval_resp.json()
-    assert tddd_eval_data["status"] in {"ok_to_ship", "needs_review", "blocked"}
-    assert "reason" in tddd_eval_data
-    assert "missing_fields" in tddd_eval_data
+    decision = tddd_eval_data.get("decision", tddd_eval_data)
 
-    # For this scenario we expect the Ohio TDDD license to be acceptable.
-    assert tddd_eval_data["status"] == "ok_to_ship"
+    assert decision["status"] in {"ok_to_ship", "needs_review", "blocked"}
+    assert decision["status"] == "ok_to_ship"
+    assert "reason" in decision
+
+    # Risk + references from RegulatoryKnowledge
+    assert decision.get("risk_level") == "low"
+    assert isinstance(decision.get("risk_score"), (int, float))
+
+    refs = decision.get("regulatory_references", [])
+    assert isinstance(refs, list)
+    assert refs
+    ids = {ref["id"] for ref in refs}
+    # license_ohio_tddd branch should provide this
+    assert "ohio-tddd-core" in ids
 
     # --- Step 4: Ohio TDDD License Copilot explanation ---
     tddd_copilot_resp = client.post(
@@ -182,6 +213,27 @@ def test_ohio_hospital_schedule_ii_csf_and_ohio_tddd_flow() -> None:
     artifacts = tddd_copilot_data.get("artifacts_used", [])
     if artifacts:
         assert any("ohio_tddd_rules" in str(a) for a in artifacts)
+
+    # --- Step 4: Mock order endpoint should be consistent ---
+    mock_order_resp = client.get("/orders/mock/ohio-hospital-approval")
+    assert mock_order_resp.status_code == 200
+
+    mock_data = mock_order_resp.json()
+    assert "decision" in mock_data
+    order_decision = mock_data["decision"]
+
+    assert order_decision["status"] in {"ok_to_ship", "needs_review", "blocked"}
+    assert order_decision["status"] == "ok_to_ship"
+    assert order_decision.get("risk_level") == "low"
+    assert isinstance(order_decision.get("risk_score"), (int, float))
+    assert "reason" in order_decision
+
+    # Ensure mock order also carries at least one regulatory reference
+    order_refs = order_decision.get("regulatory_references", [])
+    assert isinstance(order_refs, list)
+    if order_refs:
+        assert "id" in order_refs[0]
+        assert "label" in order_refs[0]
 
 
 def test_ohio_hospital_schedule_ii_csf_ok_but_ohio_tddd_missing_number() -> None:

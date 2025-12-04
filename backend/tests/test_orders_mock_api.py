@@ -111,6 +111,9 @@ def test_mock_order_endpoints_return_ok_and_decision_shape(
     assert decision["status"] in ["ok_to_ship", "needs_review", "blocked"]
     assert isinstance(decision["reason"], str)
     assert decision["reason"].strip() != ""
+    assert decision.get("risk_level") in {"low", "medium", "high", None}
+    if decision.get("risk_level"):
+        assert isinstance(decision.get("risk_score"), (int, float))
     assert "regulatory_references" in decision
     assert isinstance(decision["regulatory_references"], list)
 
@@ -126,20 +129,22 @@ def test_ohio_hospital_mock_order_has_expected_demo_status() -> None:
     The Ohio hospital mock order is used in demos as the primary
     end-to-end example. This test makes its outcome explicit.
     """
-    resp = client.post(
-        "/orders/mock/ohio-hospital-approval",
-        json={
-            "hospital_csf": make_ohio_hospital_csf_payload(),
-            "ohio_tddd": make_ohio_tddd_payload_valid(),
-        },
-    )
+    resp = client.get("/orders/mock/ohio-hospital-approval")
     assert resp.status_code == 200
     data = resp.json()
 
     decision = data.get("decision", {})
 
     assert decision["status"] == "ok_to_ship"
+    assert decision.get("risk_level") == "low"
+    assert isinstance(decision.get("risk_score"), (int, float))
     assert isinstance(decision["reason"], str)
     assert decision["reason"].strip() != ""
     assert "approved" in decision["reason"].lower()
-    assert data.get("scenario_id") == "ohio-hospital-happy-path"
+    assert data.get("scenario_id") == "ohio-hospital-schedule-ii-happy-path"
+
+    refs = decision.get("regulatory_references", [])
+    assert isinstance(refs, list)
+    if refs:
+        assert "id" in refs[0]
+        assert "label" in refs[0]
