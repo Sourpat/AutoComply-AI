@@ -11,6 +11,7 @@ import { TestingReliabilityCard } from "../components/TestingReliabilityCard";
 import { SystemHealthCard } from "../components/SystemHealthCard";
 import { RunLocallyCard } from "../components/RunLocallyCard";
 import { LicenseEnginesSandbox } from "../components/LicenseEnginesSandbox";
+import { ConsoleTourCard } from "../components/ConsoleTourCard";
 import { RagDebugProvider, useRagDebug } from "../devsupport/RagDebugContext";
 
 type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
@@ -383,6 +384,8 @@ function ComplianceConsolePageInner() {
           </div>
         </div>
       </header>
+
+      <ConsoleTourCard />
 
       <section className="console-section console-section-status rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
         <SystemStatusCard />
