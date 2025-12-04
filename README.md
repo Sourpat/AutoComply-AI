@@ -30,8 +30,11 @@ It is built with **FastAPI** (backend) and **Vite + React + TypeScript** (fronte
 - Everyone can see **which pytest files** back a given UI flow
 - External tools (Postman, other apps) can call the same endpoints via **“Copy as cURL”**
 
-For a step-by-step walkthrough you can use in demos or interviews, see  
+For a step-by-step walkthrough you can use in demos or interviews, see
 `docs/demo_script_compliance_console.md`.
+
+For a high-level roadmap of how this lab could evolve into a broader
+compliance platform, see `docs/roadmap_autocomply_ai.md`.
 
 ### What you can do in the console
 

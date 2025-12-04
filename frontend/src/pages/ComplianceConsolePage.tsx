@@ -13,6 +13,7 @@ import { RunLocallyCard } from "../components/RunLocallyCard";
 import { LicenseEnginesSandbox } from "../components/LicenseEnginesSandbox";
 import { ConsoleTourCard } from "../components/ConsoleTourCard";
 import { IntegrationsCard } from "../components/IntegrationsCard";
+import { FutureWorkCard } from "../components/FutureWorkCard";
 import { RagDebugProvider, useRagDebug } from "../devsupport/RagDebugContext";
 
 type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
@@ -504,6 +505,7 @@ function ComplianceConsolePageInner() {
       </section>
 
       <IntegrationsCard />
+      <FutureWorkCard />
 
       <section className="console-section console-section-run-locally">
         <RunLocallyCard />

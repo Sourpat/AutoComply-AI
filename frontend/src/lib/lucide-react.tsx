@@ -41,6 +41,28 @@ export const ShieldCheck = createIcon(
   </>
 );
 
+export const Flag = createIcon(
+  <>
+    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1v18" />
+  </>
+);
+
+export const Lightbulb = createIcon(
+  <>
+    <path d="M9 18h6" />
+    <path d="M10 22h4" />
+    <path d="M12 2a7 7 0 0 0-7 7 7.05 7.05 0 0 0 3 5.74V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.26A7.05 7.05 0 0 0 19 9a7 7 0 0 0-7-7Z" />
+  </>
+);
+
+export const Layers = createIcon(
+  <>
+    <path d="m12 2 10 5-10 5L2 7Z" />
+    <path d="m2 12 10 5 10-5" />
+    <path d="m2 17 10 5 10-5" />
+  </>
+);
+
 export const Activity = createIcon(
   <>
     <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
