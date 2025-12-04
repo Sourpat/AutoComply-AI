@@ -55,9 +55,12 @@ async def ohio_tddd_evaluate(form: OhioTdddFormData) -> OhioTdddEvaluateResponse
     else:
         missing.append("expiration_date")
 
-    if form.ship_to_state != "OH":
-        reason = "Ship-to state is not Ohio; TDDD logic may not apply."
+    today = date.today()
+    is_in_state = form.ship_to_state == "OH"
+
+    if not is_in_state:
         status = DecisionStatus.NEEDS_REVIEW
+        reason = "Ship-to state is not Ohio; TDDD logic may not fully apply."
     elif not form.attestation_accepted:
         reason = "Attestation was not accepted."
         status = DecisionStatus.BLOCKED
@@ -67,7 +70,7 @@ async def ohio_tddd_evaluate(form: OhioTdddFormData) -> OhioTdddEvaluateResponse
     elif missing:
         reason = "Missing required fields."
         status = DecisionStatus.NEEDS_REVIEW
-    elif parsed_expiration and parsed_expiration < date.today():
+    elif parsed_expiration and parsed_expiration < today:
         reason = (
             "Ohio TDDD license is expired and cannot be used for controlled substances."
         )

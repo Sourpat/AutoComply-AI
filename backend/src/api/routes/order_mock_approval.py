@@ -265,6 +265,55 @@ async def ohio_hospital_expired_license_mock() -> MockOrderDecisionResponse:
     )
 
 
+@router.get(
+    "/orders/mock/ohio-hospital-wrong-state",
+    response_model=MockOrderDecisionResponse,
+    summary="Mock order decision when ship-to state is outside Ohio",
+)
+async def ohio_hospital_wrong_state_mock() -> MockOrderDecisionResponse:
+    """
+    Mock order: Ohio hospital Schedule II where the ship-to state is NOT Ohio.
+
+    Expected:
+    - CSF data looks fine structurally.
+    - Ohio TDDD license logic flags that ship-to is not OH -> needs_review + medium risk.
+    """
+
+    status = DecisionStatus.NEEDS_REVIEW
+    reason = (
+        "Order requires review: ship-to state is not Ohio, so Ohio TDDD license "
+        "requirements may not fully apply. Confirm appropriate licensing for the destination state."
+    )
+
+    risk_level, risk_score = compute_risk_for_status(status.value)
+
+    decision = DecisionOutcome(
+        status=status,
+        reason=reason,
+        risk_level=risk_level,
+        risk_score=risk_score,
+        regulatory_references=[
+            RegulatoryReference(
+                id="ohio-tddd-core",
+                jurisdiction="US-OH",
+                source="Ohio TDDD Guidance",
+                citation="OH ST § 4729.54",
+                label="Ohio TDDD licensing may not apply outside Ohio",
+            )
+        ],
+        trace_id=None,
+        debug_info=None,
+    )
+
+    return MockOrderDecisionResponse(
+        decision=decision,
+        csf_engine="hospital",
+        license_engine="ohio-tddd",
+        scenario_id="ohio-hospital-wrong-state",
+        developer_trace=None,
+    )
+
+
 @router.post(
     "/orders/mock/ohio-facility-approval",
     response_model=MockOrderDecisionResponse,

@@ -36,6 +36,16 @@ const OHIO_TDDD_EXAMPLES: OhioTdddFormData[] = [
     internalNotes: "Expired TDDD for Ohio hospital Schedule II investigate path.",
   },
   {
+    tdddNumber: "TDDD-123456",
+    facilityName: "Scenario Hospital – Wrong ship-to state",
+    accountNumber: "ACC-TEST",
+    shipToState: "PA",
+    licenseType: "ohio_tddd",
+    attestationAccepted: true,
+    internalNotes:
+      "Active TDDD but ship-to outside Ohio; expected needs_review with medium risk.",
+  },
+  {
     tdddNumber: "01234567",
     facilityName: "Example Ohio Pharmacy",
     accountNumber: "800123456",
