@@ -11,6 +11,7 @@ from src.api.models.decision import (
 )
 from src.autocomply.domain.csf_copilot import CsfCopilotResult, run_csf_copilot
 from src.autocomply.domain.csf_hospital import HospitalCsfForm, evaluate_hospital_csf
+from src.autocomply.domain.decision_risk import compute_risk_for_status
 from src.utils.logger import get_logger
 
 router = APIRouter(
@@ -55,9 +56,13 @@ async def evaluate_hospital_csf_endpoint(
         RegulatoryReference(id=ref, label=ref) for ref in decision.regulatory_references or []
     ]
 
+    risk_level, risk_score = compute_risk_for_status(normalized_status.value)
+
     decision_outcome = DecisionOutcome(
         status=normalized_status,
         reason=decision.reason,
+        risk_level=risk_level,
+        risk_score=risk_score,
         regulatory_references=regulatory_references,
         debug_info={"missing_fields": decision.missing_fields} if decision.missing_fields else None,
     )
