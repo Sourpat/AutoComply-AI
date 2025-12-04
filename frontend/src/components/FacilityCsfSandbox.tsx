@@ -1241,7 +1241,10 @@ export function FacilityCsfSandbox() {
           <p className="text-slate-300">Current Facility CSF decision</p>
           {decision && decision.status ? (
             <div className="mt-1 flex items-center gap-2">
-              <DecisionStatusBadge status={decision.status} />
+              <DecisionStatusBadge
+                status={decision.status}
+                riskLevel={decision.risk_level ?? undefined}
+              />
               <p className="text-[11px] text-slate-400">
                 This comes from the last run of{" "}
                 <span className="font-medium">Evaluate Facility CSF</span>.

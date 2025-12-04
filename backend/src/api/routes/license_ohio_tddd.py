@@ -8,6 +8,7 @@ from src.api.models.decision import (
     DecisionStatus,
     RegulatoryReference,
 )
+from src.autocomply.domain.decision_risk import compute_risk_for_status
 from src.domain.license_ohio_tddd import (
     OhioTdddFormCopilotResponse,
     OhioTdddFormData,
@@ -65,17 +66,14 @@ async def ohio_tddd_evaluate(form: OhioTdddFormData) -> OhioTdddEvaluateResponse
         )
     ]
 
-    risk_level_map = {
-        DecisionStatus.OK_TO_SHIP: "low",
-        DecisionStatus.NEEDS_REVIEW: "medium",
-        DecisionStatus.BLOCKED: "high",
-    }
+    risk_level, risk_score = compute_risk_for_status(status.value)
 
     decision_outcome = DecisionOutcome(
         status=status,
         reason=reason,
         regulatory_references=regulatory_references,
-        risk_level=risk_level_map.get(status),
+        risk_level=risk_level,
+        risk_score=risk_score,
         debug_info={"missing_fields": missing} if missing else None,
     )
 

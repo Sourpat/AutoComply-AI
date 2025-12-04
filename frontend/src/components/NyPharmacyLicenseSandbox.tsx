@@ -469,7 +469,10 @@ export function NyPharmacyLicenseSandbox() {
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">
             <p>
               <strong>Status:</strong> {" "}
-              <DecisionStatusBadge status={decision.status} />
+              <DecisionStatusBadge
+                status={decision.status}
+                riskLevel={decision.risk_level ?? undefined}
+              />
             </p>
             <p>
               <strong>Reason:</strong> {decision.reason}

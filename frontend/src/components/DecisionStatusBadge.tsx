@@ -1,10 +1,12 @@
 import React from "react";
 
 import type { DecisionStatus } from "../types/decision";
+import { RiskPill } from "./RiskPill";
 
 interface DecisionStatusBadgeProps {
   status: DecisionStatus | null | undefined;
   labelPrefix?: string;
+  riskLevel?: string | null;
 }
 
 /**
@@ -14,6 +16,7 @@ interface DecisionStatusBadgeProps {
 export function DecisionStatusBadge({
   status,
   labelPrefix,
+  riskLevel,
 }: DecisionStatusBadgeProps) {
   if (!status) {
     return <span className="badge badge-unknown">unknown</span>;
@@ -32,9 +35,20 @@ export function DecisionStatusBadge({
 
   const className = `badge badge-${normalized}`;
 
-  return (
+  const badge = (
     <span className={className}>
       {labelPrefix ? `${labelPrefix}: ${label}` : label}
+    </span>
+  );
+
+  if (!riskLevel) {
+    return badge;
+  }
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      {badge}
+      <RiskPill riskLevel={riskLevel} />
     </span>
   );
 }

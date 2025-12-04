@@ -252,7 +252,10 @@ export function OhioHospitalOrderJourneyCard() {
               <span className="text-xs uppercase tracking-wide text-slate-500">
                 Final decision
               </span>
-              <DecisionStatusBadge status={finalDecision.status} />
+              <DecisionStatusBadge
+                status={finalDecision.status}
+                riskLevel={finalDecision.risk_level ?? undefined}
+              />
             </div>
           </div>
 
@@ -274,7 +277,10 @@ export function OhioHospitalOrderJourneyCard() {
                 <div className="space-y-1 text-sm text-slate-700">
                   <p>
                     <strong>Status:</strong>{" "}
-                    <DecisionStatusBadge status={csfDecision.status} />
+                    <DecisionStatusBadge
+                      status={csfDecision.status}
+                      riskLevel={csfDecision.risk_level ?? undefined}
+                    />
                   </p>
                   <p>
                     <strong>Reason:</strong> {csfDecision.reason}
@@ -306,7 +312,10 @@ export function OhioHospitalOrderJourneyCard() {
                 <div className="space-y-1 text-sm text-slate-700">
                   <p>
                     <strong>Status:</strong>{" "}
-                    <DecisionStatusBadge status={licenseDecision.status} />
+                    <DecisionStatusBadge
+                      status={licenseDecision.status}
+                      riskLevel={licenseDecision.risk_level ?? undefined}
+                    />
                   </p>
                   <p>
                     <strong>Reason:</strong> {licenseDecision.reason}

@@ -3,12 +3,12 @@ from typing import Dict, Optional
 from fastapi import APIRouter
 
 from src.api.models.decision import DecisionOutcome, DecisionStatus
+from src.autocomply.domain.decision_risk import compute_risk_for_status
 from src.api.routes.license_ny_pharmacy import ny_pharmacy_evaluate
 from src.domain.order_mock_ny_pharmacy import NyPharmacyOrderApprovalRequest
 from src.api.routes.order_mock_approval import (
     MockOrderDecisionResponse,
     _normalize_references,
-    _risk_level_for_status,
 )
 
 router = APIRouter(tags=["orders_mock"])
@@ -59,10 +59,13 @@ async def ny_pharmacy_mock_order_approval(
     else:
         reason = "Order needs manual review: NY Pharmacy license is not ok_to_ship."
 
+    risk_level, risk_score = compute_risk_for_status(final_status.value)
+
     decision = DecisionOutcome(
         status=final_status,
         reason=reason,
-        risk_level=_risk_level_for_status(final_status),
+        risk_level=risk_level,
+        risk_score=risk_score,
         regulatory_references=_normalize_references(
             getattr(license_decision, "regulatory_references", [])
         ),

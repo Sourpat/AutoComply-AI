@@ -40,6 +40,10 @@ def test_csf_hospital_evaluate_decision_contract() -> None:
 
     assert decision["status"] in {"ok_to_ship", "needs_review", "blocked"}
     assert isinstance(decision["reason"], str) and decision["reason"]
+    assert "risk_level" in decision
+    assert "risk_score" in decision
+    assert decision["risk_level"] in {"low", "medium", "high", None}
+    assert isinstance(decision["risk_score"], (int, float)) or decision["risk_score"] is None
 
     # regulatory_references must always be present as a list (even if empty)
     assert "regulatory_references" in decision
@@ -68,6 +72,10 @@ def test_license_ohio_tddd_evaluate_decision_contract() -> None:
 
     assert decision["status"] in {"ok_to_ship", "needs_review", "blocked"}
     assert isinstance(decision["reason"], str) and decision["reason"]
+    assert "risk_level" in decision
+    assert "risk_score" in decision
+    assert decision["risk_level"] in {"low", "medium", "high", None}
+    assert isinstance(decision["risk_score"], (int, float)) or decision["risk_score"] is None
 
     assert "regulatory_references" in decision
     assert isinstance(decision["regulatory_references"], list)
@@ -123,6 +131,10 @@ def test_mock_order_ohio_hospital_decision_contract() -> None:
 
     assert decision["status"] in {"ok_to_ship", "needs_review", "blocked"}
     assert isinstance(decision["reason"], str) and decision["reason"]
+    assert "risk_level" in decision
+    assert "risk_score" in decision
+    assert decision["risk_level"] in {"low", "medium", "high", None}
+    assert isinstance(decision["risk_score"], (int, float)) or decision["risk_score"] is None
 
     assert "regulatory_references" in decision
     assert isinstance(decision["regulatory_references"], list)

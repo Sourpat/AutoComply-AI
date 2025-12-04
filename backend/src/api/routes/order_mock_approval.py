@@ -8,6 +8,7 @@ from src.api.models.decision import (
     DecisionStatus,
     RegulatoryReference,
 )
+from src.autocomply.domain.decision_risk import compute_risk_for_status
 from src.api.routes.csf_hospital import evaluate_hospital_csf_endpoint
 from src.api.routes.license_ohio_tddd import ohio_tddd_evaluate
 from src.domain.order_mock_approval import (
@@ -102,6 +103,8 @@ async def ohio_hospital_mock_order_approval(
             _normalize_references(getattr(tddd_decision, "regulatory_references", []))
         )
 
+    risk_level, risk_score = compute_risk_for_status(final_status.value)
+
     decision = DecisionOutcome(
         status=final_status,
         reason=_final_reason(
@@ -110,7 +113,8 @@ async def ohio_hospital_mock_order_approval(
             tddd_status=tddd_status,
             default_reason="Hospital CSF evaluation requires review.",
         ),
-        risk_level=_risk_level_for_status(final_status),
+        risk_level=risk_level,
+        risk_score=risk_score,
         regulatory_references=regulatory_references,
         debug_info={"notes": notes} if notes else None,
     )
@@ -171,10 +175,13 @@ async def mock_ohio_facility_approval(
             "ok_to_ship for this Ohio facility."
         )
 
+    risk_level, risk_score = compute_risk_for_status(final.value)
+
     decision = DecisionOutcome(
         status=final,
         reason=explanation,
-        risk_level=_risk_level_for_status(final),
+        risk_level=risk_level,
+        risk_score=risk_score,
         regulatory_references=[],
     )
 
@@ -195,14 +202,6 @@ def _normalize_status(status: DecisionStatus | str) -> DecisionStatus:
     if isinstance(status, DecisionStatus):
         return status
     return DecisionStatus(str(status))
-
-
-def _risk_level_for_status(status: DecisionStatus) -> str:
-    if status == DecisionStatus.OK_TO_SHIP:
-        return "low"
-    if status == DecisionStatus.NEEDS_REVIEW:
-        return "medium"
-    return "high"
 
 
 def _final_reason(

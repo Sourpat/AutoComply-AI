@@ -425,7 +425,10 @@ function OhioTdddSandbox() {
         <div className="mt-3 rounded-xl border border-white/10 bg-slate-950/90 px-3 py-3">
           <p className="text-xs font-semibold text-slate-100">License decision</p>
           <div className="mt-1 flex items-center gap-2">
-            <DecisionStatusBadge status={decision.status} />
+            <DecisionStatusBadge
+              status={decision.status}
+              riskLevel={decision.risk_level ?? undefined}
+            />
             <span className="text-[11px] text-slate-400">
               Result from <span className="font-mono text-slate-200">/license/ohio-tddd/evaluate</span>.
             </span>
@@ -762,7 +765,10 @@ function NyPharmacySandbox() {
         <div className="mt-3 rounded-xl border border-white/10 bg-slate-950/90 px-3 py-3">
           <p className="text-xs font-semibold text-slate-100">License decision</p>
           <div className="mt-1 flex items-center gap-2">
-            <DecisionStatusBadge status={decision.status} />
+            <DecisionStatusBadge
+              status={decision.status}
+              riskLevel={decision.risk_level ?? undefined}
+            />
             <span className="text-[11px] text-slate-400">
               Result from <span className="font-mono text-slate-200">/license/ny-pharmacy/evaluate</span>.
             </span>
