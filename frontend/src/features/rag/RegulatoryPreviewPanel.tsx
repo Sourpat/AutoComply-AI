@@ -77,6 +77,8 @@ export const RegulatoryPreviewPanel: React.FC = () => {
 
     setLoading(true);
     setError(null);
+    setItems(null);
+    setRawResponse(null);
     setShowRaw(false);
 
     try {
