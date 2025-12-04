@@ -43,3 +43,20 @@ def test_build_csf_evidence_from_sources_includes_stub() -> None:
     assert isinstance(evidence, list)
     for item in evidence:
         assert isinstance(item.reference, RegulatoryReference)
+
+
+def test_regulatory_knowledge_ny_pharmacy_returns_evidence() -> None:
+    knowledge = get_regulatory_knowledge()
+
+    evidence = knowledge.get_regulatory_evidence(
+        decision_type="license_ny_pharmacy",
+        jurisdiction="US-NY",
+        doc_ids=None,
+        context={"license_number": "NYPHARM-12345"},
+    )
+
+    assert evidence
+    ref = evidence[0].reference
+    assert ref.id == "ny-pharmacy-core"
+    assert ref.jurisdiction == "US-NY"
+    assert "pharmacy" in (ref.label or "").lower()

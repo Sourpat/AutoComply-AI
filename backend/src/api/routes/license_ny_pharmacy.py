@@ -3,12 +3,9 @@ from typing import List
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from src.api.models.decision import (
-    DecisionOutcome,
-    DecisionStatus,
-    RegulatoryReference,
-)
+from src.api.models.decision import DecisionOutcome, DecisionStatus, RegulatoryReference
 from src.autocomply.domain.decision_risk import compute_risk_for_status
+from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 from src.domain.license_ny_pharmacy import (
     NyPharmacyFormCopilotResponse,
     NyPharmacyFormData,
@@ -46,6 +43,7 @@ async def ny_pharmacy_evaluate(
     If any required condition fails → needs_review.
     In a real system, additional checks would look up license registries, expirations, etc.
     """
+    knowledge = get_regulatory_knowledge()
     missing: list[str] = []
 
     if not payload.ny_state_license_number.strip():
@@ -67,16 +65,28 @@ async def ny_pharmacy_evaluate(
         reason = "NY Pharmacy license details appear complete for this request."
         status = DecisionStatus.OK_TO_SHIP
 
-    regulatory_references = [
-        RegulatoryReference(
-            id="ny-pharmacy-core",
-            jurisdiction="US-NY",
-            source="NY Pharmacy Board",
-            label="NY pharmacy license required for dispensing controlled substances",
-        )
-    ]
+    evidence_items = knowledge.get_regulatory_evidence(
+        decision_type="license_ny_pharmacy",
+        jurisdiction="US-NY",
+        doc_ids=None,
+        context={
+            "license_number": payload.ny_state_license_number,
+            "ship_to_state": payload.ship_to_state,
+        },
+    )
+
+    regulatory_references = [item.reference for item in evidence_items]
 
     risk_level, risk_score = compute_risk_for_status(status.value)
+
+    debug_info = {
+        "missing_fields": missing,
+        "regulatory_evidence_count": len(evidence_items),
+    }
+
+    if not missing:
+        # Preserve prior behavior of omitting missing_fields when empty
+        debug_info.pop("missing_fields")
 
     decision_outcome = DecisionOutcome(
         status=status,
@@ -84,7 +94,7 @@ async def ny_pharmacy_evaluate(
         regulatory_references=regulatory_references,
         risk_level=risk_level,
         risk_score=risk_score,
-        debug_info={"missing_fields": missing} if missing else None,
+        debug_info=debug_info or None,
     )
 
     return NyPharmacyEvaluateResponse(
