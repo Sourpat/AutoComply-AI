@@ -17,7 +17,6 @@ import { callPractitionerFormCopilot } from "../api/csfPractitionerCopilotClient
 import { ControlledSubstancesPanel } from "./ControlledSubstancesPanel";
 import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
-import { FormCopilotDetailsCard } from "../components/FormCopilotDetailsCard";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { API_BASE } from "../api/csfHospitalClient";
 import { emitCodexCommand } from "../utils/codexLogger";
@@ -30,6 +29,7 @@ import { mapPractitionerFormToOhioTddd } from "../domain/licenseMapping";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { TestCoverageNote } from "./TestCoverageNote";
 import { buildCurlCommand } from "../utils/curl";
+import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 
 const ErrorAlert = ({
   message,
@@ -1513,15 +1513,22 @@ export function PractitionerCsfSandbox() {
               )}
 
               {copilotResponse && (
-                <FormCopilotDetailsCard
-                  title="Practitioner CSF Copilot explanation"
-                  status={copilotResponse.status}
+                <RegulatoryInsightsPanel
+                  title="Practitioner CSF – Form Copilot"
+                  statusLabel={
+                    copilotResponse.status
+                      ? `Decision: ${copilotResponse.status}`
+                      : undefined
+                  }
                   reason={copilotResponse.reason}
-                  missingFields={copilotResponse.missing_fields ?? []}
+                  missingFields={copilotResponse.missing_fields}
                   regulatoryReferences={copilotRegulatoryReferences}
-                  ragExplanation={copilotResponse.rag_explanation ?? null}
-                  artifactsUsed={copilotArtifactsUsed}
-                  ragSources={copilotRagSources}
+                  ragExplanation={copilotResponse.rag_explanation}
+                  ragSources={
+                    copilotRagSources?.length
+                      ? copilotRagSources
+                      : copilotArtifactsUsed
+                  }
                 />
               )}
 

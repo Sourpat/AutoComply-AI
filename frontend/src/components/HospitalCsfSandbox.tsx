@@ -29,10 +29,10 @@ import {
   type HospitalFormCopilotResponse,
 } from "../api/csfHospitalCopilotClient";
 import { trackSandboxEvent } from "../devsupport/telemetry";
-import { FormCopilotDetailsCard } from "../components/FormCopilotDetailsCard";
 import { TestCoverageNote } from "./TestCoverageNote";
 import { API_BASE } from "../api/csfHospitalClient";
 import { buildCurlCommand } from "../utils/curl";
+import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 
 function buildHospitalCsfEvaluateCurl(form: any): string {
   const payload = form ?? {};
@@ -853,20 +853,19 @@ export function HospitalCsfSandbox() {
           )}
 
           {copilotDecision && (
-            <FormCopilotDetailsCard
-              title="Hospital CSF Copilot explanation"
-              status={copilotDecision.status ?? "unknown"}
+            <RegulatoryInsightsPanel
+              title="Hospital CSF – Form Copilot"
+              statusLabel={
+                copilotDecision.status
+                  ? `Decision: ${copilotDecision.status}`
+                  : undefined
+              }
               reason={copilotDecision.reason}
-              missingFields={copilotDecision.missing_fields ?? []}
-              regulatoryReferences={copilotDecision.regulatory_references ?? []}
-              ragExplanation={copilotDecision.rag_explanation ?? null}
-              artifactsUsed={copilotDecision.artifacts_used ?? []}
+              missingFields={copilotDecision.missing_fields}
+              regulatoryReferences={copilotDecision.regulatory_references}
+              ragExplanation={copilotDecision.rag_explanation}
               ragSources={
-                copilotDecision.rag_sources?.map((src) =>
-                  typeof src === "string"
-                    ? src
-                    : src.title || src.id || JSON.stringify(src)
-                ) ?? []
+                copilotDecision.rag_sources ?? copilotDecision.artifacts_used
               }
             />
           )}

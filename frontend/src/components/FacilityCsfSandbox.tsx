@@ -29,9 +29,9 @@ import {
 import { evaluateOhioTdddLicense } from "../api/licenseOhioTdddClient";
 import { mapFacilityFormToOhioTddd } from "../domain/licenseMapping";
 import { trackSandboxEvent } from "../devsupport/telemetry";
-import { FormCopilotDetailsCard } from "../components/FormCopilotDetailsCard";
 import { TestCoverageNote } from "./TestCoverageNote";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
+import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 
 function buildFacilityCsfEvaluateCurl(form: any): string {
   const payload = form ?? {};
@@ -1169,19 +1169,19 @@ export function FacilityCsfSandbox() {
           )}
 
           {copilotResponse && !copilotLoading && (
-            <FormCopilotDetailsCard
-              title="Facility CSF Copilot explanation"
-              status={copilotResponse.status ?? "unknown"}
+            <RegulatoryInsightsPanel
+              title="Facility CSF – Form Copilot"
+              statusLabel={
+                copilotResponse.status
+                  ? `Decision: ${copilotResponse.status}`
+                  : undefined
+              }
               reason={copilotResponse.reason}
-              missingFields={copilotResponse.missing_fields ?? []}
-              regulatoryReferences={copilotResponse.regulatory_references ?? []}
-              ragExplanation={copilotResponse.rag_explanation ?? null}
-              artifactsUsed={copilotResponse.artifacts_used ?? []}
+              missingFields={copilotResponse.missing_fields}
+              regulatoryReferences={copilotResponse.regulatory_references}
+              ragExplanation={copilotResponse.rag_explanation}
               ragSources={
-                copilotResponse.rag_sources?.map((source, idx) => {
-                  if (typeof source === "string") return source;
-                  return source.title || source.id || String(idx);
-                }) ?? []
+                copilotResponse.artifacts_used ?? copilotResponse.rag_sources
               }
             />
           )}
