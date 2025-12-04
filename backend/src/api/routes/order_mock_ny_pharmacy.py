@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from src.api.models.decision import (
     DecisionOutcome,
@@ -8,6 +8,7 @@ from src.api.models.decision import (
     RegulatoryReference,
 )
 from src.autocomply.domain.decision_risk import compute_risk_for_status
+from src.autocomply.domain.trace import generate_trace_id
 from src.api.routes.license_ny_pharmacy import ny_pharmacy_evaluate
 from src.domain.order_mock_ny_pharmacy import NyPharmacyOrderApprovalRequest
 from src.api.routes.order_mock_approval import (
@@ -23,7 +24,8 @@ router = APIRouter(tags=["orders_mock"])
     response_model=MockOrderDecisionResponse,
 )
 async def ny_pharmacy_mock_order_approval(
-    request: NyPharmacyOrderApprovalRequest,
+    order_request: NyPharmacyOrderApprovalRequest,
+    http_request: Request,
 ) -> MockOrderDecisionResponse:
     """
     Mock order-approval endpoint that uses only the NY Pharmacy license engine.
@@ -36,7 +38,9 @@ async def ny_pharmacy_mock_order_approval(
     This simulates a license-gated order flow where the license is the main
     decision driver.
     """
-    license_decision = await ny_pharmacy_evaluate(request.ny_pharmacy)
+    license_decision = await ny_pharmacy_evaluate(
+        order_request.ny_pharmacy, http_request
+    )
 
     notes: list[str] = [
         f"NY Pharmacy license decision: {license_decision.status} – {license_decision.reason}"
@@ -73,6 +77,7 @@ async def ny_pharmacy_mock_order_approval(
         regulatory_references=_normalize_references(
             getattr(license_decision, "regulatory_references", [])
         ),
+        trace_id=generate_trace_id(),
         debug_info={"notes": notes},
     )
 
@@ -125,7 +130,7 @@ async def ny_pharmacy_expired_license_mock() -> MockOrderDecisionResponse:
                 label="NY pharmacy license required and must be active",
             )
         ],
-        trace_id=None,
+        trace_id=generate_trace_id(),
         debug_info=None,
     )
 
@@ -172,7 +177,7 @@ async def ny_pharmacy_wrong_state_mock() -> MockOrderDecisionResponse:
                 label="NY pharmacy license scope may be limited to New York",
             )
         ],
-        trace_id=None,
+        trace_id=generate_trace_id(),
         debug_info=None,
     )
 

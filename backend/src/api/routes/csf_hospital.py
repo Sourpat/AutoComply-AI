@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from src.api.models.copilot import CsfCopilotResponse, CsfCopilotSuggestion
@@ -12,6 +12,7 @@ from src.api.models.decision import (
 from src.autocomply.domain.csf_copilot import CsfCopilotResult, run_csf_copilot
 from src.autocomply.domain.csf_hospital import HospitalCsfForm, evaluate_hospital_csf
 from src.autocomply.domain.decision_risk import compute_risk_for_status
+from src.autocomply.domain.trace import TRACE_HEADER_NAME, ensure_trace_id
 from src.autocomply.regulations.knowledge import build_csf_evidence_from_sources
 from src.utils.logger import get_logger
 
@@ -33,6 +34,7 @@ class HospitalCsfEvaluateResponse(BaseModel):
     decision: DecisionOutcome
     status: DecisionStatus
     reason: str
+    trace_id: str | None = None
     missing_fields: List[str] = Field(default_factory=list)
     regulatory_references: List[str] = Field(default_factory=list)
 
@@ -40,10 +42,14 @@ class HospitalCsfEvaluateResponse(BaseModel):
 @router.post("/evaluate", response_model=HospitalCsfEvaluateResponse)
 async def evaluate_hospital_csf_endpoint(
     form: HospitalCsfForm,
+    request: Request,
 ) -> HospitalCsfEvaluateResponse:
     """
     Evaluate a Hospital Pharmacy Controlled Substance Form and return a decision.
     """
+    incoming_trace_id = request.headers.get(TRACE_HEADER_NAME)
+    trace_id = ensure_trace_id(incoming_trace_id)
+
     decision = evaluate_hospital_csf(form)
 
     status_map = {
@@ -65,6 +71,7 @@ async def evaluate_hospital_csf_endpoint(
         risk_level=risk_level,
         risk_score=risk_score,
         regulatory_references=regulatory_references,
+        trace_id=trace_id,
         debug_info={"missing_fields": decision.missing_fields} if decision.missing_fields else None,
     )
 
@@ -72,6 +79,7 @@ async def evaluate_hospital_csf_endpoint(
         decision=decision_outcome,
         status=decision_outcome.status,
         reason=decision_outcome.reason,
+        trace_id=decision_outcome.trace_id,
         missing_fields=decision.missing_fields,
         regulatory_references=[ref.id for ref in regulatory_references],
     )
