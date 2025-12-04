@@ -18,6 +18,7 @@ interface MockOrderCardConfig {
 }
 
 const MOCK_ORDER_CARDS: MockOrderCardConfig[] = [
+  // --- Ohio hospital cards (already added in earlier steps) ---
   {
     id: "ohio-hospital-happy",
     title: "Ohio hospital – Schedule II (happy path)",
@@ -42,6 +43,8 @@ const MOCK_ORDER_CARDS: MockOrderCardConfig[] = [
     endpoint: "/orders/mock/ohio-hospital-wrong-state",
     severity: "edge_case",
   },
+
+  // --- Ohio facility card (existing) ---
   {
     id: "ohio-facility-happy",
     title: "Ohio facility – Schedule II (happy path)",
@@ -49,13 +52,31 @@ const MOCK_ORDER_CARDS: MockOrderCardConfig[] = [
     endpoint: "/orders/mock/ohio-facility-approval",
     severity: "happy_path",
   },
+
+  // --- NY Pharmacy cards (NEW) ---
   {
     id: "ny-pharmacy-happy",
     title: "NY pharmacy – controlled substances (happy path)",
     description:
-      "NY pharmacy license is active and matches the ship-to location.",
+      "NY pharmacy license is active and matches the New York ship-to location.",
     endpoint: "/orders/mock/ny-pharmacy-approval",
     severity: "happy_path",
+  },
+  {
+    id: "ny-pharmacy-expired",
+    title: "NY pharmacy – expired license",
+    description:
+      "NY pharmacy license is expired. Order is blocked until the license is renewed.",
+    endpoint: "/orders/mock/ny-pharmacy-expired-license",
+    severity: "investigate",
+  },
+  {
+    id: "ny-pharmacy-wrong-state",
+    title: "NY pharmacy – wrong ship-to state",
+    description:
+      "NY pharmacy license looks valid, but ship-to is outside New York. Order requires review.",
+    endpoint: "/orders/mock/ny-pharmacy-wrong-state",
+    severity: "edge_case",
   },
 ];
 

@@ -8,9 +8,9 @@ import { TestCoverageNote } from "./TestCoverageNote";
 import { useRagDebug } from "../devsupport/RagDebugContext";
 import type {
   DecisionOutcome,
-  DecisionStatus,
   RegulatoryReference,
 } from "../types/decision";
+import type { NyPharmacyFormValues } from "../types/forms";
 
 type LicenseDecisionResponse = DecisionOutcome & {
   // Optional, populated when the license engine returns richer regulatory data
@@ -77,62 +77,35 @@ const OHIO_SCENARIO_PRESETS: OhioScenarioPreset[] = [
   },
 ];
 
-type NyScenarioId = "ny_custom" | "ny_happy" | "ny_expired" | "ny_wrong_state";
-
-type NyScenarioPreset = {
-  id: NyScenarioId;
-  label: string;
-  description: string;
-  form: {
-    pharmacy_name: string;
-    license_number: string;
-    dea_number: string;
-    ship_to_state: string;
-    internal_notes: string;
-  };
-};
-
-const NY_SCENARIO_PRESETS: NyScenarioPreset[] = [
-  {
-    id: "ny_happy",
-    label: "Happy path",
-    description: "Active NY pharmacy license shipping within NY.",
-    form: {
-      pharmacy_name: "Hudson River Pharmacy",
-      license_number: "NY-123456",
-      dea_number: "FH9876543",
+const NY_PHARMACY_PRESETS = {
+  happy: {
+    label: "NY pharmacy – active license (happy path)",
+    payload: {
+      license_number: "NY-PHARM-12345",
+      license_type: "pharmacy",
       ship_to_state: "NY",
-      internal_notes: "Clean NY pharmacy license, no board actions.",
-    },
+      expiration_date: "2030-01-01", // future date
+    } satisfies NyPharmacyFormValues,
   },
-  {
-    id: "ny_expired",
-    label: "Expired license",
-    description:
-      "License appears expired in the NY board system. Customer reports renewal filed.",
-    form: {
-      pharmacy_name: "Brooklyn Care Pharmacy",
-      license_number: "NY-654321",
-      dea_number: "FH1234987",
+  expired: {
+    label: "NY pharmacy – expired license",
+    payload: {
+      license_number: "NY-PHARM-EXPIRED",
+      license_type: "pharmacy",
       ship_to_state: "NY",
-      internal_notes:
-        "NY board shows license expired 2 weeks ago; renewal not yet posted.",
-    },
+      expiration_date: "2020-01-01", // past date
+    } satisfies NyPharmacyFormValues,
   },
-  {
-    id: "ny_wrong_state",
-    label: "Wrong ship-to state",
-    description: "NY license used for an out-of-state shipment.",
-    form: {
-      pharmacy_name: "Queens Health Pharmacy",
-      license_number: "NY-778899",
-      dea_number: "FH7788991",
-      ship_to_state: "NJ",
-      internal_notes:
-        "Customer is shipping to New Jersey location using a NY license.",
-    },
+  wrongState: {
+    label: "NY pharmacy – wrong ship-to state",
+    payload: {
+      license_number: "NY-PHARM-OUT-OF-STATE",
+      license_type: "pharmacy",
+      ship_to_state: "NJ", // non-NY
+      expiration_date: "2030-01-01", // still active; only state is wrong
+    } satisfies NyPharmacyFormValues,
   },
-];
+} as const;
 
 interface TraceShape {
   endpoint: string;
@@ -462,16 +435,9 @@ function OhioTdddSandbox() {
 
 function NyPharmacySandbox() {
   const { enabled: ragDebugEnabled } = useRagDebug();
-  const [form, setForm] = React.useState({
-    pharmacy_name: "",
-    account_number: "",
-    ship_to_state: "NY",
-    dea_number: "",
-    ny_state_license_number: "",
-    attestation_accepted: true,
-    internal_notes: "",
-    license_type: "ny_pharmacy",
-  });
+  const [form, setForm] = React.useState<NyPharmacyFormValues>(
+    NY_PHARMACY_PRESETS.happy.payload
+  );
   const [decision, setDecision] = React.useState<LicenseDecisionResponse | null>(
     null
   );
@@ -479,8 +445,6 @@ function NyPharmacySandbox() {
   const [isEvaluating, setIsEvaluating] = React.useState(false);
   const [trace, setTrace] = React.useState<TraceShape | null>(null);
   const [showTrace, setShowTrace] = React.useState(false);
-  const [selectedScenarioId, setSelectedScenarioId] =
-    React.useState<NyScenarioId>("ny_custom");
   const nyDecisionWithDebug = decision
     ? {
         ...decision,
@@ -490,32 +454,16 @@ function NyPharmacySandbox() {
       }
     : null;
 
-  function applyNyScenario(presetId: NyScenarioId) {
-    if (presetId === "ny_custom") {
-      setSelectedScenarioId("ny_custom");
-      return;
-    }
-    const preset = NY_SCENARIO_PRESETS.find((p) => p.id === presetId);
-    if (!preset) {
-      return;
-    }
-    setSelectedScenarioId(presetId);
-    setForm((prev) => ({
-      ...prev,
-      pharmacy_name: preset.form.pharmacy_name,
-      ship_to_state: preset.form.ship_to_state,
-      dea_number: preset.form.dea_number,
-      ny_state_license_number: preset.form.license_number,
-      internal_notes: preset.form.internal_notes,
-    }));
-  }
+  const applyNyPreset = (key: keyof typeof NY_PHARMACY_PRESETS) => {
+    const preset = NY_PHARMACY_PRESETS[key];
+    setForm(preset.payload);
+    setDecision(null);
+    setError(null);
+    setTrace(null);
+  };
 
-  function handleChange(
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) {
-    const { name, value, type, checked } = e.target;
-    const nextValue = type === "checkbox" ? checked : value;
-    setForm((prev) => ({ ...prev, [name]: nextValue }));
+  function handleChange(field: keyof NyPharmacyFormValues, value: string) {
+    setForm((prev) => ({ ...prev, [field]: value }));
   }
 
   async function runEvaluate() {
@@ -613,105 +561,36 @@ function NyPharmacySandbox() {
         <label className="flex items-center gap-1.5 text-[10px] text-slate-400">
           <span className="font-medium text-slate-300">Scenario:</span>
           <select
-            value={selectedScenarioId}
-            onChange={(e) =>
-              applyNyScenario(e.target.value as NyScenarioId)
-            }
             className="rounded-full border border-slate-700 bg-slate-950 px-2 py-1 text-[10px] text-slate-100"
+            onChange={(e) => {
+              const value = e.target.value as keyof typeof NY_PHARMACY_PRESETS;
+              if (value) applyNyPreset(value);
+            }}
+            defaultValue=""
           >
-            <option value="ny_custom">Custom (free-form)</option>
-            {NY_SCENARIO_PRESETS.map((preset) => (
-              <option key={preset.id} value={preset.id}>
-                {preset.label}
-              </option>
-            ))}
+            <option value="" disabled>
+              Load preset…
+            </option>
+            <option value="happy">{NY_PHARMACY_PRESETS.happy.label}</option>
+            <option value="expired">{NY_PHARMACY_PRESETS.expired.label}</option>
+            <option value="wrongState">{NY_PHARMACY_PRESETS.wrongState.label}</option>
           </select>
         </label>
-        {selectedScenarioId !== "ny_custom" && (
-          <p className="text-[10px] text-slate-500">
-            {
-              NY_SCENARIO_PRESETS.find(
-                (p) => p.id === selectedScenarioId
-              )?.description
-            }
-          </p>
-        )}
+        <p className="text-[10px] text-slate-500">
+          Swap between happy path, expired license, and wrong ship-to scenarios.
+        </p>
       </div>
 
       <div className="mt-3 grid gap-2 md:grid-cols-2">
         <div className="space-y-1.5">
           <label className="block text-[10px] text-slate-300">
-            Pharmacy name
+            License number
             <input
-              name="pharmacy_name"
-              value={form.pharmacy_name}
-              onChange={handleChange}
+              name="license_number"
+              value={form.license_number}
+              onChange={(e) => handleChange("license_number", e.target.value)}
               className="mt-0.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-slate-100"
-              placeholder="Hudson River Pharmacy"
-            />
-          </label>
-          <label className="block text-[10px] text-slate-300">
-            Account number
-            <input
-              name="account_number"
-              value={form.account_number}
-              onChange={handleChange}
-              className="mt-0.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px]"
-              placeholder="900123456"
-            />
-          </label>
-          <label className="block text-[10px] text-slate-300">
-            Ship-to state
-            <input
-              name="ship_to_state"
-              value={form.ship_to_state}
-              onChange={handleChange}
-              className="mt-0.5 w-24 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px]"
-              placeholder="NY"
-            />
-          </label>
-          <label className="block text-[10px] text-slate-300">
-            DEA number
-            <input
-              name="dea_number"
-              value={form.dea_number}
-              onChange={handleChange}
-              className="mt-0.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px]"
-              placeholder="FG1234567"
-            />
-          </label>
-          <label className="block text-[10px] text-slate-300">
-            NY state license number
-            <input
-              name="ny_state_license_number"
-              value={form.ny_state_license_number}
-              onChange={handleChange}
-              className="mt-0.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px]"
-              placeholder="NYPHARM-001234"
-            />
-          </label>
-          <label className="flex items-center gap-2 text-[10px] text-slate-300">
-            <input
-              type="checkbox"
-              name="attestation_accepted"
-              checked={form.attestation_accepted}
-              onChange={handleChange}
-              className="h-3 w-3 rounded border-slate-700 bg-slate-950 text-emerald-500"
-            />
-            Attestation accepted
-          </label>
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="block text-[10px] text-slate-300">
-            Internal notes (not sent to customers)
-            <textarea
-              name="internal_notes"
-              value={form.internal_notes}
-              onChange={handleChange}
-              rows={4}
-              className="mt-0.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px]"
-              placeholder="e.g. Renewal pending board review..."
+              placeholder="NY-PHARM-12345"
             />
           </label>
           <label className="block text-[10px] text-slate-300">
@@ -719,9 +598,32 @@ function NyPharmacySandbox() {
             <input
               name="license_type"
               value={form.license_type}
-              onChange={handleChange}
+              onChange={(e) => handleChange("license_type", e.target.value)}
               className="mt-0.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px]"
-              placeholder="ny_pharmacy"
+              placeholder="pharmacy"
+            />
+          </label>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="block text-[10px] text-slate-300">
+            Ship-to state
+            <input
+              name="ship_to_state"
+              value={form.ship_to_state}
+              onChange={(e) => handleChange("ship_to_state", e.target.value)}
+              className="mt-0.5 w-24 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px]"
+              placeholder="NY"
+            />
+          </label>
+          <label className="block text-[10px] text-slate-300">
+            Expiration date
+            <input
+              type="date"
+              name="expiration_date"
+              value={form.expiration_date}
+              onChange={(e) => handleChange("expiration_date", e.target.value)}
+              className="mt-0.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px]"
             />
           </label>
         </div>
