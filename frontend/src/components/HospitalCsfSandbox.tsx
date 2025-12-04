@@ -33,6 +33,7 @@ import { TestCoverageNote } from "./TestCoverageNote";
 import { API_BASE } from "../api/csfHospitalClient";
 import { buildCurlCommand } from "../utils/curl";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
+import { useRagDebug } from "../devsupport/RagDebugContext";
 
 function buildHospitalCsfEvaluateCurl(form: any): string {
   const payload = form ?? {};
@@ -81,6 +82,7 @@ const initialForm: HospitalCsfFormData = {
 };
 
 export function HospitalCsfSandbox() {
+  const { enabled: ragDebugEnabled } = useRagDebug();
   const [form, setForm] = useState<HospitalCsfFormData>(initialForm);
   const [decision, setDecision] = useState<HospitalCsfDecision | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -868,6 +870,17 @@ export function HospitalCsfSandbox() {
                 copilotDecision.rag_sources ?? copilotDecision.artifacts_used
               }
             />
+          )}
+
+          {ragDebugEnabled && copilotDecision && (
+            <div className="mt-2 rounded-xl border border-slate-800 bg-black/80 px-3 py-2">
+              <p className="text-[10px] font-semibold text-slate-100">
+                RAG debug (Hospital Form Copilot payload)
+              </p>
+              <pre className="mt-1 max-h-64 overflow-auto text-[10px] leading-relaxed text-slate-100">
+                {JSON.stringify(copilotDecision, null, 2)}
+              </pre>
+            </div>
           )}
 
           {!copilotDecision && !copilotLoading && !copilotError && (

@@ -6,6 +6,7 @@ import { CopyCurlButton } from "./CopyCurlButton";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import { TestCoverageNote } from "./TestCoverageNote";
+import { useRagDebug } from "../devsupport/RagDebugContext";
 
 type LicenseDecisionStatus = "ok_to_ship" | "needs_review" | "blocked";
 
@@ -28,6 +29,7 @@ interface TraceShape {
 }
 
 function OhioTdddSandbox() {
+  const { enabled: ragDebugEnabled } = useRagDebug();
   const [form, setForm] = React.useState({
     tddd_number: "",
     facility_name: "",
@@ -278,7 +280,7 @@ function OhioTdddSandbox() {
         />
       )}
 
-      {trace && (
+      {trace && ragDebugEnabled && (
         <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/90 px-3 py-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs font-semibold text-slate-100">Developer trace</p>
@@ -302,6 +304,7 @@ function OhioTdddSandbox() {
 }
 
 function NyPharmacySandbox() {
+  const { enabled: ragDebugEnabled } = useRagDebug();
   const [form, setForm] = React.useState({
     pharmacy_name: "",
     account_number: "",
@@ -563,7 +566,7 @@ function NyPharmacySandbox() {
         />
       )}
 
-      {trace && (
+      {trace && ragDebugEnabled && (
         <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/90 px-3 py-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs font-semibold text-slate-100">Developer trace</p>
