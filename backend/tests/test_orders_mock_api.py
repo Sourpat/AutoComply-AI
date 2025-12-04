@@ -68,7 +68,7 @@ def make_ny_pharmacy_payload() -> dict:
 
 
 @pytest.mark.parametrize(
-    "path,payload,reason_keys",
+    "path,payload",
     [
         (
             "/orders/mock/ohio-hospital-approval",
@@ -76,22 +76,19 @@ def make_ny_pharmacy_payload() -> dict:
                 "hospital_csf": make_ohio_hospital_csf_payload(),
                 "ohio_tddd": make_ohio_tddd_payload_valid(),
             },
-            ["csf_reason", "tddd_reason"],
         ),
         (
             "/orders/mock/ohio-facility-approval",
             make_ohio_facility_payload,
-            ["explanation"],
         ),
         (
             "/orders/mock/ny-pharmacy-approval",
             make_ny_pharmacy_payload,
-            ["license_reason"],
         ),
     ],
 )
 def test_mock_order_endpoints_return_ok_and_decision_shape(
-    path: str, payload, reason_keys: list[str]
+    path: str, payload,
 ) -> None:
     """
     Ensure all mock order endpoints:
@@ -108,37 +105,20 @@ def test_mock_order_endpoints_return_ok_and_decision_shape(
 
     data = resp.json()
 
-    # The frontend mock order cards expect a decision payload.
     decision = data.get("decision")
-    if decision is None:
-        decision = {
-            "status": data.get("final_decision"),
-            "reason": next(
-                (
-                    data.get(key)
-                    for key in reason_keys
-                    if isinstance(data.get(key), str)
-                    and data.get(key, "").strip() != ""
-                ),
-                None,
-            ),
-        }
 
     assert isinstance(decision, dict), f"{path} decision should be an object"
-    assert "status" in decision, f"{path} decision missing 'status'"
-    assert "reason" in decision, f"{path} decision missing 'reason'"
-
-    assert isinstance(decision["status"], str)
-    assert decision["status"].strip() != ""
-
+    assert decision["status"] in ["ok_to_ship", "needs_review", "blocked"]
     assert isinstance(decision["reason"], str)
     assert decision["reason"].strip() != ""
+    assert "regulatory_references" in decision
+    assert isinstance(decision["regulatory_references"], list)
 
-    trace = data.get("developer_trace") or data.get("trace")
-    if trace is not None:
-        assert isinstance(
-            trace, (dict, list)
-        ), f"{path} developer trace should be dict or list, got {type(trace)}"
+    trace = data.get("developer_trace")
+    if "developer_trace" in data:
+        assert trace is None or isinstance(
+            trace, dict
+        ), f"{path} developer trace should be a dict when present"
 
 
 def test_ohio_hospital_mock_order_has_expected_demo_status() -> None:
@@ -156,11 +136,10 @@ def test_ohio_hospital_mock_order_has_expected_demo_status() -> None:
     assert resp.status_code == 200
     data = resp.json()
 
-    decision = data.get("decision", {}) or {
-        "status": data.get("final_decision"),
-        "reason": data.get("csf_reason") or data.get("tddd_reason"),
-    }
+    decision = data.get("decision", {})
 
     assert decision["status"] == "ok_to_ship"
     assert isinstance(decision["reason"], str)
     assert decision["reason"].strip() != ""
+    assert "approved" in decision["reason"].lower()
+    assert data.get("scenario_id") == "ohio-hospital-happy-path"
