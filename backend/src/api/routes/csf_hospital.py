@@ -1,12 +1,16 @@
+from typing import List
+
 from fastapi import APIRouter
+from pydantic import BaseModel, Field
 
 from src.api.models.compliance_models import HospitalFormCopilotResponse
-from src.autocomply.domain.csf_copilot import run_csf_copilot
-from src.autocomply.domain.csf_hospital import (
-    HospitalCsfDecision,
-    HospitalCsfForm,
-    evaluate_hospital_csf,
+from src.api.models.decision import (
+    DecisionOutcome,
+    DecisionStatus,
+    RegulatoryReference,
 )
+from src.autocomply.domain.csf_copilot import run_csf_copilot
+from src.autocomply.domain.csf_hospital import HospitalCsfForm, evaluate_hospital_csf
 from src.utils.logger import get_logger
 
 router = APIRouter(
@@ -17,15 +21,54 @@ router = APIRouter(
 logger = get_logger(__name__)
 
 
-@router.post("/evaluate", response_model=HospitalCsfDecision)
+class HospitalCsfEvaluateResponse(BaseModel):
+    """Response wrapper for Hospital CSF evaluations.
+
+    Maintains legacy root-level fields for backward compatibility while also
+    exposing the unified ``decision`` payload for new consumers.
+    """
+
+    decision: DecisionOutcome
+    status: DecisionStatus
+    reason: str
+    missing_fields: List[str] = Field(default_factory=list)
+    regulatory_references: List[str] = Field(default_factory=list)
+
+
+@router.post("/evaluate", response_model=HospitalCsfEvaluateResponse)
 async def evaluate_hospital_csf_endpoint(
     form: HospitalCsfForm,
-) -> HospitalCsfDecision:
+) -> HospitalCsfEvaluateResponse:
     """
     Evaluate a Hospital Pharmacy Controlled Substance Form and return a decision.
     """
     decision = evaluate_hospital_csf(form)
-    return decision
+
+    status_map = {
+        "ok_to_ship": DecisionStatus.OK_TO_SHIP,
+        "blocked": DecisionStatus.BLOCKED,
+        "manual_review": DecisionStatus.NEEDS_REVIEW,
+    }
+    normalized_status = status_map.get(decision.status.value, DecisionStatus.NEEDS_REVIEW)
+
+    regulatory_references = [
+        RegulatoryReference(id=ref, label=ref) for ref in decision.regulatory_references or []
+    ]
+
+    decision_outcome = DecisionOutcome(
+        status=normalized_status,
+        reason=decision.reason,
+        regulatory_references=regulatory_references,
+        debug_info={"missing_fields": decision.missing_fields} if decision.missing_fields else None,
+    )
+
+    return HospitalCsfEvaluateResponse(
+        decision=decision_outcome,
+        status=decision_outcome.status,
+        reason=decision_outcome.reason,
+        missing_fields=decision.missing_fields,
+        regulatory_references=[ref.id for ref in regulatory_references],
+    )
 
 
 @router.post("/form-copilot", response_model=HospitalFormCopilotResponse)

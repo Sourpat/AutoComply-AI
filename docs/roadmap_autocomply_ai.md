@@ -10,10 +10,11 @@ support portfolio discussions and interviews by showing clear next steps.
 
 What exists today:
 
-- **Engines**  
-  - Controlled Substance Form (CSF) engines: Hospital, Facility, Practitioner.  
-  - License engines: Ohio TDDD, NY pharmacy.  
+- **Engines**
+  - Controlled Substance Form (CSF) engines: Hospital, Facility, Practitioner.
+  - License engines: Ohio TDDD, NY pharmacy.
   - Mock order journeys: Ohio hospital, Ohio facility, NY pharmacy.
+  - Track A: CSF decisions now use a shared DecisionOutcome + RegulatoryReference schema; licenses and orders will adopt the same model next.
 
 - **Console UI**  
   - Modern dark-mode Compliance Console with:
