@@ -25,10 +25,13 @@ The AutoComply AI **Compliance Console** is a developer-friendly “compliance l
 
 It is built with **FastAPI** (backend) and **Vite + React + TypeScript** (frontend), and is designed to show how a regulated e-commerce platform can expose internal decision engines in a way that:
 
-- Business users can **experiment with scenarios**  
-- Engineers can **inspect payloads and responses**  
-- Everyone can see **which pytest files** back a given UI flow  
-- External tools (Postman, other apps) can call the same endpoints via **“Copy as cURL”**  
+- Business users can **experiment with scenarios**
+- Engineers can **inspect payloads and responses**
+- Everyone can see **which pytest files** back a given UI flow
+- External tools (Postman, other apps) can call the same endpoints via **“Copy as cURL”**
+
+For a step-by-step walkthrough you can use in demos or interviews, see  
+`docs/demo_script_compliance_console.md`.
 
 ### What you can do in the console
 
