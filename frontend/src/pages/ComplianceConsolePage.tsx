@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 
 import { OhioHospitalOrderJourneyCard } from "../components/OhioHospitalOrderJourneyCard";
+import { MockOrderSeverityLegend } from "../components/MockOrderSeverityLegend";
 import { DecisionStatusLegend } from "../components/DecisionStatusLegend";
 import { SystemStatusCard } from "../components/SystemStatusCard";
 import { DocsLinksCard } from "../components/DocsLinksCard";
@@ -474,6 +475,8 @@ function ComplianceConsolePageInner() {
         <p className="text-[11px] leading-relaxed text-slate-600">
           Enable the developer trace to see the exact JSON request and response used for each run.
         </p>
+
+        <MockOrderSeverityLegend />
 
         <OhioHospitalOrderJourneyCard />
       </section>
