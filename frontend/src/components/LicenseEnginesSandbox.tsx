@@ -130,7 +130,7 @@ function OhioTdddSandbox() {
             Ohio TDDD license sandbox
           </h3>
           <p className="mt-1 text-[11px] text-slate-400">
-            Try different Ohio TDDD license scenarios and see how they impact downstream Ohio journeys.
+            Try different Ohio TDDD license scenarios and see how they impact downstream Ohio journeys. This sandbox does not handle license renewal — it assumes the license was already issued/updated by the Ohio board, and focuses on how that license affects ordering.
           </p>
         </div>
         <span className="inline-flex items-center gap-1 rounded-full border border-slate-800 bg-slate-950 px-2.5 py-1 text-[10px] font-medium text-slate-200">
@@ -398,7 +398,7 @@ function NyPharmacySandbox() {
             NY pharmacy license sandbox
           </h3>
           <p className="mt-1 text-[11px] text-slate-400">
-            Explore New York pharmacy license decisions that feed NY order journeys.
+            Explore New York pharmacy license decisions that feed NY order journeys. This sandbox assumes the NY board has already issued or renewed the pharmacy license — it focuses on how that license is evaluated for controlled substance ordering.
           </p>
         </div>
         <span className="inline-flex items-center gap-1 rounded-full border border-slate-800 bg-slate-950 px-2.5 py-1 text-[10px] font-medium text-slate-200">
@@ -574,7 +574,7 @@ export function LicenseEnginesSandbox() {
         <div className="space-y-1">
           <h2 className="text-sm font-semibold text-slate-900">License engines</h2>
           <p className="text-[11px] text-slate-600">
-            Dedicated sandboxes for Ohio TDDD and NY pharmacy license engines that power order journeys.
+            Dedicated sandboxes for Ohio TDDD and NY pharmacy license engines that power order journeys. These engines assume the state board or DEA has already issued/renewed the license on their own portal — here we only consume core license details to decide if a controlled order can proceed.
           </p>
           <TestCoverageNote
             size="sm"
