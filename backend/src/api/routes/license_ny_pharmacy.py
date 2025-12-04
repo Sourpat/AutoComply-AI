@@ -1,7 +1,14 @@
-from fastapi import APIRouter
+from typing import List
 
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+
+from src.api.models.decision import (
+    DecisionOutcome,
+    DecisionStatus,
+    RegulatoryReference,
+)
 from src.domain.license_ny_pharmacy import (
-    NyPharmacyDecision,
     NyPharmacyFormCopilotResponse,
     NyPharmacyFormData,
 )
@@ -10,13 +17,23 @@ from src.services.license_copilot_service import run_license_copilot
 router = APIRouter(tags=["license_ny_pharmacy"])
 
 
+class NyPharmacyEvaluateResponse(BaseModel):
+    """Response wrapper for NY Pharmacy evaluations using shared decision schema."""
+
+    decision: DecisionOutcome
+    status: DecisionStatus
+    reason: str
+    missing_fields: List[str] = Field(default_factory=list)
+    regulatory_references: List[str] = Field(default_factory=list)
+
+
 @router.post(
     "/license/ny-pharmacy/evaluate",
-    response_model=NyPharmacyDecision,
+    response_model=NyPharmacyEvaluateResponse,
 )
 async def ny_pharmacy_evaluate(
     payload: NyPharmacyFormData,
-) -> NyPharmacyDecision:
+) -> NyPharmacyEvaluateResponse:
     """
     Simple NY Pharmacy license evaluation.
 
@@ -30,27 +47,54 @@ async def ny_pharmacy_evaluate(
     """
     missing: list[str] = []
 
-    if payload.ship_to_state != "NY":
-        missing.append("ship_to_state must be NY for ny_pharmacy engine")
-
     if not payload.ny_state_license_number.strip():
         missing.append("ny_state_license_number")
 
     if not payload.attestation_accepted:
         missing.append("attestation_accepted")
 
-    if missing:
-        return NyPharmacyDecision(
-            status="needs_review",
-            reason="NY Pharmacy license details are incomplete or inconsistent.",
-            missing_fields=missing,
-        )
+    if payload.ship_to_state != "NY":
+        reason = "Ship-to state is not NY; NY pharmacy license does not apply."
+        status = DecisionStatus.BLOCKED
+    elif not payload.attestation_accepted:
+        reason = "Attestation was not accepted."
+        status = DecisionStatus.BLOCKED
+    elif missing:
+        reason = "NY Pharmacy license details are incomplete or inconsistent."
+        status = DecisionStatus.NEEDS_REVIEW
+    else:
+        reason = "NY Pharmacy license details appear complete for this request."
+        status = DecisionStatus.OK_TO_SHIP
 
-    # Prototype: if the basic fields are present, we consider this ok_to_ship.
-    return NyPharmacyDecision(
-        status="ok_to_ship",
-        reason="NY Pharmacy license details appear complete for this request.",
-        missing_fields=[],
+    regulatory_references = [
+        RegulatoryReference(
+            id="ny-pharmacy-core",
+            jurisdiction="US-NY",
+            source="NY Pharmacy Board",
+            label="NY pharmacy license required for dispensing controlled substances",
+        )
+    ]
+
+    risk_level_map = {
+        DecisionStatus.OK_TO_SHIP: "low",
+        DecisionStatus.NEEDS_REVIEW: "medium",
+        DecisionStatus.BLOCKED: "high",
+    }
+
+    decision_outcome = DecisionOutcome(
+        status=status,
+        reason=reason,
+        regulatory_references=regulatory_references,
+        risk_level=risk_level_map.get(status),
+        debug_info={"missing_fields": missing} if missing else None,
+    )
+
+    return NyPharmacyEvaluateResponse(
+        decision=decision_outcome,
+        status=decision_outcome.status,
+        reason=decision_outcome.reason,
+        missing_fields=missing,
+        regulatory_references=[ref.id for ref in regulatory_references],
     )
 
 
