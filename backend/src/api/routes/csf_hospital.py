@@ -3,13 +3,13 @@ from typing import List
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from src.api.models.compliance_models import HospitalFormCopilotResponse
+from src.api.models.copilot import CsfCopilotResponse, CsfCopilotSuggestion
 from src.api.models.decision import (
     DecisionOutcome,
     DecisionStatus,
     RegulatoryReference,
 )
-from src.autocomply.domain.csf_copilot import run_csf_copilot
+from src.autocomply.domain.csf_copilot import CsfCopilotResult, run_csf_copilot
 from src.autocomply.domain.csf_hospital import HospitalCsfForm, evaluate_hospital_csf
 from src.utils.logger import get_logger
 
@@ -71,8 +71,8 @@ async def evaluate_hospital_csf_endpoint(
     )
 
 
-@router.post("/form-copilot", response_model=HospitalFormCopilotResponse)
-async def hospital_form_copilot(form: HospitalCsfForm) -> HospitalFormCopilotResponse:
+@router.post("/form-copilot", response_model=CsfCopilotResponse)
+async def hospital_form_copilot(form: HospitalCsfForm) -> CsfCopilotResponse:
     """Hospital CSF Form Copilot backed by regulatory RAG."""
 
     copilot_request = {
@@ -90,7 +90,7 @@ async def hospital_form_copilot(form: HospitalCsfForm) -> HospitalFormCopilotRes
         "controlled_substances": form.controlled_substances,
     }
 
-    rag_result = await run_csf_copilot(copilot_request)
+    rag_result: CsfCopilotResult = await run_csf_copilot(copilot_request)
 
     logger.info(
         "Hospital CSF copilot request received",
@@ -101,12 +101,37 @@ async def hospital_form_copilot(form: HospitalCsfForm) -> HospitalFormCopilotRes
         },
     )
 
-    return HospitalFormCopilotResponse(
-        status=rag_result.status,
+    suggestions = [CsfCopilotSuggestion(field_name=field) for field in rag_result.missing_fields]
+    regulatory_references = [
+        RegulatoryReference(id=ref, label=ref) for ref in rag_result.regulatory_references or []
+    ]
+
+    rag_sources_serialized = []
+    for source in rag_result.rag_sources or []:
+        if hasattr(source, "model_dump"):
+            rag_sources_serialized.append(source.model_dump())
+        elif hasattr(source, "dict"):
+            rag_sources_serialized.append(source.dict())
+        else:
+            rag_sources_serialized.append(source)
+
+    debug_info = {
+        "status": rag_result.status.value if hasattr(rag_result.status, "value") else rag_result.status,
+        "reason": rag_result.reason,
+        "artifacts_used": rag_result.artifacts_used,
+        "rag_sources": rag_sources_serialized,
+    }
+
+    return CsfCopilotResponse(
+        status=rag_result.status.value if hasattr(rag_result.status, "value") else rag_result.status,
         reason=rag_result.reason,
-        missing_fields=rag_result.missing_fields,
-        regulatory_references=rag_result.regulatory_references,
         rag_explanation=rag_result.rag_explanation,
-        artifacts_used=rag_result.artifacts_used,
-        rag_sources=rag_result.rag_sources,
+        artifacts_used=rag_result.artifacts_used or [],
+        rag_sources=rag_sources_serialized,
+        missing_fields=rag_result.missing_fields,
+        suggestions=suggestions,
+        message=rag_result.reason,
+        regulatory_references=regulatory_references,
+        debug_info=debug_info,
+        trace_id=None,
     )
