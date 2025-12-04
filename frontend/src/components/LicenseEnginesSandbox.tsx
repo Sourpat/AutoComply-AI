@@ -20,6 +20,119 @@ type LicenseDecisionResponse = {
   rag_sources?: any[];
 };
 
+type LicenseScenarioId = "custom" | "ohio_happy" | "ohio_expired" | "ohio_wrong_state";
+
+type OhioScenarioPreset = {
+  id: LicenseScenarioId;
+  label: string;
+  description: string;
+  form: {
+    license_number: string;
+    dea_number: string;
+    facility_name: string;
+    ship_to_state: string;
+    internal_notes: string;
+  };
+};
+
+const OHIO_SCENARIO_PRESETS: OhioScenarioPreset[] = [
+  {
+    id: "ohio_happy",
+    label: "Happy path",
+    description: "Valid Ohio TDDD license, correct DEA, matching ship-to state.",
+    form: {
+      license_number: "02-345678",
+      dea_number: "BS1234567",
+      facility_name: "SummitCare Clinics – Columbus",
+      ship_to_state: "OH",
+      internal_notes: "Clean Ohio TDDD license, no flags on file.",
+    },
+  },
+  {
+    id: "ohio_expired",
+    label: "Expired license",
+    description: "Known Ohio TDDD license with an internal note suggesting expiry.",
+    form: {
+      license_number: "02-987654",
+      dea_number: "BS7654321",
+      facility_name: "Riverbend Medical Center",
+      ship_to_state: "OH",
+      internal_notes:
+        "Board shows license expired last month. Customer claims renewal submitted.",
+    },
+  },
+  {
+    id: "ohio_wrong_state",
+    label: "Wrong ship-to state",
+    description: "Valid-looking Ohio license but ship-to state is not OH.",
+    form: {
+      license_number: "02-112233",
+      dea_number: "BT1112223",
+      facility_name: "Midwest Health Group",
+      ship_to_state: "MI",
+      internal_notes:
+        "Customer is shipping to a Michigan location using an Ohio license.",
+    },
+  },
+];
+
+type NyScenarioId = "ny_custom" | "ny_happy" | "ny_expired" | "ny_wrong_state";
+
+type NyScenarioPreset = {
+  id: NyScenarioId;
+  label: string;
+  description: string;
+  form: {
+    pharmacy_name: string;
+    license_number: string;
+    dea_number: string;
+    ship_to_state: string;
+    internal_notes: string;
+  };
+};
+
+const NY_SCENARIO_PRESETS: NyScenarioPreset[] = [
+  {
+    id: "ny_happy",
+    label: "Happy path",
+    description: "Active NY pharmacy license shipping within NY.",
+    form: {
+      pharmacy_name: "Hudson River Pharmacy",
+      license_number: "NY-123456",
+      dea_number: "FH9876543",
+      ship_to_state: "NY",
+      internal_notes: "Clean NY pharmacy license, no board actions.",
+    },
+  },
+  {
+    id: "ny_expired",
+    label: "Expired license",
+    description:
+      "License appears expired in the NY board system. Customer reports renewal filed.",
+    form: {
+      pharmacy_name: "Brooklyn Care Pharmacy",
+      license_number: "NY-654321",
+      dea_number: "FH1234987",
+      ship_to_state: "NY",
+      internal_notes:
+        "NY board shows license expired 2 weeks ago; renewal not yet posted.",
+    },
+  },
+  {
+    id: "ny_wrong_state",
+    label: "Wrong ship-to state",
+    description: "NY license used for an out-of-state shipment.",
+    form: {
+      pharmacy_name: "Queens Health Pharmacy",
+      license_number: "NY-778899",
+      dea_number: "FH7788991",
+      ship_to_state: "NJ",
+      internal_notes:
+        "Customer is shipping to New Jersey location using a NY license.",
+    },
+  },
+];
+
 interface TraceShape {
   endpoint: string;
   payload: any;
@@ -46,6 +159,28 @@ function OhioTdddSandbox() {
   const [isEvaluating, setIsEvaluating] = React.useState(false);
   const [trace, setTrace] = React.useState<TraceShape | null>(null);
   const [showTrace, setShowTrace] = React.useState(false);
+  const [selectedScenarioId, setSelectedScenarioId] =
+    React.useState<LicenseScenarioId>("custom");
+
+  function applyOhioScenario(presetId: LicenseScenarioId) {
+    if (presetId === "custom") {
+      setSelectedScenarioId("custom");
+      return;
+    }
+    const preset = OHIO_SCENARIO_PRESETS.find((p) => p.id === presetId);
+    if (!preset) {
+      return;
+    }
+    setSelectedScenarioId(presetId);
+    setForm((prev) => ({
+      ...prev,
+      tddd_number: preset.form.license_number,
+      account_number: preset.form.dea_number,
+      facility_name: preset.form.facility_name,
+      ship_to_state: preset.form.ship_to_state,
+      internal_notes: preset.form.internal_notes,
+    }));
+  }
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -140,10 +275,39 @@ function OhioTdddSandbox() {
             Try different Ohio TDDD license scenarios and see how they impact downstream Ohio journeys. This sandbox does not handle license renewal — it assumes the license was already issued/updated by the Ohio board, and focuses on how that license affects ordering.
           </p>
         </div>
-        <span className="inline-flex items-center gap-1 rounded-full border border-slate-800 bg-slate-950 px-2.5 py-1 text-[10px] font-medium text-slate-200">
+        <span className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-950 px-2.5 py-1 text-[10px] font-medium text-slate-200">
           <Globe className="h-3 w-3" />
           <span>OH license engine</span>
         </span>
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1.5 text-[10px] text-slate-400">
+          <span className="font-medium text-slate-300">Scenario:</span>
+          <select
+            value={selectedScenarioId}
+            onChange={(e) =>
+              applyOhioScenario(e.target.value as LicenseScenarioId)
+            }
+            className="rounded-full border border-slate-700 bg-slate-950 px-2 py-1 text-[10px] text-slate-100"
+          >
+            <option value="custom">Custom (free-form)</option>
+            {OHIO_SCENARIO_PRESETS.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {selectedScenarioId !== "custom" && (
+          <p className="text-[10px] text-slate-500">
+            {
+              OHIO_SCENARIO_PRESETS.find(
+                (p) => p.id === selectedScenarioId
+              )?.description
+            }
+          </p>
+        )}
       </div>
 
       <div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -322,6 +486,28 @@ function NyPharmacySandbox() {
   const [isEvaluating, setIsEvaluating] = React.useState(false);
   const [trace, setTrace] = React.useState<TraceShape | null>(null);
   const [showTrace, setShowTrace] = React.useState(false);
+  const [selectedScenarioId, setSelectedScenarioId] =
+    React.useState<NyScenarioId>("ny_custom");
+
+  function applyNyScenario(presetId: NyScenarioId) {
+    if (presetId === "ny_custom") {
+      setSelectedScenarioId("ny_custom");
+      return;
+    }
+    const preset = NY_SCENARIO_PRESETS.find((p) => p.id === presetId);
+    if (!preset) {
+      return;
+    }
+    setSelectedScenarioId(presetId);
+    setForm((prev) => ({
+      ...prev,
+      pharmacy_name: preset.form.pharmacy_name,
+      ship_to_state: preset.form.ship_to_state,
+      dea_number: preset.form.dea_number,
+      ny_state_license_number: preset.form.license_number,
+      internal_notes: preset.form.internal_notes,
+    }));
+  }
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -416,10 +602,39 @@ function NyPharmacySandbox() {
             Explore New York pharmacy license decisions that feed NY order journeys. This sandbox assumes the NY board has already issued or renewed the pharmacy license — it focuses on how that license is evaluated for controlled substance ordering.
           </p>
         </div>
-        <span className="inline-flex items-center gap-1 rounded-full border border-slate-800 bg-slate-950 px-2.5 py-1 text-[10px] font-medium text-slate-200">
+        <span className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-950 px-2.5 py-1 text-[10px] font-medium text-slate-200">
           <Globe className="h-3 w-3" />
           <span>NY license engine</span>
         </span>
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1.5 text-[10px] text-slate-400">
+          <span className="font-medium text-slate-300">Scenario:</span>
+          <select
+            value={selectedScenarioId}
+            onChange={(e) =>
+              applyNyScenario(e.target.value as NyScenarioId)
+            }
+            className="rounded-full border border-slate-700 bg-slate-950 px-2 py-1 text-[10px] text-slate-100"
+          >
+            <option value="ny_custom">Custom (free-form)</option>
+            {NY_SCENARIO_PRESETS.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {selectedScenarioId !== "ny_custom" && (
+          <p className="text-[10px] text-slate-500">
+            {
+              NY_SCENARIO_PRESETS.find(
+                (p) => p.id === selectedScenarioId
+              )?.description
+            }
+          </p>
+        )}
       </div>
 
       <div className="mt-3 grid gap-2 md:grid-cols-2">
