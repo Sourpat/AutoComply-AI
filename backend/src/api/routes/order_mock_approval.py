@@ -44,6 +44,55 @@ class MockOrderDecisionResponse(BaseModel):
     license_missing_fields: Optional[List[str]] = None
 
 
+def _default_ohio_hospital_request() -> OhioHospitalOrderApprovalRequest:
+    """
+    Default happy-path payload for the Ohio hospital Schedule II scenario.
+
+    Used by the GET mock order endpoint and tests to ensure we keep a
+    consistent reference flow anchored to the scenario fixtures.
+    """
+
+    return OhioHospitalOrderApprovalRequest(
+        hospital_csf={
+            "facility_name": "Ohio General Hospital",
+            "facility_type": "hospital",
+            "account_number": "800123456",
+            "pharmacy_license_number": "OH-PRX-12345",
+            "ship_to_state": "OH",
+            "dea_number": "AB1234567",
+            "pharmacist_in_charge_name": "Dr. Jane Doe",
+            "pharmacist_contact_phone": "555-123-4567",
+            "attestation_accepted": True,
+            "internal_notes": (
+                "Scenario: Ohio hospital ordering a Schedule II controlled "
+                "substance. CSF is expected to be ok_to_ship."
+            ),
+            "controlled_substances": [
+                {
+                    "id": "cs-oxy-10mg-tab",
+                    "name": "Oxycodone 10 mg tablet",
+                    "ndc": "12345-6789-02",
+                    "strength": "10 mg",
+                    "dosage_form": "tablet",
+                    "dea_schedule": "II",
+                }
+            ],
+        },
+        ohio_tddd={
+            "tddd_number": "01234567",
+            "facility_name": "Ohio General Hospital",
+            "account_number": "800123456",
+            "ship_to_state": "OH",
+            "license_type": "ohio_tddd",
+            "attestation_accepted": True,
+            "internal_notes": (
+                "Derived from Ohio hospital Schedule II scenario. Ohio TDDD "
+                "license is expected to be ok_to_ship."
+            ),
+        },
+    )
+
+
 @router.post(
     "/orders/mock/ohio-hospital-approval",
     response_model=MockOrderDecisionResponse,
@@ -103,6 +152,17 @@ async def ohio_hospital_mock_order_approval(
             _normalize_references(getattr(tddd_decision, "regulatory_references", []))
         )
 
+    if not regulatory_references:
+        regulatory_references = [
+            RegulatoryReference(
+                id="ohio-tddd-core",
+                jurisdiction="US-OH",
+                source="Ohio TDDD Guidance",
+                citation="OH ST § 4729.54",
+                label="Ohio TDDD license required for controlled substances",
+            )
+        ]
+
     risk_level, risk_score = compute_risk_for_status(final_status.value)
 
     decision = DecisionOutcome(
@@ -123,7 +183,7 @@ async def ohio_hospital_mock_order_approval(
         decision=decision,
         csf_engine="hospital",
         license_engine="ohio-tddd" if request.ohio_tddd is not None else None,
-        scenario_id="ohio-hospital-happy-path",
+        scenario_id="ohio-hospital-schedule-ii-happy-path",
         developer_trace={"notes": notes},
         csf_status=csf_status.value,
         csf_reason=csf_decision.reason,
@@ -138,6 +198,21 @@ async def ohio_hospital_mock_order_approval(
         final_decision=decision.status.value,
         notes=notes,
     )
+
+
+@router.get(
+    "/orders/mock/ohio-hospital-approval",
+    response_model=MockOrderDecisionResponse,
+    summary="Default mock decision for Ohio hospital Schedule II happy path",
+)
+async def ohio_hospital_mock_order_approval_default() -> MockOrderDecisionResponse:
+    """
+    Convenience endpoint that returns the Ohio hospital Schedule II happy-path
+    mock order using the default scenario payload.
+    """
+
+    default_request = _default_ohio_hospital_request()
+    return await ohio_hospital_mock_order_approval(default_request)
 
 
 @router.post(
