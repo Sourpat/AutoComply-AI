@@ -47,11 +47,16 @@ def test_ny_pharmacy_evaluate_happy_path_ok_to_ship(
     assert (
         data["reason"] == "NY Pharmacy license details appear complete for this request."
     )
+    assert isinstance(data["regulatory_references"], list)
+    assert data["regulatory_references"]
+    assert "ny-pharmacy-core" in set(data["regulatory_references"])
     decision = data["decision"]
     assert decision["status"] == "ok_to_ship"
     assert decision["reason"] == data["reason"]
     assert isinstance(decision["regulatory_references"], list)
     assert decision["regulatory_references"]
+    decision_ref_ids = {ref["id"] for ref in decision["regulatory_references"]}
+    assert "ny-pharmacy-core" in decision_ref_ids
 
 
 def test_ny_pharmacy_evaluate_incomplete_needs_review(

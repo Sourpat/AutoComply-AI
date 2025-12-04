@@ -71,6 +71,11 @@ class RegulatoryKnowledge:
                 jurisdiction=jurisdiction, doc_ids=doc_ids, context=context
             )
 
+        if decision_type == "license_ny_pharmacy":
+            return self._ny_pharmacy_evidence(
+                jurisdiction=jurisdiction, doc_ids=doc_ids, context=context
+            )
+
         # Default: no evidence
         return []
 
@@ -134,6 +139,42 @@ class RegulatoryKnowledge:
                 raw_source={"doc_id": "csf_hospital_form"},
             )
         ]
+
+    def _ny_pharmacy_evidence(
+        self,
+        jurisdiction: Optional[str],
+        doc_ids: Optional[List[str]],
+        context: Optional[Dict[str, Any]],
+    ) -> List[RegulatoryEvidenceItem]:
+        """
+        Stub: returns a small set of evidence items for NY Pharmacy license decisions.
+        """
+        jurisdiction = jurisdiction or "US-NY"
+
+        reference = RegulatoryReference(
+            id="ny-pharmacy-core",
+            jurisdiction=jurisdiction,
+            source="NY Pharmacy Board (stub)",
+            citation=None,
+            label="NY pharmacy license required for dispensing controlled substances",
+        )
+
+        snippet = (
+            "New York pharmacy licenses must be active and associated with the "
+            "dispensing location to handle controlled substances in the state."
+        )
+
+        evidence = RegulatoryEvidenceItem(
+            reference=reference,
+            snippet=snippet,
+            source_title="NY Pharmacy Licensing Requirements (stub)",
+            raw_source={
+                "doc_id": "ny_pharmacy_stub",
+                "url": None,
+            },
+        )
+
+        return [evidence]
 
     def _csf_facility_evidence(
         self,
