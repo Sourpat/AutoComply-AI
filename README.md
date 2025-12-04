@@ -142,6 +142,69 @@ If you are using this project in interviews or portfolio reviews, a simple demo 
 
 ---
 
+### AI / RAG and explainability
+
+AutoComply AI is not just a set of hard-coded rules. The console surfaces an **explainable AI / RAG layer** that sits on top of the controlled substance and license decision engines.
+
+#### CSF Form Copilot (Hospital, Facility, Practitioner)
+
+Each CSF sandbox has a **Form Copilot** that uses the backend AI layer to:
+
+- Highlight **missing or unclear fields** in the form.  
+- Call out **regulatory references** (for example, internal rule slugs or document labels).  
+- Provide a **natural language explanation** of why the CSF is ok_to_ship / needs_review / blocked.  
+- Optionally list **sources / artifacts** consulted by the RAG pipeline.
+
+In the UI, this is rendered via a shared **RegulatoryInsightsPanel** that appears under the Form Copilot result for:
+
+- Hospital CSF sandbox  
+- Facility CSF sandbox  
+- Practitioner CSF sandbox  
+
+When the backend returns richer regulatory metadata (missing fields, references, sources), the panel lights up with:
+
+- A short decision label  
+- A “Missing or unclear fields” list  
+- A “Regulatory references” chip list  
+- A “How the RAG layer interpreted this form” explanation block  
+- Optional “Sources consulted” items
+
+#### License engines + regulatory insights
+
+The **License engines** section (Ohio TDDD + NY pharmacy) also supports a lighter version of these insights:
+
+- The main card shows the license decision and explanation.  
+- If the license engine returns regulatory metadata (e.g., `regulatory_references`, `rag_explanation`, `rag_sources`), a **RegulatoryInsightsPanel** appears under the decision.  
+- This keeps the UI clean today, but is ready for more AI-driven explanations as the backend evolves.
+
+#### AI / RAG debug mode
+
+The **AI / RAG debug** toggle in the top-right of the Compliance Console makes it easy to switch between:
+
+- **Normal mode** – clean, product-facing experience (ideal for demos with business stakeholders or recruiters).  
+- **Debug mode** – deeper visibility for engineers and AI/ML folks.
+
+When debug is enabled:
+
+- CSF sandboxes show a **“RAG debug” JSON block** with the raw Form Copilot payload under the Regulatory Insights panel.  
+- License sandboxes show **developer trace JSON** for each evaluation (request + response), gated behind the same toggle.  
+
+This lets you:
+
+- Walk through a clean, explainable flow in normal mode.  
+- Flip one switch and immediately inspect the underlying objects being returned by the AI/RAG layer and decision engines.
+
+#### How to talk about this in interviews
+
+A simple way to describe the AI / RAG layer in this project:
+
+- **“I designed a Compliance Console that not only runs CSF and license decision engines, but also exposes an explainable AI/RAG layer for those decisions.”**  
+- **“Form Copilot and Regulatory Insights panels show missing fields, regulatory references, and natural language explanations, instead of just status codes.”**  
+- **“There is a global AI / RAG debug toggle that switches the console between a clean stakeholder view and a deep engineer/ML debug mode, without changing the code.”**  
+- **“The same endpoints are consumable from external tools via Copy-as-cURL, and most sandboxes advertise their backing pytest coverage via TestCoverageNote.”**
+
+---
+
 ## Quickstart – Ohio Hospital Order Demo
 
 This project ships with a concrete, end-to-end scenario that shows how the platform combines:
