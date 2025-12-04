@@ -19,6 +19,7 @@ import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 import { FormCopilotDetailsCard } from "../components/FormCopilotDetailsCard";
 import { CopyCurlButton } from "./CopyCurlButton";
+import { API_BASE } from "../api/csfHospitalClient";
 import { emitCodexCommand } from "../utils/codexLogger";
 import {
   OhioTdddDecision,
@@ -29,38 +30,6 @@ import { mapPractitionerFormToOhioTddd } from "../domain/licenseMapping";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { TestCoverageNote } from "./TestCoverageNote";
 import { buildCurlCommand } from "../utils/curl";
-
-// Vite-friendly helper: no `process` in the browser
-const getApiBase = (): string => {
-  // 1) Prefer Vite env variables if present
-  const metaEnv = (import.meta as any)?.env ?? {};
-  const viteBase =
-    (metaEnv.VITE_API_BASE as string | undefined) ??
-    (metaEnv.VITE_API_BASE_URL as string | undefined);
-
-  if (viteBase !== undefined) {
-    return viteBase;
-  }
-
-  // 2) Local dev: frontend on 5173, backend on 8000
-  if (
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1")
-  ) {
-    return "http://127.0.0.1:8000";
-  }
-
-  // 3) Fallback: same origin (for deployed envs)
-  if (typeof window !== "undefined") {
-    return `${window.location.protocol}//${window.location.host}`;
-  }
-
-  // 4) Last resort – empty string; UI will show a config error
-  return "";
-};
-
-const API_BASE = getApiBase();
 
 const ErrorAlert = ({
   message,
@@ -113,6 +82,19 @@ const buildPractitionerCsfPayload = (
     internal_notes: trim(form.internalNotes) || null,
   };
 };
+
+function buildPractitionerCsfEvaluateCurl(form: any): string {
+  const payload = form ?? {};
+  const json = JSON.stringify(payload);
+
+  return [
+    "curl",
+    "-X POST",
+    `"${API_BASE}/csf/practitioner/evaluate"`,
+    '-H "Content-Type: application/json"',
+    `-d '${json}'`,
+  ].join(" ");
+}
 
 const deriveSourceDocuments = (
   regulatoryReferences: any[] | undefined
@@ -1209,13 +1191,20 @@ export function PractitionerCsfSandbox() {
               >
                 {isLoading ? "Evaluating…" : "Evaluate Practitioner CSF"}
               </button>
+            </div>
 
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <CopyCurlButton
-                label="Copy cURL (evaluate)"
-                getCommand={() =>
-                  buildCurlCommand("/csf/practitioner/evaluate", form)
-                }
+                getCommand={() => buildPractitionerCsfEvaluateCurl(form)}
+                label="Copy Practitioner CSF cURL"
               />
+              <p className="text-[10px] text-slate-500">
+                Copies a ready-to-run POST{" "}
+                <span className="font-mono text-slate-200">
+                  /csf/practitioner/evaluate
+                </span>{" "}
+                using the current Practitioner CSF form payload.
+              </p>
             </div>
           </form>
 
