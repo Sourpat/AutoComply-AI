@@ -17,6 +17,7 @@ import { IntegrationsCard } from "../components/IntegrationsCard";
 import { FutureWorkCard } from "../components/FutureWorkCard";
 import { RagDebugProvider, useRagDebug } from "../devsupport/RagDebugContext";
 import { MockOrderCards } from "../components/MockOrderCards";
+import { RegulatoryPreviewPanel } from "../features/rag/RegulatoryPreviewPanel";
 
 type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
   id: string;
@@ -510,7 +511,10 @@ function ComplianceConsolePageInner() {
       </section>
 
       <section className="console-section console-section-rag">
-        <RagOverviewCard />
+        <div className="grid gap-3 lg:grid-cols-2">
+          <RagOverviewCard />
+          <RegulatoryPreviewPanel />
+        </div>
       </section>
 
       <section className="console-section console-section-health">
