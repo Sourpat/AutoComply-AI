@@ -34,6 +34,19 @@ import { TestCoverageNote } from "./TestCoverageNote";
 import { API_BASE } from "../api/csfHospitalClient";
 import { buildCurlCommand } from "../utils/curl";
 
+function buildHospitalCsfEvaluateCurl(form: any): string {
+  const payload = form ?? {};
+  const json = JSON.stringify(payload);
+
+  return [
+    "curl",
+    "-X POST",
+    `"${API_BASE}/csf/hospital/evaluate"`,
+    '-H "Content-Type: application/json"',
+    `-d '${json}'`,
+  ].join(" ");
+}
+
 type HospitalExample = {
   id: string;
   label: string;
@@ -522,13 +535,20 @@ export function HospitalCsfSandbox() {
               >
                 {isLoading ? "Evaluating…" : "Evaluate Hospital CSF"}
               </button>
+            </div>
 
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <CopyCurlButton
-                label="Copy cURL (evaluate)"
-                getCommand={() =>
-                  buildCurlCommand("/csf/hospital/evaluate", form)
-                }
+                getCommand={() => buildHospitalCsfEvaluateCurl(form)}
+                label="Copy Hospital CSF cURL"
               />
+              <p className="text-[10px] text-slate-500">
+                Copies a ready-to-run POST{" "}
+                <span className="font-mono text-slate-200">
+                  /csf/hospital/evaluate
+                </span>{" "}
+                using the current form payload.
+              </p>
             </div>
           </form>
 

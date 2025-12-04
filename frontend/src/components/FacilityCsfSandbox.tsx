@@ -33,6 +33,19 @@ import { FormCopilotDetailsCard } from "../components/FormCopilotDetailsCard";
 import { TestCoverageNote } from "./TestCoverageNote";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
 
+function buildFacilityCsfEvaluateCurl(form: any): string {
+  const payload = form ?? {};
+  const json = JSON.stringify(payload);
+
+  return [
+    "curl",
+    "-X POST",
+    `"${API_BASE}/csf/facility/evaluate"`,
+    '-H "Content-Type: application/json"',
+    `-d '${json}'`,
+  ].join(" ");
+}
+
 const FACILITY_ENGINE_FAMILY = "csf";
 const FACILITY_DECISION_TYPE = "csf_facility";
 const FACILITY_SANDBOX_ID = "facility";
@@ -842,13 +855,20 @@ export function FacilityCsfSandbox() {
               >
                 {isLoading ? "Evaluating…" : "Evaluate Facility CSF"}
               </button>
+            </div>
 
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <CopyCurlButton
-                label="Copy cURL (evaluate)"
-                getCommand={() =>
-                  buildCurlCommand("/csf/facility/evaluate", form)
-                }
+                getCommand={() => buildFacilityCsfEvaluateCurl(form)}
+                label="Copy Facility CSF cURL"
               />
+              <p className="text-[10px] text-slate-500">
+                Copies a ready-to-run POST{" "}
+                <span className="font-mono text-slate-200">
+                  /csf/facility/evaluate
+                </span>{" "}
+                using the current Facility CSF form payload.
+              </p>
             </div>
           </form>
 
