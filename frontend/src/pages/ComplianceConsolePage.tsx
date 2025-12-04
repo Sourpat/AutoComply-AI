@@ -12,6 +12,7 @@ import { SystemHealthCard } from "../components/SystemHealthCard";
 import { RunLocallyCard } from "../components/RunLocallyCard";
 import { LicenseEnginesSandbox } from "../components/LicenseEnginesSandbox";
 import { ConsoleTourCard } from "../components/ConsoleTourCard";
+import { IntegrationsCard } from "../components/IntegrationsCard";
 import { RagDebugProvider, useRagDebug } from "../devsupport/RagDebugContext";
 
 type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
@@ -501,6 +502,8 @@ function ComplianceConsolePageInner() {
       <section className="console-section console-section-testing">
         <TestingReliabilityCard />
       </section>
+
+      <IntegrationsCard />
 
       <section className="console-section console-section-run-locally">
         <RunLocallyCard />

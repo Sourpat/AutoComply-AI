@@ -194,8 +194,10 @@ When debug is enabled:
 
 This lets you:
 
-- Walk through a clean, explainable flow in normal mode.  
+- Walk through a clean, explainable flow in normal mode.
 - Flip one switch and immediately inspect the underlying objects being returned by the AI/RAG layer and decision engines.
+
+For an example of how to orchestrate these endpoints from n8n or similar tools, see `docs/integrations_n8n_example.md`.
 
 #### How to talk about this in interviews
 
