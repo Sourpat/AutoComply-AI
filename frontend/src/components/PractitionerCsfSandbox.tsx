@@ -30,6 +30,7 @@ import { trackSandboxEvent } from "../devsupport/telemetry";
 import { TestCoverageNote } from "./TestCoverageNote";
 import { buildCurlCommand } from "../utils/curl";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
+import { useRagDebug } from "../devsupport/RagDebugContext";
 
 const ErrorAlert = ({
   message,
@@ -250,6 +251,7 @@ const initialForm: PractitionerCsfFormData = {
 };
 
 export function PractitionerCsfSandbox() {
+  const { enabled: ragDebugEnabled } = useRagDebug();
   const [form, setForm] = useState<PractitionerCsfFormData>(initialForm);
   const [selectedExampleId, setSelectedExampleId] =
     React.useState<PractitionerCsfExampleId>("primary_care");
@@ -1530,6 +1532,17 @@ export function PractitionerCsfSandbox() {
                       : copilotArtifactsUsed
                   }
                 />
+              )}
+
+              {ragDebugEnabled && copilotResponse && (
+                <div className="mt-2 rounded-xl border border-slate-800 bg-black/80 px-3 py-2">
+                  <p className="text-[10px] font-semibold text-slate-100">
+                    RAG debug (Practitioner Form Copilot payload)
+                  </p>
+                  <pre className="mt-1 max-h-64 overflow-auto text-[10px] leading-relaxed text-slate-100">
+                    {JSON.stringify(copilotResponse, null, 2)}
+                  </pre>
+                </div>
               )}
 
               {!copilotResponse && !copilotLoading && !copilotError && (

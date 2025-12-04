@@ -11,6 +11,7 @@ import { TestingReliabilityCard } from "../components/TestingReliabilityCard";
 import { SystemHealthCard } from "../components/SystemHealthCard";
 import { RunLocallyCard } from "../components/RunLocallyCard";
 import { LicenseEnginesSandbox } from "../components/LicenseEnginesSandbox";
+import { RagDebugProvider, useRagDebug } from "../devsupport/RagDebugContext";
 
 type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
   id: string;
@@ -345,17 +346,42 @@ const CSF_CONSOLE_CARDS = [
   },
 ];
 
-export function ComplianceConsolePage() {
+function ComplianceConsolePageInner() {
+  const { enabled, setEnabled } = useRagDebug();
+
   return (
     <div className="compliance-console-page space-y-8 py-6">
       <header className="space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
-        <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-          AutoComply AI – Compliance Console
-        </h1>
-        <p className="text-[11px] leading-relaxed text-slate-600">
-          A single view of how AutoComply AI evaluates controlled substance forms, state licenses,
-          and end-to-end order approvals.
-        </p>
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+              AutoComply AI – Compliance Console
+            </h1>
+            <p className="text-[11px] leading-relaxed text-slate-600">
+              A single view of how AutoComply AI evaluates controlled substance forms, state licenses,
+              and end-to-end order approvals.
+            </p>
+          </div>
+          <div className="mt-2 flex items-center gap-2 md:mt-0">
+            <span className="text-[11px] text-slate-400">AI / RAG debug</span>
+            <button
+              type="button"
+              onClick={() => setEnabled(!enabled)}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full border text-[10px] ${
+                enabled
+                  ? "border-emerald-400 bg-emerald-500/30"
+                  : "border-slate-600 bg-slate-900"
+              }`}
+              aria-pressed={enabled}
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                  enabled ? "translate-x-4" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
+        </div>
       </header>
 
       <section className="console-section console-section-status rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
@@ -491,5 +517,13 @@ export function ComplianceConsolePage() {
         </div>
       </section>
     </div>
+  );
+}
+
+export function ComplianceConsolePage() {
+  return (
+    <RagDebugProvider>
+      <ComplianceConsolePageInner />
+    </RagDebugProvider>
   );
 }

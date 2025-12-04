@@ -32,6 +32,7 @@ import { trackSandboxEvent } from "../devsupport/telemetry";
 import { TestCoverageNote } from "./TestCoverageNote";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
+import { useRagDebug } from "../devsupport/RagDebugContext";
 
 function buildFacilityCsfEvaluateCurl(form: any): string {
   const payload = form ?? {};
@@ -206,6 +207,7 @@ const initialForm: FacilityCsfFormData = {
 };
 
 export function FacilityCsfSandbox() {
+  const { enabled: ragDebugEnabled } = useRagDebug();
   const [form, setForm] = useState<FacilityCsfFormData>(initialForm);
   const [decision, setDecision] = useState<FacilityCsfDecision | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -1186,13 +1188,24 @@ export function FacilityCsfSandbox() {
             />
           )}
 
-        {!copilotResponse && !copilotLoading && !copilotError && (
-          <p className="text-[10px] text-slate-400">
-            Click <span className="font-semibold">“Check &amp; Explain”</span>{" "}
-            to have AutoComply run the Facility CSF engine on this form and summarize
-            what it thinks, including required facility licenses and missing information.
-          </p>
-        )}
+          {ragDebugEnabled && copilotResponse && (
+            <div className="mt-2 rounded-xl border border-slate-800 bg-black/80 px-3 py-2">
+              <p className="text-[10px] font-semibold text-slate-100">
+                RAG debug (Facility Form Copilot payload)
+              </p>
+              <pre className="mt-1 max-h-64 overflow-auto text-[10px] leading-relaxed text-slate-100">
+                {JSON.stringify(copilotResponse, null, 2)}
+              </pre>
+            </div>
+          )}
+
+          {!copilotResponse && !copilotLoading && !copilotError && (
+            <p className="text-[10px] text-slate-400">
+              Click <span className="font-semibold">“Check &amp; Explain”</span>{" "}
+              to have AutoComply run the Facility CSF engine on this form and summarize
+              what it thinks, including required facility licenses and missing information.
+            </p>
+          )}
       </section>
 
       <section className="mt-6 rounded-2xl border border-white/10 bg-slate-900/80 p-4 text-sm text-slate-100 shadow-md shadow-black/30">
