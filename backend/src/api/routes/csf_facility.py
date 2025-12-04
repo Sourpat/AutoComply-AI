@@ -1,14 +1,20 @@
-from fastapi import APIRouter
+from typing import List
 
-from src.api.models.compliance_models import FacilityFormCopilotResponse
-from src.autocomply.domain.csf_facility import (
-    FacilityCsfDecision,
-    FacilityCsfForm,
-    evaluate_facility_csf,
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+
+from src.api.models.decision import (
+    DecisionOutcome,
+    DecisionStatus,
+    RegulatoryReference,
 )
+from src.api.models.compliance_models import FacilityFormCopilotResponse
+from src.autocomply.domain.csf_facility import FacilityCsfForm, evaluate_facility_csf
 from src.autocomply.domain.csf_copilot import run_csf_copilot
 from src.utils.logger import get_logger
 
+# NOTE: All CSF evaluate endpoints now return a shared DecisionOutcome schema
+# (see src/api/models/decision.py).
 router = APIRouter(
     prefix="/csf/facility",
     tags=["csf_facility"],
@@ -30,6 +36,16 @@ DEFAULT_FACILITY_COPILOT_QUESTION = (
 )
 
 
+class FacilityCsfEvaluateResponse(BaseModel):
+    """Response wrapper for Facility CSF evaluations."""
+
+    decision: DecisionOutcome
+    status: DecisionStatus
+    reason: str
+    missing_fields: List[str] = Field(default_factory=list)
+    regulatory_references: List[str] = Field(default_factory=list)
+
+
 def _facility_success_reason(reason: str) -> str:
     """Normalize success copy to be Facility-specific."""
 
@@ -42,10 +58,10 @@ def _facility_success_reason(reason: str) -> str:
     )
 
 
-@router.post("/evaluate", response_model=FacilityCsfDecision)
+@router.post("/evaluate", response_model=FacilityCsfEvaluateResponse)
 async def evaluate_facility_csf_endpoint(
     form: FacilityCsfForm,
-) -> FacilityCsfDecision:
+) -> FacilityCsfEvaluateResponse:
     """Evaluate a Facility Controlled Substance Form and return a decision."""
 
     logger.info(
@@ -58,7 +74,32 @@ async def evaluate_facility_csf_endpoint(
 
     decision = evaluate_facility_csf(form)
     decision.reason = _facility_success_reason(decision.reason)
-    return decision
+
+    status_map = {
+        "ok_to_ship": DecisionStatus.OK_TO_SHIP,
+        "blocked": DecisionStatus.BLOCKED,
+        "manual_review": DecisionStatus.NEEDS_REVIEW,
+    }
+    normalized_status = status_map.get(decision.status.value, DecisionStatus.NEEDS_REVIEW)
+
+    regulatory_references = [
+        RegulatoryReference(id=ref, label=ref) for ref in decision.regulatory_references or []
+    ]
+
+    decision_outcome = DecisionOutcome(
+        status=normalized_status,
+        reason=decision.reason,
+        regulatory_references=regulatory_references,
+        debug_info={"missing_fields": decision.missing_fields} if decision.missing_fields else None,
+    )
+
+    return FacilityCsfEvaluateResponse(
+        decision=decision_outcome,
+        status=decision_outcome.status,
+        reason=decision_outcome.reason,
+        missing_fields=decision.missing_fields,
+        regulatory_references=[ref.id for ref in regulatory_references],
+    )
 
 
 @router.post("/form-copilot", response_model=FacilityFormCopilotResponse)
@@ -102,10 +143,10 @@ async def facility_form_copilot(form: FacilityCsfForm) -> FacilityFormCopilotRes
     )
 
 
-@compat_router.post("/evaluate", response_model=FacilityCsfDecision)
+@compat_router.post("/evaluate", response_model=FacilityCsfEvaluateResponse)
 async def evaluate_facility_csf_endpoint_v1(
     form: FacilityCsfForm,
-) -> FacilityCsfDecision:
+) -> FacilityCsfEvaluateResponse:
     """Versioned compatibility endpoint for Facility CSF evaluation."""
 
     return await evaluate_facility_csf_endpoint(form)

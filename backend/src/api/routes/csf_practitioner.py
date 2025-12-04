@@ -1,10 +1,14 @@
 from typing import List
 
 from fastapi import APIRouter
+from pydantic import BaseModel, Field
 
+from src.api.models.decision import (
+    DecisionOutcome,
+    DecisionStatus,
+    RegulatoryReference,
+)
 from src.autocomply.domain.csf_practitioner import (
-    CsDecisionStatus,
-    PractitionerCsfDecision,
     PractitionerCsfForm,
     describe_practitioner_csf_decision,
     evaluate_practitioner_csf,
@@ -13,6 +17,8 @@ from src.autocomply.domain.csf_copilot import run_csf_copilot
 from src.api.models.compliance_models import PractitionerFormCopilotResponse
 from src.utils.logger import get_logger
 
+# NOTE: All CSF evaluate endpoints now return a shared DecisionOutcome schema
+# (see src/api/models/decision.py).
 router = APIRouter(
     prefix="/csf/practitioner",
     tags=["csf_practitioner"],
@@ -21,10 +27,20 @@ router = APIRouter(
 logger = get_logger(__name__)
 
 
-@router.post("/evaluate", response_model=PractitionerCsfDecision)
+class PractitionerCsfEvaluateResponse(BaseModel):
+    """Response wrapper for Practitioner CSF evaluations."""
+
+    decision: DecisionOutcome
+    status: DecisionStatus
+    reason: str
+    missing_fields: List[str] = Field(default_factory=list)
+    regulatory_references: List[str] = Field(default_factory=list)
+
+
+@router.post("/evaluate", response_model=PractitionerCsfEvaluateResponse)
 async def evaluate_practitioner_csf_endpoint(
     form: PractitionerCsfForm,
-) -> PractitionerCsfDecision:
+) -> PractitionerCsfEvaluateResponse:
     """
     Evaluate a Practitioner Controlled Substance Form and return a decision.
     """
@@ -38,7 +54,32 @@ async def evaluate_practitioner_csf_endpoint(
             "explanation": explanation,
         },
     )
-    return decision
+
+    status_map = {
+        "ok_to_ship": DecisionStatus.OK_TO_SHIP,
+        "blocked": DecisionStatus.BLOCKED,
+        "manual_review": DecisionStatus.NEEDS_REVIEW,
+    }
+    normalized_status = status_map.get(decision.status.value, DecisionStatus.NEEDS_REVIEW)
+
+    regulatory_references = [
+        RegulatoryReference(id=ref, label=ref) for ref in decision.regulatory_references or []
+    ]
+
+    decision_outcome = DecisionOutcome(
+        status=normalized_status,
+        reason=decision.reason,
+        regulatory_references=regulatory_references,
+        debug_info={"missing_fields": decision.missing_fields} if decision.missing_fields else None,
+    )
+
+    return PractitionerCsfEvaluateResponse(
+        decision=decision_outcome,
+        status=decision_outcome.status,
+        reason=decision_outcome.reason,
+        missing_fields=decision.missing_fields,
+        regulatory_references=[ref.id for ref in regulatory_references],
+    )
 
 
 @router.post("/form-copilot", response_model=PractitionerFormCopilotResponse)
