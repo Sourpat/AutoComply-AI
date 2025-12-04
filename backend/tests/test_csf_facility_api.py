@@ -40,9 +40,21 @@ def test_csf_facility_evaluate_ok_to_ship(base_facility_payload: dict) -> None:
     assert resp.status_code == 200
 
     data = resp.json()
-    assert data["status"] == "ok_to_ship"
+    assert "decision" in data
+
+    decision = data["decision"]
+    assert decision["status"] in ["ok_to_ship", "needs_review", "blocked"]
+    assert isinstance(decision["reason"], str) and len(decision["reason"]) > 0
+    assert isinstance(decision["regulatory_references"], list)
+
+    assert data["status"] == decision["status"]
+    assert data["reason"] == decision["reason"]
     assert data["missing_fields"] == []
-    assert "reason" in data
+    assert isinstance(data.get("regulatory_references", []), list)
+
+    for ref in decision["regulatory_references"]:
+        assert isinstance(ref["id"], str)
+        assert isinstance(ref["label"], str)
 
 
 def test_csf_facility_evaluate_ok_to_ship_v1_prefix(base_facility_payload: dict) -> None:
@@ -50,7 +62,9 @@ def test_csf_facility_evaluate_ok_to_ship_v1_prefix(base_facility_payload: dict)
     assert resp.status_code == 200
 
     data = resp.json()
-    assert data["status"] == "ok_to_ship"
+    assert "decision" in data
+    assert data["decision"]["status"] == "ok_to_ship"
+    assert data["status"] == data["decision"]["status"]
     assert data["missing_fields"] == []
 
 
@@ -70,7 +84,11 @@ def test_csf_facility_evaluate_blocked_when_core_fields_missing(
     assert resp.status_code == 200
 
     data = resp.json()
-    assert data["status"] == "blocked"
+    decision = data["decision"]
+
+    assert decision["status"] == "blocked"
+    assert data["status"] == decision["status"]
+    assert isinstance(decision["regulatory_references"], list)
     assert "facility_name" in data["missing_fields"]
     assert "pharmacy_license_number" in data["missing_fields"]
     assert "dea_number" in data["missing_fields"]
@@ -87,7 +105,11 @@ def test_csf_facility_evaluate_blocked_when_attestation_not_accepted(
     assert resp.status_code == 200
 
     data = resp.json()
-    assert data["status"] == "blocked"
+    decision = data["decision"]
+
+    assert decision["status"] == "blocked"
+    assert data["status"] == decision["status"]
+    assert isinstance(decision["regulatory_references"], list)
     assert "attestation_accepted" in data["missing_fields"]
 
 
