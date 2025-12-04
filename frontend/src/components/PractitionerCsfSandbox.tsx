@@ -31,6 +31,7 @@ import { TestCoverageNote } from "./TestCoverageNote";
 import { buildCurlCommand } from "../utils/curl";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import { useRagDebug } from "../devsupport/RagDebugContext";
+import type { DecisionOutcome } from "../types/decision";
 
 const ErrorAlert = ({
   message,
@@ -286,6 +287,19 @@ export function PractitionerCsfSandbox() {
     useState<PractitionerFormCopilotResponse | null>(null);
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
+  const copilotDecisionOutcome =
+    (copilotResponse as unknown as DecisionOutcome | null) ?? null;
+  const copilotDebugInfo =
+    copilotResponse?.debug_info ??
+    (copilotResponse?.rag_sources
+      ? { rag_sources: copilotResponse.rag_sources }
+      : null);
+  const copilotDecisionWithDebug = copilotDecisionOutcome
+    ? {
+        ...copilotDecisionOutcome,
+        debug_info: copilotDecisionOutcome.debug_info ?? copilotDebugInfo,
+      }
+    : null;
   const [lastEvaluatedPayload, setLastEvaluatedPayload] = useState<string | null>(
     null
   );
@@ -821,18 +835,6 @@ export function PractitionerCsfSandbox() {
       cancelled = true;
     };
   }, [decision]);
-
-  const copilotArtifactsUsed = copilotResponse?.artifacts_used ?? [];
-  const copilotRegulatoryReferences =
-    copilotResponse?.regulatory_references ?? [];
-  const copilotRagSources = (copilotResponse?.rag_sources ?? [])
-    .map((source: PractitionerFormCopilotResponse["rag_sources"][number]) =>
-      source.title || source.url || JSON.stringify(source)
-    )
-    .filter(
-      (src, idx, arr) =>
-        arr.indexOf(src) === idx && !copilotArtifactsUsed.includes(src)
-    );
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-3 text-[11px] shadow-sm">
@@ -1510,35 +1512,13 @@ export function PractitionerCsfSandbox() {
                 </p>
               )}
 
-              {copilotResponse && (
+              {copilotDecisionWithDebug && (
                 <RegulatoryInsightsPanel
                   title="Practitioner CSF – Form Copilot"
-                  statusLabel={
-                    copilotResponse.status
-                      ? `Decision: ${copilotResponse.status}`
-                      : undefined
-                  }
-                  reason={copilotResponse.reason}
-                  missingFields={copilotResponse.missing_fields}
-                  regulatoryReferences={copilotRegulatoryReferences}
-                  ragExplanation={copilotResponse.rag_explanation}
-                  ragSources={
-                    copilotRagSources?.length
-                      ? copilotRagSources
-                      : copilotArtifactsUsed
-                  }
+                  decision={copilotDecisionWithDebug}
+                  missingFields={copilotResponse?.missing_fields}
+                  aiDebugEnabled={ragDebugEnabled}
                 />
-              )}
-
-              {ragDebugEnabled && copilotResponse && (
-                <div className="mt-2 rounded-xl border border-slate-800 bg-black/80 px-3 py-2">
-                  <p className="text-[10px] font-semibold text-slate-100">
-                    RAG debug (Practitioner Form Copilot payload)
-                  </p>
-                  <pre className="mt-1 max-h-64 overflow-auto text-[10px] leading-relaxed text-slate-100">
-                    {JSON.stringify(copilotResponse, null, 2)}
-                  </pre>
-                </div>
               )}
 
               {!copilotResponse && !copilotLoading && !copilotError && (

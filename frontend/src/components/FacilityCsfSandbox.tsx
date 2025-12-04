@@ -34,6 +34,7 @@ import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import { useRagDebug } from "../devsupport/RagDebugContext";
 import { MockOrderScenarioBadge } from "./MockOrderScenarioBadge";
+import type { DecisionOutcome } from "../types/decision";
 
 function buildFacilityCsfEvaluateCurl(form: any): string {
   const payload = form ?? {};
@@ -252,6 +253,19 @@ export function FacilityCsfSandbox() {
     useState<FacilityFormCopilotResponse | null>(null);
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
+  const copilotDecisionOutcome =
+    (copilotResponse as unknown as DecisionOutcome | null) ?? null;
+  const copilotDebugInfo =
+    copilotResponse?.debug_info ??
+    (copilotResponse?.rag_sources
+      ? { rag_sources: copilotResponse.rag_sources }
+      : null);
+  const copilotDecisionWithDebug = copilotDecisionOutcome
+    ? {
+        ...copilotDecisionOutcome,
+        debug_info: copilotDecisionOutcome.debug_info ?? copilotDebugInfo,
+      }
+    : null;
 
   useEffect(() => {
     trackSandboxEvent("facility_csf_test_coverage_note_shown");
@@ -1171,33 +1185,13 @@ export function FacilityCsfSandbox() {
             </div>
           )}
 
-          {copilotResponse && !copilotLoading && (
+          {copilotDecisionWithDebug && !copilotLoading && (
             <RegulatoryInsightsPanel
               title="Facility CSF – Form Copilot"
-              statusLabel={
-                copilotResponse.status
-                  ? `Decision: ${copilotResponse.status}`
-                  : undefined
-              }
-              reason={copilotResponse.reason}
-              missingFields={copilotResponse.missing_fields}
-              regulatoryReferences={copilotResponse.regulatory_references}
-              ragExplanation={copilotResponse.rag_explanation}
-              ragSources={
-                copilotResponse.artifacts_used ?? copilotResponse.rag_sources
-              }
+              decision={copilotDecisionWithDebug}
+              missingFields={copilotResponse?.missing_fields}
+              aiDebugEnabled={ragDebugEnabled}
             />
-          )}
-
-          {ragDebugEnabled && copilotResponse && (
-            <div className="mt-2 rounded-xl border border-slate-800 bg-black/80 px-3 py-2">
-              <p className="text-[10px] font-semibold text-slate-100">
-                RAG debug (Facility Form Copilot payload)
-              </p>
-              <pre className="mt-1 max-h-64 overflow-auto text-[10px] leading-relaxed text-slate-100">
-                {JSON.stringify(copilotResponse, null, 2)}
-              </pre>
-            </div>
           )}
 
           {!copilotResponse && !copilotLoading && !copilotError && (

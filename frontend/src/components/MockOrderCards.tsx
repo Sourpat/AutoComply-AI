@@ -1,12 +1,13 @@
 import React from "react";
 
-import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import {
   MockOrderScenarioBadge,
   type MockOrderScenarioSeverity,
 } from "./MockOrderScenarioBadge";
 import { API_BASE } from "../api/csfHospitalClient";
 import type { MockOrderDecisionResponse } from "../types/api";
+import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
+import { useRagDebug } from "../devsupport/RagDebugContext";
 
 interface MockOrderCardConfig {
   id: string;
@@ -74,6 +75,7 @@ function MockOrderCard({ config }: { config: MockOrderCardConfig }) {
   const [data, setData] = React.useState<MockOrderDecisionResponse | null>(
     null
   );
+  const { enabled: ragDebugEnabled } = useRagDebug();
 
   async function runScenario() {
     setLoading(true);
@@ -106,7 +108,13 @@ function MockOrderCard({ config }: { config: MockOrderCardConfig }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.endpoint]);
 
-  const decision = data?.decision;
+  const decision = data?.decision ?? null;
+  const decisionDebugInfo =
+    decision?.debug_info ??
+    (data?.developer_trace ? { developer_trace: data.developer_trace } : null);
+  const decisionWithDebug = decision
+    ? { ...decision, debug_info: decisionDebugInfo }
+    : null;
 
   return (
     <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -129,24 +137,14 @@ function MockOrderCard({ config }: { config: MockOrderCardConfig }) {
         />
       </div>
 
-      {decision ? (
-        <div className="space-y-1 rounded-lg bg-slate-50 p-3">
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <DecisionStatusBadge
-              status={decision.status}
-              riskLevel={decision.risk_level ?? undefined}
-              labelPrefix="Status"
-            />
-            {data?.scenario_id && (
-              <span className="rounded-full bg-slate-900/5 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-slate-600">
-                {data.scenario_id}
-              </span>
-            )}
-          </div>
-          {decision.reason && (
-            <p className="text-[11px] text-slate-700">{decision.reason}</p>
-          )}
-        </div>
+      {decisionWithDebug ? (
+        <RegulatoryInsightsPanel
+          title="Mock order decision"
+          decision={decisionWithDebug}
+          missingFields={null}
+          compact
+          aiDebugEnabled={ragDebugEnabled}
+        />
       ) : (
         <div className="rounded-lg bg-slate-50 p-3 text-[11px] text-slate-500">
           Trigger this scenario to see status, risk, and reason.

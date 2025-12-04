@@ -7,7 +7,7 @@ export interface RegulatoryReference {
   jurisdiction?: string | null;
   source?: string | null;
   citation?: string | null;
-  label: string;
+  label?: string | null;
 }
 
 export interface DecisionOutcome {
