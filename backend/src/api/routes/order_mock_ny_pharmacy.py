@@ -2,7 +2,11 @@ from typing import Dict, Optional
 
 from fastapi import APIRouter
 
-from src.api.models.decision import DecisionOutcome, DecisionStatus
+from src.api.models.decision import (
+    DecisionOutcome,
+    DecisionStatus,
+    RegulatoryReference,
+)
 from src.autocomply.domain.decision_risk import compute_risk_for_status
 from src.api.routes.license_ny_pharmacy import ny_pharmacy_evaluate
 from src.domain.order_mock_ny_pharmacy import NyPharmacyOrderApprovalRequest
@@ -84,4 +88,98 @@ async def ny_pharmacy_mock_order_approval(
         license_missing_fields=getattr(license_decision, "missing_fields", None),
         final_decision=decision.status.value,
         notes=notes,
+    )
+
+
+@router.get(
+    "/orders/mock/ny-pharmacy-expired-license",
+    response_model=MockOrderDecisionResponse,
+)
+async def ny_pharmacy_expired_license_mock() -> MockOrderDecisionResponse:
+    """
+    Mock order: NY pharmacy where the license is EXPIRED.
+
+    Expected:
+    - License decision: blocked + high risk due to expiration.
+    """
+
+    status = DecisionStatus.BLOCKED
+    reason = (
+        "Order blocked: NY pharmacy license is expired, so controlled substance "
+        "orders cannot be shipped until the license is renewed."
+    )
+
+    risk_level, risk_score = compute_risk_for_status(status.value)
+
+    decision = DecisionOutcome(
+        status=status,
+        reason=reason,
+        risk_level=risk_level,
+        risk_score=risk_score,
+        regulatory_references=[
+            RegulatoryReference(
+                id="ny-pharmacy-core",
+                jurisdiction="US-NY",
+                source="NY Pharmacy Board (stub)",
+                citation=None,
+                label="NY pharmacy license required and must be active",
+            )
+        ],
+        trace_id=None,
+        debug_info=None,
+    )
+
+    return MockOrderDecisionResponse(
+        decision=decision,
+        csf_engine=None,
+        license_engine="ny-pharmacy",
+        scenario_id="ny-pharmacy-expired-license",
+        developer_trace=None,
+    )
+
+
+@router.get(
+    "/orders/mock/ny-pharmacy-wrong-state",
+    response_model=MockOrderDecisionResponse,
+)
+async def ny_pharmacy_wrong_state_mock() -> MockOrderDecisionResponse:
+    """
+    Mock order: NY pharmacy license but ship-to state is NOT NY.
+
+    Expected:
+    - License decision: needs_review + medium risk.
+    """
+
+    status = DecisionStatus.NEEDS_REVIEW
+    reason = (
+        "Order requires review: ship-to state is outside New York, so this NY pharmacy "
+        "license may not cover dispensing in the destination state."
+    )
+
+    risk_level, risk_score = compute_risk_for_status(status.value)
+
+    decision = DecisionOutcome(
+        status=status,
+        reason=reason,
+        risk_level=risk_level,
+        risk_score=risk_score,
+        regulatory_references=[
+            RegulatoryReference(
+                id="ny-pharmacy-core",
+                jurisdiction="US-NY",
+                source="NY Pharmacy Board (stub)",
+                citation=None,
+                label="NY pharmacy license scope may be limited to New York",
+            )
+        ],
+        trace_id=None,
+        debug_info=None,
+    )
+
+    return MockOrderDecisionResponse(
+        decision=decision,
+        csf_engine=None,
+        license_engine="ny-pharmacy",
+        scenario_id="ny-pharmacy-wrong-state",
+        developer_trace=None,
     )

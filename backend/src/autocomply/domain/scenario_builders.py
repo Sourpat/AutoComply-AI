@@ -88,3 +88,48 @@ def make_ohio_tddd_payload_wrong_state_from_csf(
     payload["ship_to_state"] = csf_payload.get("ship_to_state") or "PA"
     payload["expiration_date"] = (date.today() + timedelta(days=365 * 5)).isoformat()
     return payload
+
+
+# --- NY Pharmacy scenarios ----------------------------------------------------
+
+
+def make_ny_pharmacy_license_payload_happy() -> Dict[str, Any]:
+    """
+    Happy path NY pharmacy license payload:
+    - Active license
+    - ship_to_state = NY
+    """
+    return {
+        "license_number": "NY-PHARM-12345",
+        "license_type": "pharmacy",
+        "ship_to_state": "NY",
+        # Far-future expiry to guarantee active
+        "expiration_date": (date.today() + timedelta(days=365 * 5)).isoformat(),
+    }
+
+
+def make_ny_pharmacy_license_payload_expired() -> Dict[str, Any]:
+    """
+    Expired NY pharmacy license payload:
+    - ship_to_state = NY
+    - expiration in the past
+    """
+    return {
+        "license_number": "NY-PHARM-EXPIRED",
+        "license_type": "pharmacy",
+        "ship_to_state": "NY",
+        "expiration_date": (date.today() - timedelta(days=30)).isoformat(),
+    }
+
+
+def make_ny_pharmacy_license_payload_wrong_state() -> Dict[str, Any]:
+    """
+    Structurally valid NY pharmacy payload, but ship_to_state is NOT NY.
+    Expected to trigger needs_review.
+    """
+    return {
+        "license_number": "NY-PHARM-OUT-OF-STATE",
+        "license_type": "pharmacy",
+        "ship_to_state": "NJ",
+        "expiration_date": (date.today() + timedelta(days=365 * 3)).isoformat(),
+    }

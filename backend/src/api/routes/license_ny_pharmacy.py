@@ -1,4 +1,5 @@
-from typing import List
+from datetime import date
+from typing import List, Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -46,32 +47,46 @@ async def ny_pharmacy_evaluate(
     knowledge = get_regulatory_knowledge()
     missing: list[str] = []
 
-    if not payload.ny_state_license_number.strip():
+    license_number = (payload.ny_state_license_number or "").strip() or (
+        payload.license_number or ""
+    ).strip()
+    if not license_number:
         missing.append("ny_state_license_number")
 
     if not payload.attestation_accepted:
         missing.append("attestation_accepted")
 
-    if payload.ship_to_state != "NY":
-        reason = "Ship-to state is not NY; NY pharmacy license does not apply."
-        status = DecisionStatus.BLOCKED
-    elif not payload.attestation_accepted:
-        reason = "Attestation was not accepted."
-        status = DecisionStatus.BLOCKED
-    elif missing:
-        reason = "NY Pharmacy license details are incomplete or inconsistent."
+    ship_to_state = payload.ship_to_state
+    parsed_expiration: Optional[date] = None
+    if payload.expiration_date:
+        parsed_expiration = payload.expiration_date
+
+    is_in_ny = ship_to_state == "NY"
+    is_expired = bool(parsed_expiration and parsed_expiration < date.today())
+
+    if not is_in_ny:
         status = DecisionStatus.NEEDS_REVIEW
+        reason = (
+            "Ship-to state is not New York; NY pharmacy license may not be sufficient. "
+            "Confirm appropriate licensing for the destination state."
+        )
+    elif is_expired:
+        status = DecisionStatus.BLOCKED
+        reason = "NY pharmacy license is expired and cannot be used for controlled substances."
+    elif missing:
+        status = DecisionStatus.NEEDS_REVIEW
+        reason = "NY Pharmacy license details are incomplete or inconsistent."
     else:
-        reason = "NY Pharmacy license details appear complete for this request."
         status = DecisionStatus.OK_TO_SHIP
+        reason = "NY pharmacy license is active and matches the ship-to location."
 
     evidence_items = knowledge.get_regulatory_evidence(
         decision_type="license_ny_pharmacy",
         jurisdiction="US-NY",
         doc_ids=None,
         context={
-            "license_number": payload.ny_state_license_number,
-            "ship_to_state": payload.ship_to_state,
+            "license_number": license_number,
+            "ship_to_state": ship_to_state,
         },
     )
 
