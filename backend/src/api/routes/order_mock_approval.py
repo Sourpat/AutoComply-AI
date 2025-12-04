@@ -84,6 +84,7 @@ def _default_ohio_hospital_request() -> OhioHospitalOrderApprovalRequest:
             "account_number": "800123456",
             "ship_to_state": "OH",
             "license_type": "ohio_tddd",
+            "expiration_date": "2099-12-31",
             "attestation_accepted": True,
             "internal_notes": (
                 "Derived from Ohio hospital Schedule II scenario. Ohio TDDD "
@@ -213,6 +214,55 @@ async def ohio_hospital_mock_order_approval_default() -> MockOrderDecisionRespon
 
     default_request = _default_ohio_hospital_request()
     return await ohio_hospital_mock_order_approval(default_request)
+
+
+@router.get(
+    "/orders/mock/ohio-hospital-expired-license",
+    response_model=MockOrderDecisionResponse,
+    summary="Mock order decision for an expired Ohio TDDD license",
+)
+async def ohio_hospital_expired_license_mock() -> MockOrderDecisionResponse:
+    """
+    Mock order: Ohio hospital Schedule II with EXPIRED Ohio TDDD license.
+
+    Expected:
+    - CSF looks structurally fine.
+    - License is expired -> overall order BLOCKED with HIGH risk.
+    """
+
+    status = DecisionStatus.BLOCKED
+    reason = (
+        "Order blocked: Ohio TDDD license is expired for this hospital location, "
+        "so Schedule II controlled substances cannot be shipped."
+    )
+
+    risk_level, risk_score = compute_risk_for_status(status.value)
+
+    decision = DecisionOutcome(
+        status=status,
+        reason=reason,
+        risk_level=risk_level,
+        risk_score=risk_score,
+        regulatory_references=[
+            RegulatoryReference(
+                id="ohio-tddd-core",
+                jurisdiction="US-OH",
+                source="Ohio TDDD Guidance",
+                citation="OH ST § 4729.54",
+                label="Ohio TDDD license required and must be active",
+            )
+        ],
+        trace_id=None,
+        debug_info=None,
+    )
+
+    return MockOrderDecisionResponse(
+        decision=decision,
+        csf_engine="hospital",
+        license_engine="ohio-tddd",
+        scenario_id="ohio-hospital-expired-license",
+        developer_trace=None,
+    )
 
 
 @router.post(

@@ -77,6 +77,7 @@ def make_ohio_tddd_payload_valid() -> dict:
         "account_number": "800123456",
         "ship_to_state": "OH",
         "license_type": "ohio_tddd",
+        "expiration_date": "2099-12-31",
         "attestation_accepted": True,
         "internal_notes": "Valid Ohio TDDD license for mock order test.",
     }
@@ -89,6 +90,7 @@ def make_ohio_tddd_payload_missing_number() -> dict:
         "account_number": "800123456",
         "ship_to_state": "OH",
         "license_type": "ohio_tddd",
+        "expiration_date": "2099-12-31",
         "attestation_accepted": True,
         "internal_notes": "Missing TDDD number for negative mock order test.",
     }
