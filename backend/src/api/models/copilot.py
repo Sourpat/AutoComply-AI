@@ -30,9 +30,21 @@ class CsfCopilotResponse(BaseModel):
     outputs.
     """
 
+    # Legacy / contract fields expected by existing clients and tests
+    status: Optional[str] = None  # e.g. "ok_to_ship"
+    reason: Optional[str] = None
+    rag_explanation: Optional[str] = None
+    artifacts_used: List[str] = Field(default_factory=list)
+    rag_sources: List[Dict[str, Any]] = Field(default_factory=list)
+
+    # Core guidance / schema
     missing_fields: List[str] = Field(default_factory=list)
     suggestions: List[CsfCopilotSuggestion] = Field(default_factory=list)
     message: Optional[str] = None  # general guidance / summary
+
+    # Unified regulatory model
     regulatory_references: List[RegulatoryReference] = Field(default_factory=list)
+
+    # Debug / tracing
     debug_info: Optional[Dict[str, Any]] = None  # used when AI / RAG debug is ON
     trace_id: Optional[str] = None
