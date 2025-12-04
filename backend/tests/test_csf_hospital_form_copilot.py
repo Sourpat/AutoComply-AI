@@ -49,3 +49,10 @@ def test_hospital_copilot_returns_explanation(monkeypatch):
     assert "rag_explanation" in data
     assert data["regulatory_references"]
     assert data["rag_sources"][0]["id"] == "csf_hospital_form"
+
+    refs = data["regulatory_references"]
+    assert isinstance(refs, list)
+    assert refs
+    first = refs[0]
+    assert "id" in first
+    assert "label" in first

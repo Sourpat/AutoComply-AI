@@ -1,5 +1,7 @@
+from src.api.models.decision import RegulatoryReference
 from src.autocomply.regulations.knowledge import (
     RegulatoryEvidenceItem,
+    build_csf_evidence_from_sources,
     get_regulatory_knowledge,
 )
 
@@ -28,3 +30,16 @@ def test_regulatory_knowledge_ohio_tddd_returns_evidence() -> None:
 
     # Snippet is present and non-empty
     assert first.snippet
+
+
+def test_build_csf_evidence_from_sources_includes_stub() -> None:
+    evidence = build_csf_evidence_from_sources(
+        decision_type="csf_hospital",
+        jurisdiction=None,
+        doc_ids=["csf_hospital_form"],
+        rag_sources=[],
+    )
+
+    assert isinstance(evidence, list)
+    for item in evidence:
+        assert isinstance(item.reference, RegulatoryReference)
