@@ -1,6 +1,8 @@
 // src/domain/csfPractitioner.ts
 
 import { ControlledSubstanceItem } from "./controlledSubstances";
+import type { DecisionOutcome, DecisionStatus } from "../types/decision";
+import type { CsfCopilotResponse } from "../types/csfCopilot";
 
 export type PractitionerFacilityType =
   | "individual_practitioner"
@@ -28,32 +30,10 @@ export interface PractitionerCsfFormData {
   controlledSubstances?: ControlledSubstanceItem[];
 }
 
-export type PractitionerCsfDecisionStatus =
-  | "ok_to_ship"
-  | "blocked"
-  | "manual_review";
+export type PractitionerCsfDecisionStatus = DecisionStatus;
 
-export interface PractitionerCsfDecision {
-  status: PractitionerCsfDecisionStatus;
-  reason: string;
-  missing_fields: string[];
-  regulatory_references: string[];
+export interface PractitionerCsfDecision extends DecisionOutcome {
+  missing_fields?: string[];
 }
 
-export interface PractitionerFormCopilotSource {
-  id?: string;
-  title: string;
-  url?: string;
-  snippet?: string;
-  jurisdiction?: string;
-}
-
-export interface PractitionerFormCopilotResponse {
-  status: PractitionerCsfDecisionStatus;
-  reason: string;
-  missing_fields: string[];
-  regulatory_references: string[];
-  rag_explanation: string;
-  artifacts_used: string[];
-  rag_sources: PractitionerFormCopilotSource[];
-}
+export type PractitionerFormCopilotResponse = CsfCopilotResponse;

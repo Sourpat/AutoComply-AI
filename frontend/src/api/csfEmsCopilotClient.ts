@@ -1,10 +1,11 @@
 // src/api/csfEmsCopilotClient.ts
 import { API_BASE } from "./csfHospitalClient";
-import { EmsCsfFormData, EmsFormCopilotResponse } from "../domain/csfEms";
+import { EmsCsfFormData } from "../domain/csfEms";
+import type { CsfCopilotResponse } from "../types/csfCopilot";
 
 export async function callEmsFormCopilot(
   form: EmsCsfFormData
-): Promise<EmsFormCopilotResponse> {
+): Promise<CsfCopilotResponse> {
   const resp = await fetch(`${API_BASE}/csf/ems/form-copilot`, {
     method: "POST",
     headers: {
@@ -30,5 +31,5 @@ export async function callEmsFormCopilot(
     throw new Error(`EMS Form Copilot failed with status ${message}`);
   }
 
-  return (await resp.json()) as EmsFormCopilotResponse;
+  return (await resp.json()) as CsfCopilotResponse;
 }

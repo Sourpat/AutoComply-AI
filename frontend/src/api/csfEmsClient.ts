@@ -32,5 +32,12 @@ export async function evaluateEmsCsf(
     );
   }
 
-  return (await resp.json()) as EmsCsfDecision;
+  const data = await resp.json();
+  const decision = (data?.decision ?? data) as EmsCsfDecision;
+
+  return {
+    ...decision,
+    regulatory_references: decision.regulatory_references ?? [],
+    missing_fields: decision.missing_fields ?? [],
+  };
 }

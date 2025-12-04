@@ -1,25 +1,15 @@
 // src/api/csfHospitalCopilotClient.ts
-import { HospitalCsfDecisionStatus, HospitalCsfFormData } from "../domain/csfHospital";
-import type { RegulatorySource } from "./csfExplainClient";
+import { HospitalCsfFormData } from "../domain/csfHospital";
+import type { CsfCopilotResponse } from "../types/csfCopilot";
 
 const API_BASE =
   (import.meta as any)?.env?.VITE_API_BASE ||
   (import.meta as any)?.env?.VITE_API_BASE_URL ||
   "";
 
-export interface HospitalFormCopilotResponse {
-  status: HospitalCsfDecisionStatus;
-  reason: string;
-  missing_fields: string[];
-  regulatory_references: string[];
-  rag_explanation: string;
-  artifacts_used: string[];
-  rag_sources: RegulatorySource[];
-}
-
 export async function callHospitalFormCopilot(
   form: HospitalCsfFormData
-): Promise<HospitalFormCopilotResponse> {
+): Promise<CsfCopilotResponse> {
   const resp = await fetch(`${API_BASE}/csf/hospital/form-copilot`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

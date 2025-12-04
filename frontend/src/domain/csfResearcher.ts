@@ -1,5 +1,7 @@
 // src/domain/csfResearcher.ts
 import { ControlledSubstanceItem } from "./controlledSubstances";
+import type { DecisionOutcome, DecisionStatus } from "../types/decision";
+import type { CsfCopilotResponse } from "../types/csfCopilot";
 
 export type ResearcherFacilityType =
   | "facility"
@@ -30,31 +32,10 @@ export interface ResearcherCsfFormData {
   controlledSubstances?: ControlledSubstanceItem[];
 }
 
-export type ResearcherCsfDecisionStatus =
-  | "ok_to_ship"
-  | "blocked"
-  | "manual_review";
+export type ResearcherCsfDecisionStatus = DecisionStatus;
 
-export interface ResearcherCsfDecision {
-  status: ResearcherCsfDecisionStatus;
-  reason: string;
-  missing_fields: string[];
-  regulatory_references: string[];
+export interface ResearcherCsfDecision extends DecisionOutcome {
+  missing_fields?: string[];
 }
 
-export interface ResearcherFormCopilotSource {
-  id?: string;
-  title: string;
-  url?: string;
-  snippet?: string;
-}
-
-export interface ResearcherFormCopilotResponse {
-  status: ResearcherCsfDecisionStatus;
-  reason: string;
-  missing_fields: string[];
-  regulatory_references: string[];
-  rag_explanation: string;
-  artifacts_used: string[];
-  rag_sources: ResearcherFormCopilotSource[];
-}
+export type ResearcherFormCopilotResponse = CsfCopilotResponse;

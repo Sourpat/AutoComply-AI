@@ -7,15 +7,17 @@ import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import { TestCoverageNote } from "./TestCoverageNote";
 import { useRagDebug } from "../devsupport/RagDebugContext";
+import type {
+  DecisionOutcome,
+  DecisionStatus,
+  RegulatoryReference,
+} from "../types/decision";
 
-type LicenseDecisionStatus = "ok_to_ship" | "needs_review" | "blocked";
-
-type LicenseDecisionResponse = {
-  status: LicenseDecisionStatus;
-  reason: string;
+type LicenseDecisionResponse = DecisionOutcome & {
   // Optional, populated when the license engine returns richer regulatory data
   missing_fields?: string[];
-  regulatory_references?: string[];
+  missingFields?: string[];
+  regulatory_references?: RegulatoryReference[];
   rag_explanation?: string;
   rag_sources?: any[];
 };
@@ -437,8 +439,8 @@ function OhioTdddSandbox() {
           title="Ohio TDDD – Regulatory insights"
           statusLabel={`Decision: ${decision.status}`}
           reason={null}
-          missingFields={decision.missing_fields}
-          regulatoryReferences={decision.regulatory_references}
+          missingFields={decision.missing_fields ?? decision.missingFields ?? []}
+          regulatoryReferences={decision.regulatory_references ?? []}
           ragExplanation={decision.rag_explanation}
           ragSources={decision.rag_sources}
         />
@@ -774,8 +776,8 @@ function NyPharmacySandbox() {
           title="NY pharmacy – Regulatory insights"
           statusLabel={`Decision: ${decision.status}`}
           reason={null}
-          missingFields={decision.missing_fields}
-          regulatoryReferences={decision.regulatory_references}
+          missingFields={decision.missing_fields ?? decision.missingFields ?? []}
+          regulatoryReferences={decision.regulatory_references ?? []}
           ragExplanation={decision.rag_explanation}
           ragSources={decision.rag_sources}
         />

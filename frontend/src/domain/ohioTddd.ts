@@ -1,13 +1,9 @@
-export type OhioTdddDecisionStatus =
-  | "approved"
-  | "blocked"
-  | "manual_review";
+import type { DecisionOutcome, DecisionStatus } from "../types/decision";
 
-export interface OhioTdddDecision {
-  status: OhioTdddDecisionStatus;
-  reason: string;
-  missing_fields: string[];
-  regulatory_references: string[];
+export type OhioTdddDecisionStatus = DecisionStatus;
+
+export interface OhioTdddDecision extends DecisionOutcome {
+  missing_fields?: string[];
 }
 
 /**

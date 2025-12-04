@@ -1,3 +1,5 @@
+import type { DecisionOutcome } from "../types/decision";
+
 export interface NyPharmacyFormData {
   pharmacyName: string;
   accountNumber: string;
@@ -8,8 +10,6 @@ export interface NyPharmacyFormData {
   internalNotes?: string;
 }
 
-export interface NyPharmacyDecision {
-  status: "ok_to_ship" | "needs_review" | "blocked";
-  reason: string;
-  missingFields: string[];
+export interface NyPharmacyDecision extends DecisionOutcome {
+  missingFields?: string[];
 }

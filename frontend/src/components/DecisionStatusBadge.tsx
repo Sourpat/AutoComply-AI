@@ -1,6 +1,6 @@
 import React from "react";
 
-export type DecisionStatus = "ok_to_ship" | "needs_review" | "blocked" | string;
+import type { DecisionStatus } from "../types/decision";
 
 interface DecisionStatusBadgeProps {
   status: DecisionStatus | null | undefined;

@@ -1,12 +1,14 @@
 import React from "react";
 import { BookOpen, AlertTriangle, Sparkles } from "lucide-react";
 
+import type { RegulatoryReference } from "../types/decision";
+
 export type RegulatoryInsightsPanelProps = {
   title?: string;
   statusLabel?: string;
   reason?: string | null;
   missingFields?: string[] | null | undefined;
-  regulatoryReferences?: string[] | null | undefined;
+  regulatoryReferences?: RegulatoryReference[] | null | undefined;
   ragExplanation?: string | null | undefined;
   ragSources?: any[] | null | undefined;
 };
@@ -22,8 +24,8 @@ export function RegulatoryInsightsPanel({
 }: RegulatoryInsightsPanelProps) {
   const hasMissing =
     Array.isArray(missingFields) && missingFields.length > 0;
-  const hasReferences =
-    Array.isArray(regulatoryReferences) && regulatoryReferences.length > 0;
+  const normalizedReferences = (regulatoryReferences ?? []).filter(Boolean);
+  const hasReferences = normalizedReferences.length > 0;
   const hasRagExplanation =
     typeof ragExplanation === "string" && ragExplanation.trim().length > 0;
   const hasSources = Array.isArray(ragSources) && ragSources.length > 0;
@@ -78,14 +80,29 @@ export function RegulatoryInsightsPanel({
             </p>
           </div>
           <ul className="mt-1 flex flex-wrap gap-1.5 text-[10px]">
-            {regulatoryReferences!.map((ref, idx) => (
-              <li
-                key={idx}
-                className="rounded-full bg-slate-950/80 px-2 py-0.5 font-mono text-[10px] text-cyan-100 ring-1 ring-cyan-500/30"
-              >
-                {ref}
-              </li>
-            ))}
+            {normalizedReferences.map((ref, idx) => {
+              const label =
+                ref.label || ref.citation || ref.source || ref.id || `ref-${idx}`;
+
+              return (
+                <li
+                  key={ref.id ?? idx}
+                  className="rounded-full bg-slate-950/80 px-2 py-0.5 text-[10px] text-cyan-100 ring-1 ring-cyan-500/30"
+                >
+                  <span className="font-semibold">{label}</span>
+                  {ref.citation && ref.citation !== label && (
+                    <span className="ml-1 font-mono text-[9px] text-cyan-200/80">
+                      ({ref.citation})
+                    </span>
+                  )}
+                  {ref.jurisdiction && (
+                    <span className="ml-1 text-[9px] text-cyan-200/80">
+                      [{ref.jurisdiction}]
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

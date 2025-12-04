@@ -1,5 +1,6 @@
 // src/domain/csfHospital.ts
 import { ControlledSubstanceItem } from "./controlledSubstances";
+import type { DecisionOutcome, DecisionStatus } from "../types/decision";
 
 export type HospitalFacilityType =
   | "hospital"
@@ -29,14 +30,8 @@ export interface HospitalCsfFormData {
   controlledSubstances?: ControlledSubstanceItem[];
 }
 
-export type HospitalCsfDecisionStatus =
-  | "ok_to_ship"
-  | "blocked"
-  | "manual_review";
+export type HospitalCsfDecisionStatus = DecisionStatus;
 
-export interface HospitalCsfDecision {
-  status: HospitalCsfDecisionStatus;
-  reason: string;
-  missing_fields: string[];
-  regulatory_references: string[];
+export interface HospitalCsfDecision extends DecisionOutcome {
+  missing_fields?: string[];
 }

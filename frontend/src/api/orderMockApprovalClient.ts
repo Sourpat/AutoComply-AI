@@ -1,4 +1,5 @@
 import { OhioHospitalOrderApprovalResult } from "../domain/orderMockApproval";
+import type { DecisionOutcome, DecisionStatus } from "../types/decision";
 import { API_BASE } from "./csfHospitalClient";
 
 export type OrderScenarioKind =
@@ -15,6 +16,35 @@ export interface OhioHospitalOrderScenarioRun {
   request: OhioHospitalOrderScenarioRequest;
   response: OhioHospitalOrderApprovalResult;
 }
+
+const normalizeStatus = (status: string | undefined | null): DecisionStatus => {
+  if (status === "approved") return "ok_to_ship";
+  if (status === "manual_review") return "needs_review";
+  if (status === "blocked") return "blocked";
+  if (status === "ok_to_ship") return "ok_to_ship";
+  if (status === "needs_review") return "needs_review";
+  return "needs_review";
+};
+
+const normalizeDecision = (
+  raw: any,
+  fallbackReason?: string
+): DecisionOutcome => {
+  const regulatory_references = raw?.regulatory_references ?? [];
+
+  return {
+    status: normalizeStatus(raw?.status),
+    reason:
+      raw?.reason ??
+      fallbackReason ??
+      (Array.isArray(raw?.notes) ? raw.notes.join(" ") : ""),
+    regulatory_references,
+    debug_info: raw?.debug_info ?? raw?.developer_trace ?? null,
+    trace_id: raw?.trace_id ?? null,
+    risk_level: raw?.risk_level ?? null,
+    risk_score: raw?.risk_score ?? null,
+  };
+};
 
 export async function runOhioHospitalOrderScenario(
   scenario: OrderScenarioKind
@@ -91,10 +121,49 @@ export async function runOhioHospitalOrderScenario(
     );
   }
 
-  const json = (await resp.json()) as OhioHospitalOrderApprovalResult;
+  const json = await resp.json();
+
+  const decision = normalizeDecision(json?.decision ?? json, json?.final_decision);
+
+  const response: OhioHospitalOrderApprovalResult = {
+    decision,
+    csf_decision: json?.csf_decision
+      ? normalizeDecision(json.csf_decision)
+      : json?.csf_status
+      ? normalizeDecision(
+          {
+            status: json.csf_status,
+            reason: json.csf_reason,
+            regulatory_references: json.csf_regulatory_references,
+            missing_fields: json.csf_missing_fields,
+            debug_info: json.developer_trace,
+          },
+          json.csf_reason
+        )
+      : undefined,
+    license_decision: json?.license_decision
+      ? normalizeDecision(json.license_decision)
+      : json?.tddd_status
+      ? normalizeDecision(
+          {
+            status: json.tddd_status,
+            reason: json.tddd_reason,
+            regulatory_references: json.tddd_regulatory_references,
+            missing_fields: json.tddd_missing_fields,
+            debug_info: json.developer_trace,
+          },
+          json.tddd_reason
+        )
+      : undefined,
+    csf_engine: json?.csf_engine ?? null,
+    license_engine: json?.license_engine ?? null,
+    scenario_id: json?.scenario_id ?? null,
+    developer_trace: json?.developer_trace ?? null,
+    notes: json?.notes ?? [],
+  };
 
   return {
     request: requestBody,
-    response: json,
+    response,
   };
 }

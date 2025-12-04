@@ -1,14 +1,12 @@
 // src/api/csfPractitionerCopilotClient.ts
 import { API_BASE } from "./csfHospitalClient";
-import {
-  PractitionerCsfFormData,
-  PractitionerFormCopilotResponse,
-} from "../domain/csfPractitioner";
+import { PractitionerCsfFormData } from "../domain/csfPractitioner";
+import type { CsfCopilotResponse } from "../types/csfCopilot";
 
 export async function callPractitionerFormCopilot(
   form: PractitionerCsfFormData,
   controlledSubstances: any[] = []
-): Promise<PractitionerFormCopilotResponse> {
+): Promise<CsfCopilotResponse> {
   const resp = await fetch(`${API_BASE}/csf/practitioner/form-copilot`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -32,6 +30,6 @@ export async function callPractitionerFormCopilot(
     throw new Error(`Practitioner Form Copilot failed with status ${message}`);
   }
 
-  const data: PractitionerFormCopilotResponse = await resp.json();
+  const data: CsfCopilotResponse = await resp.json();
   return data;
 }

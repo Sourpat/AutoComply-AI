@@ -31,5 +31,12 @@ export async function evaluateFacilityCsf(
     );
   }
 
-  return resp.json();
+  const data = await resp.json();
+  const decision = (data?.decision ?? data) as FacilityCsfDecision;
+
+  return {
+    ...decision,
+    regulatory_references: decision.regulatory_references ?? [],
+    missing_fields: decision.missing_fields ?? [],
+  };
 }
