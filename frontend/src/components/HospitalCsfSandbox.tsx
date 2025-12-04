@@ -103,6 +103,29 @@ const HOSPITAL_EXAMPLES: HospitalExample[] = [
     ],
   },
   {
+    id: "ohio_schedule_ii_wrong_state",
+    label: "Ohio hospital – Schedule II (wrong ship-to state)",
+    overrides: {
+      facilityName: "Scenario Hospital",
+      facilityType: "hospital",
+      accountNumber: "ACC-TEST",
+      pharmacyLicenseNumber: "TDDD-123456",
+      deaNumber: "DEA-123456",
+      pharmacistInChargeName: "Dr. Scenario",
+      pharmacistContactPhone: "555-0000",
+      shipToState: "PA",
+      attestationAccepted: true,
+      internalNotes: "Hospital CSF data is fine; ship-to is outside Ohio.",
+    },
+    controlledSubstances: [
+      {
+        id: "oh-sched-ii-wrong-state",
+        name: "Schedule II Pain Med",
+        schedule: "II",
+      },
+    ],
+  },
+  {
     id: "fl_level1_trauma_schedule_ii",
     label: "FL – Level 1 trauma, Schedule II",
     overrides: {

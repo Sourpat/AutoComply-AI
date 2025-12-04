@@ -42,6 +42,16 @@ def make_ohio_hospital_csf_payload_expired_license() -> Dict[str, Any]:
     return payload
 
 
+def make_ohio_hospital_csf_payload_wrong_state() -> Dict[str, Any]:
+    """
+    Variant of the base CSF payload where ship_to_state is not Ohio.
+    This should trigger 'needs_review' on the license side.
+    """
+    payload = make_ohio_hospital_csf_payload_base()
+    payload["ship_to_state"] = "PA"
+    return payload
+
+
 def make_ohio_tddd_payload_from_csf(csf_payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Existing helper (if not already in utils) – here for clarity.
@@ -65,4 +75,16 @@ def make_ohio_tddd_payload_expired_from_csf(csf_payload: Dict[str, Any]) -> Dict
     """
     payload = make_ohio_tddd_payload_from_csf(csf_payload)
     payload["expiration_date"] = (date.today() - timedelta(days=30)).isoformat()
+    return payload
+
+
+def make_ohio_tddd_payload_wrong_state_from_csf(
+    csf_payload: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Ohio TDDD payload derived from CSF, but with a non-Ohio ship_to_state.
+    """
+    payload = make_ohio_tddd_payload_from_csf(csf_payload)
+    payload["ship_to_state"] = csf_payload.get("ship_to_state") or "PA"
+    payload["expiration_date"] = (date.today() + timedelta(days=365 * 5)).isoformat()
     return payload

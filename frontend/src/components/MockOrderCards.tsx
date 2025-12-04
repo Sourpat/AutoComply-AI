@@ -34,6 +34,14 @@ const MOCK_ORDER_CARDS: MockOrderCardConfig[] = [
     severity: "investigate",
   },
   {
+    id: "ohio-hospital-wrong-state",
+    title: "Ohio hospital – Schedule II (wrong ship-to state)",
+    description:
+      "Hospital CSF data is fine, but ship-to is outside Ohio. Order requires review.",
+    endpoint: "/orders/mock/ohio-hospital-wrong-state",
+    severity: "edge_case",
+  },
+  {
     id: "ohio-facility-happy",
     title: "Ohio facility – Schedule II (happy path)",
     description: "Facility CSF and Ohio TDDD license are both valid for this order.",
