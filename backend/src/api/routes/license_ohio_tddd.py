@@ -3,12 +3,9 @@ from typing import List
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from src.api.models.decision import (
-    DecisionOutcome,
-    DecisionStatus,
-    RegulatoryReference,
-)
+from src.api.models.decision import DecisionOutcome, DecisionStatus
 from src.autocomply.domain.decision_risk import compute_risk_for_status
+from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 from src.domain.license_ohio_tddd import (
     OhioTdddFormCopilotResponse,
     OhioTdddFormData,
@@ -56,15 +53,19 @@ async def ohio_tddd_evaluate(form: OhioTdddFormData) -> OhioTdddEvaluateResponse
         reason = "Ohio TDDD license details appear complete for this request."
         status = DecisionStatus.OK_TO_SHIP
 
-    regulatory_references = [
-        RegulatoryReference(
-            id="ohio-tddd-core",
-            jurisdiction="US-OH",
-            source="Ohio Board of Pharmacy",
-            citation="OH ST § 4729.54",
-            label="Ohio TDDD license required for controlled substances",
-        )
-    ]
+    knowledge = get_regulatory_knowledge()
+
+    evidence_items = knowledge.get_regulatory_evidence(
+        decision_type="license_ohio_tddd",
+        jurisdiction="US-OH",
+        doc_ids=None,
+        context={
+            "license_number": form.tddd_number,
+            "ship_to_state": form.ship_to_state,
+        },
+    )
+
+    regulatory_references = [item.reference for item in evidence_items]
 
     risk_level, risk_score = compute_risk_for_status(status.value)
 
@@ -74,7 +75,10 @@ async def ohio_tddd_evaluate(form: OhioTdddFormData) -> OhioTdddEvaluateResponse
         regulatory_references=regulatory_references,
         risk_level=risk_level,
         risk_score=risk_score,
-        debug_info={"missing_fields": missing} if missing else None,
+        debug_info={
+            "missing_fields": missing or None,
+            "regulatory_evidence_count": len(evidence_items),
+        },
     )
 
     return OhioTdddEvaluateResponse(
