@@ -11,6 +11,7 @@ import { buildCurlCommand } from "../utils/curl";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { UnderTheHoodInfo } from "../components/UnderTheHoodInfo";
 import { DecisionStatusLegend } from "./DecisionStatusLegend";
+import { MockOrderScenarioBadge } from "./MockOrderScenarioBadge";
 
 type OhioJourneyScenarioId = OrderScenarioKind;
 
@@ -151,10 +152,19 @@ export function OhioHospitalOrderJourneyCard() {
           />
         </div>
         <p className="text-sm text-slate-600">
-          Run a mock Schedule II order for an Ohio hospital and see how the
-          Hospital CSF and Ohio TDDD license engines combine into a final order
+          Simulates an Ohio hospital order that combines the Hospital CSF
+          engine and the Ohio TDDD license engine into a single approval
           decision.
         </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <MockOrderScenarioBadge
+            label="Scenario: compliant CSF + valid Ohio TDDD license"
+            severity="happy_path"
+          />
+          <p className="text-[10px] text-slate-500">
+            Upstream: Hospital CSF sandbox + Ohio TDDD license engine.
+          </p>
+        </div>
         <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700">
           <li>Hospital CSF decision</li>
           <li>Ohio TDDD license decision (when applicable)</li>

@@ -33,6 +33,7 @@ import { TestCoverageNote } from "./TestCoverageNote";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import { useRagDebug } from "../devsupport/RagDebugContext";
+import { MockOrderScenarioBadge } from "./MockOrderScenarioBadge";
 
 function buildFacilityCsfEvaluateCurl(form: any): string {
   const payload = form ?? {};
@@ -1215,14 +1216,24 @@ export function FacilityCsfSandbox() {
               Mock Ohio Facility Order Trace
             </h2>
             <p className="mt-1 text-[11px] text-slate-400">
-              Combine the Facility CSF decision with an Ohio TDDD license decision
-              to see the final mock order outcome for an Ohio facility.
+              Simulates an Ohio facility order using the Facility CSF engine and
+              the Ohio TDDD license engine to reach a final decision.
             </p>
           </div>
           <span className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-950 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-slate-200">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
             <span>Engine: /orders/mock/ohio-facility-approval</span>
           </span>
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <MockOrderScenarioBadge
+            label="Scenario: facility CSF + Ohio TDDD license"
+            severity="investigate"
+          />
+          <p className="text-[10px] text-slate-500">
+            Upstream: Facility CSF sandbox + Ohio TDDD license engine.
+          </p>
         </div>
 
         {/* Current Facility CSF decision row */}
