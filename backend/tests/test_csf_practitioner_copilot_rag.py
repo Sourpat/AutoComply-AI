@@ -48,6 +48,11 @@ def test_practitioner_copilot_returns_rag_reason(monkeypatch):
     data = resp.json()
     assert data["status"] == "ok_to_ship"
     assert data["rag_explanation"] == "mocked rag answer"
+    refs = data.get("regulatory_references", [])
+    assert isinstance(refs, list)
+    for ref in refs:
+        assert "id" in ref
+        assert "label" in ref
     assert data["rag_sources"][0]["id"] == "csf_practitioner_form"
     assert "csf_practitioner_form" in data.get("artifacts_used", [])
 

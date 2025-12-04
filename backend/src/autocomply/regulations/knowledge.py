@@ -56,6 +56,21 @@ class RegulatoryKnowledge:
         if decision_type == "license_ohio_tddd":
             return self._ohio_tddd_evidence(jurisdiction=jurisdiction, doc_ids=doc_ids, context=context)
 
+        if decision_type == "csf_hospital":
+            return self._csf_hospital_evidence(
+                jurisdiction=jurisdiction, doc_ids=doc_ids, context=context
+            )
+
+        if decision_type == "csf_facility":
+            return self._csf_facility_evidence(
+                jurisdiction=jurisdiction, doc_ids=doc_ids, context=context
+            )
+
+        if decision_type == "csf_practitioner":
+            return self._csf_practitioner_evidence(
+                jurisdiction=jurisdiction, doc_ids=doc_ids, context=context
+            )
+
         # Default: no evidence
         return []
 
@@ -95,6 +110,78 @@ class RegulatoryKnowledge:
         )
 
         return [evidence]
+
+    def _csf_hospital_evidence(
+        self,
+        jurisdiction: Optional[str],
+        doc_ids: Optional[List[str]],
+        context: Optional[Dict[str, Any]],
+    ) -> List[RegulatoryEvidenceItem]:
+        jurisdiction = jurisdiction or "US-OH"
+        reference = RegulatoryReference(
+            id="csf_hospital_form",
+            jurisdiction=jurisdiction,
+            source="Hospital CSF (stub)",
+            citation=None,
+            label="Hospital CSF information required for controlled substances evaluation",
+        )
+        snippet = "Hospital CSF forms capture facility, DEA, and license info required to evaluate controlled substance orders."
+        return [
+            RegulatoryEvidenceItem(
+                reference=reference,
+                snippet=snippet,
+                source_title="Hospital CSF Requirements (stub)",
+                raw_source={"doc_id": "csf_hospital_form"},
+            )
+        ]
+
+    def _csf_facility_evidence(
+        self,
+        jurisdiction: Optional[str],
+        doc_ids: Optional[List[str]],
+        context: Optional[Dict[str, Any]],
+    ) -> List[RegulatoryEvidenceItem]:
+        jurisdiction = jurisdiction or "US-OH"
+        reference = RegulatoryReference(
+            id="csf_facility_form",
+            jurisdiction=jurisdiction,
+            source="Facility CSF (stub)",
+            citation=None,
+            label="Facility CSF information required for controlled substances evaluation",
+        )
+        snippet = "Facility CSF forms ensure non-hospital facilities record appropriate licensing and DEA details."
+        return [
+            RegulatoryEvidenceItem(
+                reference=reference,
+                snippet=snippet,
+                source_title="Facility CSF Requirements (stub)",
+                raw_source={"doc_id": "csf_facility_form"},
+            )
+        ]
+
+    def _csf_practitioner_evidence(
+        self,
+        jurisdiction: Optional[str],
+        doc_ids: Optional[List[str]],
+        context: Optional[Dict[str, Any]],
+    ) -> List[RegulatoryEvidenceItem]:
+        jurisdiction = jurisdiction or "US-OH"
+        reference = RegulatoryReference(
+            id="csf_practitioner_form",
+            jurisdiction=jurisdiction,
+            source="Practitioner CSF (stub)",
+            citation=None,
+            label="Practitioner CSF information required for controlled substances evaluation",
+        )
+        snippet = "Practitioner CSF forms capture prescriber identity, DEA registration, and practice location required for compliance."
+        return [
+            RegulatoryEvidenceItem(
+                reference=reference,
+                snippet=snippet,
+                source_title="Practitioner CSF Requirements (stub)",
+                raw_source={"doc_id": "csf_practitioner_form"},
+            )
+        ]
 
 
 # Singleton-style accessor (easy to swap with DI later if needed)

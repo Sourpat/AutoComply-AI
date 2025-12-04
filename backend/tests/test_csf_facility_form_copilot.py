@@ -50,6 +50,11 @@ def test_facility_copilot_returns_explanation(monkeypatch):
     assert data["status"] == "ok_to_ship"
     assert "rag_explanation" in data
     assert data["regulatory_references"]
+    refs = data.get("regulatory_references", [])
+    assert isinstance(refs, list)
+    for ref in refs:
+        assert "id" in ref
+        assert "label" in ref
     assert data["rag_sources"][0]["id"] == "csf_facility_form"
 
 
