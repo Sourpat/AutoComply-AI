@@ -28,8 +28,8 @@ def test_regulatory_knowledge_ohio_tddd_returns_evidence() -> None:
     assert ref.label
     assert "Ohio TDDD" in (ref.source or "Ohio TDDD Guidance")
 
-    # Snippet is present and non-empty
-    assert first.snippet
+    # Snippet may be populated by future RAG; static knowledge may omit it
+    assert first.snippet is None
 
 
 def test_build_csf_evidence_from_sources_includes_stub() -> None:

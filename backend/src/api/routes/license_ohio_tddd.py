@@ -85,12 +85,14 @@ async def ohio_tddd_evaluate(
         reason = "License active and matches Ohio TDDD requirements."
         status = DecisionStatus.OK_TO_SHIP
 
+    risk_level, risk_score = compute_risk_for_status(status.value)
+
     knowledge = get_regulatory_knowledge()
 
     evidence_items = knowledge.get_regulatory_evidence(
         decision_type="license_ohio_tddd",
         jurisdiction="US-OH",
-        doc_ids=None,
+        doc_ids=["ohio-tddd-core"],
         context={
             "license_number": license_number,
             "ship_to_state": form.ship_to_state,
@@ -98,8 +100,6 @@ async def ohio_tddd_evaluate(
     )
 
     regulatory_references = [item.reference for item in evidence_items]
-
-    risk_level, risk_score = compute_risk_for_status(status.value)
 
     decision_outcome = DecisionOutcome(
         status=status,
@@ -110,6 +110,8 @@ async def ohio_tddd_evaluate(
         trace_id=trace_id,
         debug_info={
             "missing_fields": missing or None,
+            "engine_family": "license",
+            "decision_type": "license_ohio_tddd",
             "regulatory_evidence_count": len(evidence_items),
         },
     )

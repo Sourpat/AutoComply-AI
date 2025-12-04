@@ -49,7 +49,6 @@ async def ny_pharmacy_evaluate(
     incoming_trace_id = request.headers.get(TRACE_HEADER_NAME)
     trace_id = ensure_trace_id(incoming_trace_id)
 
-    knowledge = get_regulatory_knowledge()
     missing: list[str] = []
 
     license_number = (payload.ny_state_license_number or "").strip() or (
@@ -85,10 +84,13 @@ async def ny_pharmacy_evaluate(
         status = DecisionStatus.OK_TO_SHIP
         reason = "NY pharmacy license is active and matches the ship-to location."
 
+    risk_level, risk_score = compute_risk_for_status(status.value)
+    knowledge = get_regulatory_knowledge()
+
     evidence_items = knowledge.get_regulatory_evidence(
         decision_type="license_ny_pharmacy",
         jurisdiction="US-NY",
-        doc_ids=None,
+        doc_ids=["ny-pharmacy-core"],
         context={
             "license_number": license_number,
             "ship_to_state": ship_to_state,
@@ -97,10 +99,10 @@ async def ny_pharmacy_evaluate(
 
     regulatory_references = [item.reference for item in evidence_items]
 
-    risk_level, risk_score = compute_risk_for_status(status.value)
-
     debug_info = {
         "missing_fields": missing,
+        "engine_family": "license",
+        "decision_type": "license_ny_pharmacy",
         "regulatory_evidence_count": len(evidence_items),
     }
 
