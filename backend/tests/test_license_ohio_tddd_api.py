@@ -28,6 +28,14 @@ def test_ohio_tddd_evaluate_ok_to_ship(ohio_tddd_happy_payload: dict) -> None:
     assert data["reason"] == "Ohio TDDD license details appear complete for this request."
     assert data["missing_fields"] == []
 
+    decision = data["decision"]
+    assert decision["status"] == "ok_to_ship"
+    assert decision["reason"] == data["reason"]
+    assert isinstance(decision["regulatory_references"], list)
+    assert decision["regulatory_references"]
+    first_ref = decision["regulatory_references"][0]
+    assert "id" in first_ref and "label" in first_ref
+
 
 def test_ohio_tddd_evaluate_missing_tddd_number(ohio_tddd_happy_payload: dict) -> None:
     payload = {**ohio_tddd_happy_payload, "tddd_number": ""}
@@ -39,6 +47,9 @@ def test_ohio_tddd_evaluate_missing_tddd_number(ohio_tddd_happy_payload: dict) -
     assert data["status"] == "needs_review"
     assert "Missing required fields" in data["reason"]
     assert "tddd_number" in data["missing_fields"]
+    decision = data["decision"]
+    assert decision["status"] == "needs_review"
+    assert isinstance(decision["regulatory_references"], list)
 
 
 def test_ohio_tddd_evaluate_missing_required_field_returns_422(
@@ -62,6 +73,7 @@ def test_ohio_tddd_evaluate_attestation_not_accepted(
     data = resp.json()
     assert data["status"] == "blocked"
     assert data["reason"] == "Attestation was not accepted."
+    assert data["decision"]["status"] == "blocked"
 
 
 def test_ohio_tddd_form_copilot_ok(ohio_tddd_happy_payload: dict) -> None:

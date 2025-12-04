@@ -47,6 +47,11 @@ def test_ny_pharmacy_evaluate_happy_path_ok_to_ship(
     assert (
         data["reason"] == "NY Pharmacy license details appear complete for this request."
     )
+    decision = data["decision"]
+    assert decision["status"] == "ok_to_ship"
+    assert decision["reason"] == data["reason"]
+    assert isinstance(decision["regulatory_references"], list)
+    assert decision["regulatory_references"]
 
 
 def test_ny_pharmacy_evaluate_incomplete_needs_review(
@@ -58,10 +63,26 @@ def test_ny_pharmacy_evaluate_incomplete_needs_review(
     assert resp.status_code == 200
 
     data = resp.json()
-    assert data["status"] == "needs_review"
-    assert len(data["missing_fields"]) >= 1
-    assert "ny_state_license_number" in data["missing_fields"]
+    assert data["status"] == "blocked"
+    assert "Ship-to state is not NY" in data["reason"]
     assert "attestation_accepted" in data["missing_fields"]
+    decision = data["decision"]
+    assert decision["status"] == "blocked"
+    assert isinstance(decision["regulatory_references"], list)
+
+
+def test_ny_pharmacy_evaluate_needs_review_missing_license_number(
+    ny_pharmacy_happy_payload: dict,
+) -> None:
+    payload = {**ny_pharmacy_happy_payload, "ny_state_license_number": ""}
+
+    resp = client.post("/license/ny-pharmacy/evaluate", json=payload)
+    assert resp.status_code == 200
+
+    data = resp.json()
+    assert data["status"] == "needs_review"
+    assert "ny_state_license_number" in data["missing_fields"]
+    assert data["decision"]["status"] == "needs_review"
 
 
 def test_ny_pharmacy_evaluate_missing_license_number_raises_validation(

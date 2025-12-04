@@ -1,7 +1,14 @@
-from fastapi import APIRouter
+from typing import List
 
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+
+from src.api.models.decision import (
+    DecisionOutcome,
+    DecisionStatus,
+    RegulatoryReference,
+)
 from src.domain.license_ohio_tddd import (
-    OhioTdddDecision,
     OhioTdddFormCopilotResponse,
     OhioTdddFormData,
 )
@@ -10,8 +17,20 @@ from src.services.license_copilot_service import run_license_copilot
 router = APIRouter(tags=["license_ohio_tddd"])
 
 
-@router.post("/license/ohio-tddd/evaluate", response_model=OhioTdddDecision)
-async def ohio_tddd_evaluate(form: OhioTdddFormData) -> OhioTdddDecision:
+class OhioTdddEvaluateResponse(BaseModel):
+    """Response wrapper for Ohio TDDD evaluations using shared decision schema."""
+
+    decision: DecisionOutcome
+    status: DecisionStatus
+    reason: str
+    missing_fields: List[str] = Field(default_factory=list)
+    regulatory_references: List[str] = Field(default_factory=list)
+
+
+@router.post(
+    "/license/ohio-tddd/evaluate", response_model=OhioTdddEvaluateResponse
+)
+async def ohio_tddd_evaluate(form: OhioTdddFormData) -> OhioTdddEvaluateResponse:
     """
     Minimal v1 evaluation for Ohio TDDD licenses.
 
@@ -24,22 +43,48 @@ async def ohio_tddd_evaluate(form: OhioTdddFormData) -> OhioTdddDecision:
         missing.append("tddd_number")
 
     if form.ship_to_state != "OH":
-        reason = "Ship-to state is not OH; Ohio TDDD may not be sufficient."
-        status = "needs_review"
+        reason = "Ship-to state is not OH; Ohio TDDD license does not apply."
+        status = DecisionStatus.BLOCKED
     elif not form.attestation_accepted:
         reason = "Attestation was not accepted."
-        status = "blocked"
+        status = DecisionStatus.BLOCKED
     elif missing:
         reason = "Missing required fields."
-        status = "needs_review"
+        status = DecisionStatus.NEEDS_REVIEW
     else:
         reason = "Ohio TDDD license details appear complete for this request."
-        status = "ok_to_ship"
+        status = DecisionStatus.OK_TO_SHIP
 
-    return OhioTdddDecision(
+    regulatory_references = [
+        RegulatoryReference(
+            id="ohio-tddd-core",
+            jurisdiction="US-OH",
+            source="Ohio Board of Pharmacy",
+            citation="OH ST § 4729.54",
+            label="Ohio TDDD license required for controlled substances",
+        )
+    ]
+
+    risk_level_map = {
+        DecisionStatus.OK_TO_SHIP: "low",
+        DecisionStatus.NEEDS_REVIEW: "medium",
+        DecisionStatus.BLOCKED: "high",
+    }
+
+    decision_outcome = DecisionOutcome(
         status=status,
         reason=reason,
+        regulatory_references=regulatory_references,
+        risk_level=risk_level_map.get(status),
+        debug_info={"missing_fields": missing} if missing else None,
+    )
+
+    return OhioTdddEvaluateResponse(
+        decision=decision_outcome,
+        status=decision_outcome.status,
+        reason=decision_outcome.reason,
         missing_fields=missing,
+        regulatory_references=[ref.id for ref in regulatory_references],
     )
 
 

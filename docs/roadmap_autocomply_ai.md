@@ -15,6 +15,7 @@ What exists today:
   - License engines: Ohio TDDD, NY pharmacy.
   - Mock order journeys: Ohio hospital, Ohio facility, NY pharmacy.
   - Track A: CSF decisions now use a shared DecisionOutcome + RegulatoryReference schema; licenses and orders will adopt the same model next.
+  - License evaluate endpoints (Ohio TDDD, NY Pharmacy) now share the same DecisionOutcome schema used by CSF engines, enabling consistent downstream order decisions.
 
 - **Console UI**  
   - Modern dark-mode Compliance Console with:
