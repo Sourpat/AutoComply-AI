@@ -1,11 +1,12 @@
 from datetime import date
 from typing import List, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from src.api.models.decision import DecisionOutcome, DecisionStatus
 from src.autocomply.domain.decision_risk import compute_risk_for_status
+from src.autocomply.domain.trace import TRACE_HEADER_NAME, ensure_trace_id
 from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 from src.domain.license_ohio_tddd import (
     OhioTdddFormCopilotResponse,
@@ -29,13 +30,18 @@ class OhioTdddEvaluateResponse(BaseModel):
 @router.post(
     "/license/ohio-tddd/evaluate", response_model=OhioTdddEvaluateResponse
 )
-async def ohio_tddd_evaluate(form: OhioTdddFormData) -> OhioTdddEvaluateResponse:
+async def ohio_tddd_evaluate(
+    form: OhioTdddFormData, request: Request
+) -> OhioTdddEvaluateResponse:
     """
     Minimal v1 evaluation for Ohio TDDD licenses.
 
     NOTE: This is intentionally simple and can be expanded later with more
     detailed rule logic.
     """
+    incoming_trace_id = request.headers.get(TRACE_HEADER_NAME)
+    trace_id = ensure_trace_id(incoming_trace_id)
+
     missing = []
 
     license_number = form.normalized_license_number
@@ -101,6 +107,7 @@ async def ohio_tddd_evaluate(form: OhioTdddFormData) -> OhioTdddEvaluateResponse
         regulatory_references=regulatory_references,
         risk_level=risk_level,
         risk_score=risk_score,
+        trace_id=trace_id,
         debug_info={
             "missing_fields": missing or None,
             "regulatory_evidence_count": len(evidence_items),

@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from src.api.models.decision import (
@@ -9,6 +9,7 @@ from src.api.models.decision import (
     RegulatoryReference,
 )
 from src.autocomply.domain.decision_risk import compute_risk_for_status
+from src.autocomply.domain.trace import generate_trace_id
 from src.api.routes.csf_hospital import evaluate_hospital_csf_endpoint
 from src.api.routes.license_ohio_tddd import ohio_tddd_evaluate
 from src.domain.order_mock_approval import (
@@ -99,7 +100,8 @@ def _default_ohio_hospital_request() -> OhioHospitalOrderApprovalRequest:
     response_model=MockOrderDecisionResponse,
 )
 async def ohio_hospital_mock_order_approval(
-    request: OhioHospitalOrderApprovalRequest,
+    order_request: OhioHospitalOrderApprovalRequest,
+    http_request: Request,
 ) -> MockOrderDecisionResponse:
     """
     Mock orchestration endpoint that shows how CSF + Ohio TDDD
@@ -108,7 +110,9 @@ async def ohio_hospital_mock_order_approval(
     """
 
     # --- Step 1: Hospital CSF evaluation ---
-    csf_decision = await evaluate_hospital_csf_endpoint(request.hospital_csf)
+    csf_decision = await evaluate_hospital_csf_endpoint(
+        order_request.hospital_csf, http_request
+    )
 
     notes: list[str] = []
     csf_status = _normalize_status(csf_decision.status)
@@ -120,8 +124,8 @@ async def ohio_hospital_mock_order_approval(
     tddd_decision = None
 
     # --- Step 2: Optional Ohio TDDD evaluation ---
-    if request.ohio_tddd is not None:
-        tddd_decision = await ohio_tddd_evaluate(request.ohio_tddd)
+    if order_request.ohio_tddd is not None:
+        tddd_decision = await ohio_tddd_evaluate(order_request.ohio_tddd, http_request)
         tddd_status = _normalize_status(tddd_decision.status)
         notes.append(
             f"Ohio TDDD decision: {tddd_status.value} – {tddd_decision.reason}"
@@ -177,13 +181,14 @@ async def ohio_hospital_mock_order_approval(
         risk_level=risk_level,
         risk_score=risk_score,
         regulatory_references=regulatory_references,
+        trace_id=generate_trace_id(),
         debug_info={"notes": notes} if notes else None,
     )
 
     return MockOrderDecisionResponse(
         decision=decision,
         csf_engine="hospital",
-        license_engine="ohio-tddd" if request.ohio_tddd is not None else None,
+        license_engine="ohio-tddd" if order_request.ohio_tddd is not None else None,
         scenario_id="ohio-hospital-schedule-ii-happy-path",
         developer_trace={"notes": notes},
         csf_status=csf_status.value,
@@ -206,14 +211,16 @@ async def ohio_hospital_mock_order_approval(
     response_model=MockOrderDecisionResponse,
     summary="Default mock decision for Ohio hospital Schedule II happy path",
 )
-async def ohio_hospital_mock_order_approval_default() -> MockOrderDecisionResponse:
+async def ohio_hospital_mock_order_approval_default(
+    http_request: Request,
+) -> MockOrderDecisionResponse:
     """
     Convenience endpoint that returns the Ohio hospital Schedule II happy-path
     mock order using the default scenario payload.
     """
 
     default_request = _default_ohio_hospital_request()
-    return await ohio_hospital_mock_order_approval(default_request)
+    return await ohio_hospital_mock_order_approval(default_request, http_request)
 
 
 @router.get(
@@ -252,7 +259,7 @@ async def ohio_hospital_expired_license_mock() -> MockOrderDecisionResponse:
                 label="Ohio TDDD license required and must be active",
             )
         ],
-        trace_id=None,
+        trace_id=generate_trace_id(),
         debug_info=None,
     )
 
@@ -301,7 +308,7 @@ async def ohio_hospital_wrong_state_mock() -> MockOrderDecisionResponse:
                 label="Ohio TDDD licensing may not apply outside Ohio",
             )
         ],
-        trace_id=None,
+        trace_id=generate_trace_id(),
         debug_info=None,
     )
 
@@ -357,6 +364,7 @@ async def mock_ohio_facility_approval(
         risk_level=risk_level,
         risk_score=risk_score,
         regulatory_references=[],
+        trace_id=generate_trace_id(),
     )
 
     return MockOrderDecisionResponse(

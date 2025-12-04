@@ -115,6 +115,8 @@ def test_ohio_hospital_schedule_ii_csf_and_ohio_tddd_flow() -> None:
     assert "reason" in csf_eval_data
     assert "missing_fields" in csf_eval_data
     assert "regulatory_references" in csf_eval_data
+    assert isinstance(csf_eval_data.get("trace_id"), str)
+    assert csf_eval_data["trace_id"]
 
     # Happy path expectations
     assert csf_eval_data["status"] == "ok_to_ship"
@@ -173,6 +175,8 @@ def test_ohio_hospital_schedule_ii_csf_and_ohio_tddd_flow() -> None:
     assert decision["status"] in {"ok_to_ship", "needs_review", "blocked"}
     assert decision["status"] == "ok_to_ship"
     assert "reason" in decision
+    assert isinstance(decision.get("trace_id"), str)
+    assert decision["trace_id"]
 
     # Risk + references from RegulatoryKnowledge
     assert decision.get("risk_level") == "low"

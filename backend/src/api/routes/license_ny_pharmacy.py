@@ -1,11 +1,12 @@
 from datetime import date
 from typing import List, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from src.api.models.decision import DecisionOutcome, DecisionStatus, RegulatoryReference
 from src.autocomply.domain.decision_risk import compute_risk_for_status
+from src.autocomply.domain.trace import TRACE_HEADER_NAME, ensure_trace_id
 from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 from src.domain.license_ny_pharmacy import (
     NyPharmacyFormCopilotResponse,
@@ -32,6 +33,7 @@ class NyPharmacyEvaluateResponse(BaseModel):
 )
 async def ny_pharmacy_evaluate(
     payload: NyPharmacyFormData,
+    request: Request,
 ) -> NyPharmacyEvaluateResponse:
     """
     Simple NY Pharmacy license evaluation.
@@ -44,6 +46,9 @@ async def ny_pharmacy_evaluate(
     If any required condition fails → needs_review.
     In a real system, additional checks would look up license registries, expirations, etc.
     """
+    incoming_trace_id = request.headers.get(TRACE_HEADER_NAME)
+    trace_id = ensure_trace_id(incoming_trace_id)
+
     knowledge = get_regulatory_knowledge()
     missing: list[str] = []
 
@@ -109,6 +114,7 @@ async def ny_pharmacy_evaluate(
         regulatory_references=regulatory_references,
         risk_level=risk_level,
         risk_score=risk_score,
+        trace_id=trace_id,
         debug_info=debug_info or None,
     )
 

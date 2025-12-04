@@ -22,6 +22,8 @@ def test_ny_pharmacy_happy_path() -> None:
     assert decision["status"] == "ok_to_ship"
     assert decision.get("risk_level") == "low"
     assert isinstance(decision.get("risk_score"), (int, float))
+    assert isinstance(decision.get("trace_id"), str)
+    assert decision["trace_id"]
     assert "reason" in decision
 
     refs = decision["regulatory_references"]
