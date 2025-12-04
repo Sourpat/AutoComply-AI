@@ -124,7 +124,7 @@ def test_csf_facility_form_copilot_basic(
         return CsfCopilotResult(
             status=CsDecisionStatus.OK_TO_SHIP,
             reason="Facility CSF is approved to proceed.",
-            missing_fields=[],
+            missing_fields=["pharmacist_contact_phone"],
             regulatory_references=["csf_facility_form"],
             rag_explanation="Facility CSF copilot stub.",
             artifacts_used=["csf_facility_form"],
@@ -141,8 +141,10 @@ def test_csf_facility_form_copilot_basic(
     assert resp.status_code == 200
 
     data = resp.json()
-    assert data["status"] == "ok_to_ship"
-    assert "reason" in data
-    assert "missing_fields" in data
-    assert "regulatory_references" in data
-    assert data["rag_sources"][0]["id"] == "csf_facility_form"
+    assert isinstance(data.get("missing_fields"), list)
+    assert isinstance(data.get("suggestions"), list)
+    assert data["suggestions"][0]["field_name"] == "pharmacist_contact_phone"
+    assert isinstance(data.get("regulatory_references"), list)
+    assert data["regulatory_references"][0]["id"] == "csf_facility_form"
+    assert data["regulatory_references"][0]["label"] == "csf_facility_form"
+    assert "message" in data

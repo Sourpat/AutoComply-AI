@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from src.api.models.compliance_models import HospitalFormCopilotResponse
+from src.api.models.copilot import CsfCopilotResponse, CsfCopilotSuggestion
 from src.api.models.decision import (
     DecisionOutcome,
     DecisionStatus,
@@ -71,8 +71,8 @@ async def evaluate_hospital_csf_endpoint(
     )
 
 
-@router.post("/form-copilot", response_model=HospitalFormCopilotResponse)
-async def hospital_form_copilot(form: HospitalCsfForm) -> HospitalFormCopilotResponse:
+@router.post("/form-copilot", response_model=CsfCopilotResponse)
+async def hospital_form_copilot(form: HospitalCsfForm) -> CsfCopilotResponse:
     """Hospital CSF Form Copilot backed by regulatory RAG."""
 
     copilot_request = {
@@ -101,12 +101,24 @@ async def hospital_form_copilot(form: HospitalCsfForm) -> HospitalFormCopilotRes
         },
     )
 
-    return HospitalFormCopilotResponse(
-        status=rag_result.status,
-        reason=rag_result.reason,
+    suggestions = [CsfCopilotSuggestion(field_name=field) for field in rag_result.missing_fields]
+    regulatory_references = [
+        RegulatoryReference(id=ref, label=ref) for ref in rag_result.regulatory_references or []
+    ]
+    rag_sources = rag_result.rag_sources or []
+
+    debug_info = {
+        "status": rag_result.status.value if hasattr(rag_result.status, "value") else rag_result.status,
+        "reason": rag_result.reason,
+        "artifacts_used": rag_result.artifacts_used,
+        "rag_sources": [source.model_dump() for source in rag_sources],
+    }
+
+    return CsfCopilotResponse(
         missing_fields=rag_result.missing_fields,
-        regulatory_references=rag_result.regulatory_references,
-        rag_explanation=rag_result.rag_explanation,
-        artifacts_used=rag_result.artifacts_used,
-        rag_sources=rag_result.rag_sources,
+        suggestions=suggestions,
+        message=rag_result.rag_explanation or rag_result.reason,
+        regulatory_references=regulatory_references,
+        debug_info=debug_info,
+        trace_id=None,
     )
