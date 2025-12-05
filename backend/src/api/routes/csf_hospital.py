@@ -8,6 +8,7 @@ from src.api.models.decision import (
     DecisionStatus,
     RegulatoryReference,
 )
+from src.autocomply.audit.decision_log import get_decision_log
 from src.autocomply.domain.csf_copilot import CsfCopilotResult, run_csf_copilot
 from src.autocomply.domain.csf_hospital import HospitalCsfForm, evaluate_hospital_csf
 from src.autocomply.domain.decision_risk import compute_risk_for_status
@@ -71,6 +72,14 @@ async def evaluate_hospital_csf_endpoint(
         regulatory_references=regulatory_references,
         trace_id=trace_id,
         debug_info={"missing_fields": decision.missing_fields} if decision.missing_fields else None,
+    )
+
+    decision_log = get_decision_log()
+    decision_log.record(
+        trace_id=decision_outcome.trace_id or trace_id,
+        engine_family="csf",
+        decision_type="csf_hospital",
+        decision=decision_outcome,
     )
 
     return HospitalCsfEvaluateResponse(

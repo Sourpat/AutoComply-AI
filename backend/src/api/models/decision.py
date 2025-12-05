@@ -50,3 +50,14 @@ class DecisionOutcome(BaseModel):
     regulatory_references: List[RegulatoryReference] = Field(default_factory=list)
     trace_id: Optional[str] = None
     debug_info: Optional[Dict[str, Any]] = None
+
+
+class DecisionAuditEntryModel(BaseModel):
+    trace_id: str
+    engine_family: str
+    decision_type: str
+    status: str
+    reason: str
+    risk_level: Optional[str] = None
+    created_at: str
+    decision: DecisionOutcome

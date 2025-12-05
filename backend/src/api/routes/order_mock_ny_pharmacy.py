@@ -7,8 +7,9 @@ from src.api.models.decision import (
     DecisionStatus,
     RegulatoryReference,
 )
+from src.autocomply.audit.decision_log import get_decision_log
 from src.autocomply.domain.decision_risk import compute_risk_for_status
-from src.autocomply.domain.trace import generate_trace_id
+from src.autocomply.domain.trace import TRACE_HEADER_NAME, generate_trace_id
 from src.api.routes.license_ny_pharmacy import ny_pharmacy_evaluate
 from src.domain.order_mock_ny_pharmacy import NyPharmacyOrderApprovalRequest
 from src.api.routes.order_mock_approval import (
@@ -69,6 +70,13 @@ async def ny_pharmacy_mock_order_approval(
 
     risk_level, risk_score = compute_risk_for_status(final_status.value)
 
+    incoming_trace_id = http_request.headers.get(TRACE_HEADER_NAME)
+    decision_trace_id = (
+        incoming_trace_id
+        or getattr(license_decision, "trace_id", None)
+        or generate_trace_id()
+    )
+
     decision = DecisionOutcome(
         status=final_status,
         reason=reason,
@@ -77,8 +85,16 @@ async def ny_pharmacy_mock_order_approval(
         regulatory_references=_normalize_references(
             getattr(license_decision, "regulatory_references", [])
         ),
-        trace_id=generate_trace_id(),
+        trace_id=decision_trace_id,
         debug_info={"notes": notes},
+    )
+
+    decision_log = get_decision_log()
+    decision_log.record(
+        trace_id=decision.trace_id,
+        engine_family="order",
+        decision_type="order_ny_pharmacy_mock",
+        decision=decision,
     )
 
     developer_trace: Optional[Dict[str, str]] = {"notes": notes}
@@ -100,7 +116,9 @@ async def ny_pharmacy_mock_order_approval(
     "/orders/mock/ny-pharmacy-expired-license",
     response_model=MockOrderDecisionResponse,
 )
-async def ny_pharmacy_expired_license_mock() -> MockOrderDecisionResponse:
+async def ny_pharmacy_expired_license_mock(
+    http_request: Request,
+) -> MockOrderDecisionResponse:
     """
     Mock order: NY pharmacy where the license is EXPIRED.
 
@@ -116,6 +134,9 @@ async def ny_pharmacy_expired_license_mock() -> MockOrderDecisionResponse:
 
     risk_level, risk_score = compute_risk_for_status(status.value)
 
+    incoming_trace_id = http_request.headers.get(TRACE_HEADER_NAME)
+    decision_trace_id = incoming_trace_id or generate_trace_id()
+
     decision = DecisionOutcome(
         status=status,
         reason=reason,
@@ -130,8 +151,16 @@ async def ny_pharmacy_expired_license_mock() -> MockOrderDecisionResponse:
                 label="NY pharmacy license required and must be active",
             )
         ],
-        trace_id=generate_trace_id(),
+        trace_id=decision_trace_id,
         debug_info=None,
+    )
+
+    decision_log = get_decision_log()
+    decision_log.record(
+        trace_id=decision.trace_id,
+        engine_family="order",
+        decision_type="order_ny_pharmacy_mock",
+        decision=decision,
     )
 
     return MockOrderDecisionResponse(
@@ -147,7 +176,9 @@ async def ny_pharmacy_expired_license_mock() -> MockOrderDecisionResponse:
     "/orders/mock/ny-pharmacy-wrong-state",
     response_model=MockOrderDecisionResponse,
 )
-async def ny_pharmacy_wrong_state_mock() -> MockOrderDecisionResponse:
+async def ny_pharmacy_wrong_state_mock(
+    http_request: Request,
+) -> MockOrderDecisionResponse:
     """
     Mock order: NY pharmacy license but ship-to state is NOT NY.
 
@@ -163,6 +194,9 @@ async def ny_pharmacy_wrong_state_mock() -> MockOrderDecisionResponse:
 
     risk_level, risk_score = compute_risk_for_status(status.value)
 
+    incoming_trace_id = http_request.headers.get(TRACE_HEADER_NAME)
+    decision_trace_id = incoming_trace_id or generate_trace_id()
+
     decision = DecisionOutcome(
         status=status,
         reason=reason,
@@ -177,8 +211,16 @@ async def ny_pharmacy_wrong_state_mock() -> MockOrderDecisionResponse:
                 label="NY pharmacy license scope may be limited to New York",
             )
         ],
-        trace_id=generate_trace_id(),
+        trace_id=decision_trace_id,
         debug_info=None,
+    )
+
+    decision_log = get_decision_log()
+    decision_log.record(
+        trace_id=decision.trace_id,
+        engine_family="order",
+        decision_type="order_ny_pharmacy_mock",
+        decision=decision,
     )
 
     return MockOrderDecisionResponse(

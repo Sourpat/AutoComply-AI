@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from src.api.models.decision import DecisionOutcome, DecisionStatus, RegulatoryReference
+from src.autocomply.audit.decision_log import get_decision_log
 from src.autocomply.domain.decision_risk import compute_risk_for_status
 from src.autocomply.domain.trace import TRACE_HEADER_NAME, ensure_trace_id
 from src.autocomply.regulations.knowledge import get_regulatory_knowledge
@@ -118,6 +119,14 @@ async def ny_pharmacy_evaluate(
         risk_score=risk_score,
         trace_id=trace_id,
         debug_info=debug_info or None,
+    )
+
+    decision_log = get_decision_log()
+    decision_log.record(
+        trace_id=decision_outcome.trace_id or trace_id,
+        engine_family="license",
+        decision_type="license_ny_pharmacy",
+        decision=decision_outcome,
     )
 
     return NyPharmacyEvaluateResponse(
