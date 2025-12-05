@@ -19,6 +19,7 @@ import { RagDebugProvider, useRagDebug } from "../devsupport/RagDebugContext";
 import { MockOrderCards } from "../components/MockOrderCards";
 import { RegulatoryPreviewPanel } from "../features/rag/RegulatoryPreviewPanel";
 import { OhioHospitalJourneyPanel } from "../features/journeys/OhioHospitalJourneyPanel";
+import { NyPharmacyJourneyPanel } from "../features/journeys/NyPharmacyJourneyPanel";
 
 type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
   id: string;
@@ -484,8 +485,18 @@ function ComplianceConsolePageInner() {
         <OhioHospitalOrderJourneyCard />
       </section>
 
-      <section className="console-section console-section-order rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
-        <OhioHospitalJourneyPanel />
+      <section className="console-section console-section-order space-y-4 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
+        <div className="space-y-1">
+          <h2 className="text-sm font-semibold text-slate-900">Journey explorers</h2>
+          <p className="text-[11px] leading-relaxed text-slate-600">
+            Pair license and order decisions with a shared trace ID for Ohio hospitals and NY pharmacies.
+          </p>
+        </div>
+
+        <div className="grid gap-3 xl:grid-cols-2">
+          <OhioHospitalJourneyPanel />
+          <NyPharmacyJourneyPanel />
+        </div>
       </section>
 
       <section className="console-section console-section-order space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
