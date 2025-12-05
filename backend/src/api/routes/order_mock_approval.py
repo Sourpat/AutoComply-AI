@@ -8,8 +8,9 @@ from src.api.models.decision import (
     DecisionStatus,
     RegulatoryReference,
 )
+from src.autocomply.audit.decision_log import get_decision_log
 from src.autocomply.domain.decision_risk import compute_risk_for_status
-from src.autocomply.domain.trace import generate_trace_id
+from src.autocomply.domain.trace import TRACE_HEADER_NAME, generate_trace_id
 from src.api.routes.csf_hospital import evaluate_hospital_csf_endpoint
 from src.api.routes.license_ohio_tddd import ohio_tddd_evaluate
 from src.domain.order_mock_approval import (
@@ -170,6 +171,14 @@ async def ohio_hospital_mock_order_approval(
 
     risk_level, risk_score = compute_risk_for_status(final_status.value)
 
+    incoming_trace_id = http_request.headers.get(TRACE_HEADER_NAME)
+    decision_trace_id = (
+        incoming_trace_id
+        or getattr(csf_decision, "trace_id", None)
+        or getattr(tddd_decision, "trace_id", None)
+        or generate_trace_id()
+    )
+
     decision = DecisionOutcome(
         status=final_status,
         reason=_final_reason(
@@ -181,8 +190,16 @@ async def ohio_hospital_mock_order_approval(
         risk_level=risk_level,
         risk_score=risk_score,
         regulatory_references=regulatory_references,
-        trace_id=generate_trace_id(),
+        trace_id=decision_trace_id,
         debug_info={"notes": notes} if notes else None,
+    )
+
+    decision_log = get_decision_log()
+    decision_log.record(
+        trace_id=decision.trace_id,
+        engine_family="order",
+        decision_type="order_ohio_hospital_mock",
+        decision=decision,
     )
 
     return MockOrderDecisionResponse(
@@ -228,7 +245,9 @@ async def ohio_hospital_mock_order_approval_default(
     response_model=MockOrderDecisionResponse,
     summary="Mock order decision for an expired Ohio TDDD license",
 )
-async def ohio_hospital_expired_license_mock() -> MockOrderDecisionResponse:
+async def ohio_hospital_expired_license_mock(
+    http_request: Request,
+) -> MockOrderDecisionResponse:
     """
     Mock order: Ohio hospital Schedule II with EXPIRED Ohio TDDD license.
 
@@ -245,6 +264,9 @@ async def ohio_hospital_expired_license_mock() -> MockOrderDecisionResponse:
 
     risk_level, risk_score = compute_risk_for_status(status.value)
 
+    incoming_trace_id = http_request.headers.get(TRACE_HEADER_NAME)
+    decision_trace_id = incoming_trace_id or generate_trace_id()
+
     decision = DecisionOutcome(
         status=status,
         reason=reason,
@@ -259,8 +281,16 @@ async def ohio_hospital_expired_license_mock() -> MockOrderDecisionResponse:
                 label="Ohio TDDD license required and must be active",
             )
         ],
-        trace_id=generate_trace_id(),
+        trace_id=decision_trace_id,
         debug_info=None,
+    )
+
+    decision_log = get_decision_log()
+    decision_log.record(
+        trace_id=decision.trace_id,
+        engine_family="order",
+        decision_type="order_ohio_hospital_mock",
+        decision=decision,
     )
 
     return MockOrderDecisionResponse(
@@ -277,7 +307,9 @@ async def ohio_hospital_expired_license_mock() -> MockOrderDecisionResponse:
     response_model=MockOrderDecisionResponse,
     summary="Mock order decision when ship-to state is outside Ohio",
 )
-async def ohio_hospital_wrong_state_mock() -> MockOrderDecisionResponse:
+async def ohio_hospital_wrong_state_mock(
+    http_request: Request,
+) -> MockOrderDecisionResponse:
     """
     Mock order: Ohio hospital Schedule II where the ship-to state is NOT Ohio.
 
@@ -294,6 +326,9 @@ async def ohio_hospital_wrong_state_mock() -> MockOrderDecisionResponse:
 
     risk_level, risk_score = compute_risk_for_status(status.value)
 
+    incoming_trace_id = http_request.headers.get(TRACE_HEADER_NAME)
+    decision_trace_id = incoming_trace_id or generate_trace_id()
+
     decision = DecisionOutcome(
         status=status,
         reason=reason,
@@ -308,8 +343,16 @@ async def ohio_hospital_wrong_state_mock() -> MockOrderDecisionResponse:
                 label="Ohio TDDD licensing may not apply outside Ohio",
             )
         ],
-        trace_id=generate_trace_id(),
+        trace_id=decision_trace_id,
         debug_info=None,
+    )
+
+    decision_log = get_decision_log()
+    decision_log.record(
+        trace_id=decision.trace_id,
+        engine_family="order",
+        decision_type="order_ohio_hospital_mock",
+        decision=decision,
     )
 
     return MockOrderDecisionResponse(

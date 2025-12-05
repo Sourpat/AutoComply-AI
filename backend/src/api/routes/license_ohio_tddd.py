@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from src.api.models.decision import DecisionOutcome, DecisionStatus
+from src.autocomply.audit.decision_log import get_decision_log
 from src.autocomply.domain.decision_risk import compute_risk_for_status
 from src.autocomply.domain.trace import TRACE_HEADER_NAME, ensure_trace_id
 from src.autocomply.regulations.knowledge import get_regulatory_knowledge
@@ -114,6 +115,14 @@ async def ohio_tddd_evaluate(
             "decision_type": "license_ohio_tddd",
             "regulatory_evidence_count": len(evidence_items),
         },
+    )
+
+    decision_log = get_decision_log()
+    decision_log.record(
+        trace_id=decision_outcome.trace_id or trace_id,
+        engine_family="license",
+        decision_type="license_ohio_tddd",
+        decision=decision_outcome,
     )
 
     return OhioTdddEvaluateResponse(

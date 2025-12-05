@@ -25,6 +25,7 @@ from src.api.routes.ohio_tddd import router as ohio_tddd_router
 from src.api.routes.ohio_tddd_explain import router as ohio_tddd_explain_router
 from src.api.routes.license_ohio_tddd import router as license_ohio_tddd_router
 from src.api.routes.pdma_sample import router as pdma_sample_router
+from src.api.routes import decision_audit
 from src.api.routes.rag_regulatory import router as rag_regulatory_router
 from src.api.routes import license_validation as license_validation_module
 from src.api.routes.order_mock_approval import router as order_mock_router
@@ -80,6 +81,7 @@ app.include_router(verification.router)
 app.include_router(controlled_substances_item_history.router)
 app.include_router(order_mock_router)
 app.include_router(order_mock_ny_pharmacy_router)
+app.include_router(decision_audit.router)
 
 # Compatibility endpoint for older/tests path:
 # Tests expect: POST /api/v1/license/validate-pdf (singular "license")
