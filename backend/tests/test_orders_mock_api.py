@@ -68,10 +68,11 @@ def make_ny_pharmacy_payload() -> dict:
 
 
 @pytest.mark.parametrize(
-    "path,payload",
+    "path,method,payload",
     [
         (
             "/orders/mock/ohio-hospital-approval",
+            "post",
             lambda: {
                 "hospital_csf": make_ohio_hospital_csf_payload(),
                 "ohio_tddd": make_ohio_tddd_payload_valid(),
@@ -79,16 +80,18 @@ def make_ny_pharmacy_payload() -> dict:
         ),
         (
             "/orders/mock/ohio-facility-approval",
+            "post",
             make_ohio_facility_payload,
         ),
         (
             "/orders/mock/ny-pharmacy-approval",
-            make_ny_pharmacy_payload,
+            "get",
+            None,
         ),
     ],
 )
 def test_mock_order_endpoints_return_ok_and_decision_shape(
-    path: str, payload,
+    path: str, method: str, payload,
 ) -> None:
     """
     Ensure all mock order endpoints:
@@ -100,7 +103,10 @@ def test_mock_order_endpoints_return_ok_and_decision_shape(
     """
 
     body = payload() if callable(payload) else payload
-    resp = client.post(path, json=body)
+    if method == "get":
+        resp = client.get(path)
+    else:
+        resp = client.post(path, json=body)
     assert resp.status_code == 200
 
     data = resp.json()

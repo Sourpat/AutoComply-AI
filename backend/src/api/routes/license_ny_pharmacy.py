@@ -7,6 +7,10 @@ from pydantic import BaseModel, Field
 from src.api.models.decision import DecisionOutcome, DecisionStatus, RegulatoryReference
 from src.autocomply.audit.decision_log import get_decision_log
 from src.autocomply.domain.decision_risk import compute_risk_for_status
+from src.autocomply.domain.ny_pharmacy_decision import (
+    build_ny_pharmacy_decision,
+    is_license_expired,
+)
 from src.autocomply.domain.trace import TRACE_HEADER_NAME, ensure_trace_id
 from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 from src.domain.license_ny_pharmacy import (
@@ -62,30 +66,30 @@ async def ny_pharmacy_evaluate(
         missing.append("attestation_accepted")
 
     ship_to_state = payload.ship_to_state
-    parsed_expiration: Optional[date] = None
-    if payload.expiration_date:
-        parsed_expiration = payload.expiration_date
+    parsed_expiration: Optional[date] = payload.expiration_date
 
-    is_in_ny = ship_to_state == "NY"
-    is_expired = bool(parsed_expiration and parsed_expiration < date.today())
+    is_in_ny = (ship_to_state or "").upper() == "NY"
+    is_expired = is_license_expired(parsed_expiration)
 
-    if not is_in_ny:
+    base_reason = "NY pharmacy license check completed."
+    decision_outcome = build_ny_pharmacy_decision(
+        is_expired=is_expired,
+        is_ny_ship_to=is_in_ny,
+        base_reason=base_reason,
+        trace_id=trace_id,
+    )
+
+    if missing:
         status = DecisionStatus.NEEDS_REVIEW
-        reason = (
-            "Ship-to state is not New York; NY pharmacy license may not be sufficient. "
-            "Confirm appropriate licensing for the destination state."
-        )
-    elif is_expired:
-        status = DecisionStatus.BLOCKED
-        reason = "NY pharmacy license is expired and cannot be used for controlled substances."
-    elif missing:
-        status = DecisionStatus.NEEDS_REVIEW
-        reason = "NY Pharmacy license details are incomplete or inconsistent."
-    else:
-        status = DecisionStatus.OK_TO_SHIP
-        reason = "NY pharmacy license is active and matches the ship-to location."
+        risk_level, risk_score = compute_risk_for_status(status.value)
+        decision_outcome.status = status
+        decision_outcome.reason = "NY Pharmacy license details are incomplete or inconsistent."
+        decision_outcome.risk_level = risk_level
+        decision_outcome.risk_score = risk_score
 
-    risk_level, risk_score = compute_risk_for_status(status.value)
+    status = decision_outcome.status
+    reason = decision_outcome.reason
+    risk_level, risk_score = decision_outcome.risk_level, decision_outcome.risk_score
     knowledge = get_regulatory_knowledge()
 
     evidence_items = knowledge.get_regulatory_evidence(
