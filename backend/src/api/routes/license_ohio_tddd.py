@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from src.api.models.decision import DecisionOutcome, DecisionStatus
 from src.autocomply.audit.decision_log import get_decision_log
 from src.autocomply.domain.decision_risk import compute_risk_for_status
+from src.autocomply.domain.ohio_tddd_decision import build_ohio_tddd_decision
 from src.autocomply.domain.trace import TRACE_HEADER_NAME, ensure_trace_id
 from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 from src.domain.license_ohio_tddd import (
@@ -63,7 +64,7 @@ async def ohio_tddd_evaluate(
         missing.append("expiration_date")
 
     today = date.today()
-    is_in_state = form.ship_to_state == "OH"
+    is_in_state = form.ship_to_state.strip().upper() == "OH"
 
     if not is_in_state:
         status = DecisionStatus.NEEDS_REVIEW
@@ -102,20 +103,35 @@ async def ohio_tddd_evaluate(
 
     regulatory_references = [item.reference for item in evidence_items]
 
-    decision_outcome = DecisionOutcome(
-        status=status,
-        reason=reason,
-        regulatory_references=regulatory_references,
-        risk_level=risk_level,
-        risk_score=risk_score,
-        trace_id=trace_id,
-        debug_info={
-            "missing_fields": missing or None,
-            "engine_family": "license",
-            "decision_type": "license_ohio_tddd",
-            "regulatory_evidence_count": len(evidence_items),
-        },
-    )
+    if not missing and form.attestation_accepted:
+        decision_outcome = build_ohio_tddd_decision(
+            is_expired=bool(parsed_expiration and parsed_expiration < today),
+            is_ohio_ship_to=is_in_state,
+            base_reason="Ohio TDDD check completed.",
+            regulatory_references=regulatory_references,
+            trace_id=trace_id,
+            debug_info={
+                "missing_fields": None,
+                "engine_family": "license",
+                "decision_type": "license_ohio_tddd",
+                "regulatory_evidence_count": len(evidence_items),
+            },
+        )
+    else:
+        decision_outcome = DecisionOutcome(
+            status=status,
+            reason=reason,
+            regulatory_references=regulatory_references,
+            risk_level=risk_level,
+            risk_score=risk_score,
+            trace_id=trace_id,
+            debug_info={
+                "missing_fields": missing or None,
+                "engine_family": "license",
+                "decision_type": "license_ohio_tddd",
+                "regulatory_evidence_count": len(evidence_items),
+            },
+        )
 
     decision_log = get_decision_log()
     decision_log.record(

@@ -26,7 +26,7 @@ def test_ohio_tddd_evaluate_ok_to_ship(ohio_tddd_happy_payload: dict) -> None:
 
     data = resp.json()
     assert data["status"] == "ok_to_ship"
-    assert data["reason"] == "License active and matches Ohio TDDD requirements."
+    assert data["reason"].startswith("Ohio TDDD check completed.")
     assert data["missing_fields"] == []
 
     decision = data["decision"]

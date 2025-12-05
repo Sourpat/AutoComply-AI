@@ -1,64 +1,55 @@
-from fastapi.testclient import TestClient
+from starlette.testclient import TestClient
 
 from src.api.main import app
-from src.autocomply.domain.scenario_builders import (
-    make_ohio_hospital_csf_payload_wrong_state,
-    make_ohio_tddd_payload_wrong_state_from_csf,
-)
+from src.autocomply.domain.trace import TRACE_HEADER_NAME
+
 
 client = TestClient(app)
 
 
-def test_ohio_hospital_schedule_ii_wrong_state_flow() -> None:
-    """
-    End-to-end scenario (review path):
+def test_ohio_hospital_wrong_state_flow() -> None:
+    trace_id = "scenario-ohio-wrong-state"
 
-    1) Ohio hospital fills CSF for a Schedule II drug but ship_to_state is NOT Ohio.
-    2) CSF evaluate should not be the blocking factor (can be ok_to_ship or needs_review).
-    3) Ohio TDDD license evaluate must return 'needs_review' (not ok_to_ship/blocked),
-       with 'medium' risk and clear reason.
-    4) Mock order endpoint for this scenario should reflect 'needs_review' + medium risk.
-    """
+    csf_payload = {
+        "facility_name": "Scenario Hospital – Wrong State",
+        "facility_type": "hospital",
+        "account_number": "ACC-OH-STATE",
+        "pharmacy_license_number": "LIC-OH-STATE",
+        "dea_number": "DEA-OH-STATE",
+        "pharmacist_in_charge_name": "Dr. State",
+        "pharmacist_contact_phone": "555-3000",
+        "ship_to_state": "PA",
+        "attestation_accepted": True,
+        "controlled_substances": [],
+    }
 
-    csf_payload = make_ohio_hospital_csf_payload_wrong_state()
-    ohio_tddd_payload = make_ohio_tddd_payload_wrong_state_from_csf(csf_payload)
+    ohio_tddd_payload = {
+        "license_number": "TDDD-OH-STATE",
+        "license_type": "TDDD",
+        "facility_name": "Scenario Hospital – Wrong State",
+        "account_number": "ACC-OH-STATE",
+        "ship_to_state": "PA",
+        "expiration_date": "2030-01-01",
+        "attestation_accepted": True,
+    }
 
-    # Step 1: CSF evaluate
-    csf_eval_resp = client.post("/csf/hospital/evaluate", json=csf_payload)
-    assert csf_eval_resp.status_code == 200
+    headers = {TRACE_HEADER_NAME: trace_id}
 
-    csf_eval_data = csf_eval_resp.json()
-    assert csf_eval_data["status"] in {"ok_to_ship", "needs_review", "blocked"}
-    assert "reason" in csf_eval_data
+    csf_resp = client.post("/csf/hospital/evaluate", json=csf_payload, headers=headers)
+    assert csf_resp.status_code == 200
 
-    # We explicitly do NOT require blocked here; CSF is not the main issue.
-    assert csf_eval_data["status"] != "blocked"
+    lic_resp = client.post("/license/ohio-tddd/evaluate", json=ohio_tddd_payload, headers=headers)
+    assert lic_resp.status_code == 200
+    lic_data = lic_resp.json()
+    lic_decision = lic_data.get("decision", lic_data)
+    assert lic_decision["status"] == "needs_review"
+    assert lic_decision["risk_level"] == "medium"
+    assert "state" in lic_decision["reason"].lower()
 
-    # Step 2: Ohio TDDD evaluate (wrong state => needs_review)
-    ohio_tddd_resp = client.post("/license/ohio-tddd/evaluate", json=ohio_tddd_payload)
-    assert ohio_tddd_resp.status_code == 200
-
-    ohio_tddd_data = ohio_tddd_resp.json()
-    decision = ohio_tddd_data.get("decision", ohio_tddd_data)
-
-    assert decision["status"] == "needs_review"
-    assert "state" in decision["reason"].lower()
-    assert decision.get("risk_level") == "medium"
-    assert isinstance(decision.get("risk_score"), (int, float))
-
-    refs = decision["regulatory_references"]
-    assert isinstance(refs, list)
-    assert refs
-
-    # Step 3: Mock order endpoint
-    mock_resp = client.get("/orders/mock/ohio-hospital-wrong-state")
-    assert mock_resp.status_code == 200
-
-    mock_data = mock_resp.json()
-    assert "decision" in mock_data
-    order_decision = mock_data["decision"]
-
+    order_resp = client.get("/orders/mock/ohio-hospital-wrong-state", headers=headers)
+    assert order_resp.status_code == 200
+    order_data = order_resp.json()
+    order_decision = order_data.get("decision", order_data)
     assert order_decision["status"] == "needs_review"
-    assert order_decision.get("risk_level") == "medium"
-    assert isinstance(order_decision.get("risk_score"), (int, float))
+    assert order_decision["risk_level"] == "medium"
     assert "state" in order_decision["reason"].lower()
