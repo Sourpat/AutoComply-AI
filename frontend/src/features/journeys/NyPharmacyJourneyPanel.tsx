@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { DecisionStatusBadge } from "../../components/DecisionStatusBadge";
 import { RiskPill } from "../../components/RiskPill";
 import { useRagDebug } from "../../devsupport/RagDebugContext";
+import { useTraceSelection } from "../../state/traceSelectionContext";
 import type { DecisionOutcome } from "../../types/decision";
 
 type NyScenarioKey = "happy" | "expiredLicense" | "wrongState";
@@ -68,6 +69,7 @@ interface JourneyStepResult {
 
 export const NyPharmacyJourneyPanel: React.FC = () => {
   const { enabled: aiDebugEnabled } = useRagDebug();
+  const { setSelectedTraceId } = useTraceSelection();
   const [scenario, setScenario] = useState<NyScenarioKey>("happy");
   const [traceId, setTraceId] = useState<string | null>(null);
 
@@ -86,6 +88,7 @@ export const NyPharmacyJourneyPanel: React.FC = () => {
       ? (crypto as any).randomUUID()
       : `ui-trace-ny-${Date.now()}`;
     setTraceId(id);
+    setSelectedTraceId(id);
 
     const headers: HeadersInit = {
       "Content-Type": "application/json",

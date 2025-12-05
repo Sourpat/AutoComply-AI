@@ -21,6 +21,7 @@ import { RegulatoryPreviewPanel } from "../features/rag/RegulatoryPreviewPanel";
 import { OhioHospitalJourneyPanel } from "../features/journeys/OhioHospitalJourneyPanel";
 import { NyPharmacyJourneyPanel } from "../features/journeys/NyPharmacyJourneyPanel";
 import { DecisionAuditTimelinePanel } from "../features/audit/DecisionAuditTimelinePanel";
+import { TraceSelectionProvider } from "../state/traceSelectionContext";
 
 type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
   id: string;
@@ -570,7 +571,9 @@ function ComplianceConsolePageInner() {
 export function ComplianceConsolePage() {
   return (
     <RagDebugProvider>
-      <ComplianceConsolePageInner />
+      <TraceSelectionProvider>
+        <ComplianceConsolePageInner />
+      </TraceSelectionProvider>
     </RagDebugProvider>
   );
 }
