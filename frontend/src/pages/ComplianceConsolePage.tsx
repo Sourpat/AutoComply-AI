@@ -18,6 +18,7 @@ import { FutureWorkCard } from "../components/FutureWorkCard";
 import { RagDebugProvider, useRagDebug } from "../devsupport/RagDebugContext";
 import { MockOrderCards } from "../components/MockOrderCards";
 import { RegulatoryPreviewPanel } from "../features/rag/RegulatoryPreviewPanel";
+import { OhioHospitalJourneyPanel } from "../features/journeys/OhioHospitalJourneyPanel";
 
 type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
   id: string;
@@ -481,6 +482,10 @@ function ComplianceConsolePageInner() {
         <MockOrderSeverityLegend />
 
         <OhioHospitalOrderJourneyCard />
+      </section>
+
+      <section className="console-section console-section-order rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
+        <OhioHospitalJourneyPanel />
       </section>
 
       <section className="console-section console-section-order space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
