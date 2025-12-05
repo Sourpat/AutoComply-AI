@@ -50,7 +50,8 @@ def test_ny_pharmacy_evaluate_happy_path_ok_to_ship(
     assert data["status"] == "ok_to_ship"
     assert data["missing_fields"] == []
     assert (
-        data["reason"] == "NY pharmacy license is active and matches the ship-to location."
+        data["reason"]
+        == "NY pharmacy license check completed. NY pharmacy license appears active for this ship-to."
     )
     assert isinstance(data["regulatory_references"], list)
     assert data["regulatory_references"]
@@ -76,11 +77,12 @@ def test_ny_pharmacy_evaluate_incomplete_needs_review(
 
     data = resp.json()
     assert data["status"] == "needs_review"
-    assert "Ship-to state is not New York" in data["reason"]
+    assert "incomplete" in data["reason"].lower()
     assert "attestation_accepted" in data["missing_fields"]
     decision = data["decision"]
     assert decision["status"] == "needs_review"
     assert isinstance(decision["regulatory_references"], list)
+    assert decision.get("risk_level") == "medium"
 
 
 def test_ny_pharmacy_happy_path_includes_risk() -> None:

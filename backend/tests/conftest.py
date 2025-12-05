@@ -9,3 +9,10 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
+
+from fastapi.testclient import TestClient
+
+from src.api.main import app
+
+
+client = TestClient(app)

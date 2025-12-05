@@ -307,19 +307,7 @@ def test_ny_pharmacy_mock_order_ok_to_ship_happy_path() -> None:
     the mock order endpoint stays out of the way and returns ok_to_ship.
     """
 
-    payload = {
-        "ny_pharmacy": {
-            "pharmacy_name": "Hudson Valley Pharmacy",
-            "account_number": "900111222",
-            "ship_to_state": "NY",
-            "dea_number": "FG7654321",
-            "ny_state_license_number": "NYPHARM-009876",
-            "attestation_accepted": True,
-            "internal_notes": "NY Pharmacy mock order – all checks green.",
-        }
-    }
-
-    resp = client.post("/orders/mock/ny-pharmacy-approval", json=payload)
+    resp = client.get("/orders/mock/ny-pharmacy-approval")
     assert resp.status_code == 200
 
     body = resp.json()
