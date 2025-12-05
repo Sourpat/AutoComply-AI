@@ -4,6 +4,7 @@ import type { DecisionOutcome } from "../../types/decision";
 import { DecisionStatusBadge } from "../../components/DecisionStatusBadge";
 import { RiskPill } from "../../components/RiskPill";
 import { useRagDebug } from "../../devsupport/RagDebugContext";
+import { useTraceSelection } from "../../state/traceSelectionContext";
 
 type TimelineEntry = DecisionAuditEntry;
 
@@ -33,11 +34,18 @@ function formatTimestamp(ts: string): string {
 
 export const DecisionAuditTimelinePanel: React.FC = () => {
   const { enabled: aiDebugEnabled } = useRagDebug();
+  const { selectedTraceId } = useTraceSelection();
   const [traceIdInput, setTraceIdInput] = useState("");
   const [entries, setEntries] = useState<TimelineEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showRaw, setShowRaw] = useState(false);
+
+  React.useEffect(() => {
+    if (selectedTraceId) {
+      setTraceIdInput(selectedTraceId);
+    }
+  }, [selectedTraceId]);
 
   const handleLoad = async () => {
     if (!traceIdInput.trim()) return;
@@ -132,22 +140,46 @@ export const DecisionAuditTimelinePanel: React.FC = () => {
             Inspect all CSF, license, and order decisions for a given trace ID, in chronological order.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={traceIdInput}
-            onChange={(e) => setTraceIdInput(e.target.value)}
-            placeholder="Paste a trace_id (e.g. from Journey Explorer)"
-            className="w-64 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200"
-          />
-          <button
-            type="button"
-            onClick={handleLoad}
-            disabled={loading || !traceIdInput.trim()}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
-          >
-            {loading ? "Loading…" : "Load"}
-          </button>
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={traceIdInput}
+              onChange={(e) => setTraceIdInput(e.target.value)}
+              placeholder="Paste a trace_id (or use a journey)"
+              className="bg-zinc-900 border border-zinc-700 text-xs rounded-md px-2 py-1 text-zinc-200 w-64"
+            />
+            <button
+              type="button"
+              onClick={handleLoad}
+              disabled={loading || !traceIdInput.trim()}
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-blue-500"
+            >
+              {loading ? "Loading…" : "Load"}
+            </button>
+          </div>
+
+          {selectedTraceId && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-zinc-500">
+                Latest journey trace:&nbsp;
+                <span className="font-mono text-zinc-300">
+                  {selectedTraceId}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setTraceIdInput(selectedTraceId);
+                  handleLoad();
+                }}
+                disabled={loading}
+                className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-200 hover:border-blue-500 hover:text-blue-200"
+              >
+                Load journey decisions
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
