@@ -20,6 +20,7 @@ import { MockOrderCards } from "../components/MockOrderCards";
 import { RegulatoryPreviewPanel } from "../features/rag/RegulatoryPreviewPanel";
 import { OhioHospitalJourneyPanel } from "../features/journeys/OhioHospitalJourneyPanel";
 import { NyPharmacyJourneyPanel } from "../features/journeys/NyPharmacyJourneyPanel";
+import { DecisionAuditTimelinePanel } from "../features/audit/DecisionAuditTimelinePanel";
 
 type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
   id: string;
@@ -493,9 +494,10 @@ function ComplianceConsolePageInner() {
           </p>
         </div>
 
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className="grid gap-3 xl:grid-cols-3">
           <OhioHospitalJourneyPanel />
           <NyPharmacyJourneyPanel />
+          <DecisionAuditTimelinePanel />
         </div>
       </section>
 
