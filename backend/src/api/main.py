@@ -17,6 +17,7 @@ from src.api.routes.csf_hospital import router as csf_hospital_router
 from src.api.routes.csf_practitioner import router as csf_practitioner_router
 from src.api.routes.csf_researcher import router as csf_researcher_router
 from src.api.routes import decision_history
+from src.api.routes import decision_recent
 from src.api.routes import verification
 from src.api.routes import controlled_substances_item_history
 from src.api.routes.license_validation import router as license_router
@@ -82,6 +83,7 @@ app.include_router(rag_regulatory_router)
 app.include_router(regulatory_search.router)
 app.include_router(pdma_sample_router)
 app.include_router(decision_history.router)
+app.include_router(decision_recent.router)
 app.include_router(verification.router)
 app.include_router(controlled_substances_item_history.router)
 app.include_router(order_mock_router)
