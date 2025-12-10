@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 
 import { CopyCurlButton } from "../../components/CopyCurlButton";
 import { useTraceSelection } from "../../state/traceSelectionContext";
+import { API_BASE } from "../../api/csfHospitalClient";
 import { buildCurlCommand } from "../../utils/curl";
 
 interface CaseDecision {
@@ -29,15 +30,14 @@ interface CaseSummaryResponse {
 export const ComplianceCaseSummaryPanel: React.FC = () => {
   const { selectedTraceId } = useTraceSelection();
 
-  const [summary, setSummary] = React.useState<CaseSummaryResponse | null>(null);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [curlCommand, setCurlCommand] = React.useState<string | null>(null);
+  const [summary, setSummary] = useState<CaseSummaryResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isJsonOpen, setIsJsonOpen] = useState(false);
 
   const handleLoad = async () => {
     if (!selectedTraceId) {
       setError("Run a journey first to generate a trace.");
-      setCurlCommand(null);
       return;
     }
 
@@ -50,32 +50,31 @@ export const ComplianceCaseSummaryPanel: React.FC = () => {
 
       if (resp.status === 404) {
         setError("No case summary found for this trace yet.");
-        setCurlCommand(null);
         return;
       }
 
       if (!resp.ok) {
         setError(`Request failed (${resp.status}).`);
-        setCurlCommand(null);
         return;
       }
 
       const json = (await resp.json()) as CaseSummaryResponse;
       setSummary(json);
-
-      const url = `/cases/summary/${encodeURIComponent(selectedTraceId)}`;
-      const cmd = buildCurlCommand({
-        method: "GET",
-        url,
-      });
-      setCurlCommand(cmd);
     } catch {
       setError("Network error while loading case summary.");
-      setCurlCommand(null);
     } finally {
       setLoading(false);
     }
   };
+
+  const summaryJson = useMemo(() => {
+    if (!summary) return "";
+    try {
+      return JSON.stringify(summary, null, 2);
+    } catch {
+      return "";
+    }
+  }, [summary]);
 
   const overallBadgeClass: Record<string, string> = {
     ok_to_ship: "bg-emerald-900/40 text-emerald-200 border-emerald-700/70",
@@ -97,7 +96,8 @@ export const ComplianceCaseSummaryPanel: React.FC = () => {
             <span className="text-[10px] font-medium text-zinc-200">Per-trace case summary</span>
           </div>
           <p className="mt-1 text-xs text-zinc-400">
-            Roll-up of CSF, license, and order decisions for the selected trace.
+            Roll-up of CSF, license, and order decisions for the selected trace, plus
+            a canonical JSON contract that downstream systems can consume.
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">
@@ -111,10 +111,22 @@ export const ComplianceCaseSummaryPanel: React.FC = () => {
               {loading ? "Loading…" : "Load summary"}
             </button>
 
-            {curlCommand && (
+            <button
+              type="button"
+              className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-100 hover:bg-zinc-800"
+              onClick={() => setIsJsonOpen((open) => !open)}
+            >
+              {isJsonOpen ? "Hide JSON contract" : "View JSON contract"}
+            </button>
+
+            {summary?.trace_id && (
               <CopyCurlButton
-                command={curlCommand}
-                label="Copy as cURL"
+                label="Copy cURL"
+                size="sm"
+                curl={buildCurlCommand({
+                  method: "GET",
+                  url: `${API_BASE}/cases/summary/${summary.trace_id}`,
+                })}
               />
             )}
           </div>
@@ -182,6 +194,22 @@ export const ComplianceCaseSummaryPanel: React.FC = () => {
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {isJsonOpen && summaryJson && (
+            <div className="mt-3 rounded-md border border-zinc-800 bg-black/60">
+              <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2">
+                <span className="text-[11px] font-medium text-zinc-300">
+                  Case summary JSON contract
+                </span>
+                {summary?.trace_id && (
+                  <span className="text-[10px] text-zinc-500">trace_id: {summary.trace_id}</span>
+                )}
+              </div>
+              <pre className="max-h-64 overflow-auto px-3 py-2 text-[11px] leading-snug text-zinc-200">
+                {summaryJson}
+              </pre>
             </div>
           )}
         </div>
