@@ -34,6 +34,7 @@ from src.api.routes.order_mock_ny_pharmacy import (
     router as order_mock_ny_pharmacy_router,
 )
 from src.api.routes.health import router as health_router
+from src.api.routes import case_summary
 from src.api.routes import decision_insights
 
 app = FastAPI(
@@ -86,6 +87,7 @@ app.include_router(order_mock_router)
 app.include_router(order_mock_ny_pharmacy_router)
 app.include_router(decision_audit.router)
 app.include_router(decision_insights.router)
+app.include_router(case_summary.router)
 
 # Compatibility endpoint for older/tests path:
 # Tests expect: POST /api/v1/license/validate-pdf (singular "license")
