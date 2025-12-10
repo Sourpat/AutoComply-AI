@@ -36,19 +36,6 @@ import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import { useRagDebug } from "../devsupport/RagDebugContext";
 import type { DecisionOutcome } from "../types/decision";
 
-function buildHospitalCsfEvaluateCurl(form: any): string {
-  const payload = form ?? {};
-  const json = JSON.stringify(payload);
-
-  return [
-    "curl",
-    "-X POST",
-    `"${API_BASE}/csf/hospital/evaluate"`,
-    '-H "Content-Type: application/json"',
-    `-d '${json}'`,
-  ].join(" ");
-}
-
 type HospitalExample = {
   id: string;
   label: string;
@@ -195,6 +182,12 @@ export function HospitalCsfSandbox() {
         debug_info: copilotDecisionOutcome.debug_info ?? copilotDebugInfo,
       }
     : null;
+
+  const hospitalEvaluateCurl = () =>
+    buildCurlCommand("/csf/hospital/evaluate", {
+      ...form,
+      controlledSubstances,
+    });
 
   function applyHospitalExample(example: HospitalExample) {
     const nextForm = {
@@ -622,20 +615,11 @@ export function HospitalCsfSandbox() {
               >
                 {isLoading ? "Evaluating…" : "Evaluate Hospital CSF"}
               </button>
-            </div>
 
-            <div className="mt-2 flex flex-wrap items-center gap-2">
               <CopyCurlButton
-                getCommand={() => buildHospitalCsfEvaluateCurl(form)}
-                label="Copy Hospital CSF cURL"
+                getCommand={hospitalEvaluateCurl}
+                label="Copy eval as cURL"
               />
-              <p className="text-[10px] text-slate-500">
-                Copies a ready-to-run POST{" "}
-                <span className="font-mono text-slate-200">
-                  /csf/hospital/evaluate
-                </span>{" "}
-                using the current form payload.
-              </p>
             </div>
           </form>
 

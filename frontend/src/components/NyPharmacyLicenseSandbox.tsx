@@ -12,7 +12,7 @@ import { NyPharmacyOrderApprovalResult } from "../domain/orderMockApproval";
 import { runNyPharmacyOrderMock } from "../api/orderNyPharmacyMockClient";
 import { OhioTdddFormCopilotResponse as LicenseCopilotResponse } from "../domain/licenseOhioTddd";
 import { trackSandboxEvent } from "../devsupport/telemetry";
-import { API_BASE } from "../api/csfHospitalClient";
+import { API_BASE as NY_PHARMACY_API_BASE } from "../api/csfHospitalClient";
 import { copyToClipboard } from "../utils/clipboard";
 import { buildCurlCommand } from "../utils/curl";
 import { CopyCurlButton } from "./CopyCurlButton";
@@ -119,6 +119,17 @@ export function NyPharmacyLicenseSandbox() {
   >(null);
   const [selectedScenarioId, setSelectedScenarioId] =
     React.useState<NyLicenseScenarioId>("valid_ny_active");
+
+  const nyEvaluateCurl = () =>
+    buildCurlCommand("/license/ny-pharmacy/evaluate", {
+      pharmacy_name: form.pharmacyName,
+      account_number: form.accountNumber,
+      ship_to_state: form.shipToState,
+      dea_number: form.deaNumber ?? null,
+      ny_state_license_number: form.nyStateLicenseNumber,
+      attestation_accepted: form.attestationAccepted,
+      internal_notes: form.internalNotes ?? "",
+    });
 
   function handleChange(
     field: keyof NyPharmacyFormData,
@@ -418,14 +429,21 @@ export function NyPharmacyLicenseSandbox() {
       </section>
 
       <section className="sandbox-actions flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={handleEvaluate}
-          disabled={loadingEval}
-          className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-60"
-        >
-          {loadingEval ? "Evaluating..." : "Evaluate NY Pharmacy license"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleEvaluate}
+            disabled={loadingEval}
+            className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-60"
+          >
+            {loadingEval ? "Evaluating..." : "Evaluate NY Pharmacy license"}
+          </button>
+
+          <CopyCurlButton
+            getCommand={nyEvaluateCurl}
+            label="Copy as cURL"
+          />
+        </div>
 
         <button
           type="button"
@@ -670,7 +688,7 @@ export function NyPharmacyLicenseSandbox() {
       <section className="space-y-2">
         <h3 className="text-sm font-semibold">cURL example</h3>
         <div className="rounded-md border border-slate-200 bg-slate-900 p-3 text-xs text-slate-50">
-          <pre className="overflow-auto text-[11px] leading-relaxed">{`curl -X POST "${API_BASE}/license/ny-pharmacy/evaluate" \\
+          <pre className="overflow-auto text-[11px] leading-relaxed">{`curl -X POST "${NY_PHARMACY_API_BASE}/license/ny-pharmacy/evaluate" \\
   -H "Content-Type: application/json" \\
   -d '${JSON.stringify(
     {
@@ -685,21 +703,6 @@ export function NyPharmacyLicenseSandbox() {
     null,
     2
   )}'`}</pre>
-        <div className="mt-2">
-          <CopyCurlButton
-            getCommand={() =>
-              buildCurlCommand("/license/ny-pharmacy/evaluate", {
-                pharmacy_name: form.pharmacyName,
-                account_number: form.accountNumber,
-                ship_to_state: form.shipToState,
-                dea_number: form.deaNumber ?? null,
-                ny_state_license_number: form.nyStateLicenseNumber,
-                attestation_accepted: form.attestationAccepted,
-                internal_notes: form.internalNotes ?? "",
-              })
-            }
-          />
-        </div>
         </div>
       </section>
     </div>
