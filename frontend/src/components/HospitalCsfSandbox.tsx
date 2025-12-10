@@ -1,10 +1,14 @@
 // src/components/HospitalCsfSandbox.tsx
-import { FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import {
   HospitalCsfDecision,
   HospitalCsfFormData,
   HospitalFacilityType,
 } from "../domain/csfHospital";
+import {
+  HOSPITAL_CSF_PRESETS,
+  type HospitalCsfPreset,
+} from "../domain/csfHospitalPresets";
 import { evaluateHospitalCsf } from "../api/csfHospitalClient";
 import { explainCsfDecision } from "../api/csfExplainClient";
 import type { CsfDecisionSummary } from "../api/csfExplainClient";
@@ -142,6 +146,7 @@ const initialForm: HospitalCsfFormData = {
 export function HospitalCsfSandbox() {
   const { enabled: ragDebugEnabled } = useRagDebug();
   const [form, setForm] = useState<HospitalCsfFormData>(initialForm);
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [decision, setDecision] = useState<HospitalCsfDecision | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -190,6 +195,8 @@ export function HospitalCsfSandbox() {
     });
 
   function applyHospitalExample(example: HospitalExample) {
+    setSelectedPresetId(null);
+
     const nextForm = {
       ...initialForm,
       ...form,
@@ -207,6 +214,43 @@ export function HospitalCsfSandbox() {
         "/mnt/data/Online Controlled Substance Form - Hospital Pharmacy.pdf",
     });
   }
+
+  const handlePresetChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const value = event.target.value || "";
+
+    if (!value) {
+      setSelectedPresetId(null);
+      return;
+    }
+
+    const preset: HospitalCsfPreset | undefined =
+      HOSPITAL_CSF_PRESETS.find((p) => p.id === value);
+
+    if (!preset) {
+      setSelectedPresetId(null);
+      return;
+    }
+
+    setSelectedPresetId(preset.id);
+
+    trackSandboxEvent("hospital_csf_preset_applied", {
+      preset_id: preset.id,
+    });
+
+    setForm(preset.form);
+    setControlledSubstances(preset.form.controlledSubstances ?? []);
+
+    setDecision(null);
+    setExplanation(null);
+    setExplainError(null);
+    setError(null);
+    setCopilotDecision(null);
+    setCopilotError(null);
+    setOhioTdddDecision(null);
+    setOhioTdddError(null);
+    setRagAnswer(null);
+    setRagError(null);
+  };
 
   const onChange = (field: keyof HospitalCsfFormData, value: any) => {
     setForm((prev) => ({
@@ -240,6 +284,7 @@ export function HospitalCsfSandbox() {
 
   const reset = () => {
     setForm(initialForm);
+    setSelectedPresetId(null);
     setDecision(null);
     setError(null);
     setControlledSubstances([]);
@@ -429,6 +474,24 @@ export function HospitalCsfSandbox() {
             Test hospital controlled substance forms with live decision and RAG
             explain.
           </p>
+
+          <div className="mt-1 flex items-center gap-2">
+            <span className="text-[9px] uppercase tracking-wide text-gray-500">
+              Scenario presets
+            </span>
+            <select
+              className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] text-gray-700"
+              value={selectedPresetId ?? ""}
+              onChange={handlePresetChange}
+            >
+              <option value="">Manual inputs</option>
+              {HOSPITAL_CSF_PRESETS.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <TestCoverageNote
             size="sm"
             files={["backend/tests/test_csf_hospital_api.py"]}
@@ -466,6 +529,16 @@ export function HospitalCsfSandbox() {
         {/* Left: form + evaluate + decision */}
         <div className="space-y-3">
           <form onSubmit={onSubmit} className="space-y-3">
+            {selectedPresetId && (
+              <p className="text-[10px] text-gray-600">
+                Preset:
+                {" "}
+                {
+                  HOSPITAL_CSF_PRESETS.find((p) => p.id === selectedPresetId)
+                    ?.description
+                }
+              </p>
+            )}
             {/* Facility info */}
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               <div>
