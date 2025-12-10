@@ -22,6 +22,7 @@ import { RegulatoryKnowledgeExplorerPanel } from "../features/rag/RegulatoryKnow
 import { OhioHospitalJourneyPanel } from "../features/journeys/OhioHospitalJourneyPanel";
 import { NyPharmacyJourneyPanel } from "../features/journeys/NyPharmacyJourneyPanel";
 import { DecisionAuditTimelinePanel } from "../features/audit/DecisionAuditTimelinePanel";
+import { RecentDecisionsPanel } from "../features/audit/RecentDecisionsPanel";
 import { DecisionInsightsPanel } from "../features/audit/DecisionInsightsPanel";
 import { OperationalOverviewPanel } from "../features/ops/OperationalOverviewPanel";
 import { TraceSelectionProvider } from "../state/traceSelectionContext";
@@ -505,6 +506,7 @@ function ComplianceConsolePageInner() {
           <DecisionInsightsPanel />
           <RegulatoryKnowledgeExplorerPanel />
           <OperationalOverviewPanel />
+          <RecentDecisionsPanel />
         </div>
       </section>
 

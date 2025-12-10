@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, List, Literal, Optional
 
-from src.api.models.decision import DecisionOutcome
+from src.api.models.decision import DecisionOutcome, DecisionStatus
 
 DecisionEngineFamily = Literal["csf", "license", "order"]
 
@@ -26,6 +26,14 @@ class DecisionAuditEntry:
     risk_level: Optional[str]
     created_at: datetime
     decision: DecisionOutcome
+
+
+@dataclass
+class DecisionTraceSummary:
+    trace_id: str
+    last_updated: datetime
+    last_status: DecisionStatus
+    engine_families: list[str]
 
 
 class DecisionLog:
@@ -75,6 +83,40 @@ class DecisionLog:
         """Remove all recorded decision entries (primarily for tests)."""
 
         self._by_trace.clear()
+
+    def get_recent_traces(self, limit: int = 20) -> list[DecisionTraceSummary]:
+        """
+        Return a list of recent traces ordered by last_updated descending.
+
+        This does not change underlying storage; it's a read-only view for APIs.
+        """
+
+        summaries: list[DecisionTraceSummary] = []
+
+        for trace_id, entries in self._by_trace.items():
+            if not entries:
+                continue
+
+            last_entry = entries[-1]
+            updated_at = (
+                getattr(last_entry, "created_at", None)
+                or getattr(last_entry, "timestamp", None)
+                or datetime.now(timezone.utc)
+            )
+            last_status = last_entry.decision.status
+            engine_families = sorted({entry.engine_family for entry in entries})
+
+            summaries.append(
+                DecisionTraceSummary(
+                    trace_id=trace_id,
+                    last_updated=updated_at,
+                    last_status=last_status,
+                    engine_families=engine_families,
+                )
+            )
+
+        summaries.sort(key=lambda s: s.last_updated, reverse=True)
+        return summaries[:limit]
 
 
 # --- Singleton helpers --------------------------------------------------------
