@@ -21,6 +21,7 @@ import { RegulatoryPreviewPanel } from "../features/rag/RegulatoryPreviewPanel";
 import { OhioHospitalJourneyPanel } from "../features/journeys/OhioHospitalJourneyPanel";
 import { NyPharmacyJourneyPanel } from "../features/journeys/NyPharmacyJourneyPanel";
 import { DecisionAuditTimelinePanel } from "../features/audit/DecisionAuditTimelinePanel";
+import { DecisionInsightsPanel } from "../features/audit/DecisionInsightsPanel";
 import { TraceSelectionProvider } from "../state/traceSelectionContext";
 
 type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
@@ -495,10 +496,11 @@ function ComplianceConsolePageInner() {
           </p>
         </div>
 
-        <div className="grid gap-3 xl:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <OhioHospitalJourneyPanel />
           <NyPharmacyJourneyPanel />
           <DecisionAuditTimelinePanel />
+          <DecisionInsightsPanel />
         </div>
       </section>
 
