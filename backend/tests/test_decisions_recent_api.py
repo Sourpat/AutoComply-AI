@@ -36,7 +36,10 @@ def test_decisions_recent_returns_traces_in_descending_order() -> None:
     assert isinstance(data, list)
     assert len(data) >= 2
 
-    timestamps = [datetime.fromisoformat(item["last_updated"]) for item in data]
+    timestamps = [
+        datetime.fromisoformat(item["last_updated"].replace("Z", "+00:00"))
+        for item in data
+    ]
     assert timestamps == sorted(timestamps, reverse=True)
 
     for item in data[:2]:
