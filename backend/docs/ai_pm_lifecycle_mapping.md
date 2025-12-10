@@ -167,6 +167,8 @@ This allows a PM to show:
 - Case summaries per trace:
   - `backend/src/api/routes/case_summary.py`
   - `backend/tests/test_case_summary_api.py`
+  - JSON contract documented in
+    [`case_summary_json_contract.md`](./case_summary_json_contract.md)
 - Multi-tenant context:
   - `backend/src/autocomply/tenancy/context.py`
   - `/tenants/whoami`:

@@ -36,6 +36,28 @@ lifecycle:
 For a deeper breakdown, see
 [`backend/docs/ai_pm_lifecycle_mapping.md`](backend/docs/ai_pm_lifecycle_mapping.md).
 
+## Canonical case summary contract
+
+AutoComply AI exposes a canonical JSON contract for each decision trace:
+
+```http
+GET /cases/summary/{trace_id}
+```
+
+This endpoint aggregates:
+
+- CSF decisions (hospital, facility, practitioner, EMS, etc.)
+- License decisions (Ohio TDDD, NY Pharmacy, and future engines)
+- Order decisions (mock approvals today, production flows later)
+- Regulatory references and RAG sources
+- Debug and audit metadata packaged as a per-trace insight object
+
+Downstream systems (checkout flows, n8n workflows, audit tools, agents) can
+consume this single contract instead of calling each engine directly.
+
+For a detailed field-by-field breakdown, see
+[`backend/docs/case_summary_json_contract.md`](backend/docs/case_summary_json_contract.md).
+
 ## Compliance Console Overview
 
 The AutoComply AI **Compliance Console** is a developer-friendly “compliance lab” that sits on top of the core engines:
