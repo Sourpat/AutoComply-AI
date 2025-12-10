@@ -57,8 +57,12 @@ export const RecentDecisionsPanel: React.FC = () => {
       <div className="flex items-start justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold text-zinc-50">Recent Decisions</h2>
+          <div className="mt-1 inline-flex items-center gap-1 rounded-full border border-zinc-700/70 bg-zinc-900/70 px-2 py-0.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
+            <span className="text-[10px] font-medium text-zinc-200">Recent traces & observability</span>
+          </div>
           <p className="mt-1 text-xs text-zinc-400">
-            Last few decision traces across CSF, licenses, and orders.
+            Last few decision traces across CSF, licenses, and orders. Click a row to pivot the console to that trace.
           </p>
         </div>
         <button

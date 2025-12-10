@@ -372,8 +372,9 @@ function ComplianceConsolePageInner() {
               AutoComply AI – Compliance Console
             </h1>
             <p className="text-[11px] leading-relaxed text-slate-600">
-              A single view of how AutoComply AI evaluates controlled substance forms, state licenses,
-              and end-to-end order approvals.
+              Explore how AutoComply AI evaluates Controlled Substance Forms, state licenses, and mock orders — with
+              per-trace case summaries, tenant-aware operations, and a recent decisions feed so you can see exactly how
+              the compliance brain behaves.
             </p>
           </div>
           <div className="mt-2 flex items-center gap-2 md:mt-0">
