@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Dict, Iterable, List
 
 from src.api.models.compliance_models import RegulatorySource
@@ -110,6 +111,44 @@ class RegulatoryKnowledge:
     def get_sources_for_doc_ids(self, doc_ids: Iterable[str]) -> List[RegulatorySource]:
         ids = list(doc_ids)
         return [self._sources_by_id[i] for i in ids if i in self._sources_by_id]
+
+    def search_sources(
+        self,
+        query: str,
+        limit: int = 5,
+    ) -> list[RegulatorySource]:
+        """
+        Very simple lexical search over title + snippet.
+
+        This is intentionally minimal but provides a clear hook
+        that can later be backed by a vector store / embeddings.
+        """
+        q = query.strip().lower()
+        if not q:
+            return []
+
+        terms = [t for t in re.split(r"\s+", q) if t]
+        if not terms:
+            return []
+
+        def score(source: RegulatorySource) -> int:
+            haystack = f"{getattr(source, 'title', '')} {getattr(source, 'snippet', '')}".lower()
+            s = 0
+            for t in terms:
+                if t in haystack:
+                    s += 1
+            return s
+
+        scored = [
+            (score(src), src)
+            for src in self._sources_by_id.values()
+        ]
+
+        # Keep only positive-score hits and sort descending
+        scored = [pair for pair in scored if pair[0] > 0]
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+
+        return [src for _, src in scored[:limit]]
 
     def get_context_for_engine(
         self, *, engine_family: str, decision_type: str
