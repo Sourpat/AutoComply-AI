@@ -2,17 +2,36 @@ import { API_BASE } from "../api/csfHospitalClient";
 
 type HttpMethod = "GET" | "POST";
 
+type CurlConfig = {
+  method?: HttpMethod | string;
+  url?: string;
+  endpoint?: string;
+  body?: unknown;
+};
+
 export function buildCurlCommand(
-  endpoint: string,
+  endpointOrConfig: string | CurlConfig,
   payload?: unknown,
   method: HttpMethod = "POST"
 ): string {
-  const parts = ["curl", `-X ${method}`, `"${API_BASE}${endpoint}"`];
+  const config: CurlConfig =
+    typeof endpointOrConfig === "string"
+      ? { endpoint: endpointOrConfig, body: payload, method }
+      : endpointOrConfig;
 
-  if (method === "POST") {
+  const resolvedMethod = (config.method ?? method ?? "POST") as HttpMethod;
+  const target =
+    config.url ?? (config.endpoint ? `${API_BASE}${config.endpoint}` : "");
+
+  if (!target) return "";
+
+  const parts = ["curl", `-X ${resolvedMethod}`, `"${target}"`];
+
+  if (resolvedMethod === "POST") {
     parts.push('-H "Content-Type: application/json"');
-    if (payload !== undefined) {
-      const json = JSON.stringify(payload);
+    const body = config.body ?? payload;
+    if (body !== undefined) {
+      const json = JSON.stringify(body);
       parts.push(`-d '${json}'`);
     }
   }

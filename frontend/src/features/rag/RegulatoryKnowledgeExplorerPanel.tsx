@@ -2,6 +2,7 @@ import React from "react";
 import { CopyCurlButton } from "../../components/CopyCurlButton";
 import { useRagDebug } from "../../devsupport/RagDebugContext";
 import { buildCurlCommand } from "../../utils/curl";
+import { API_BASE } from "../../api/csfHospitalClient";
 
 interface RegulatorySource {
   id: string;
@@ -9,6 +10,11 @@ interface RegulatorySource {
   snippet?: string;
   jurisdiction?: string | null;
   citation?: string | null;
+  label?: string | null;
+  jurisdiction_label?: string | null;
+  source?: {
+    jurisdiction?: string | null;
+  };
 }
 
 interface SearchResponse {
@@ -23,14 +29,58 @@ export const RegulatoryKnowledgeExplorerPanel: React.FC = () => {
   const [response, setResponse] = React.useState<SearchResponse | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [curlCommand, setCurlCommand] = React.useState<string | null>(null);
+  const [lastSearchPayload, setLastSearchPayload] = React.useState<any | null>(
+    null
+  );
+  const [jurisdictionFilter, setJurisdictionFilter] = React.useState<
+    "all" | "dea" | "ohio" | "ny" | "other"
+  >("all");
+
+  const filteredResults = React.useMemo(() => {
+    if (!response?.results) return [];
+    if (jurisdictionFilter === "all") return response.results;
+
+    return response.results.filter((item) => {
+      const j = (
+        item.jurisdiction_label ||
+        item.jurisdiction ||
+        item.source?.jurisdiction ||
+        ""
+      )
+        .toString()
+        .toLowerCase();
+
+      if (!j) return jurisdictionFilter === "other";
+
+      if (jurisdictionFilter === "dea") {
+        return j.includes("dea") || j.includes("federal");
+      }
+      if (jurisdictionFilter === "ohio") {
+        return j.includes("oh") || j.includes("ohio");
+      }
+      if (jurisdictionFilter === "ny") {
+        return j.includes("ny") || j.includes("new york");
+      }
+      if (jurisdictionFilter === "other") {
+        return !(
+          j.includes("dea") ||
+          j.includes("federal") ||
+          j.includes("oh") ||
+          j.includes("ohio") ||
+          j.includes("ny") ||
+          j.includes("new york")
+        );
+      }
+      return true;
+    });
+  }, [response, jurisdictionFilter]);
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const q = query.trim();
     if (!q) {
       setError("Enter a question or term related to CSF or licenses.");
-      setCurlCommand(null);
+      setLastSearchPayload(null);
       return;
     }
 
@@ -39,33 +89,27 @@ export const RegulatoryKnowledgeExplorerPanel: React.FC = () => {
     setResponse(null);
 
     try {
+      const body = { query: q, limit: 5 };
+      setLastSearchPayload(body);
+
       const resp = await fetch("/rag/regulatory/search", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ query: q, limit: 5 }),
+        body: JSON.stringify(body),
       });
 
       if (!resp.ok) {
         const text = await resp.text();
         setError(`Request failed (${resp.status}): ${text}`);
-        setCurlCommand(null);
         return;
       }
 
       const json = (await resp.json()) as SearchResponse;
       setResponse(json);
-
-      const cmd = buildCurlCommand({
-        method: "POST",
-        url: "/rag/regulatory/search",
-        body: { query: q, limit: 5 },
-      });
-      setCurlCommand(cmd);
     } catch {
       setError("Network error while searching regulatory knowledge.");
-      setCurlCommand(null);
     } finally {
       setLoading(false);
     }
@@ -78,38 +122,70 @@ export const RegulatoryKnowledgeExplorerPanel: React.FC = () => {
           <h2 className="text-sm font-semibold text-zinc-50">
             Regulatory Knowledge Explorer
           </h2>
+          <div className="mt-1 inline-flex items-center gap-1 rounded-full border border-zinc-700/70 bg-zinc-900/70 px-2 py-0.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <span className="text-[10px] font-medium text-zinc-200">
+              Regulatory research console
+            </span>
+          </div>
           <p className="mt-1 text-xs text-zinc-400">
-            Search the curated regulatory knowledge used by CSF and license engines.
+            Search DEA, Ohio TDDD, and NY Pharmacy guidance to see the exact
+            snippets behind AutoComply AI&apos;s decisions.
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {lastSearchPayload && (
+            <CopyCurlButton
+              getCommand={() =>
+                buildCurlCommand({
+                  method: "POST",
+                  url: `${API_BASE}/rag/regulatory/search`,
+                  body: lastSearchPayload,
+                })
+              }
+              label="Copy cURL"
+            />
+          )}
         </div>
       </div>
 
-      <form
-        onSubmit={handleSearch}
-        className="flex flex-col gap-2 md:flex-row md:items-center"
-      >
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="e.g. Ohio TDDD expiry, NY pharmacy rules, hospital CSF attestation"
-          className="flex-1 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-500"
-        />
-        <div className="flex items-center gap-2">
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-indigo-500"
-          >
-            {loading ? "Searching…" : "Search"}
-          </button>
-
-          {curlCommand && (
-            <CopyCurlButton
-              command={curlCommand}
-              label="Copy as cURL"
+      <form onSubmit={handleSearch} className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-[180px] flex-1">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="e.g. Ohio TDDD expiry, NY pharmacy rules, hospital CSF attestation"
+              className="flex-1 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-500"
             />
-          )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-zinc-500">Jurisdiction:</span>
+            <select
+              className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-100"
+              value={jurisdictionFilter}
+              onChange={(e) =>
+                setJurisdictionFilter(
+                  e.target.value as typeof jurisdictionFilter
+                )
+              }
+            >
+              <option value="all">All</option>
+              <option value="dea">DEA / Federal</option>
+              <option value="ohio">Ohio</option>
+              <option value="ny">New York</option>
+              <option value="other">Other</option>
+            </select>
+            <button
+              type="submit"
+              disabled={loading}
+              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-indigo-500"
+            >
+              {loading ? "Searching…" : "Search"}
+            </button>
+          </div>
         </div>
       </form>
 
@@ -121,27 +197,33 @@ export const RegulatoryKnowledgeExplorerPanel: React.FC = () => {
 
       {response && (
         <div className="space-y-2">
-          {response.results.length === 0 ? (
+          {filteredResults.length === 0 ? (
             <p className="text-[11px] text-zinc-500">
               No matching regulatory snippets found for query:{" "}
               <span className="font-mono text-zinc-300">
                 {response.query}
               </span>
+              {jurisdictionFilter !== "all" && (
+                <>
+                  {" "}in {jurisdictionFilter.toUpperCase()} scope
+                </>
+              )}
+              .
             </p>
           ) : (
             <>
               <p className="text-[11px] text-zinc-400">
-                Showing {response.results.length} result
-                {response.results.length > 1 ? "s" : ""} for query:{" "}
+                Showing {filteredResults.length} result
+                {filteredResults.length > 1 ? "s" : ""} for query:{" "}
                 <span className="font-mono text-zinc-300">
                   {response.query}
                 </span>
               </p>
               <ul className="space-y-2">
-                {response.results.map((src) => (
+                {filteredResults.map((src) => (
                   <li
                     key={src.id}
-                    className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2"
+                    className="space-y-1 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2"
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-semibold text-zinc-100">
@@ -151,18 +233,25 @@ export const RegulatoryKnowledgeExplorerPanel: React.FC = () => {
                         {src.id}
                       </span>
                     </div>
-                    {src.jurisdiction && (
-                      <p className="mt-0.5 text-[10px] text-zinc-500">
-                        Jurisdiction: {src.jurisdiction}
-                      </p>
-                    )}
-                    {src.citation && (
-                      <p className="mt-0.5 text-[10px] text-zinc-500">
-                        Citation: {src.citation}
-                      </p>
-                    )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {src.label && (
+                        <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-100">
+                          {src.label}
+                        </span>
+                      )}
+                      {src.citation && (
+                        <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-300">
+                          {src.citation}
+                        </span>
+                      )}
+                      {(src.jurisdiction || src.jurisdiction_label) && (
+                        <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-400">
+                          {src.jurisdiction_label ?? src.jurisdiction}
+                        </span>
+                      )}
+                    </div>
                     {src.snippet && (
-                      <p className="mt-1 text-[11px] text-zinc-300">
+                      <p className="text-[11px] leading-snug text-zinc-300">
                         {src.snippet}
                       </p>
                     )}
