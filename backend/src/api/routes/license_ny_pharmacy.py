@@ -12,7 +12,10 @@ from src.autocomply.domain.ny_pharmacy_decision import (
     is_license_expired,
 )
 from src.autocomply.domain.trace import TRACE_HEADER_NAME, ensure_trace_id
-from src.autocomply.regulations.knowledge import get_regulatory_knowledge
+from src.autocomply.regulations.knowledge import (
+    get_regulatory_knowledge,
+    sources_to_regulatory_references,
+)
 from src.domain.license_ny_pharmacy import (
     NyPharmacyFormCopilotResponse,
     NyPharmacyFormData,
@@ -92,23 +95,17 @@ async def ny_pharmacy_evaluate(
     risk_level, risk_score = decision_outcome.risk_level, decision_outcome.risk_score
     knowledge = get_regulatory_knowledge()
 
-    evidence_items = knowledge.get_regulatory_evidence(
-        decision_type="license_ny_pharmacy",
-        jurisdiction="US-NY",
-        doc_ids=["ny-pharmacy-core"],
-        context={
-            "license_number": license_number,
-            "ship_to_state": ship_to_state,
-        },
+    sources = knowledge.get_context_for_engine(
+        engine_family="license", decision_type="license_ny_pharmacy"
     )
 
-    regulatory_references = [item.reference for item in evidence_items]
+    regulatory_references = sources_to_regulatory_references(sources)
 
     debug_info = {
         "missing_fields": missing,
         "engine_family": "license",
         "decision_type": "license_ny_pharmacy",
-        "regulatory_evidence_count": len(evidence_items),
+        "regulatory_evidence_count": len(sources),
     }
 
     if not missing:
