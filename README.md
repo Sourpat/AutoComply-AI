@@ -14,6 +14,28 @@ AutoComply AI simulates a realistic compliance environment where:
 - **License Compliance Suite** – license evaluation + RAG-based explanations, starting with Ohio TDDD. See [`docs/license_suite_overview.md`](docs/license_suite_overview.md) for details.
 - **End-to-End Compliance Journey** – how CSF decisions and Ohio TDDD license checks work together, with explainable RAG copilots. See [`docs/compliance_journey_csf_license.md`](docs/compliance_journey_csf_license.md).
 
+## How this maps to an AI PM lifecycle
+
+AutoComply AI is intentionally structured around an AI-enabled product
+lifecycle:
+
+- **Discover:** Real Ohio hospital & NY pharmacy scenarios and presets expose
+  true controlled substance edge cases (missing DEA, wrong state, expired licenses).
+- **Research:** A regulatory RAG layer and knowledge APIs back every decision
+  with explainable context and sources.
+- **Design:** A dark-mode Compliance Console with scenario presets, RAG debug
+  toggles, and per-trace case summaries keeps the UX simple while surfacing
+  rich explanations.
+- **Build:** FastAPI decision engines, canonical decision schemas, and a broad
+  pytest suite implement the core compliance brain.
+- **Launch:** Demo scripts, health checks, and copy-as-cURL affordances make
+  the system easy to show and to integrate with CI/n8n/Postman.
+- **Measure & Iterate:** Trace-aware case summaries, tenant-aware ops, and
+  recent decision feeds provide observability and drive new scenario tests.
+
+For a deeper breakdown, see
+[`backend/docs/ai_pm_lifecycle_mapping.md`](backend/docs/ai_pm_lifecycle_mapping.md).
+
 ## Compliance Console Overview
 
 The AutoComply AI **Compliance Console** is a developer-friendly “compliance lab” that sits on top of the core engines:
