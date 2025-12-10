@@ -18,6 +18,7 @@ import { FutureWorkCard } from "../components/FutureWorkCard";
 import { RagDebugProvider, useRagDebug } from "../devsupport/RagDebugContext";
 import { MockOrderCards } from "../components/MockOrderCards";
 import { RegulatoryPreviewPanel } from "../features/rag/RegulatoryPreviewPanel";
+import { RegulatoryKnowledgeExplorerPanel } from "../features/rag/RegulatoryKnowledgeExplorerPanel";
 import { OhioHospitalJourneyPanel } from "../features/journeys/OhioHospitalJourneyPanel";
 import { NyPharmacyJourneyPanel } from "../features/journeys/NyPharmacyJourneyPanel";
 import { DecisionAuditTimelinePanel } from "../features/audit/DecisionAuditTimelinePanel";
@@ -501,6 +502,7 @@ function ComplianceConsolePageInner() {
           <NyPharmacyJourneyPanel />
           <DecisionAuditTimelinePanel />
           <DecisionInsightsPanel />
+          <RegulatoryKnowledgeExplorerPanel />
         </div>
       </section>
 

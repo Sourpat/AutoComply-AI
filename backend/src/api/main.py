@@ -27,6 +27,7 @@ from src.api.routes.license_ohio_tddd import router as license_ohio_tddd_router
 from src.api.routes.pdma_sample import router as pdma_sample_router
 from src.api.routes import decision_audit
 from src.api.routes.rag_regulatory import router as rag_regulatory_router
+from src.api.routes import regulatory_search
 from src.api.routes import license_validation as license_validation_module
 from src.api.routes.order_mock_approval import router as order_mock_router
 from src.api.routes.order_mock_ny_pharmacy import (
@@ -76,6 +77,7 @@ app.include_router(csf_facility_v1_router)
 app.include_router(csf_ems_router)
 app.include_router(csf_explain_router)
 app.include_router(rag_regulatory_router)
+app.include_router(regulatory_search.router)
 app.include_router(pdma_sample_router)
 app.include_router(decision_history.router)
 app.include_router(verification.router)
