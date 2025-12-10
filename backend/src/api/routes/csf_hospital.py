@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from src.api.models.decision import (
@@ -13,6 +13,7 @@ from src.autocomply.domain.csf_copilot import CsfCopilotResult, run_csf_copilot
 from src.autocomply.domain.csf_hospital import HospitalCsfForm, evaluate_hospital_csf
 from src.autocomply.domain.decision_risk import compute_risk_for_status
 from src.autocomply.domain.trace import TRACE_HEADER_NAME, ensure_trace_id
+from src.autocomply.tenancy.context import TenantContext, get_tenant_context
 from src.utils.logger import get_logger
 
 router = APIRouter(
@@ -42,12 +43,23 @@ class HospitalCsfEvaluateResponse(BaseModel):
 async def evaluate_hospital_csf_endpoint(
     form: HospitalCsfForm,
     request: Request,
+    tenant: TenantContext = Depends(get_tenant_context),
 ) -> HospitalCsfEvaluateResponse:
     """
     Evaluate a Hospital Pharmacy Controlled Substance Form and return a decision.
     """
+    tenant_context = tenant if isinstance(tenant, TenantContext) else TenantContext(tenant_id="demo-tenant")
     incoming_trace_id = request.headers.get(TRACE_HEADER_NAME)
     trace_id = ensure_trace_id(incoming_trace_id)
+
+    logger.info(
+        "Hospital CSF evaluation request received",
+        extra={
+            "engine_family": "csf",
+            "decision_type": "csf_hospital",
+            "tenant_id": tenant_context.tenant_id,
+        },
+    )
 
     decision = evaluate_hospital_csf(form)
 
