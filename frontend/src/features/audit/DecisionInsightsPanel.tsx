@@ -1,7 +1,9 @@
 import React from "react";
 
+import { CopyCurlButton } from "../../components/CopyCurlButton";
 import { useRagDebug } from "../../devsupport/RagDebugContext";
 import { useTraceSelection } from "../../state/traceSelectionContext";
+import { buildCurlCommand } from "../../utils/curl";
 
 interface DecisionInsight {
   trace_id: string;
@@ -18,10 +20,12 @@ export const DecisionInsightsPanel: React.FC = () => {
   const [insight, setInsight] = React.useState<DecisionInsight | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [curlCommand, setCurlCommand] = React.useState<string | null>(null);
 
   const handleGenerate = async () => {
     if (!selectedTraceId) {
       setError("Select or run a journey to generate insights.");
+      setCurlCommand(null);
       return;
     }
     setLoading(true);
@@ -34,16 +38,26 @@ export const DecisionInsightsPanel: React.FC = () => {
       );
       if (resp.status === 404) {
         setError("No decisions found for this trace yet.");
+        setCurlCommand(null);
         return;
       }
       if (!resp.ok) {
         setError(`Request failed (${resp.status}).`);
+        setCurlCommand(null);
         return;
       }
       const json = (await resp.json()) as DecisionInsight;
       setInsight(json);
+
+      const url = `/ai/decisions/insights/${encodeURIComponent(selectedTraceId)}`;
+      const cmd = buildCurlCommand({
+        method: "GET",
+        url,
+      });
+      setCurlCommand(cmd);
     } catch {
       setError("Network error while generating insights.");
+      setCurlCommand(null);
     } finally {
       setLoading(false);
     }
@@ -72,15 +86,24 @@ export const DecisionInsightsPanel: React.FC = () => {
             suggest next actions.
           </p>
         </div>
-        <div className="flex flex-col items-end gap-1 text-right">
-          <button
-            type="button"
-            onClick={handleGenerate}
-            disabled={loading || !selectedTraceId}
-            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
-          >
-            {loading ? "Analyzing…" : "Generate insights"}
-          </button>
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={loading || !selectedTraceId}
+              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+            >
+              {loading ? "Analyzing…" : "Generate insights"}
+            </button>
+
+            {curlCommand && (
+              <CopyCurlButton
+                command={curlCommand}
+                label="Copy as cURL"
+              />
+            )}
+          </div>
           <span className="text-[10px] text-zinc-500">
             Trace: {selectedTraceId || "none selected"}
           </span>

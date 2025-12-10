@@ -1,5 +1,7 @@
 import React from "react";
+import { CopyCurlButton } from "../../components/CopyCurlButton";
 import { useRagDebug } from "../../devsupport/RagDebugContext";
+import { buildCurlCommand } from "../../utils/curl";
 
 interface RegulatorySource {
   id: string;
@@ -21,12 +23,14 @@ export const RegulatoryKnowledgeExplorerPanel: React.FC = () => {
   const [response, setResponse] = React.useState<SearchResponse | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [curlCommand, setCurlCommand] = React.useState<string | null>(null);
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const q = query.trim();
     if (!q) {
       setError("Enter a question or term related to CSF or licenses.");
+      setCurlCommand(null);
       return;
     }
 
@@ -46,13 +50,22 @@ export const RegulatoryKnowledgeExplorerPanel: React.FC = () => {
       if (!resp.ok) {
         const text = await resp.text();
         setError(`Request failed (${resp.status}): ${text}`);
+        setCurlCommand(null);
         return;
       }
 
       const json = (await resp.json()) as SearchResponse;
       setResponse(json);
+
+      const cmd = buildCurlCommand({
+        method: "POST",
+        url: "/rag/regulatory/search",
+        body: { query: q, limit: 5 },
+      });
+      setCurlCommand(cmd);
     } catch {
       setError("Network error while searching regulatory knowledge.");
+      setCurlCommand(null);
     } finally {
       setLoading(false);
     }
@@ -82,13 +95,22 @@ export const RegulatoryKnowledgeExplorerPanel: React.FC = () => {
           placeholder="e.g. Ohio TDDD expiry, NY pharmacy rules, hospital CSF attestation"
           className="flex-1 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-500"
         />
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-indigo-500"
-        >
-          {loading ? "Searching…" : "Search"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={loading}
+            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-indigo-500"
+          >
+            {loading ? "Searching…" : "Search"}
+          </button>
+
+          {curlCommand && (
+            <CopyCurlButton
+              command={curlCommand}
+              label="Copy as cURL"
+            />
+          )}
+        </div>
       </form>
 
       {error && (
