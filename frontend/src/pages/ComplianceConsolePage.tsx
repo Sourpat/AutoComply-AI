@@ -23,6 +23,7 @@ import { OhioHospitalJourneyPanel } from "../features/journeys/OhioHospitalJourn
 import { NyPharmacyJourneyPanel } from "../features/journeys/NyPharmacyJourneyPanel";
 import { DecisionAuditTimelinePanel } from "../features/audit/DecisionAuditTimelinePanel";
 import { DecisionInsightsPanel } from "../features/audit/DecisionInsightsPanel";
+import { OperationalOverviewPanel } from "../features/ops/OperationalOverviewPanel";
 import { TraceSelectionProvider } from "../state/traceSelectionContext";
 
 type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
@@ -503,6 +504,7 @@ function ComplianceConsolePageInner() {
           <DecisionAuditTimelinePanel />
           <DecisionInsightsPanel />
           <RegulatoryKnowledgeExplorerPanel />
+          <OperationalOverviewPanel />
         </div>
       </section>
 
