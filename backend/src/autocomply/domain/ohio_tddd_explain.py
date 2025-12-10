@@ -9,6 +9,8 @@ from autocomply.domain.compliance_artifacts import (
     COMPLIANCE_ARTIFACTS,
     ComplianceArtifact,
 )
+from src.api.models.compliance_models import RegulatorySource
+from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 
 
 class OhioTdddDecisionSummary(BaseModel):
@@ -36,10 +38,23 @@ class OhioTdddExplanation(BaseModel):
     Narrative explanation for an Ohio TDDD decision.
     """
 
+    status: OhioTdddDecisionStatus
+    reason: str
     explanation: str
     regulatory_references: List[str] = Field(
         default_factory=list,
         description="Echo of the decision's regulatory_references field.",
+    )
+    rag_explanation: str = Field(
+        ..., description="RAG-friendly echo of the explanation text."
+    )
+    artifacts_used: List[str] = Field(
+        default_factory=list,
+        description="IDs of regulatory artifacts used to build the explanation.",
+    )
+    rag_sources: List[RegulatorySource] = Field(
+        default_factory=list,
+        description="Full regulatory sources pulled from the knowledge registry.",
     )
 
 
@@ -88,9 +103,20 @@ def explain_ohio_tddd_decision(
         missing_str = ", ".join(decision.missing_fields)
         lines.append(f"Missing or incomplete fields: {missing_str}.")
 
+    knowledge = get_regulatory_knowledge()
+    rag_sources = knowledge.get_context_for_engine(
+        engine_family="license", decision_type="license_ohio_tddd"
+    )
+    if not rag_sources:
+        rag_sources = knowledge.get_sources_for_doc_ids(["ohio_tddd_rules"])
+
+    regulatory_references = decision.regulatory_references or [
+        src.id for src in rag_sources if src.id
+    ]
+
     # Regulatory references -> resolve via coverage
-    if decision.regulatory_references:
-        artifacts = _lookup_artifacts(decision.regulatory_references)
+    if regulatory_references:
+        artifacts = _lookup_artifacts(regulatory_references)
         if artifacts:
             lines.append("Regulatory basis:")
             for art in artifacts:
@@ -104,6 +130,11 @@ def explain_ohio_tddd_decision(
     explanation_text = "\n".join(lines)
 
     return OhioTdddExplanation(
+        status=decision.status,
+        reason=decision.reason,
         explanation=explanation_text,
-        regulatory_references=decision.regulatory_references,
+        regulatory_references=regulatory_references,
+        rag_explanation=explanation_text,
+        artifacts_used=list(regulatory_references),
+        rag_sources=rag_sources,
     )
