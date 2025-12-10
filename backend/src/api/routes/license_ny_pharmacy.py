@@ -4,6 +4,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
+from src.api.models.compliance_models import RegulatorySource
 from src.api.models.decision import DecisionOutcome, DecisionStatus, RegulatoryReference
 from src.autocomply.audit.decision_log import get_decision_log
 from src.autocomply.domain.decision_risk import compute_risk_for_status
@@ -33,6 +34,8 @@ class NyPharmacyEvaluateResponse(BaseModel):
     reason: str
     missing_fields: List[str] = Field(default_factory=list)
     regulatory_references: List[str] = Field(default_factory=list)
+    artifacts_used: List[str] = Field(default_factory=list)
+    rag_sources: List[RegulatorySource] = Field(default_factory=list)
 
 
 @router.post(
@@ -95,17 +98,21 @@ async def ny_pharmacy_evaluate(
     risk_level, risk_score = decision_outcome.risk_level, decision_outcome.risk_score
     knowledge = get_regulatory_knowledge()
 
-    sources = knowledge.get_context_for_engine(
+    rag_sources = knowledge.get_context_for_engine(
         engine_family="license", decision_type="license_ny_pharmacy"
     )
+    if not rag_sources:
+        rag_sources = knowledge.get_sources_for_doc_ids(["ny_pharmacy_core"])
 
-    regulatory_references = sources_to_regulatory_references(sources)
+    regulatory_references = sources_to_regulatory_references(rag_sources)
+    regulatory_reference_ids = [ref.id for ref in regulatory_references]
+    artifacts_used = list(regulatory_reference_ids)
 
     debug_info = {
         "missing_fields": missing,
         "engine_family": "license",
         "decision_type": "license_ny_pharmacy",
-        "regulatory_evidence_count": len(sources),
+        "regulatory_evidence_count": len(rag_sources),
     }
 
     if not missing:
@@ -135,7 +142,9 @@ async def ny_pharmacy_evaluate(
         status=decision_outcome.status,
         reason=decision_outcome.reason,
         missing_fields=missing,
-        regulatory_references=[ref.id for ref in regulatory_references],
+        regulatory_references=regulatory_reference_ids,
+        artifacts_used=artifacts_used,
+        rag_sources=rag_sources,
     )
 
 

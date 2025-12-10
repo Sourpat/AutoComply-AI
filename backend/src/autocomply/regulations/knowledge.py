@@ -97,6 +97,15 @@ class RegulatoryKnowledge:
         )
         self._add(
             RegulatorySource(
+                id="ny_pharmacy_core",
+                title="NY pharmacy license required and must be active",
+                snippet="NY pharmacy licensing standards, including state-specific dispensing rules.",
+                jurisdiction="NY",
+                citation=None,
+            )
+        )
+        self._add(
+            RegulatorySource(
                 id="ny_pharmacy_rules",
                 title="NY pharmacy license required and must be active",
                 snippet="NY pharmacy licensing standards, including state-specific dispensing rules.",
@@ -167,7 +176,10 @@ class RegulatoryKnowledge:
             "csf:csf_ems": ["csf_ems_form"],
             "csf:csf_researcher": ["csf_researcher_form"],
             "license:license_ohio_tddd": ["ohio_tddd_rules", "ohio-tddd-core"],
-            "license:license_ny_pharmacy": ["ny-pharmacy-core"],
+            "license:license_ny_pharmacy": [
+                "ny_pharmacy_core",
+                "ny-pharmacy-core",
+            ],
         }
 
         doc_ids = mapping.get(key, [])
