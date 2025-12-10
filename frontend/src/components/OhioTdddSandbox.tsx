@@ -9,7 +9,7 @@ import { evaluateOhioTdddLicense } from "../api/licenseOhioTdddClient";
 import { callOhioTdddFormCopilot } from "../api/licenseOhioTdddCopilotClient";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { CopyCurlButton } from "./CopyCurlButton";
-import { API_BASE } from "../api/csfHospitalClient";
+import { API_BASE as OHIO_TDDD_API_BASE } from "../api/csfHospitalClient";
 import { buildCurlCommand } from "../utils/curl";
 
 const OHIO_TDDD_ENGINE_FAMILY = "license";
@@ -84,6 +84,9 @@ export function OhioTdddSandbox() {
   const [evaluateError, setEvaluateError] = useState<string | null>(null);
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
+
+  const ohioEvaluateCurl = () =>
+    buildCurlCommand("/license/ohio-tddd/evaluate", form);
 
   function applyExample(example: OhioTdddFormData) {
     setForm(example);
@@ -276,14 +279,20 @@ export function OhioTdddSandbox() {
       </section>
 
       <section className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={handleEvaluate}
-          disabled={evaluateLoading}
-          className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-60"
-        >
-          {evaluateLoading ? "Evaluating..." : "Evaluate Ohio TDDD License"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleEvaluate}
+            disabled={evaluateLoading}
+            className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-60"
+          >
+            {evaluateLoading ? "Evaluating..." : "Evaluate Ohio TDDD License"}
+          </button>
+          <CopyCurlButton
+            getCommand={ohioEvaluateCurl}
+            label="Copy as cURL"
+          />
+        </div>
         <button
           type="button"
           onClick={handleCopilot}
@@ -365,17 +374,10 @@ export function OhioTdddSandbox() {
         <h3 className="text-sm font-semibold">cURL example</h3>
         <div className="rounded-md border border-slate-200 bg-slate-900 p-3 text-xs text-slate-50">
           <pre className="overflow-auto text-[11px] leading-relaxed">
-{`curl -X POST "${API_BASE}/license/ohio-tddd/evaluate" \\
+{`curl -X POST "${OHIO_TDDD_API_BASE}/license/ohio-tddd/evaluate" \\
   -H "Content-Type: application/json" \\
   -d '${JSON.stringify(form, null, 2)}'`}
           </pre>
-          <div className="mt-2">
-            <CopyCurlButton
-              getCommand={() =>
-                buildCurlCommand("/license/ohio-tddd/evaluate", form)
-              }
-            />
-          </div>
         </div>
       </section>
     </div>
