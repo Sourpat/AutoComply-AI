@@ -29,6 +29,10 @@ import {
 import { evaluateOhioTdddLicense } from "../api/licenseOhioTdddClient";
 import { mapFacilityFormToOhioTddd } from "../domain/licenseMapping";
 import { trackSandboxEvent } from "../devsupport/telemetry";
+import {
+  FACILITY_CSF_PRESETS,
+  type FacilityCsfPresetId,
+} from "../domain/csfFacilityPresets";
 import { TestCoverageNote } from "./TestCoverageNote";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
@@ -247,6 +251,8 @@ export function FacilityCsfSandbox() {
   >(null);
   const [showOhioFacilityDevTrace, setShowOhioFacilityDevTrace] =
     React.useState(false);
+  const [selectedPresetId, setSelectedPresetId] =
+    useState<FacilityCsfPresetId | null>(null);
 
   // ---- Facility CSF Form Copilot state ----
   const [copilotResponse, setCopilotResponse] =
@@ -392,6 +398,39 @@ export function FacilityCsfSandbox() {
       ship_to_state: example.formData.shipToState,
     });
   }
+
+  const handlePresetChange = (
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const value = event.target.value || "";
+
+    if (!value) {
+      setSelectedPresetId(null);
+      return;
+    }
+
+    const preset = FACILITY_CSF_PRESETS.find(
+      (candidate) => candidate.id === value
+    );
+    if (!preset) {
+      setSelectedPresetId(null);
+      return;
+    }
+
+    setSelectedPresetId(preset.id);
+    setForm(preset.form);
+    setControlledSubstances(preset.form.controlledSubstances ?? []);
+
+    setDecision(null);
+    setExplanation(null);
+    setCopilotResponse(null);
+    setExplainError(null);
+    setCopilotError(null);
+
+    trackSandboxEvent("facility_csf_preset_applied", {
+      preset_id: preset.id,
+    });
+  };
 
   const onChange = (field: keyof FacilityCsfFormData, value: any) => {
     setForm((prev) => ({
@@ -665,6 +704,24 @@ export function FacilityCsfSandbox() {
             RAG explain.
           </p>
 
+          <div className="mt-1 flex items-center gap-2">
+            <span className="text-[9px] uppercase tracking-wide text-gray-500">
+              Scenario presets
+            </span>
+            <select
+              className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] text-gray-700"
+              value={selectedPresetId ?? ""}
+              onChange={handlePresetChange}
+            >
+              <option value="">Manual inputs</option>
+              {FACILITY_CSF_PRESETS.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <TestCoverageNote
             size="sm"
             files={["backend/tests/test_csf_facility_api.py"]}
@@ -684,6 +741,15 @@ export function FacilityCsfSandbox() {
           </button>
         </div>
       </header>
+
+      {selectedPresetId && (
+        <p className="mb-2 text-[10px] text-gray-600">
+          Preset: {
+            FACILITY_CSF_PRESETS.find((preset) => preset.id === selectedPresetId)
+              ?.description
+          }
+        </p>
+      )}
 
       <section className="mt-3">
         <p className="text-xs font-medium text-slate-300">
