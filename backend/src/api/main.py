@@ -33,6 +33,7 @@ from src.api.routes.order_mock_ny_pharmacy import (
     router as order_mock_ny_pharmacy_router,
 )
 from src.api.routes.health import router as health_router
+from src.api.routes import decision_insights
 
 app = FastAPI(
     title="AutoComply AI – Compliance API",
@@ -82,6 +83,7 @@ app.include_router(controlled_substances_item_history.router)
 app.include_router(order_mock_router)
 app.include_router(order_mock_ny_pharmacy_router)
 app.include_router(decision_audit.router)
+app.include_router(decision_insights.router)
 
 # Compatibility endpoint for older/tests path:
 # Tests expect: POST /api/v1/license/validate-pdf (singular "license")

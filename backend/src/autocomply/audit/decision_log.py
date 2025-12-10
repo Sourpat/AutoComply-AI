@@ -66,6 +66,16 @@ class DecisionLog:
     def get_by_trace(self, trace_id: str) -> List[DecisionAuditEntry]:
         return list(self._by_trace.get(trace_id, []))
 
+    def get_entries_for_trace(self, trace_id: str) -> List[DecisionAuditEntry]:
+        """Alias for get_by_trace for clearer intent in newer APIs."""
+
+        return self.get_by_trace(trace_id)
+
+    def clear(self) -> None:
+        """Remove all recorded decision entries (primarily for tests)."""
+
+        self._by_trace.clear()
+
 
 # --- Singleton helpers --------------------------------------------------------
 
