@@ -6,6 +6,7 @@ import {
   PractitionerFacilityType,
   PractitionerFormCopilotResponse,
 } from "../domain/csfPractitioner";
+import { PRACTITIONER_CSF_PRESETS } from "../domain/csfPractitionerPresets";
 import { explainCsfDecision } from "../api/csfExplainClient";
 import type { CsfDecisionSummary } from "../api/csfExplainClient";
 import {
@@ -255,7 +256,8 @@ export function PractitionerCsfSandbox() {
   const { enabled: ragDebugEnabled } = useRagDebug();
   const [form, setForm] = useState<PractitionerCsfFormData>(initialForm);
   const [selectedExampleId, setSelectedExampleId] =
-    React.useState<PractitionerCsfExampleId>("primary_care");
+    React.useState<PractitionerCsfExampleId | null>("primary_care");
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [decision, setDecision] = useState<PractitionerCsfDecision | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -328,6 +330,7 @@ export function PractitionerCsfSandbox() {
   }, [API_BASE]);
 
   function applyPractitionerExample(example: PractitionerCsfExample) {
+    setSelectedPresetId(null);
     setSelectedExampleId(example.id);
     setForm(example.formData);
     setControlledSubstances(example.formData.controlledSubstances ?? []);
@@ -342,6 +345,54 @@ export function PractitionerCsfSandbox() {
         "/mnt/data/Online Controlled Substance Form - Practitioner Form with addendums.pdf",
     });
   }
+
+  const handlePresetChange = (
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const value = event.target.value || "";
+    if (!value) {
+      setSelectedPresetId(null);
+      return;
+    }
+
+    const preset = PRACTITIONER_CSF_PRESETS.find((p) => p.id === value);
+    if (!preset) {
+      setSelectedPresetId(null);
+      return;
+    }
+
+    setSelectedPresetId(preset.id);
+    setSelectedExampleId(null);
+    setForm(preset.form);
+    setControlledSubstances(preset.form.controlledSubstances ?? []);
+
+    setDecision(null);
+    setError(null);
+    setVerificationError(null);
+    setHistoryError(null);
+    setExplanation(null);
+    setExplainError(null);
+    setIsExplaining(false);
+    setRagAnswer(null);
+    setRagError(null);
+    setIsRagLoading(false);
+    setCopilotLoading(false);
+    setCopilotResponse(null);
+    setCopilotError(null);
+    setLastEvaluatedPayload(null);
+    setDecisionSnapshotId(null);
+    setRegulatoryArtifacts([]);
+    setRegulatoryError(null);
+    setIsLoadingRegulatory(false);
+    setOhioTdddDecision(null);
+    setOhioTdddError(null);
+    setOhioTdddLoading(false);
+    setNotice(null);
+
+    trackSandboxEvent("practitioner_csf_preset_applied", {
+      preset_id: preset.id,
+    });
+  };
 
   const onChange = (field: keyof PractitionerCsfFormData, value: any) => {
     setForm((prev) => ({
@@ -557,6 +608,7 @@ export function PractitionerCsfSandbox() {
     setItemRagAnswer(null);
     setItemRagError(null);
     setNotice(null);
+    setSelectedPresetId(null);
     setSelectedExampleId("primary_care");
   };
 
@@ -851,6 +903,21 @@ export function PractitionerCsfSandbox() {
           <p className="text-[10px] text-gray-500">
             Test practitioner controlled substance forms end-to-end.
           </p>
+          <div className="mt-2 flex items-center gap-2">
+            <span className="text-[10px] text-gray-500">Scenario presets:</span>
+            <select
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-[11px] text-gray-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              value={selectedPresetId ?? ""}
+              onChange={handlePresetChange}
+            >
+              <option value="">Manual inputs</option>
+              {PRACTITIONER_CSF_PRESETS.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="mt-1">
             <TestCoverageNote
               size="sm"
@@ -911,6 +978,16 @@ export function PractitionerCsfSandbox() {
               }
             </div>
           </section>
+
+          {selectedPresetId && (
+            <p className="text-[11px] text-gray-600">
+              Preset: {
+                PRACTITIONER_CSF_PRESETS.find(
+                  (preset) => preset.id === selectedPresetId
+                )?.description
+              }
+            </p>
+          )}
 
           <form onSubmit={onSubmit} className="space-y-3">
             {/* Facility info */}
