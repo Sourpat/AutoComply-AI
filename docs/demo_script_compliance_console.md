@@ -18,9 +18,11 @@ It assumes the frontend and backend are running and the **Compliance Console** p
 
 Key points to hit:
 
-- **Domain**: controlled substances + state licenses in e-commerce.  
-- **Tech**: FastAPI backend, Vite + React + TypeScript frontend.  
+- **Domain**: controlled substances + state licenses in e-commerce.
+- **Tech**: FastAPI backend, Vite + React + TypeScript frontend.
 - **Focus**: explainable decisions, good DX (Copy-as-cURL, traces, tests surfaced), and AI/RAG insights.
+- It’s not just a form lab: every decision is tied to a trace id, so you get a per-trace case summary, tenant-aware operations
+  view, and a recent decisions feed — all hooked into a regulatory knowledge brain.
 
 ---
 
@@ -32,15 +34,26 @@ This is the “short version” when you don’t have much time.
 
 1. Open the **Compliance Console** page.  
 2. Point out:
-   - The **title and description** explain this is a compliance lab on top of decision engines.  
-   - The **AI / RAG debug toggle** in the top-right.  
+   - The **title and description** explain this is a compliance lab on top of decision engines.
+   - The **AI / RAG debug toggle** in the top-right.
    - The **“How to explore this console”** tour card summarising the main sections.
 
 Script example:
 
-> “The console is organized the way a compliance stakeholder would actually explore the system:  
-> start with CSF engines, then licenses, then end-to-end mock orders, and finally health and tests.  
+> “The console is organized the way a compliance stakeholder would actually explore the system:
+> start with CSF engines, then licenses, then end-to-end mock orders, and finally health and tests.
 > There’s also an AI/RAG debug toggle when we want to look under the hood.”
+
+#### Observability & tenant context (30–45 seconds)
+
+- Point to the **Operational Overview** card:
+  - Show that it resolves the current tenant via the `x-autocomply-tenant-id` header (or `demo-tenant` by default).
+  - Show the backend health chip and how it stays green ("ok") while you run flows.
+- Move to the **Recent Decisions** panel:
+  - Run a CSF + license flow and show a new trace appearing.
+  - Click a trace row and call out that this pivots the entire console (insights, case summary, ops) to that specific trace.
+- Finally, open the **Compliance Case Summary** panel:
+  - Explain that this is a per-trace roll-up of CSF, license, and order decisions, plus regulatory references and RAG sources.
 
 ### Step 2 – One CSF sandbox with Form Copilot
 
@@ -138,7 +151,19 @@ Optional talking point:
   - CSF decision + License decision + internal rules.  
 - Show how the developer trace and API reference card make it easy to reason about end-to-end behavior.
 
-### 3.5 DX and AI/RAG debug
+### 3.5 Deep dive: per-trace case summaries and multi-tenant readiness
+
+- Explain that each decision flow (CSF, Ohio TDDD, NY Pharmacy, orders) emits a trace id and writes to a decision log.
+- Show how `/cases/summary/{trace_id}` gives a canonical JSON contract that downstream systems (checkout, n8n, audit tools) can
+  consume.
+- Mention that a `TenantContext` abstraction reads `x-autocomply-tenant-id`, so logs and summaries can be scoped per health
+  system or practice group.
+- Emphasize that this is the foundation for:
+  - Tenant-scoped dashboards
+  - Per-customer audit trails
+  - Alerting on risky decisions across tenants.
+
+### 3.6 DX and AI/RAG debug
 
 - Highlight:
   - **Copy-as-cURL** patterns across CSF and License engines.  

@@ -92,8 +92,12 @@ export const ComplianceCaseSummaryPanel: React.FC = () => {
       <div className="flex items-center justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold text-zinc-50">Compliance Case Summary</h2>
+          <div className="mt-1 inline-flex items-center gap-1 rounded-full border border-zinc-700/70 bg-zinc-900/70 px-2 py-0.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <span className="text-[10px] font-medium text-zinc-200">Per-trace case summary</span>
+          </div>
           <p className="mt-1 text-xs text-zinc-400">
-            Summarize the current trace across CSF, license, and order decisions to explain the overall status.
+            Roll-up of CSF, license, and order decisions for the selected trace.
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">

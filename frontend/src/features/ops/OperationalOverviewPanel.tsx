@@ -110,8 +110,12 @@ export const OperationalOverviewPanel: React.FC = () => {
           <h2 className="text-sm font-semibold text-zinc-50">
             Operational Overview
           </h2>
+          <div className="mt-1 inline-flex items-center gap-1 rounded-full border border-zinc-700/70 bg-zinc-900/70 px-2 py-0.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
+            <span className="text-[10px] font-medium text-zinc-200">Tenant-aware ops</span>
+          </div>
           <p className="mt-1 text-xs text-zinc-400">
-            Snapshot of tenant, backend health, and last case status.
+            Snapshot of tenant context, backend health, and last case status.
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">
