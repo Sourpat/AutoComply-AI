@@ -100,6 +100,32 @@ def build_csf_copilot_result(
     )
 
 
+def _build_practitioner_csf_query(request: PractitionerCsfForm) -> str:
+    terms: List[str] = ["practitioner csf"]
+
+    ship_to_state = (request.ship_to_state or "").strip()
+    if ship_to_state:
+        terms.append(ship_to_state)
+
+    controlled_substances = getattr(request, "controlled_substances", []) or []
+    has_schedule_ii = False
+    for substance in controlled_substances:
+        schedule = ""
+        if isinstance(substance, dict):
+            schedule = str(substance.get("schedule", ""))
+        else:
+            schedule = str(getattr(substance, "schedule", ""))
+
+        if schedule.upper() == "II":
+            has_schedule_ii = True
+            break
+
+    if has_schedule_ii:
+        terms.append("schedule II")
+
+    return " ".join(terms)
+
+
 def _facility_success_reason(reason: str) -> str:
     """Normalize success copy to be Facility-specific."""
 
@@ -369,8 +395,17 @@ async def run_csf_copilot(
         )
 
         decision = evaluate_practitioner_csf(practitioner_form)
-        references = decision.regulatory_references or [doc_id]
         rag_explanation = decision.reason
+
+        knowledge = get_regulatory_knowledge()
+        query = _build_practitioner_csf_query(practitioner_form)
+
+        rag_sources = knowledge.search_sources(query, limit=3)
+        if not rag_sources:
+            rag_sources = knowledge.get_sources_for_doc_ids([doc_id])
+
+        regulatory_references = sources_to_regulatory_references(rag_sources)
+        artifacts_used = [reference.id for reference in regulatory_references]
 
         logger.info(
             "Practitioner CSF copilot request received",
@@ -386,11 +421,9 @@ async def run_csf_copilot(
             rag_answer = explain_csf_practitioner_decision(
                 decision=decision.model_dump(),
                 question=prompt,
-                regulatory_references=references,
+                regulatory_references=regulatory_references,
             )
             rag_explanation = rag_answer.answer or rag_explanation
-            rag_sources = rag_answer.sources
-            artifacts_used = rag_answer.artifacts_used
 
             if rag_answer.debug.get("mode") == "stub":
                 rag_explanation = (
@@ -418,6 +451,14 @@ async def run_csf_copilot(
             decision_type="csf_practitioner",
             doc_id=doc_id,
             rag_explanation=rag_explanation,
+            # Override artifacts and sources with knowledge search results.
+            # build_csf_copilot_result will use doc_id otherwise.
+        ).model_copy(
+            update={
+                "regulatory_references": regulatory_references,
+                "rag_sources": rag_sources,
+                "artifacts_used": artifacts_used,
+            }
         )
 
     hospital_form = HospitalCsfForm(
