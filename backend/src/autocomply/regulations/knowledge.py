@@ -166,7 +166,7 @@ class RegulatoryKnowledge:
             "csf:csf_practitioner": ["csf_practitioner_form"],
             "csf:csf_ems": ["csf_ems_form"],
             "csf:csf_researcher": ["csf_researcher_form"],
-            "license:license_ohio_tddd": ["ohio-tddd-core"],
+            "license:license_ohio_tddd": ["ohio_tddd_rules", "ohio-tddd-core"],
             "license:license_ny_pharmacy": ["ny-pharmacy-core"],
         }
 
