@@ -1,180 +1,165 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List
 
+from src.api.models.compliance_models import RegulatorySource
 from src.api.models.decision import RegulatoryReference
-
-
-@dataclass
-class RegulatoryEvidenceItem:
-    """
-    A single piece of regulatory evidence used to support a decision.
-
-    This is intentionally separate from the public RegulatoryReference model so we can
-    attach extra metadata (snippet, weight, etc.) that does not need to leak to callers.
-    """
-
-    reference: RegulatoryReference
-    snippet: Optional[str] = None
-    raw_source: Optional[Dict[str, Any]] = None
 
 
 class RegulatoryKnowledge:
     """
-    Central registry for regulatory references.
+    Central registry for regulatory snippets used by CSF, license, and RAG endpoints.
 
-    V1: entirely in-memory + static.
-    V2+: can be backed by a vector store or external knowledge base.
+    Initial implementation is in-memory and static, but the interface is designed so it
+    can later be backed by a vector store or external RAG service.
     """
 
-    def __init__(self, registry: Dict[str, RegulatoryReference]) -> None:
-        self._registry = registry
+    def __init__(self) -> None:
+        # Keyed primarily by document id, which matches existing regulatory_references IDs.
+        self._sources_by_id: Dict[str, RegulatorySource] = {}
 
-    def _resolve_references(self, ids: Iterable[str]) -> List[RegulatoryEvidenceItem]:
-        items: List[RegulatoryEvidenceItem] = []
-        for ref_id in ids:
-            ref = self._registry.get(ref_id)
-            if ref is None:
-                continue
-            # For now we do not attach real snippets; that will come with RAG integration.
-            items.append(RegulatoryEvidenceItem(reference=ref, snippet=None))
-        return items
+        self._seed_static_sources()
 
-    def get_regulatory_evidence(
-        self,
-        *,
-        decision_type: Optional[str] = None,
-        jurisdiction: Optional[str] = None,
-        doc_ids: Optional[Iterable[str]] = None,
-        context: Optional[Dict[str, object]] = None,
-    ) -> List[RegulatoryEvidenceItem]:
-        """
-        Return the regulatory evidence items used to support a decision.
-
-        - If doc_ids are provided, they are used as primary keys into the registry.
-        - Otherwise, we fall back to a coarse mapping based on decision_type / jurisdiction.
-        """
-        # Prefer explicit doc_ids if provided.
-        if doc_ids:
-            return self._resolve_references(doc_ids)
-
-        # Coarse fallback mapping (can be expanded later).
-        fallback_ids: List[str] = []
-
-        if decision_type == "license_ohio_tddd":
-            fallback_ids.append("ohio-tddd-core")
-        elif decision_type == "license_ny_pharmacy":
-            fallback_ids.append("ny-pharmacy-core")
-        elif decision_type == "csf_hospital":
-            fallback_ids.append("csf_hospital_form")
-        elif decision_type == "csf_facility":
-            fallback_ids.append("csf_facility_form")
-        elif decision_type == "csf_practitioner":
-            fallback_ids.append("csf_practitioner_form")
-
-        # In case nothing matched, just return an empty list.
-        if not fallback_ids:
-            return []
-
-        return self._resolve_references(fallback_ids)
-
-
-# --- Static registry ----------------------------------------------------------
-
-_STATIC_REGISTRY: Dict[str, RegulatoryReference] = {
-    "ohio-tddd-core": RegulatoryReference(
-        id="ohio-tddd-core",
-        jurisdiction="US-OH",
-        source="Ohio TDDD Guidance (stub)",
-        citation="OH ST § 4729.54",
-        label="Ohio TDDD license required and must be active",
-    ),
-    "ny-pharmacy-core": RegulatoryReference(
-        id="ny-pharmacy-core",
-        jurisdiction="US-NY",
-        source="NY Pharmacy Board (stub)",
-        citation=None,
-        label="NY pharmacy license required and must be active",
-    ),
-    "csf_hospital_form": RegulatoryReference(
-        id="csf_hospital_form",
-        jurisdiction=None,
-        source="Hospital Controlled Substance Form (stub)",
-        citation=None,
-        label="Hospital CSF – core requirements",
-    ),
-    "csf_facility_form": RegulatoryReference(
-        id="csf_facility_form",
-        jurisdiction=None,
-        source="Facility Controlled Substance Form (stub)",
-        citation=None,
-        label="Facility CSF – core requirements",
-    ),
-    "csf_practitioner_form": RegulatoryReference(
-        id="csf_practitioner_form",
-        jurisdiction=None,
-        source="Practitioner Controlled Substance Form (stub)",
-        citation=None,
-        label="Practitioner CSF – core requirements",
-    ),
-    # Add more doc IDs here as we expand CSF & other states.
-}
-
-
-_KNOWLEDGE_SINGLETON = RegulatoryKnowledge(registry=_STATIC_REGISTRY)
-
-
-def get_regulatory_knowledge() -> RegulatoryKnowledge:
-    """
-    Entry-point used by the rest of the app.
-
-    Having a function indirection here makes it trivial to:
-        - swap implementations in tests
-        - inject a vector-store-backed version later
-    """
-    return _KNOWLEDGE_SINGLETON
-
-
-def build_csf_evidence_from_sources(
-    decision_type: str,
-    jurisdiction: Optional[str],
-    doc_ids: Optional[Iterable[str]],
-    rag_sources: Optional[Iterable[Dict[str, Any]]],
-) -> List[RegulatoryEvidenceItem]:
-    """
-    Convenience helper for CSF copilot endpoints.
-
-    - Starts from the stubbed RegulatoryKnowledge (e.g. csf_hospital_form).
-    - Augments it with lightweight evidence derived from rag_sources (if present),
-      preserving their ids/titles/snippets as RegulatoryEvidenceItem entries.
-    """
-
-    knowledge = get_regulatory_knowledge()
-
-    base_items = knowledge.get_regulatory_evidence(
-        decision_type=decision_type,
-        jurisdiction=jurisdiction,
-        doc_ids=doc_ids,
-        context=None,
-    )
-
-    extra_items: List[RegulatoryEvidenceItem] = []
-    for src in rag_sources or []:
-        src_id = src.get("id") or "csf_source"
-        ref = RegulatoryReference(
-            id=str(src_id),
-            jurisdiction=jurisdiction,
-            source=src.get("title") or "CSF Copilot Source",
-            citation=None,
-            label=str(src_id),
+    def _seed_static_sources(self) -> None:
+        # NOTE: Use the same IDs already used in tests and domain code, e.g. "csf_hospital_form".
+        self._add(
+            RegulatorySource(
+                id="csf_hospital_form",
+                title="Hospital CSF – core requirements",
+                snippet="Core rules and attestations for hospital CSF evaluations.",
+                jurisdiction="OH",
+                citation=None,
+            )
         )
-        extra_items.append(
-            RegulatoryEvidenceItem(
-                reference=ref,
-                snippet=src.get("snippet"),
-                raw_source=src,
+        self._add(
+            RegulatorySource(
+                id="csf_facility_form",
+                title="Facility CSF – core requirements",
+                snippet="Guidance and required fields for facility CSF evaluations.",
+                jurisdiction="OH",
+                citation=None,
+            )
+        )
+        self._add(
+            RegulatorySource(
+                id="csf_practitioner_form",
+                title="Practitioner CSF – core requirements",
+                snippet="Practitioner-specific CSF requirements and attestations.",
+                jurisdiction="US",
+                citation=None,
+            )
+        )
+        self._add(
+            RegulatorySource(
+                id="csf_ems_form",
+                title="EMS CSF",
+                snippet="EMS-specific CSF requirements and attestations.",
+                jurisdiction="US",
+                citation=None,
+            )
+        )
+        self._add(
+            RegulatorySource(
+                id="csf_researcher_form",
+                title="Researcher CSF",
+                snippet="Researcher CSF requirements and attestations.",
+                jurisdiction="US",
+                citation=None,
+            )
+        )
+        self._add(
+            RegulatorySource(
+                id="ohio-tddd-core",
+                title="Ohio TDDD License Rules",
+                snippet="Ohio TDDD licensing requirements, including expiry and ship-to restrictions.",
+                jurisdiction="US-OH",
+                citation=None,
+            )
+        )
+        self._add(
+            RegulatorySource(
+                id="ohio_tddd_rules",
+                title="Ohio TDDD License Rules",
+                snippet="Ohio TDDD licensing requirements, including expiry and ship-to restrictions.",
+                jurisdiction="US-OH",
+                citation=None,
+            )
+        )
+        self._add(
+            RegulatorySource(
+                id="ny-pharmacy-core",
+                title="NY pharmacy license required and must be active",
+                snippet="NY pharmacy licensing standards, including state-specific dispensing rules.",
+                jurisdiction="NY",
+                citation=None,
+            )
+        )
+        self._add(
+            RegulatorySource(
+                id="ny_pharmacy_rules",
+                title="NY pharmacy license required and must be active",
+                snippet="NY pharmacy licensing standards, including state-specific dispensing rules.",
+                jurisdiction="NY",
+                citation=None,
             )
         )
 
-    return [*base_items, *extra_items]
+    def _add(self, source: RegulatorySource) -> None:
+        self._sources_by_id[source.id] = source
+
+    def get_sources_for_doc_ids(self, doc_ids: Iterable[str]) -> List[RegulatorySource]:
+        ids = list(doc_ids)
+        return [self._sources_by_id[i] for i in ids if i in self._sources_by_id]
+
+    def get_context_for_engine(
+        self, *, engine_family: str, decision_type: str
+    ) -> List[RegulatorySource]:
+        """
+        Convenience method used by RAG endpoints. Maps engine/decision types
+        to one or more document ids, then returns the associated sources.
+        """
+        key = f"{engine_family}:{decision_type}"
+
+        # Keep this mapping small and explicit for now.
+        mapping: Dict[str, List[str]] = {
+            "csf:csf_hospital": ["csf_hospital_form"],
+            "csf:csf_facility": ["csf_facility_form"],
+            "csf:csf_practitioner": ["csf_practitioner_form"],
+            "csf:csf_ems": ["csf_ems_form"],
+            "csf:csf_researcher": ["csf_researcher_form"],
+            "license:license_ohio_tddd": ["ohio-tddd-core"],
+            "license:license_ny_pharmacy": ["ny-pharmacy-core"],
+        }
+
+        doc_ids = mapping.get(key, [])
+        return self.get_sources_for_doc_ids(doc_ids)
+
+
+# Singleton-style accessor to avoid repeated construction.
+_GLOBAL_REGULATORY_KNOWLEDGE: RegulatoryKnowledge | None = None
+
+
+def get_regulatory_knowledge() -> RegulatoryKnowledge:
+    global _GLOBAL_REGULATORY_KNOWLEDGE
+    if _GLOBAL_REGULATORY_KNOWLEDGE is None:
+        _GLOBAL_REGULATORY_KNOWLEDGE = RegulatoryKnowledge()
+    return _GLOBAL_REGULATORY_KNOWLEDGE
+
+
+def sources_to_regulatory_references(
+    sources: Iterable[RegulatorySource],
+) -> List[RegulatoryReference]:
+    """Helper to mirror legacy RegulatoryReference objects from sources."""
+
+    references: List[RegulatoryReference] = []
+    for src in sources:
+        references.append(
+            RegulatoryReference(
+                id=src.id or "",
+                jurisdiction=src.jurisdiction,
+                source=src.title,
+                citation=getattr(src, "citation", None),
+                label=src.title or (src.id or ""),
+            )
+        )
+    return references

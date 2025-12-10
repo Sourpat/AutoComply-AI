@@ -9,7 +9,10 @@ from src.autocomply.audit.decision_log import get_decision_log
 from src.autocomply.domain.decision_risk import compute_risk_for_status
 from src.autocomply.domain.ohio_tddd_decision import build_ohio_tddd_decision
 from src.autocomply.domain.trace import TRACE_HEADER_NAME, ensure_trace_id
-from src.autocomply.regulations.knowledge import get_regulatory_knowledge
+from src.autocomply.regulations.knowledge import (
+    get_regulatory_knowledge,
+    sources_to_regulatory_references,
+)
 from src.domain.license_ohio_tddd import (
     OhioTdddFormCopilotResponse,
     OhioTdddFormData,
@@ -91,17 +94,11 @@ async def ohio_tddd_evaluate(
 
     knowledge = get_regulatory_knowledge()
 
-    evidence_items = knowledge.get_regulatory_evidence(
-        decision_type="license_ohio_tddd",
-        jurisdiction="US-OH",
-        doc_ids=["ohio-tddd-core"],
-        context={
-            "license_number": license_number,
-            "ship_to_state": form.ship_to_state,
-        },
+    sources = knowledge.get_context_for_engine(
+        engine_family="license", decision_type="license_ohio_tddd"
     )
 
-    regulatory_references = [item.reference for item in evidence_items]
+    regulatory_references = sources_to_regulatory_references(sources)
 
     if not missing and form.attestation_accepted:
         decision_outcome = build_ohio_tddd_decision(
@@ -114,7 +111,7 @@ async def ohio_tddd_evaluate(
                 "missing_fields": None,
                 "engine_family": "license",
                 "decision_type": "license_ohio_tddd",
-                "regulatory_evidence_count": len(evidence_items),
+                "regulatory_evidence_count": len(sources),
             },
         )
     else:
@@ -129,7 +126,7 @@ async def ohio_tddd_evaluate(
                 "missing_fields": missing or None,
                 "engine_family": "license",
                 "decision_type": "license_ohio_tddd",
-                "regulatory_evidence_count": len(evidence_items),
+                "regulatory_evidence_count": len(sources),
             },
         )
 

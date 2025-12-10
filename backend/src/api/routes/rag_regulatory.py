@@ -9,11 +9,8 @@ from autocomply.domain.rag_regulatory_explain import (
     regulatory_rag_explain,
 )
 from src.api.models.decision import RegulatoryReference
-from src.api.models.compliance_models import RegulatoryExplainResponse
-from src.autocomply.regulations.knowledge import (
-    RegulatoryEvidenceItem,
-    get_regulatory_knowledge,
-)
+from src.api.models.compliance_models import RegulatoryExplainResponse, RegulatorySource
+from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 
 router = APIRouter(
     prefix="/rag",
@@ -122,24 +119,29 @@ async def regulatory_preview(
 
     knowledge = get_regulatory_knowledge()
 
-    evidence_items: List[RegulatoryEvidenceItem] = knowledge.get_regulatory_evidence(
-        decision_type=payload.decision_type,
-        jurisdiction=payload.jurisdiction,
-        doc_ids=payload.doc_ids,
-        context={},
-    )
+    sources: List[RegulatorySource] = []
+    doc_ids: List[str] = payload.doc_ids or []
+
+    if not doc_ids and payload.decision_type:
+        inferred_engine_family = (payload.decision_type or "").split("_", 1)[0]
+        sources = knowledge.get_context_for_engine(
+            engine_family=inferred_engine_family, decision_type=payload.decision_type
+        )
+    elif doc_ids:
+        sources = knowledge.get_sources_for_doc_ids(doc_ids)
+    else:
+        sources = []
 
     items: List[RegulatoryPreviewItem] = []
-    for ev in evidence_items:
-        ref: RegulatoryReference = ev.reference
+    for src in sources:
         items.append(
             RegulatoryPreviewItem(
-                id=ref.id,
-                jurisdiction=ref.jurisdiction,
-                source=ref.source,
-                citation=ref.citation,
-                label=ref.label,
-                snippet=ev.snippet,
+                id=src.id or "",
+                jurisdiction=src.jurisdiction,
+                source=src.title,
+                citation=getattr(src, "citation", None),
+                label=src.title or (src.id or ""),
+                snippet=src.snippet,
             )
         )
 
@@ -156,6 +158,15 @@ async def regulatory_explain_endpoint(
     In stub mode, this returns a deterministic placeholder that echoes the
     artifacts and question. In full mode, it runs the LangChain RAG pipeline.
     """
+
+    knowledge = get_regulatory_knowledge()
+    fallback_sources: List[RegulatorySource] = []
+
+    if payload.engine_family and payload.decision_type:
+        fallback_sources = knowledge.get_context_for_engine(
+            engine_family=payload.engine_family,
+            decision_type=payload.decision_type,
+        )
 
     answer: RegulatoryRagAnswer
 
@@ -175,5 +186,12 @@ async def regulatory_explain_endpoint(
             decision=payload.decision,
         )
         answer = regulatory_rag_explain(domain_request)
+
+    if not answer.sources and fallback_sources:
+        answer.sources = fallback_sources
+    if not answer.artifacts_used and fallback_sources:
+        answer.artifacts_used = [src.id for src in fallback_sources if src.id]
+    if not answer.regulatory_references and fallback_sources:
+        answer.regulatory_references = [src.id for src in fallback_sources if src.id]
 
     return RegulatoryRagResponse(**answer.model_dump())

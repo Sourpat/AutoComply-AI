@@ -31,7 +31,10 @@ from src.autocomply.domain.rag_regulatory_explain import (
     explain_csf_hospital_decision,
     explain_csf_practitioner_decision,
 )
-from src.autocomply.regulations.knowledge import get_regulatory_knowledge
+from src.autocomply.regulations.knowledge import (
+    get_regulatory_knowledge,
+    sources_to_regulatory_references,
+)
 from src.rag.csf_copilot_prompt import build_csf_copilot_prompt
 from src.utils.logger import get_logger
 
@@ -80,25 +83,11 @@ def build_csf_copilot_result(
     rag_explanation: str,
 ) -> CsfCopilotResult:
     knowledge = get_regulatory_knowledge()
-    evidence_items = knowledge.get_regulatory_evidence(
-        decision_type=decision_type,
-        jurisdiction=None,
-        doc_ids=[doc_id],
-        context={},
+    doc_ids = [doc_id]
+    rag_sources: List[RegulatorySource] = knowledge.get_sources_for_doc_ids(doc_ids)
+    regulatory_references: List[RegulatoryReference] = sources_to_regulatory_references(
+        rag_sources
     )
-
-    regulatory_references: List[RegulatoryReference] = [
-        item.reference for item in evidence_items
-    ]
-
-    rag_sources: List[RegulatorySource] = [
-        RegulatorySource(
-            id=ref.id,
-            title=ref.label or ref.id,
-            snippet=item.snippet or "Stubbed CSF context",
-        )
-        for ref, item in zip(regulatory_references, evidence_items)
-    ]
 
     return CsfCopilotResult(
         status=decision_status,
@@ -106,7 +95,7 @@ def build_csf_copilot_result(
         missing_fields=missing_fields,
         regulatory_references=regulatory_references,
         rag_explanation=rag_explanation,
-        artifacts_used=[doc_id],
+        artifacts_used=doc_ids,
         rag_sources=rag_sources,
     )
 
