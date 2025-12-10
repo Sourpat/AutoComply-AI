@@ -37,3 +37,12 @@ def test_explanation_includes_jurisdiction_from_context():
     # Our deterministic helper should mention jurisdictions from the
     # regulatory_context (which includes US-CA in the stub).
     assert "US-CA" in explanation
+
+    # Should read like a regulatory note that references status and sources
+    assert "AutoComply AI" in explanation
+    assert (
+        "appropriate to proceed with shipment" in explanation
+        or "should be reviewed" in explanation
+        or "not permitted to proceed" in explanation
+    )
+    assert "informed by" in explanation or "Regulatory reference" in explanation
