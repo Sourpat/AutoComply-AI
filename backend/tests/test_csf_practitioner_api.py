@@ -1,10 +1,11 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.api.routes import csf_practitioner as csf_practitioner_route
+from src.api.routes.csf_practitioner import router as practitioner_router
 
+# Local FastAPI app just for these tests, with the practitioner router mounted.
 app = FastAPI()
-app.include_router(csf_practitioner_route.router)
+app.include_router(practitioner_router)
 
 client = TestClient(app)
 
