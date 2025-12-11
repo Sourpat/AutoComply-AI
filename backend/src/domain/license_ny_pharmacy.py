@@ -4,6 +4,8 @@ from datetime import date
 
 from pydantic import BaseModel, Field, root_validator
 
+from src.rag.models import RagSource
+
 
 class NyPharmacyFormData(BaseModel):
     """
@@ -90,4 +92,4 @@ class NyPharmacyFormCopilotResponse(BaseModel):
     regulatory_references: List[str]
     rag_explanation: str
     artifacts_used: List[str]
-    rag_sources: List[dict]
+    rag_sources: List[RagSource]

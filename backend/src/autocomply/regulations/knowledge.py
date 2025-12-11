@@ -5,6 +5,7 @@ from typing import Dict, Iterable, List
 
 from src.api.models.compliance_models import RegulatorySource
 from src.api.models.decision import RegulatoryReference
+from src.rag.service import normalize_scores
 
 
 class RegulatoryKnowledge:
@@ -115,7 +116,13 @@ class RegulatoryKnowledge:
         )
 
     def _add(self, source: RegulatorySource) -> None:
-        self._sources_by_id[source.id] = source
+        normalized = source.model_copy(
+            update={
+                "score": source.score if source.score is not None else 1.0,
+                "raw_score": source.raw_score if source.raw_score is not None else 1.0,
+            }
+        )
+        self._sources_by_id[source.id] = normalized
 
     def get_sources_for_doc_ids(self, doc_ids: Iterable[str]) -> List[RegulatorySource]:
         ids = list(doc_ids)
@@ -157,7 +164,19 @@ class RegulatoryKnowledge:
         scored = [pair for pair in scored if pair[0] > 0]
         scored.sort(key=lambda pair: pair[0], reverse=True)
 
-        return [src for _, src in scored[:limit]]
+        raw_scores = [float(pair[0]) for pair in scored[:limit]]
+        norm_scores = normalize_scores(raw_scores)
+
+        sources: List[RegulatorySource] = []
+        for (raw, src), norm in zip(scored[:limit], norm_scores):
+            sources.append(
+                src.model_copy(
+                    update={"raw_score": float(raw), "score": round(norm, 4)},
+                    deep=True,
+                )
+            )
+
+        return sources
 
     def get_context_for_engine(
         self, *, engine_family: str, decision_type: str
@@ -208,9 +227,9 @@ def sources_to_regulatory_references(
             RegulatoryReference(
                 id=src.id or "",
                 jurisdiction=src.jurisdiction,
-                source=src.title,
+                source=src.label,
                 citation=getattr(src, "citation", None),
-                label=src.title or (src.id or ""),
+                label=src.label or (src.id or ""),
             )
         )
     return references

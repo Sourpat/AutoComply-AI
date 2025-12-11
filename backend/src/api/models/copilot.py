@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from src.api.models.decision import RegulatoryReference
+from src.rag.models import RagSource
 
 
 class CsfCopilotSuggestion(BaseModel):
@@ -35,7 +36,7 @@ class CsfCopilotResponse(BaseModel):
     reason: Optional[str] = None
     rag_explanation: Optional[str] = None
     artifacts_used: List[str] = Field(default_factory=list)
-    rag_sources: List[Dict[str, Any]] = Field(default_factory=list)
+    rag_sources: List[RagSource] = Field(default_factory=list)
 
     # Core guidance / schema
     missing_fields: List[str] = Field(default_factory=list)

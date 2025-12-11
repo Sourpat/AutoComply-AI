@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from autocomply.domain.csf_explain import CsfDecisionSummary
 from autocomply.domain.csf_practitioner import CsDecisionStatus
+from src.rag.models import RagSource
 
 
 # ----------------------------
@@ -212,18 +213,15 @@ class RegulatoryContextResponse(BaseModel):
     context: List[Dict[str, Any]] = Field(default_factory=list)
 
 
-class RegulatorySource(BaseModel):
-    id: Optional[str] = None
-    title: Optional[str] = None
-    jurisdiction: Optional[str] = None
-    source: Optional[str] = None
-    snippet: Optional[str] = None
-    url: Optional[str] = None
+class RegulatorySource(RagSource):
+    """Backwards-compatible alias for enriched RAG sources."""
+
+    score: float = 1.0
 
 
 class RegulatoryExplainResponse(BaseModel):
     answer: str
-    sources: List[RegulatorySource] = Field(default_factory=list)
+    sources: List[RagSource] = Field(default_factory=list)
     regulatory_references: List[str] = Field(default_factory=list)
     artifacts_used: List[str] = Field(default_factory=list)
     debug: Dict[str, Any] = Field(default_factory=dict)
