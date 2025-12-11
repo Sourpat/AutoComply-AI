@@ -33,6 +33,7 @@ import { buildCurlCommand } from "../utils/curl";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import { useRagDebug } from "../devsupport/RagDebugContext";
 import type { DecisionOutcome } from "../types/decision";
+import { VerticalBadge } from "./VerticalBadge";
 
 const ErrorAlert = ({
   message,
@@ -318,6 +319,11 @@ export function PractitionerCsfSandbox() {
   const [itemError, setItemError] = useState<string | null>(null);
   const [itemRagAnswer, setItemRagAnswer] = useState<string | null>(null);
   const [itemRagError, setItemRagError] = useState<string | null>(null);
+
+  const activePreset = selectedPresetId
+    ? PRACTITIONER_CSF_PRESETS.find((preset) => preset.id === selectedPresetId) ??
+      null
+    : null;
 
   useEffect(() => {
     if (!API_BASE) {
@@ -917,6 +923,12 @@ export function PractitionerCsfSandbox() {
                 </option>
               ))}
             </select>
+            {activePreset?.verticalLabel && (
+              <VerticalBadge label={activePreset.verticalLabel} />
+            )}
+            {activePreset?.group && (
+              <span className="text-[10px] text-gray-500">{activePreset.group}</span>
+            )}
           </div>
           <div className="mt-1">
             <TestCoverageNote
@@ -981,11 +993,7 @@ export function PractitionerCsfSandbox() {
 
           {selectedPresetId && (
             <p className="text-[11px] text-gray-600">
-              Preset: {
-                PRACTITIONER_CSF_PRESETS.find(
-                  (preset) => preset.id === selectedPresetId
-                )?.description
-              }
+              Preset: {activePreset?.description}
             </p>
           )}
 
