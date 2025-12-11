@@ -182,6 +182,11 @@ This allows a PM to show:
     - `frontend/src/features/audit/RecentDecisionsPanel.tsx`
 - Operational overview:
   - `frontend/src/features/ops/OperationalOverviewPanel.tsx`
+- Risk and explanation semantics:
+  - Status → risk mapping (low / medium / high)
+  - Analyst-style explanation text from jurisdiction + sources
+  - Documented in
+    [`risk_and_explanation_semantics.md`](./risk_and_explanation_semantics.md)
 
 Together, these features let you answer:
 > "What just happened? For which tenant? Which trace? Which engines?"

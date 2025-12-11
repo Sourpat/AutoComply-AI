@@ -58,6 +58,18 @@ consume this single contract instead of calling each engine directly.
 For a detailed field-by-field breakdown, see
 [`backend/docs/case_summary_json_contract.md`](backend/docs/case_summary_json_contract.md).
 
+### Risk and explanation semantics
+
+AutoComply AI normalizes decisions across CSF, licenses, and orders using:
+
+- A common status vocabulary: `ok_to_ship`, `needs_review`, `blocked`
+- Derived risk levels (low / medium / high) used in dashboards
+- A short, analyst-style explanation text built from jurisdiction and
+  regulatory sources
+
+For details on how status maps to risk and how explanation text is built,
+see [`backend/docs/risk_and_explanation_semantics.md`](backend/docs/risk_and_explanation_semantics.md).
+
 ## Compliance Console Overview
 
 The AutoComply AI **Compliance Console** is a developer-friendly “compliance lab” that sits on top of the core engines:
