@@ -86,6 +86,22 @@ The NY Pharmacy license flow is one such vertical:
 See [`backend/docs/vertical_ny_pharmacy.md`](backend/docs/vertical_ny_pharmacy.md)
 for a detailed walkthrough of the NY Pharmacy vertical.
 
+## Vertical demos
+
+AutoComply AI ships with demo-ready compliance verticals that sit on top
+of the shared decision core and RAG layer.
+
+Current verticals:
+
+- NY Pharmacy vertical
+- Ohio Hospital vertical
+
+For how to run these from the Compliance Console, see:
+
+- `backend/docs/verticals/vertical_demos_overview.md`
+- `backend/docs/verticals/ny_pharmacy_vertical.md`
+- `backend/docs/verticals/ohio_hospital_vertical.md`
+
 ## Compliance Console Overview
 
 The AutoComply AI **Compliance Console** is a developer-friendly “compliance lab” that sits on top of the core engines:
