@@ -1,3 +1,14 @@
+"""
+Surgery Center CSF vertical tests.
+
+These tests align with backend/docs/verticals/surgery_center_csf_vertical.md
+and exercise the canonical decision contract for:
+
+- Scenario 1 – Surgery center CSF complete & appropriate
+- Scenario 2 – Missing key facility / license / anesthesia details
+- Scenario 3 – High-risk surgery center behavior
+"""
+
 from autocomply.domain.controlled_substances import ControlledSubstanceItem
 from autocomply.domain.csf_practitioner import CsDecisionStatus
 from autocomply.domain.csf_surgery_center import (
@@ -24,7 +35,10 @@ def make_base_form(**overrides) -> SurgeryCenterCsfForm:
     return SurgeryCenterCsfForm(**base)
 
 
-def test_surgery_center_csf_ok_to_ship_when_all_required_fields_and_attestation():
+def test_surgery_center_csf_scenario_1_complete_and_appropriate():
+    """
+    Scenario 1 – Surgery center CSF complete & appropriate.
+    """
     form = make_base_form()
     decision: SurgeryCenterCsfDecision = evaluate_surgery_center_csf(form)
 
@@ -33,7 +47,10 @@ def test_surgery_center_csf_ok_to_ship_when_all_required_fields_and_attestation(
     assert decision.regulatory_references == ["csf_surgery_center_form"]
 
 
-def test_surgery_center_csf_blocked_when_core_fields_missing():
+def test_surgery_center_csf_scenario_2_missing_core_fields():
+    """
+    Scenario 2 – Missing key facility / license / anesthesia details.
+    """
     form = make_base_form(
         facility_name="",
         facility_license_number="",
@@ -43,6 +60,7 @@ def test_surgery_center_csf_blocked_when_core_fields_missing():
     )
     decision = evaluate_surgery_center_csf(form)
 
+    # Canonical decision contract expectations
     assert decision.status == CsDecisionStatus.BLOCKED
     assert "facility_name" in decision.missing_fields
     assert "facility_license_number" in decision.missing_fields
@@ -52,10 +70,14 @@ def test_surgery_center_csf_blocked_when_core_fields_missing():
     assert decision.regulatory_references == ["csf_surgery_center_form"]
 
 
-def test_surgery_center_csf_blocked_when_attestation_not_accepted():
+def test_surgery_center_csf_scenario_3_attestation_not_accepted():
+    """
+    Scenario 3 – High-risk surgery center behavior (attestation declined).
+    """
     form = make_base_form(attestation_accepted=False)
     decision = evaluate_surgery_center_csf(form)
 
+    # Canonical decision contract expectations
     assert decision.status == CsDecisionStatus.BLOCKED
     assert "attestation_accepted" in decision.missing_fields
     assert "attestation" in decision.reason.lower()

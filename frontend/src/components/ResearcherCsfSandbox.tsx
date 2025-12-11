@@ -21,6 +21,11 @@ import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { buildCurlCommand } from "../utils/curl";
+import {
+  RESEARCHER_CSF_PRESETS,
+  type ResearcherCsfPresetId,
+} from "../domain/csfResearcherPresets";
+import { VerticalBadge } from "./VerticalBadge";
 
 const RESEARCHER_ENGINE_FAMILY = "csf";
 const RESEARCHER_DECISION_TYPE = "csf_researcher";
@@ -33,46 +38,13 @@ type ResearcherExample = {
   overrides: Partial<ResearcherCsfFormData>;
 };
 
-const RESEARCHER_EXAMPLES: ResearcherExample[] = [
-  {
-    id: "researcher_happy_path_ma",
-    label: "Happy Path – University Research Lab (MA)",
-    overrides: {
-      facilityName: "University Research Lab – MA",
-      facilityType: "researcher",
-      accountNumber: "910123456",
-      pharmacyLicenseNumber: "MA-RES-2025-001",
-      deaNumber: "RS1234567",
-      pharmacistInChargeName: "Dr. Dana Example",
-      pharmacistContactPhone: "555-400-9001",
-      shipToState: "MA",
-      attestationAccepted: true,
-      internalNotes: "Happy path Researcher CSF example.",
-      controlledSubstances: [
-        { id: "fentanyl", name: "Fentanyl" },
-        { id: "ketamine", name: "Ketamine" },
-      ],
-    },
-  },
-  {
-    id: "researcher_blocked_co",
-    label: "Blocked – Missing License/DEA (CO)",
-    overrides: {
-      facilityName: "Independent Research Lab – CO",
-      facilityType: "researcher",
-      accountNumber: "910987654",
-      pharmacyLicenseNumber: "",
-      deaNumber: "",
-      pharmacistInChargeName: "Dr. Evan Example",
-      pharmacistContactPhone: "555-400-9002",
-      shipToState: "CO",
-      attestationAccepted: false,
-      internalNotes:
-        "Missing license/DEA and declined attestation – expected blocked.",
-      controlledSubstances: [{ id: "morphine", name: "Morphine" }],
-    },
-  },
-];
+const RESEARCHER_EXAMPLES: ResearcherExample[] = RESEARCHER_CSF_PRESETS.map(
+  (preset) => ({
+    id: preset.id,
+    label: preset.label,
+    overrides: preset.form,
+  })
+);
 
 const initialForm: ResearcherCsfFormData = {
   facilityName: "",
@@ -106,6 +78,14 @@ export function ResearcherCsfSandbox() {
   const [ragAnswer, setRagAnswer] = useState<string | null>(null);
   const [isRagLoading, setIsRagLoading] = useState(false);
   const [ragError, setRagError] = useState<string | null>(null);
+  const [selectedPresetId, setSelectedPresetId] =
+    useState<ResearcherCsfPresetId | null>(null);
+  const activePreset = selectedPresetId
+    ?
+      RESEARCHER_CSF_PRESETS.find(
+        (preset) => preset.id === selectedPresetId
+      ) ?? null
+    : null;
 
   // ---- Researcher CSF Form Copilot state ----
   const [copilotResponse, setCopilotResponse] =
@@ -113,7 +93,37 @@ export function ResearcherCsfSandbox() {
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
 
+  const applyResearcherPreset = (presetId: ResearcherCsfPresetId | null) => {
+    if (!presetId) {
+      setSelectedPresetId(null);
+      return;
+    }
+
+    const preset = RESEARCHER_CSF_PRESETS.find(
+      (candidate) => candidate.id === presetId
+    );
+    if (!preset) return;
+
+    setSelectedPresetId(preset.id);
+    setForm(preset.form);
+    setControlledSubstances(preset.form.controlledSubstances ?? []);
+    setDecision(null);
+    setExplanation(null);
+    setCopilotResponse(null);
+    setExplainError(null);
+    setCopilotError(null);
+
+    trackSandboxEvent("researcher_csf_preset_applied", {
+      engine_family: RESEARCHER_ENGINE_FAMILY,
+      decision_type: RESEARCHER_DECISION_TYPE,
+      sandbox: RESEARCHER_SANDBOX_ID,
+      preset_id: preset.id,
+      vertical_label: preset.verticalLabel,
+    });
+  };
+
   function applyResearcherExample(example: ResearcherExample) {
+    applyResearcherPreset(example.id as ResearcherCsfPresetId);
     const nextForm = {
       ...initialForm,
       ...form,
@@ -133,6 +143,13 @@ export function ResearcherCsfSandbox() {
       ship_to_state: (example.overrides.shipToState || nextForm.shipToState) ?? "",
     });
   }
+
+  const handlePresetChange = (
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const value = (event.target.value as ResearcherCsfPresetId) || null;
+    applyResearcherPreset(value);
+  };
 
   const onChange = (field: keyof ResearcherCsfFormData, value: any) => {
     setForm((prev) => ({
@@ -359,6 +376,39 @@ export function ResearcherCsfSandbox() {
             </button>
           ))}
         </div>
+
+        <div className="mt-3 flex items-center gap-2 text-xs">
+          <span className="text-[10px] uppercase tracking-wide text-gray-500">
+            Scenario presets
+          </span>
+          <select
+            className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] text-gray-700"
+            value={selectedPresetId ?? ""}
+            onChange={handlePresetChange}
+          >
+            <option value="">Manual inputs</option>
+            {RESEARCHER_CSF_PRESETS.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {activePreset?.verticalLabel && (
+          <div className="mt-1 flex items-center gap-2">
+            <VerticalBadge label={activePreset.verticalLabel} />
+            {activePreset.group && (
+              <span className="text-[10px] text-gray-500">{activePreset.group}</span>
+            )}
+          </div>
+        )}
+
+        {activePreset && (
+          <p className="text-[10px] text-gray-600">
+            Preset: {activePreset.description}
+          </p>
+        )}
       </div>
 
       <form onSubmit={onSubmit} className="space-y-6">
