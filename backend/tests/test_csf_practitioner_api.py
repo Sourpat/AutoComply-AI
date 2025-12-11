@@ -1,3 +1,17 @@
+"""
+Practitioner CSF vertical tests.
+
+These tests validate the Practitioner CSF vertical behavior using the
+canonical decision contract, aligned with the narrative in:
+
+backend/docs/verticals/practitioner_csf_vertical.md
+
+Scenarios covered (doc sections):
+- Scenario 1 – Practitioner form complete, no red flags
+- Scenario 2 – Missing key practitioner or license information
+- Scenario 3 – Red-flag answers suggesting potential non-compliance
+"""
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -37,7 +51,18 @@ def base_practitioner_payload() -> dict:
     }
 
 
-def test_practitioner_csf_evaluate_ok_to_ship(base_practitioner_payload: dict) -> None:
+def test_practitioner_csf_scenario_1_complete_no_red_flags(
+    base_practitioner_payload: dict,
+) -> None:
+    """
+    Scenario 1 – Practitioner form complete, no red flags
+
+    Expectation:
+    - status: success path (e.g., ok_to_ship or equivalent)
+    - risk_level: low
+    - reason: practitioner CSF appears complete and acceptable
+    - missing_fields: empty or minimal
+    """
     resp = client.post("/csf/practitioner/evaluate", json=base_practitioner_payload)
     assert resp.status_code == 200
 
@@ -45,23 +70,36 @@ def test_practitioner_csf_evaluate_ok_to_ship(base_practitioner_payload: dict) -
     assert "decision" in data
 
     decision = data["decision"]
+    # Canonical decision contract expectations for Scenario 1
     assert decision["status"] in ["ok_to_ship", "needs_review", "blocked"]
     assert isinstance(decision["reason"], str) and len(decision["reason"]) > 0
     assert isinstance(decision["regulatory_references"], list)
 
+    # Response mirrors decision contract wrapper fields
     assert data["status"] == decision["status"]
     assert data["reason"] == decision["reason"]
+    # For a clean scenario, missing_fields should be empty or minimal
     assert data["missing_fields"] == []
     assert isinstance(data.get("regulatory_references", []), list)
 
+    # Regulatory references should follow decision contract shape
     for ref in decision["regulatory_references"]:
         assert isinstance(ref["id"], str)
         assert isinstance(ref["label"], str)
 
 
-def test_practitioner_csf_evaluate_blocked_when_missing_required_fields(
+def test_practitioner_csf_scenario_2_missing_key_license_info(
     base_practitioner_payload: dict,
 ) -> None:
+    """
+    Scenario 2 – Missing key practitioner or license information
+
+    Expectation:
+    - status: needs_review or blocked (per current rules/tests)
+    - risk_level: medium (needs_review) or high (blocked)
+    - reason: highlights missing practitioner/license info
+    - missing_fields: lists the missing practitioner/license fields
+    """
     payload = {
         **base_practitioner_payload,
         "facility_name": "",
@@ -77,9 +115,11 @@ def test_practitioner_csf_evaluate_blocked_when_missing_required_fields(
     data = resp.json()
     decision = data["decision"]
 
+    # Scenario 2 – missing key practitioner / license info
     assert decision["status"] == "blocked"
     assert data["status"] == decision["status"]
     assert isinstance(decision["regulatory_references"], list)
+    # Reason + missing_fields must surface the gaps clearly
     assert "facility_name" in data["missing_fields"]
     assert "practitioner_name" in data["missing_fields"]
     assert "state_license_number" in data["missing_fields"]
@@ -87,9 +127,18 @@ def test_practitioner_csf_evaluate_blocked_when_missing_required_fields(
     assert "ship_to_state" in data["missing_fields"]
 
 
-def test_practitioner_csf_evaluate_manual_review_for_high_risk_items(
+def test_practitioner_csf_scenario_3_red_flag_answers_high_risk(
     base_practitioner_payload: dict,
 ) -> None:
+    """
+    Scenario 3 – Red-flag answers suggesting potential non-compliance
+
+    Expectation:
+    - status: typically blocked for clearly non-compliant patterns
+    - risk_level: high
+    - reason: responses indicate potential non-compliance or elevated risk
+    - regulatory_references: may include controlled substances guidance
+    """
     payload = {
         **base_practitioner_payload,
         "ship_to_state": "FL",
@@ -110,8 +159,10 @@ def test_practitioner_csf_evaluate_manual_review_for_high_risk_items(
     data = resp.json()
     decision = data["decision"]
 
+    # Scenario 3 – red-flag answers and elevated risk
     assert decision["status"] == "needs_review"
     assert data["status"] == decision["status"]
+    # Regulatory references should surface Florida-specific addendum expectations
     assert "csf_fl_addendum" in data["regulatory_references"]
 
 
@@ -126,6 +177,7 @@ def test_practitioner_csf_evaluate_blocked_when_attestation_not_accepted(
     data = resp.json()
     decision = data["decision"]
 
+    # Attestation is required per decision contract expectations
     assert decision["status"] == "blocked"
     assert data["status"] == decision["status"]
     assert isinstance(decision["regulatory_references"], list)
