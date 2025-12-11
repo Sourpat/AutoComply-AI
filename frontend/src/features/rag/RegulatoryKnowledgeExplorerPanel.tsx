@@ -3,30 +3,16 @@ import { CopyCurlButton } from "../../components/CopyCurlButton";
 import { useRagDebug } from "../../devsupport/RagDebugContext";
 import { buildCurlCommand } from "../../utils/curl";
 import { API_BASE } from "../../api/csfHospitalClient";
-
-interface RegulatorySource {
-  id: string;
-  title?: string;
-  snippet?: string;
-  jurisdiction?: string | null;
-  citation?: string | null;
-  label?: string | null;
-  jurisdiction_label?: string | null;
-  source?: {
-    jurisdiction?: string | null;
-  };
-}
-
-interface SearchResponse {
-  query: string;
-  results: RegulatorySource[];
-}
+import { ragSearch } from "../../api/ragClient";
+import type { RagSearchResponse, RagSource } from "../../types/rag";
+import { RagSourceCard } from "../../components/RagSourceCard";
 
 export const RegulatoryKnowledgeExplorerPanel: React.FC = () => {
   const { enabled: aiDebugEnabled } = useRagDebug();
 
   const [query, setQuery] = React.useState("");
-  const [response, setResponse] = React.useState<SearchResponse | null>(null);
+  const [sources, setSources] = React.useState<RagSource[]>([]);
+  const [response, setResponse] = React.useState<RagSearchResponse | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [lastSearchPayload, setLastSearchPayload] = React.useState<any | null>(
@@ -37,18 +23,11 @@ export const RegulatoryKnowledgeExplorerPanel: React.FC = () => {
   >("all");
 
   const filteredResults = React.useMemo(() => {
-    if (!response?.results) return [];
-    if (jurisdictionFilter === "all") return response.results;
+    if (!sources) return [];
+    if (jurisdictionFilter === "all") return sources;
 
-    return response.results.filter((item) => {
-      const j = (
-        item.jurisdiction_label ||
-        item.jurisdiction ||
-        item.source?.jurisdiction ||
-        ""
-      )
-        .toString()
-        .toLowerCase();
+    return sources.filter((item) => {
+      const j = (item.jurisdiction || "").toString().toLowerCase();
 
       if (!j) return jurisdictionFilter === "other";
 
@@ -73,7 +52,7 @@ export const RegulatoryKnowledgeExplorerPanel: React.FC = () => {
       }
       return true;
     });
-  }, [response, jurisdictionFilter]);
+  }, [sources, jurisdictionFilter]);
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -87,29 +66,18 @@ export const RegulatoryKnowledgeExplorerPanel: React.FC = () => {
     setLoading(true);
     setError(null);
     setResponse(null);
+    setSources([]);
 
     try {
-      const body = { query: q, limit: 5 };
-      setLastSearchPayload(body);
+      const filters = { limit: 5 };
+      const payload = { query: q, ...filters };
+      setLastSearchPayload(payload);
 
-      const resp = await fetch("/rag/regulatory/search", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!resp.ok) {
-        const text = await resp.text();
-        setError(`Request failed (${resp.status}): ${text}`);
-        return;
-      }
-
-      const json = (await resp.json()) as SearchResponse;
+      const json = await ragSearch(q, filters);
       setResponse(json);
-    } catch {
-      setError("Network error while searching regulatory knowledge.");
+      setSources(json.sources ?? []);
+    } catch (err: any) {
+      setError(err?.message || "Network error while searching regulatory knowledge.");
     } finally {
       setLoading(false);
     }
@@ -219,45 +187,11 @@ export const RegulatoryKnowledgeExplorerPanel: React.FC = () => {
                   {response.query}
                 </span>
               </p>
-              <ul className="space-y-2">
-                {filteredResults.map((src) => (
-                  <li
-                    key={src.id}
-                    className="space-y-1 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold text-zinc-100">
-                        {src.title || src.id}
-                      </span>
-                      <span className="text-[10px] font-mono text-zinc-500">
-                        {src.id}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {src.label && (
-                        <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-100">
-                          {src.label}
-                        </span>
-                      )}
-                      {src.citation && (
-                        <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-300">
-                          {src.citation}
-                        </span>
-                      )}
-                      {(src.jurisdiction || src.jurisdiction_label) && (
-                        <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-400">
-                          {src.jurisdiction_label ?? src.jurisdiction}
-                        </span>
-                      )}
-                    </div>
-                    {src.snippet && (
-                      <p className="text-[11px] leading-snug text-zinc-300">
-                        {src.snippet}
-                      </p>
-                    )}
-                  </li>
+              <div className="space-y-2">
+                {filteredResults.map((src, idx) => (
+                  <RagSourceCard key={src.id ?? idx} source={src} index={idx} />
                 ))}
-              </ul>
+              </div>
             </>
           )}
         </div>
