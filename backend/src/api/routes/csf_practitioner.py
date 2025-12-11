@@ -14,6 +14,7 @@ from src.autocomply.domain.csf_practitioner import (
     describe_practitioner_csf_decision,
     evaluate_practitioner_csf,
 )
+from src.explanations.builder import build_explanation
 from src.utils.logger import get_logger
 
 # NOTE: All CSF evaluate endpoints now return a shared DecisionOutcome schema
@@ -105,6 +106,15 @@ async def practitioner_form_copilot(
     }
 
     rag_result: CsfCopilotResult = await run_csf_copilot(copilot_request)
+
+    # Build a structured explanation to return to the client instead of the raw RAG text.
+    structured_reason = build_explanation(
+        decision=rag_result,
+        jurisdiction=None,
+        vertical_name="Practitioner CSF",
+        rag_sources=rag_result.rag_sources,
+    )
+    rag_result.reason = structured_reason
 
     logger.info(
         "Practitioner CSF copilot request received",
