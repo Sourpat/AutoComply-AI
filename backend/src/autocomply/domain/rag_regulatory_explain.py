@@ -11,6 +11,8 @@ from autocomply.domain.compliance_artifacts import (
     ComplianceArtifact,
 )
 from src.api.models.compliance_models import RegulatoryContextItem, RegulatorySource
+from src.rag.models import RagSource
+from src.rag.service import build_rag_sources
 
 USE_REAL_RAG = os.getenv("AUTOCOMPLY_ENABLE_RAG", "0") == "1"
 
@@ -56,7 +58,7 @@ class RegulatoryRagAnswer(BaseModel):
         default_factory=list,
         description="IDs of artifacts that were actually loaded / considered.",
     )
-    sources: List[RegulatorySource] = Field(
+    sources: List[RagSource] = Field(
         default_factory=list,
         description="List of regulatory sources or citations used in the answer.",
     )
@@ -105,6 +107,8 @@ def _build_artifact_sources(artifacts: List[ComplianceArtifact]) -> List[Regulat
             source="artifact",
             snippet=artifact.notes,
             url=artifact.source_document,
+            score=1.0,
+            raw_score=1.0,
         )
         for artifact in artifacts
     ]
@@ -159,6 +163,8 @@ def _vector_chunks_to_sources(
                 source=meta.get("source") or "regulatory_docs",
                 snippet=chunk.text,
                 url=meta.get("url"),
+                raw_score=float(getattr(chunk, "score", 1.0)),
+                score=float(getattr(chunk, "score", 1.0)),
             )
         )
 
@@ -331,7 +337,7 @@ Write a concise, well-structured explanation that:
         answer=answer_text,
         regulatory_references=payload.regulatory_references,
         artifacts_used=[a.id for a in artifacts],
-        sources=sources,
+        sources=build_rag_sources(sources),
         debug={
             "mode": "rag",
             "rag_query": rag_query,
@@ -372,7 +378,7 @@ def regulatory_rag_explain(payload: RegulatoryRagRequestModel) -> RegulatoryRagA
         answer=stub_answer,
         regulatory_references=payload.regulatory_references,
         artifacts_used=[a.id for a in artifacts],
-        sources=_build_artifact_sources(artifacts),
+        sources=build_rag_sources(_build_artifact_sources(artifacts)),
         debug={
             "mode": "stub",
             "have_rag_dependencies": HAVE_RAG_DEPENDENCIES,

@@ -3,6 +3,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from src.rag.models import RagSource
+
 
 class OhioTdddFormData(BaseModel):
     tddd_number: Optional[str] = None
@@ -35,4 +37,4 @@ class OhioTdddFormCopilotResponse(BaseModel):
     regulatory_references: List[str]
     rag_explanation: str
     artifacts_used: List[str]
-    rag_sources: List[dict]
+    rag_sources: List[RagSource]

@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from src.rag.service import build_rag_sources
+
 
 @dataclass
 class RagExplainerResponse:
@@ -36,16 +38,19 @@ class RagEngine:
             regulatory_references=regulatory_references,
             rag_explanation=explanation,
             artifacts_used=regulatory_references,
-            rag_sources=
-            [
-                {
-                    "id": doc_id,
-                    "source": "regulatory_docs",
-                    "snippet": explanation,
-                }
-            ]
-            if doc_id
-            else [],
+            rag_sources=build_rag_sources(
+                [
+                    {
+                        "id": doc_id,
+                        "source": "regulatory_docs",
+                        "snippet": explanation,
+                        "score": 1.0,
+                        "metadata": {"jurisdiction": None},
+                    }
+                ]
+                if doc_id
+                else []
+            ),
         )
 
 

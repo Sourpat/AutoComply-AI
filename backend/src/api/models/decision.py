@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from src.rag.models import RagSource
+
 
 class RegulatoryReference(BaseModel):
     """
@@ -48,6 +50,7 @@ class DecisionOutcome(BaseModel):
     risk_level: Optional[str] = None
     risk_score: Optional[float] = None
     regulatory_references: List[RegulatoryReference] = Field(default_factory=list)
+    rag_sources: Optional[List[RagSource]] = None
     trace_id: Optional[str] = None
     debug_info: Optional[Dict[str, Any]] = None
 
