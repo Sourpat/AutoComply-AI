@@ -1,4 +1,5 @@
 from datetime import date
+from types import SimpleNamespace
 from typing import List, Optional
 
 from fastapi import APIRouter, Request
@@ -13,6 +14,7 @@ from src.autocomply.domain.ny_pharmacy_decision import (
     is_license_expired,
 )
 from src.autocomply.domain.trace import TRACE_HEADER_NAME, ensure_trace_id
+from src.explanations.builder import build_explanation
 from src.autocomply.regulations.knowledge import (
     get_regulatory_knowledge,
     sources_to_regulatory_references,
@@ -125,9 +127,27 @@ async def ny_pharmacy_evaluate(
         regulatory_references=regulatory_references,
         risk_level=risk_level,
         risk_score=risk_score,
+        rag_sources=rag_sources,
         trace_id=trace_id,
         debug_info=debug_info or None,
     )
+
+    explanation_context = SimpleNamespace(
+        status=status.value if hasattr(status, "value") else status,
+        missing_fields=missing,
+        rag_sources=rag_sources,
+        debug_info=debug_info,
+        reason=decision_outcome.reason,
+    )
+
+    decision_reason = build_explanation(
+        decision=explanation_context,
+        jurisdiction="New York",
+        vertical_name="NY Pharmacy vertical",
+        rag_sources=rag_sources,
+    )
+    decision_outcome.reason = decision_reason
+    reason = decision_reason
 
     decision_log = get_decision_log()
     decision_log.record(
