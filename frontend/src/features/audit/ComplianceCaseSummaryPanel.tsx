@@ -4,6 +4,8 @@ import { CopyCurlButton } from "../../components/CopyCurlButton";
 import { useTraceSelection } from "../../state/traceSelectionContext";
 import { API_BASE } from "../../api/csfHospitalClient";
 import { buildCurlCommand } from "../../utils/curl";
+import { RagSourceCard } from "../../components/RagSourceCard";
+import type { RagSource } from "../../types/rag";
 
 interface CaseDecision {
   decision_type: string;
@@ -25,6 +27,7 @@ interface CaseSummaryResponse {
   decisions: CaseDecision[];
   regulatory_references?: string[];
   insight?: CaseInsight;
+  rag_sources?: RagSource[];
 }
 
 export const ComplianceCaseSummaryPanel: React.FC = () => {
@@ -178,6 +181,24 @@ export const ComplianceCaseSummaryPanel: React.FC = () => {
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {summary.rag_sources && summary.rag_sources.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold text-zinc-200">
+                  RAG sources used in this decision
+                </p>
+                <span className="text-[10px] text-zinc-500">
+                  Top {summary.rag_sources.length}
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {summary.rag_sources.map((src, idx) => (
+                  <RagSourceCard key={src.id ?? idx} source={src} index={idx} />
+                ))}
+              </div>
             </div>
           )}
 

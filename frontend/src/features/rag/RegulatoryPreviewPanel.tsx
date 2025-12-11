@@ -1,6 +1,11 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 
-import type { RegulatoryPreviewItem, RegulatoryPreviewResponse } from "../../types/rag";
+import type {
+  RagSource,
+  RegulatoryPreviewItem,
+  RegulatoryPreviewResponse,
+} from "../../types/rag";
+import { RagSourceCard } from "../../components/RagSourceCard";
 import { useRagDebug } from "../../devsupport/RagDebugContext";
 
 type KnownDocKey =
@@ -70,6 +75,21 @@ export const RegulatoryPreviewPanel: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [rawResponse, setRawResponse] = useState<RegulatoryPreviewResponse | null>(null);
   const [showRaw, setShowRaw] = useState(false);
+
+  const previewSources: RagSource[] | null = useMemo(() => {
+    if (!items) return null;
+    return items.map((item) => ({
+      id: item.id,
+      label: item.label ?? item.citation ?? item.id,
+      jurisdiction: item.jurisdiction ?? undefined,
+      citation: item.citation ?? undefined,
+      snippet: item.snippet ?? item.source ?? "",
+      score: typeof item.score === "number" ? item.score : 0,
+      raw_score: item.raw_score,
+      url: item.url,
+      source_type: item.source_type,
+    }));
+  }, [items]);
 
   const handleLoad = async () => {
     if (!selectedPreset) return;
@@ -156,36 +176,20 @@ export const RegulatoryPreviewPanel: React.FC = () => {
         </div>
       )}
 
-      {!error && items && items.length > 0 && (
+      {!error && previewSources && previewSources.length > 0 && (
         <div className="space-y-2">
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-xs"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="font-semibold text-zinc-50">{item.label || item.id}</div>
-                <div className="flex items-center gap-1">
-                  {item.jurisdiction && (
-                    <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-200">
-                      {item.jurisdiction}
-                    </span>
-                  )}
-                  {item.citation && (
-                    <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-200">
-                      {item.citation}
-                    </span>
-                  )}
-                </div>
-              </div>
-              {item.source && (
-                <div className="mt-0.5 text-[11px] text-zinc-400">{item.source}</div>
-              )}
-              {item.snippet && (
-                <div className="mt-1 text-[11px] text-zinc-300">{item.snippet}</div>
-              )}
-            </div>
-          ))}
+          <div className="flex items-center justify-between text-[11px] text-zinc-400">
+            <span>
+              Regulatory entries for {" "}
+              {selectedPreset ? PRESETS[selectedPreset].label : "selected document"}
+            </span>
+            <span className="text-[10px] text-zinc-500">Total {previewSources.length}</span>
+          </div>
+          <div className="space-y-1.5">
+            {previewSources.map((source, idx) => (
+              <RagSourceCard key={source.id ?? idx} source={source} index={idx} />
+            ))}
+          </div>
         </div>
       )}
 
