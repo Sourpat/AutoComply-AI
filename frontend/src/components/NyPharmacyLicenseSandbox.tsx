@@ -18,6 +18,7 @@ import { buildCurlCommand } from "../utils/curl";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { UnderTheHoodInfo } from "../components/UnderTheHoodInfo";
+import { VerticalBadge } from "./VerticalBadge";
 import { MockOrderScenarioBadge } from "./MockOrderScenarioBadge";
 
 type NyLicenseScenarioId =
@@ -327,12 +328,9 @@ export function NyPharmacyLicenseSandbox() {
     <div className="sandbox-card space-y-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <header className="space-y-2">
         <div className="space-y-2">
-          <h2 className="text-lg font-semibold">NY Pharmacy License Sandbox</h2>
-          <div className="mt-1 inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
-            <span className="text-[10px] font-medium text-slate-800">
-              NY Pharmacy vertical
-            </span>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold">NY Pharmacy License Sandbox</h2>
+            <VerticalBadge label="NY Pharmacy vertical" />
           </div>
           <p className="text-sm text-slate-600">
             Run NY Pharmacy license checks for demo scenarios (happy path, expired,
