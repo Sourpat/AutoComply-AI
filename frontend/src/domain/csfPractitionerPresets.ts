@@ -9,6 +9,8 @@ export interface PractitionerCsfPreset {
   id: PractitionerCsfPresetId;
   label: string;
   description: string;
+  verticalLabel?: string;
+  group?: string;
   form: PractitionerCsfFormData;
 }
 
@@ -30,9 +32,11 @@ const BASE_OHIO_PRACTITIONER: Omit<
 export const PRACTITIONER_CSF_PRESETS: PractitionerCsfPreset[] = [
   {
     id: "ohio_schedule_ii_happy_path",
-    label: "Happy path – Ohio Schedule II",
+    label: "Practitioner CSF – complete & acceptable",
     description:
-      "Valid practitioner CSF with Schedule II drug shipping to OH.",
+      "All required practitioner and license details provided with no obvious red flags.",
+    verticalLabel: "Practitioner CSF vertical",
+    group: "Vertical demos",
     form: {
       ...BASE_OHIO_PRACTITIONER,
       controlledSubstances: [
@@ -48,9 +52,11 @@ export const PRACTITIONER_CSF_PRESETS: PractitionerCsfPreset[] = [
   },
   {
     id: "missing_state_license_needs_review",
-    label: "Missing state license – needs review",
+    label: "Practitioner CSF – missing key license info",
     description:
-      "DEA is present but state license is missing; should trigger needs_review.",
+      "Important practitioner/license fields are missing or incomplete; expect needs_review or blocked.",
+    verticalLabel: "Practitioner CSF vertical",
+    group: "Vertical demos",
     form: {
       ...BASE_OHIO_PRACTITIONER,
       stateLicenseNumber: "",
@@ -67,9 +73,11 @@ export const PRACTITIONER_CSF_PRESETS: PractitionerCsfPreset[] = [
   },
   {
     id: "high_quantity_edge_case",
-    label: "High quantity – edge case",
+    label: "Practitioner CSF – red flag responses",
     description:
-      "Unusually high quantity of a Schedule II drug to highlight edge-case logic.",
+      "Form answers suggest potential non-compliance or elevated risk; expect a high-risk decision.",
+    verticalLabel: "Practitioner CSF vertical",
+    group: "Vertical demos",
     form: {
       ...BASE_OHIO_PRACTITIONER,
       controlledSubstances: [
