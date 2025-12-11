@@ -24,6 +24,7 @@ end-to-end scenarios for Ohio hospitals and NY pharmacies.
   - NY pharmacy license flows:
     - `backend/tests/test_scenario_ny_pharmacy_happy_path.py`
     - `backend/tests/test_scenario_ny_pharmacy_vertical_case_summary.py`
+    - Documented end-to-end in [`vertical_ny_pharmacy.md`](./vertical_ny_pharmacy.md)
 - Frontend sandbox journeys:
   - Hospital CSF presets (happy path, missing DEA, wrong state):
     - `frontend/src/components/HospitalCsfSandbox.tsx`

@@ -326,11 +326,21 @@ export function NyPharmacyLicenseSandbox() {
   return (
     <div className="sandbox-card space-y-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <header className="space-y-2">
-        <h2 className="text-lg font-semibold">NY Pharmacy License Sandbox</h2>
-        <p className="text-sm text-slate-600">
-          Test New York Pharmacy license decisions and explanations. This
-          sandbox calls:
-        </p>
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold">NY Pharmacy License Sandbox</h2>
+          <div className="mt-1 inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
+            <span className="text-[10px] font-medium text-slate-800">
+              NY Pharmacy vertical
+            </span>
+          </div>
+          <p className="text-sm text-slate-600">
+            Run NY Pharmacy license checks for demo scenarios (happy path, expired,
+            wrong state) using the same decision and RAG contract as the rest of
+            AutoComply AI.
+          </p>
+        </div>
+        <p className="text-sm text-slate-600">This sandbox calls:</p>
         <ul className="text-sm text-slate-700">
           <li>
             <code>POST /license/ny-pharmacy/evaluate</code>

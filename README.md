@@ -70,6 +70,22 @@ AutoComply AI normalizes decisions across CSF, licenses, and orders using:
 For details on how status maps to risk and how explanation text is built,
 see [`backend/docs/risk_and_explanation_semantics.md`](backend/docs/risk_and_explanation_semantics.md).
 
+### Example vertical: NY Pharmacy
+
+AutoComply AI is structured so specific regulatory domains can be modeled as
+**verticals** on top of the same decision and RAG foundation.
+
+The NY Pharmacy license flow is one such vertical:
+
+- Backend:
+  - `POST /license/ny-pharmacy/evaluate`
+  - Scenario tests for happy path, expired license, and wrong state
+- Frontend:
+  - A dedicated NY Pharmacy license sandbox in the Compliance Console
+
+See [`backend/docs/vertical_ny_pharmacy.md`](backend/docs/vertical_ny_pharmacy.md)
+for a detailed walkthrough of the NY Pharmacy vertical.
+
 ## Compliance Console Overview
 
 The AutoComply AI **Compliance Console** is a developer-friendly “compliance lab” that sits on top of the core engines:
