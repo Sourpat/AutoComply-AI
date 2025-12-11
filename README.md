@@ -661,3 +661,22 @@ For more detail, see the docs under `docs/`:
 - `docs/devsupport_codex_commands.md` – full `CODEX_COMMAND` catalog.
 - `docs/multi_agent_architecture.md` – multi-agent design + orchestration.
 - `docs/n8n_workflow_blueprints.md` – how to wire this into n8n (DevSupport webhook, RegOps digest, escalation flows).
+
+### Vertical portfolio
+
+AutoComply AI ships with a growing set of demo-ready compliance verticals
+on a shared decision core and RAG layer, including:
+
+- NY Pharmacy vertical
+- Ohio Hospital vertical
+- Facility CSF vertical
+- Practitioner CSF vertical
+- EMS CSF vertical
+- Researcher CSF vertical
+- Surgery Center CSF vertical
+
+For a summary of how to demo each vertical and how they connect to the
+frontend sandboxes and backend endpoints, see:
+
+- `backend/docs/verticals/vertical_portfolio_overview.md`
+
