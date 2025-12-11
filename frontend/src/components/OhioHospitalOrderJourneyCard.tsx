@@ -13,33 +13,40 @@ import { DecisionStatusLegend } from "./DecisionStatusLegend";
 import { MockOrderScenarioBadge } from "./MockOrderScenarioBadge";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import type { DecisionOutcome, RegulatoryReference } from "../types/decision";
+import { VerticalBadge } from "./VerticalBadge";
 
 type OhioJourneyScenarioId = OrderScenarioKind;
+
+const OHIO_HOSPITAL_VERTICAL_LABEL = "Ohio Hospital vertical";
 
 const OHIO_JOURNEY_SCENARIOS: {
   id: OhioJourneyScenarioId;
   label: string;
+  verticalLabel?: string;
   badge?: string;
   description: string;
 }[] = [
   {
     id: "happy_path",
-    label: "Happy path",
+    label: "Ohio Hospital – TDDD vertical demo",
+    verticalLabel: OHIO_HOSPITAL_VERTICAL_LABEL,
     badge: "Recommended",
     description:
-      "Ohio hospital with valid CSF and valid TDDD → final decision ok_to_ship.",
+      "Ohio hospital order using Hospital CSF and Ohio TDDD license to showcase the Ohio Hospital vertical end-to-end.",
   },
   {
     id: "missing_tddd",
-    label: "Missing TDDD",
+    label: "Ohio Hospital – missing TDDD",
+    verticalLabel: OHIO_HOSPITAL_VERTICAL_LABEL,
     description:
-      "Ohio hospital with valid CSF but no valid TDDD → final decision is not ok_to_ship.",
+      "Ohio hospital with valid CSF but no valid TDDD → final decision is not ok_to_ship for the vertical demo.",
   },
   {
     id: "non_ohio_no_tddd",
-    label: "Non-Ohio (no TDDD)",
+    label: "Ohio Hospital – non-Ohio (CSF only)",
+    verticalLabel: OHIO_HOSPITAL_VERTICAL_LABEL,
     description:
-      "Non-Ohio hospital with valid CSF only → final decision ok_to_ship without TDDD.",
+      "Non-Ohio hospital with valid CSF only → final decision ok_to_ship without TDDD for out-of-state vertical validation.",
   },
 ];
 
@@ -56,6 +63,9 @@ export function OhioHospitalOrderJourneyCard() {
   const [traceCopyMessage, setTraceCopyMessage] = useState<string | null>(null);
   const [selectedScenarioId, setSelectedScenarioId] =
     React.useState<OhioJourneyScenarioId>("happy_path");
+
+  const activeScenario =
+    OHIO_JOURNEY_SCENARIOS.find((s) => s.id === selectedScenarioId) ?? null;
 
   async function runScenario(kind: OrderScenarioKind) {
     setLoading(kind);
@@ -156,9 +166,12 @@ export function OhioHospitalOrderJourneyCard() {
     <div className="sandbox-card order-journey-card space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <header className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-base font-semibold text-slate-900">
-            Ohio Hospital Order Journey
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-semibold text-slate-900">
+              Ohio Hospital Order Journey
+            </h3>
+            <VerticalBadge label={OHIO_HOSPITAL_VERTICAL_LABEL} />
+          </div>
           <UnderTheHoodInfo
             lines={[
               "Calls /csf/hospital/evaluate to decide if the Hospital CSF is ok_to_ship, needs_review, or blocked.",
@@ -218,9 +231,14 @@ export function OhioHospitalOrderJourneyCard() {
               );
             })}
           </div>
+          {activeScenario?.verticalLabel && (
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
+              <VerticalBadge label={activeScenario.verticalLabel} />
+              <span>Ohio Hospital preset (CSF + Ohio TDDD)</span>
+            </div>
+          )}
           <div className="mt-1 text-[11px] text-slate-400">
-            {OHIO_JOURNEY_SCENARIOS.find((s) => s.id === selectedScenarioId)
-              ?.description ?? ""}
+            {activeScenario?.description ?? ""}
           </div>
         </div>
       </header>

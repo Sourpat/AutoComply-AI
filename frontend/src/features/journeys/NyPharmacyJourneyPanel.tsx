@@ -5,6 +5,7 @@ import { RiskPill } from "../../components/RiskPill";
 import { useRagDebug } from "../../devsupport/RagDebugContext";
 import { useTraceSelection } from "../../state/traceSelectionContext";
 import type { DecisionOutcome } from "../../types/decision";
+import { VerticalBadge } from "../../components/VerticalBadge";
 
 type NyScenarioKey = "happy" | "expiredLicense" | "wrongState";
 
@@ -205,9 +206,12 @@ export const NyPharmacyJourneyPanel: React.FC = () => {
   return (
     <div className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950/75 p-4">
       <div className="flex items-center justify-between gap-2">
-        <div>
-          <h2 className="text-sm font-semibold text-zinc-50">NY Pharmacy – Journey Explorer</h2>
-          <p className="mt-1 text-xs text-zinc-400">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-zinc-50">NY Pharmacy – Journey Explorer</h2>
+            <VerticalBadge label="NY Pharmacy vertical" />
+          </div>
+          <p className="text-xs text-zinc-400">
             Run a license → order journey for New York pharmacy scenarios with a shared trace ID.
           </p>
         </div>
