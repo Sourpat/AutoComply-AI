@@ -23,7 +23,7 @@ BASE_FORM_PAYLOAD = {
 }
 
 
-def test_practitioner_copilot_returns_rag_reason(monkeypatch):
+def test_practitioner_copilot_returns_structured_explanation(monkeypatch):
     async def fake_copilot(request):
         return CsfCopilotResult(
             status=CsDecisionStatus.OK_TO_SHIP,
@@ -54,6 +54,10 @@ def test_practitioner_copilot_returns_rag_reason(monkeypatch):
 
     data = resp.json()
     assert data["status"] == "ok_to_ship"
+    # Reason should be the structured explanation from the builder, not the raw mocked RAG text
+    assert data["reason"] != "mocked rag answer"
+    assert "Based on the information provided" in data["reason"]
+    assert "Practitioner CSF" in data["reason"]
     assert data["rag_explanation"] == "mocked rag answer"
     refs = data.get("regulatory_references", [])
     assert isinstance(refs, list)
