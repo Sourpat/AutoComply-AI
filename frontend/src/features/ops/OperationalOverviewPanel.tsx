@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { CopyCurlButton } from "../../components/CopyCurlButton";
 import { buildCurlCommand } from "../../utils/curl";
 import { useTraceSelection } from "../../state/traceSelectionContext";
@@ -28,18 +28,83 @@ interface ComplianceCaseSummary {
   decisions: CaseDecisionSummary[];
 }
 
+interface RecentDecisionItem {
+  trace_id?: string;
+  status?: string;
+  decision_type?: string;
+  engine_family?: string;
+  last_updated?: string;
+  risk_level?: string;
+  risk_score?: number;
+}
+
+const deriveRiskLevel = (item: RecentDecisionItem): "low" | "medium" | "high" => {
+  const explicitRisk = (item.risk_level || "").toString().toLowerCase();
+  if (explicitRisk === "low" || explicitRisk === "medium" || explicitRisk === "high") {
+    return explicitRisk;
+  }
+
+  const status = (item.status || "").toString().toLowerCase();
+  if (status === "blocked") return "high";
+  if (status === "needs_review") return "medium";
+  return "low";
+};
+
 export const OperationalOverviewPanel: React.FC = () => {
   const { selectedTraceId } = useTraceSelection();
 
-  const [tenant, setTenant] = React.useState<TenantWhoAmIResponse | null>(null);
-  const [health, setHealth] = React.useState<HealthResponse | null>(null);
+  const [tenant, setTenant] = useState<TenantWhoAmIResponse | null>(null);
+  const [health, setHealth] = useState<HealthResponse | null>(null);
   const [caseSummary, setCaseSummary] =
-    React.useState<ComplianceCaseSummary | null>(null);
+    useState<ComplianceCaseSummary | null>(null);
+  const [recentDecisions, setRecentDecisions] = useState<RecentDecisionItem[]>([]);
 
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [tenantCurl, setTenantCurl] = React.useState<string | null>(null);
+  const [tenantCurl, setTenantCurl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchRecentDecisions = async () => {
+      try {
+        const resp = await fetch("/decisions/recent?limit=50");
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (!cancelled && Array.isArray(data)) {
+          setRecentDecisions(data);
+        }
+      } catch {
+        // silent fail; panel can still render other metrics
+      }
+    };
+
+    void fetchRecentDecisions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const { lowRiskCount, mediumRiskCount, highRiskCount } = useMemo(() => {
+    if (!recentDecisions || recentDecisions.length === 0) {
+      return { lowRiskCount: 0, mediumRiskCount: 0, highRiskCount: 0 };
+    }
+
+    let low = 0;
+    let med = 0;
+    let high = 0;
+
+    for (const item of recentDecisions) {
+      const level = deriveRiskLevel(item);
+      if (level === "high") high += 1;
+      else if (level === "medium") med += 1;
+      else low += 1;
+    }
+
+    return { lowRiskCount: low, mediumRiskCount: med, highRiskCount: high };
+  }, [recentDecisions]);
 
   const handleRefresh = async () => {
     setLoading(true);
@@ -146,6 +211,38 @@ export const OperationalOverviewPanel: React.FC = () => {
           {error}
         </div>
       )}
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+          <p className="text-[11px] font-medium text-zinc-300">Low risk (recent)</p>
+          <p className="mt-1 text-xl font-semibold text-emerald-300">
+            {lowRiskCount}
+          </p>
+          <p className="mt-1 text-[10px] text-zinc-500">
+            Derived from recent decisions where status is <code>ok_to_ship</code>
+            {" "}
+            or risk is explicitly low.
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+          <p className="text-[11px] font-medium text-zinc-300">Medium risk (recent)</p>
+          <p className="mt-1 text-xl font-semibold text-amber-200">
+            {mediumRiskCount}
+          </p>
+          <p className="mt-1 text-[10px] text-zinc-500">
+            Includes decisions marked <code>needs_review</code> or explicitly medium risk.
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+          <p className="text-[11px] font-medium text-zinc-300">High risk (recent)</p>
+          <p className="mt-1 text-xl font-semibold text-red-300">{highRiskCount}</p>
+          <p className="mt-1 text-[10px] text-zinc-500">
+            Includes decisions that are <code>blocked</code> or explicitly high risk.
+          </p>
+        </div>
+      </div>
 
       {/* Tenant */}
       <div className="space-y-1">
