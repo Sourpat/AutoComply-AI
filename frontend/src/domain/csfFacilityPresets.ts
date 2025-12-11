@@ -9,6 +9,8 @@ export interface FacilityCsfPreset {
   id: FacilityCsfPresetId;
   label: string;
   description: string;
+  verticalLabel?: string;
+  group?: string;
   form: FacilityCsfFormData;
 }
 
@@ -33,6 +35,8 @@ export const FACILITY_CSF_PRESETS: FacilityCsfPreset[] = [
     id: "ohio_hospital_facility_happy_path",
     label: "Happy path – Ohio facility",
     description: "Valid facility CSF with Schedule II drug shipping to Ohio.",
+    verticalLabel: "Facility CSF vertical",
+    group: "Vertical demos",
     form: {
       ...BASE_OHIO_FACILITY,
       controlledSubstances: [
@@ -50,6 +54,8 @@ export const FACILITY_CSF_PRESETS: FacilityCsfPreset[] = [
     label: "Missing DEA – needs review",
     description:
       "Facility looks valid but DEA number is missing; should trigger needs_review.",
+    verticalLabel: "Facility CSF vertical",
+    group: "Vertical demos",
     form: {
       ...BASE_OHIO_FACILITY,
       deaNumber: "",
@@ -68,6 +74,8 @@ export const FACILITY_CSF_PRESETS: FacilityCsfPreset[] = [
     label: "Wrong ship-to state – blocked",
     description:
       "Facility configured for Ohio but ship-to is a non-supported state.",
+    verticalLabel: "Facility CSF vertical",
+    group: "Vertical demos",
     form: {
       ...BASE_OHIO_FACILITY,
       shipToState: "CA",

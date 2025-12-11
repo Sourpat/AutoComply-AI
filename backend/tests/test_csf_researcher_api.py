@@ -1,3 +1,14 @@
+"""
+Researcher CSF vertical tests.
+
+These tests align with backend/docs/verticals/researcher_csf_vertical.md
+and ensure the canonical decision contract is exercised for:
+
+- Scenario 1 – Researcher CSF complete & controlled
+- Scenario 2 – Missing key research identifiers
+- Scenario 3 – Research plan suggests misuse (captured via copilot flow)
+"""
+
 from typing import Any, Dict
 
 from fastapi.testclient import TestClient
@@ -31,18 +42,19 @@ def make_valid_researcher_csf_payload() -> Dict[str, Any]:
     }
 
 
-def test_csf_researcher_evaluate_ok_to_ship():
+def test_researcher_csf_scenario_1_complete_and_controlled():
     payload = make_valid_researcher_csf_payload()
 
     resp = client.post("/csf/researcher/evaluate", json=payload)
     assert resp.status_code == 200
 
     data = resp.json()
+    # Canonical decision contract expectations
     assert data["status"] in {"ok_to_ship", "manual_review"}
     assert "reason" in data
 
 
-def test_csf_researcher_form_copilot(monkeypatch):
+def test_researcher_csf_scenario_3_form_copilot(monkeypatch):
     async def fake_copilot(request):
         return CsfCopilotResult(
             status=CsDecisionStatus.OK_TO_SHIP,
@@ -76,7 +88,7 @@ def test_csf_researcher_form_copilot(monkeypatch):
     assert data["rag_sources"][0]["id"] == "csf_researcher_form"
 
 
-def test_csf_researcher_invalid_payload_returns_422():
+def test_researcher_csf_scenario_2_missing_identifiers_returns_422():
     resp = client.post("/csf/researcher/evaluate", json={"facility_name": ""})
 
     assert resp.status_code == 422

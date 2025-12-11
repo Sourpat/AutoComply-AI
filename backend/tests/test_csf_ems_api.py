@@ -1,3 +1,14 @@
+"""
+EMS CSF vertical tests.
+
+These tests align with backend/docs/verticals/ems_csf_vertical.md and
+cover the canonical decision contract for EMS scenarios:
+
+- Scenario 1 – EMS CSF complete & compliant
+- Scenario 2 – Missing critical EMS info
+- Scenario 3 – High-risk EMS practices (represented via copilot coverage)
+"""
+
 from typing import Any, Dict
 
 from fastapi.testclient import TestClient
@@ -31,18 +42,19 @@ def make_valid_ems_csf_payload() -> Dict[str, Any]:
     }
 
 
-def test_csf_ems_evaluate_ok_to_ship():
+def test_ems_csf_scenario_1_complete_and_compliant():
     payload = make_valid_ems_csf_payload()
 
     resp = client.post("/csf/ems/evaluate", json=payload)
     assert resp.status_code == 200
 
     data = resp.json()
+    # Canonical decision contract expectations
     assert data["status"] in {"ok_to_ship", "manual_review"}
     assert "reason" in data
 
 
-def test_csf_ems_form_copilot(monkeypatch):
+def test_ems_csf_scenario_3_form_copilot(monkeypatch):
     async def fake_copilot(request):
         return CsfCopilotResult(
             status=CsDecisionStatus.OK_TO_SHIP,
@@ -72,7 +84,7 @@ def test_csf_ems_form_copilot(monkeypatch):
     assert data["rag_sources"][0]["id"] == "csf_ems_form"
 
 
-def test_csf_ems_invalid_payload_returns_422():
+def test_ems_csf_scenario_2_missing_info_returns_422():
     resp = client.post("/csf/ems/evaluate", json={"facility_name": ""})
 
     assert resp.status_code == 422

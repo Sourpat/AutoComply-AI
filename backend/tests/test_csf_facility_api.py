@@ -1,3 +1,17 @@
+"""
+Facility CSF vertical tests.
+
+These tests validate the Facility CSF vertical behavior using the
+canonical decision contract, aligned with:
+
+backend/docs/verticals/facility_csf_vertical.md
+
+Scenarios:
+- Scenario 1 – Facility CSF complete & reasonable
+- Scenario 2 – Missing critical facility or license details
+- Scenario 3 – Facility answers show potential non-compliance
+"""
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -36,7 +50,15 @@ def base_facility_payload() -> dict:
     }
 
 
-def test_csf_facility_evaluate_ok_to_ship(base_facility_payload: dict) -> None:
+def test_facility_csf_scenario_1_complete_acceptable(
+    base_facility_payload: dict,
+) -> None:
+    """
+    Scenario 1 – Facility CSF complete & reasonable.
+
+    Checks that a complete Facility CSF response returns a canonical
+    decision with aligned status/reason/missing fields values.
+    """
     resp = client.post("/csf/facility/evaluate", json=base_facility_payload)
     assert resp.status_code == 200
 
@@ -44,6 +66,7 @@ def test_csf_facility_evaluate_ok_to_ship(base_facility_payload: dict) -> None:
     assert "decision" in data
 
     decision = data["decision"]
+    # Canonical decision contract expectations
     assert decision["status"] in ["ok_to_ship", "needs_review", "blocked"]
     assert isinstance(decision["reason"], str) and len(decision["reason"]) > 0
     assert isinstance(decision["regulatory_references"], list)
@@ -58,7 +81,12 @@ def test_csf_facility_evaluate_ok_to_ship(base_facility_payload: dict) -> None:
         assert isinstance(ref["label"], str)
 
 
-def test_csf_facility_evaluate_ok_to_ship_v1_prefix(base_facility_payload: dict) -> None:
+def test_facility_csf_scenario_1_ok_to_ship_v1_prefix(
+    base_facility_payload: dict,
+) -> None:
+    """
+    Scenario 1 variant – V1-prefixed endpoint still returns ok_to_ship.
+    """
     resp = client.post("/api/v1/csf/facility/evaluate", json=base_facility_payload)
     assert resp.status_code == 200
 
@@ -69,9 +97,12 @@ def test_csf_facility_evaluate_ok_to_ship_v1_prefix(base_facility_payload: dict)
     assert data["missing_fields"] == []
 
 
-def test_csf_facility_evaluate_blocked_when_core_fields_missing(
+def test_facility_csf_scenario_2_missing_critical_info(
     base_facility_payload: dict,
 ) -> None:
+    """
+    Scenario 2 – Missing critical facility or license details.
+    """
     payload = {
         **base_facility_payload,
         "facility_name": "",
@@ -87,6 +118,7 @@ def test_csf_facility_evaluate_blocked_when_core_fields_missing(
     data = resp.json()
     decision = data["decision"]
 
+    # Canonical decision contract expectations
     assert decision["status"] == "blocked"
     assert data["status"] == decision["status"]
     assert isinstance(decision["regulatory_references"], list)
@@ -97,9 +129,12 @@ def test_csf_facility_evaluate_blocked_when_core_fields_missing(
     assert "ship_to_state" in data["missing_fields"]
 
 
-def test_csf_facility_evaluate_blocked_when_attestation_not_accepted(
+def test_facility_csf_scenario_3_high_risk_responses(
     base_facility_payload: dict,
 ) -> None:
+    """
+    Scenario 3 – Facility answers show potential non-compliance.
+    """
     payload = {**base_facility_payload, "attestation_accepted": False}
 
     resp = client.post("/csf/facility/evaluate", json=payload)
@@ -108,6 +143,7 @@ def test_csf_facility_evaluate_blocked_when_attestation_not_accepted(
     data = resp.json()
     decision = data["decision"]
 
+    # Canonical decision contract expectations
     assert decision["status"] == "blocked"
     assert data["status"] == decision["status"]
     assert isinstance(decision["regulatory_references"], list)

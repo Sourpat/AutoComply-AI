@@ -22,6 +22,8 @@ import { callEmsFormCopilot } from "../api/csfEmsCopilotClient";
 import { API_BASE } from "../api/csfHospitalClient";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { buildCurlCommand } from "../utils/curl";
+import { EMS_CSF_PRESETS, type EmsCsfPresetId } from "../domain/csfEmsPresets";
+import { VerticalBadge } from "./VerticalBadge";
 
 const EMS_ENGINE_FAMILY = "csf";
 const EMS_DECISION_TYPE = "csf_ems";
@@ -34,67 +36,11 @@ type EmsExample = {
   overrides: Partial<EmsCsfFormData>;
 };
 
-const EMS_EXAMPLES: EmsExample[] = [
-  {
-    id: "ems_happy_path",
-    label: "Happy Path – Metro EMS (NJ)",
-    overrides: {
-      facilityName: "Metro EMS – NJ",
-      facilityType: "facility",
-      accountNumber: "900123456",
-      pharmacyLicenseNumber: "NJ-EMS-2025-001",
-      deaNumber: "EM1234567",
-      pharmacistInChargeName: "Dr. EMS Director",
-      pharmacistContactPhone: "555-300-9001",
-      shipToState: "NJ",
-      attestationAccepted: true,
-      internalNotes: "Happy path EMS CSF example.",
-      controlledSubstances: [
-        { id: "morphine", name: "Morphine" },
-        { id: "fentanyl", name: "Fentanyl" },
-      ],
-    },
-  },
-  {
-    id: "ems_needs_review",
-    label: "Needs Review – Missing DEA",
-    overrides: {
-      facilityName: "Coastal EMS – CA",
-      facilityType: "facility",
-      accountNumber: "900987654",
-      pharmacyLicenseNumber: "CA-EMS-778899",
-      deaNumber: "",
-      pharmacistInChargeName: "Dr. Pat Example",
-      pharmacistContactPhone: "555-300-9002",
-      shipToState: "CA",
-      attestationAccepted: true,
-      internalNotes:
-        "Missing DEA number; should trigger needs_review or additional documentation.",
-      controlledSubstances: [
-        { id: "morphine", name: "Morphine" },
-        { id: "fentanyl", name: "Fentanyl" },
-      ],
-    },
-  },
-  {
-    id: "ems_blocked",
-    label: "Blocked – No License / Attestation",
-    overrides: {
-      facilityName: "Rural EMS – TX",
-      facilityType: "facility",
-      accountNumber: "900555777",
-      pharmacyLicenseNumber: "",
-      deaNumber: "",
-      pharmacistInChargeName: "Dr. Casey Example",
-      pharmacistContactPhone: "555-300-9003",
-      shipToState: "TX",
-      attestationAccepted: false,
-      internalNotes:
-        "No license/DEA and attestation not accepted – expected to be blocked.",
-      controlledSubstances: [{ id: "oxycodone", name: "Oxycodone" }],
-    },
-  },
-];
+const EMS_EXAMPLES: EmsExample[] = EMS_CSF_PRESETS.map((preset) => ({
+  id: preset.id,
+  label: preset.label,
+  overrides: preset.form,
+}));
 
 const initialForm: EmsCsfFormData = {
   facilityName: "",
@@ -128,6 +74,11 @@ export function EmsCsfSandbox() {
   const [ragAnswer, setRagAnswer] = useState<string | null>(null);
   const [isRagLoading, setIsRagLoading] = useState(false);
   const [ragError, setRagError] = useState<string | null>(null);
+  const [selectedPresetId, setSelectedPresetId] =
+    useState<EmsCsfPresetId | null>(null);
+  const activePreset = selectedPresetId
+    ? EMS_CSF_PRESETS.find((preset) => preset.id === selectedPresetId) ?? null
+    : null;
 
   // ---- EMS CSF Form Copilot state ----
   const [copilotResponse, setCopilotResponse] =
@@ -135,7 +86,35 @@ export function EmsCsfSandbox() {
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
 
+  const applyEmsPreset = (presetId: EmsCsfPresetId | null) => {
+    if (!presetId) {
+      setSelectedPresetId(null);
+      return;
+    }
+
+    const preset = EMS_CSF_PRESETS.find((candidate) => candidate.id === presetId);
+    if (!preset) return;
+
+    setSelectedPresetId(preset.id);
+    setForm(preset.form);
+    setControlledSubstances(preset.form.controlledSubstances ?? []);
+    setDecision(null);
+    setExplanation(null);
+    setCopilotResponse(null);
+    setExplainError(null);
+    setCopilotError(null);
+
+    trackSandboxEvent("ems_csf_preset_applied", {
+      engine_family: EMS_ENGINE_FAMILY,
+      decision_type: EMS_DECISION_TYPE,
+      sandbox: EMS_SANDBOX_ID,
+      preset_id: preset.id,
+      vertical_label: preset.verticalLabel,
+    });
+  };
+
   function applyEmsExample(example: EmsExample) {
+    applyEmsPreset(example.id as EmsCsfPresetId);
     const nextForm = {
       ...initialForm,
       ...form,
@@ -157,6 +136,13 @@ export function EmsCsfSandbox() {
       ship_to_state: nextForm.shipToState,
     });
   }
+
+  const handlePresetChange = (
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const value = (event.target.value as EmsCsfPresetId) || null;
+    applyEmsPreset(value);
+  };
 
   const onChange = (field: keyof EmsCsfFormData, value: any) => {
     setForm((prev) => ({
@@ -384,6 +370,39 @@ export function EmsCsfSandbox() {
               </button>
             ))}
           </div>
+
+          <div className="mt-2 flex items-center gap-2">
+            <span className="text-[9px] uppercase tracking-wide text-gray-500">
+              Scenario presets
+            </span>
+            <select
+              className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] text-gray-700"
+              value={selectedPresetId ?? ""}
+              onChange={handlePresetChange}
+            >
+              <option value="">Manual inputs</option>
+              {EMS_CSF_PRESETS.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {activePreset?.verticalLabel && (
+            <div className="mt-1 flex items-center gap-2">
+              <VerticalBadge label={activePreset.verticalLabel} />
+              {activePreset.group && (
+                <span className="text-[10px] text-gray-500">{activePreset.group}</span>
+              )}
+            </div>
+          )}
+
+          {activePreset && (
+            <p className="text-[10px] text-gray-600">
+              Preset: {activePreset.description}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <SourceDocumentChip

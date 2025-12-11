@@ -38,6 +38,7 @@ import { DecisionStatusBadge } from "./DecisionStatusBadge";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import { useRagDebug } from "../devsupport/RagDebugContext";
 import { MockOrderScenarioBadge } from "./MockOrderScenarioBadge";
+import { VerticalBadge } from "./VerticalBadge";
 import type { DecisionOutcome } from "../types/decision";
 
 function buildFacilityCsfEvaluateCurl(form: any): string {
@@ -253,6 +254,9 @@ export function FacilityCsfSandbox() {
     React.useState(false);
   const [selectedPresetId, setSelectedPresetId] =
     useState<FacilityCsfPresetId | null>(null);
+  const activePreset = selectedPresetId
+    ? FACILITY_CSF_PRESETS.find((preset) => preset.id === selectedPresetId) ?? null
+    : null;
 
   // ---- Facility CSF Form Copilot state ----
   const [copilotResponse, setCopilotResponse] =
@@ -722,6 +726,15 @@ export function FacilityCsfSandbox() {
             </select>
           </div>
 
+          {activePreset?.verticalLabel && (
+            <div className="flex items-center gap-2">
+              <VerticalBadge label={activePreset.verticalLabel} />
+              {activePreset.group && (
+                <span className="text-[10px] text-gray-500">{activePreset.group}</span>
+              )}
+            </div>
+          )}
+
           <TestCoverageNote
             size="sm"
             files={["backend/tests/test_csf_facility_api.py"]}
@@ -742,12 +755,9 @@ export function FacilityCsfSandbox() {
         </div>
       </header>
 
-      {selectedPresetId && (
+      {activePreset && (
         <p className="mb-2 text-[10px] text-gray-600">
-          Preset: {
-            FACILITY_CSF_PRESETS.find((preset) => preset.id === selectedPresetId)
-              ?.description
-          }
+          Preset: {activePreset.description}
         </p>
       )}
 
