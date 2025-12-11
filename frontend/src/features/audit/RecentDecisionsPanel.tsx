@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useMemo } from "react";
+import { DecisionStatusBadge } from "../../components/DecisionStatusBadge";
 import { useTraceSelection } from "../../state/traceSelectionContext";
 
 interface DecisionTraceSummary {
@@ -6,7 +7,65 @@ interface DecisionTraceSummary {
   last_updated: string;
   last_status: string;
   engine_families: string[];
+  risk_level?: string;
+  risk_score?: number;
 }
+
+const deriveRiskLevel = (item: Partial<DecisionTraceSummary>): "low" | "medium" | "high" => {
+  const explicitRisk = (item.risk_level || "").toString().toLowerCase();
+  if (explicitRisk === "low" || explicitRisk === "medium" || explicitRisk === "high") {
+    return explicitRisk;
+  }
+
+  const status = (item.last_status || (item as any).status || "").toString().toLowerCase();
+  if (status === "blocked") return "high";
+  if (status === "needs_review") return "medium";
+  return "low";
+};
+
+const RiskBadge: React.FC<{ level: "low" | "medium" | "high" }> = ({ level }) => {
+  const label = level === "high" ? "High risk" : level === "medium" ? "Medium risk" : "Low risk";
+
+  const bgClass =
+    level === "high"
+      ? "bg-red-900/60 text-red-300 border-red-700/70"
+      : level === "medium"
+      ? "bg-amber-900/50 text-amber-200 border-amber-700/70"
+      : "bg-emerald-900/40 text-emerald-200 border-emerald-700/60";
+
+  return (
+    <span
+      className={[
+        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
+        bgClass,
+      ].join(" ")}
+    >
+      {label}
+    </span>
+  );
+};
+
+const formatUpdatedAgo = (iso: string | undefined): string | null => {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+
+  if (diffMin < 1) return "just now";
+  if (diffMin === 1) return "1 minute ago";
+  if (diffMin < 60) return `${diffMin} minutes ago`;
+
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours === 1) return "1 hour ago";
+  if (diffHours < 24) return `${diffHours} hours ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return "1 day ago";
+  return `${diffDays} days ago`;
+};
 
 export const RecentDecisionsPanel: React.FC = () => {
   const { selectedTraceId, setSelectedTraceId } = useTraceSelection();
@@ -37,20 +96,15 @@ export const RecentDecisionsPanel: React.FC = () => {
     void loadRecent();
   }, []);
 
-  const statusChipClass: Record<string, string> = {
-    ok_to_ship: "bg-emerald-900/40 text-emerald-200 border-emerald-700/70",
-    needs_review: "bg-amber-900/40 text-amber-200 border-amber-700/70",
-    blocked: "bg-red-900/40 text-red-200 border-red-700/70",
-  };
-
-  const formatTimestamp = (iso: string) => {
-    try {
-      const d = new Date(iso);
-      return d.toLocaleString();
-    } catch {
-      return iso;
-    }
-  };
+  const decisions = useMemo(
+    () =>
+      items.map((item) => ({
+        ...item,
+        derivedRisk: deriveRiskLevel(item),
+        updatedAgo: formatUpdatedAgo(item.last_updated),
+      })),
+    [items]
+  );
 
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4 space-y-3">
@@ -90,12 +144,7 @@ export const RecentDecisionsPanel: React.FC = () => {
 
       {items.length > 0 && (
         <ul className="divide-y divide-zinc-800">
-          {items.map((item) => {
-            const statusKey = item.last_status.toLowerCase();
-            const chipClass =
-              statusChipClass[statusKey] ||
-              "bg-zinc-900/60 text-zinc-200 border-zinc-700/70";
-
+          {decisions.map((item) => {
             const isSelected = selectedTraceId === item.trace_id;
 
             return (
@@ -110,18 +159,24 @@ export const RecentDecisionsPanel: React.FC = () => {
                   <span className="text-[11px] font-mono text-zinc-200">
                     {item.trace_id}
                   </span>
-                  <span className="text-[10px] text-zinc-500">
-                    {formatTimestamp(item.last_updated)}
-                  </span>
-                  <span className="text-[10px] text-zinc-500">
-                    Engines: {item.engine_families.join(", ") || "unknown"}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] text-zinc-500">
+                    <span className="rounded bg-zinc-900 px-1.5 py-0.5">
+                      engine: {item.engine_families.join(", ") || "unknown"}
+                    </span>
+                    {item.updatedAgo && (
+                      <span className="rounded bg-zinc-900 px-1.5 py-0.5">
+                        updated {item.updatedAgo}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <span
-                  className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${chipClass}`}
-                >
-                  {item.last_status}
-                </span>
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <DecisionStatusBadge status={item.last_status} />
+                    <RiskBadge level={item.derivedRisk} />
+                  </div>
+                  <span className="text-[10px] text-zinc-500">trace: {item.trace_id}</span>
+                </div>
               </li>
             );
           })}
