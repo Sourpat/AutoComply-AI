@@ -1,3 +1,15 @@
+"""
+Ohio Hospital vertical tests.
+
+These tests validate the Ohio Hospital vertical behavior using the
+canonical decision contract, aligned with the vertical narrative:
+backend/docs/verticals/ohio_hospital_vertical.md
+
+Scenarios covered (doc sections):
+- Scenario 1 – Hospital with appropriate TDDD license
+- Scenario 2 – Hospital with missing TDDD where required
+"""
+
 from starlette.testclient import TestClient
 
 from src.api.main import app
@@ -8,7 +20,8 @@ client = TestClient(app)
 
 def make_ohio_hospital_csf_payload() -> dict:
     """
-    Concrete scenario:
+    Scenario 1 – Hospital with appropriate TDDD license (CSF context).
+
     - Ohio hospital ordering a Schedule II controlled substance.
     - CSF is filled correctly and attestation accepted.
     - Ship-to state is OH.
@@ -43,7 +56,8 @@ def make_ohio_hospital_csf_payload() -> dict:
 
 def make_ohio_tddd_payload_from_csf(csf_payload: dict) -> dict:
     """
-    Derive the Ohio TDDD payload from the same scenario.
+    Scenario 1 – License payload derived from the CSF scenario.
+
     The goal is to show how CSF + TDDD work together on the same case.
     """
 
@@ -64,7 +78,8 @@ def make_ohio_tddd_payload_from_csf(csf_payload: dict) -> dict:
 
 def make_ohio_tddd_payload_missing_tddd(csf_payload: dict) -> dict:
     """
-    Negative scenario:
+    Scenario 2 – Hospital with missing TDDD where required.
+
     - Same Ohio hospital + Schedule II context.
     - BUT Ohio TDDD number is missing.
     - CSF can still be ok_to_ship, but TDDD should NOT be ok_to_ship.
@@ -85,22 +100,14 @@ def make_ohio_tddd_payload_missing_tddd(csf_payload: dict) -> dict:
     }
 
 
-def test_ohio_hospital_schedule_ii_csf_and_ohio_tddd_flow() -> None:
+def test_ohio_hospital_scenario_1_valid_tddd_ok_to_ship() -> None:
     """
-    End-to-end scenario:
+    Scenario 1 – Hospital with appropriate TDDD license.
 
-    1) Ohio hospital fills CSF for a Schedule II drug and submits it.
-    2) AutoComply AI evaluates the Hospital CSF.
-    3) CSF Form Copilot explains the decision.
-    4) The same scenario is used to run an Ohio TDDD license check.
-    5) License Copilot explains the Ohio TDDD decision.
-    6) The mock order endpoint for Ohio hospital reflects a consistent final decision.
-
-    Expected behavior in this happy path:
-    - Both CSF and Ohio TDDD decisions are 'ok_to_ship' with 'low' risk.
-    - Responses have well-formed reasons, risk, and regulatory references.
-    - CSF copilot returns an explanation and references.
-    - Mock order decision is consistent with CSF + license (ok_to_ship, low risk).
+    Expected behavior (per ohio_hospital_vertical.md):
+    - CSF decision is ok_to_ship with low risk.
+    - Ohio TDDD license evaluation is ok_to_ship with low risk.
+    - Explanations and mock order align with the canonical decision contract.
     """
 
     csf_payload = make_ohio_hospital_csf_payload()
@@ -111,6 +118,7 @@ def test_ohio_hospital_schedule_ii_csf_and_ohio_tddd_flow() -> None:
     assert csf_eval_resp.status_code == 200
 
     csf_eval_data = csf_eval_resp.json()
+    # Canonical decision contract expectations
     assert csf_eval_data["status"] in {"ok_to_ship", "needs_review", "blocked"}
     assert "reason" in csf_eval_data
     assert "missing_fields" in csf_eval_data
@@ -118,7 +126,7 @@ def test_ohio_hospital_schedule_ii_csf_and_ohio_tddd_flow() -> None:
     assert isinstance(csf_eval_data.get("trace_id"), str)
     assert csf_eval_data["trace_id"]
 
-    # Happy path expectations
+    # Happy path expectations for Scenario 1
     assert csf_eval_data["status"] == "ok_to_ship"
     csf_decision = csf_eval_data.get("decision", csf_eval_data)
     assert csf_decision.get("risk_level") in {None, "low"}
@@ -173,6 +181,7 @@ def test_ohio_hospital_schedule_ii_csf_and_ohio_tddd_flow() -> None:
     tddd_eval_data = tddd_eval_resp.json()
     decision = tddd_eval_data.get("decision", tddd_eval_data)
 
+    # Canonical decision contract expectations
     assert decision["status"] in {"ok_to_ship", "needs_review", "blocked"}
     assert decision["status"] == "ok_to_ship"
     assert "reason" in decision
@@ -229,6 +238,7 @@ def test_ohio_hospital_schedule_ii_csf_and_ohio_tddd_flow() -> None:
     assert "decision" in mock_data
     order_decision = mock_data["decision"]
 
+    # Canonical decision contract expectations for mock order
     assert order_decision["status"] in {"ok_to_ship", "needs_review", "blocked"}
     assert order_decision["status"] == "ok_to_ship"
     assert order_decision.get("risk_level") == "low"
@@ -243,18 +253,14 @@ def test_ohio_hospital_schedule_ii_csf_and_ohio_tddd_flow() -> None:
         assert "label" in order_refs[0]
 
 
-def test_ohio_hospital_schedule_ii_csf_ok_but_ohio_tddd_missing_number() -> None:
+def test_ohio_hospital_scenario_2_missing_tddd_requires_review_or_block() -> None:
     """
-    Negative scenario:
+    Scenario 2 – Hospital with missing TDDD where required.
 
-    - Same Ohio hospital + Schedule II drug.
-    - CSF is still filled correctly and should be ok_to_ship.
-    - Ohio TDDD payload is missing the TDDD number.
-
-    Expected behavior:
+    Expected behavior (per ohio_hospital_vertical.md):
     - Hospital CSF evaluation: ok_to_ship.
-    - Ohio TDDD evaluation: NOT ok_to_ship (status is needs_review or blocked).
-    - License Copilot explanation reflects that the TDDD information is incomplete.
+    - Ohio TDDD evaluation: NOT ok_to_ship (needs_review or blocked).
+    - License Copilot explanation highlights incomplete TDDD data.
     """
 
     csf_payload = make_ohio_hospital_csf_payload()
@@ -265,6 +271,7 @@ def test_ohio_hospital_schedule_ii_csf_ok_but_ohio_tddd_missing_number() -> None
     assert csf_eval_resp.status_code == 200
 
     csf_eval_data = csf_eval_resp.json()
+    # Canonical decision contract expectations
     assert csf_eval_data["status"] in {"ok_to_ship", "needs_review", "blocked"}
     assert "reason" in csf_eval_data
     assert "missing_fields" in csf_eval_data
@@ -280,6 +287,7 @@ def test_ohio_hospital_schedule_ii_csf_ok_but_ohio_tddd_missing_number() -> None
     assert tddd_eval_resp.status_code == 200
 
     tddd_eval_data = tddd_eval_resp.json()
+    # Canonical decision contract expectations
     assert tddd_eval_data["status"] in {"ok_to_ship", "needs_review", "blocked"}
     assert "reason" in tddd_eval_data
     assert "missing_fields" in tddd_eval_data
