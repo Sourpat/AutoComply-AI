@@ -1,10 +1,5 @@
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-from src.api.routes.csf_practitioner import router
-
-app = FastAPI()
-app.include_router(router)
+from src.api.main import app
 
 client = TestClient(app)
 
