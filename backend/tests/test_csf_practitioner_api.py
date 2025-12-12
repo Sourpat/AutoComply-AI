@@ -4,6 +4,12 @@ from src.api.main import app
 client = TestClient(app)
 
 
+def test_debug_print_routes():
+    for route in app.routes:
+        print("ROUTE:", route.path, "METHODS:", route.methods)
+    assert False, "Route debug output above"
+
+
 def test_csf_practitioner_evaluate_ok_to_ship():
     payload = {
         "facility_name": "Test Dental Practice",
