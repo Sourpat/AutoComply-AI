@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from src.api.models.compliance_models import RegulatorySource
 from src.api.models.decision import RegulatoryReference
-from src.autocomply.domain.csf_copilot import explain_csf_practitioner_decision
+from src.autocomply.domain import csf_copilot
 from src.autocomply.domain.csf_practitioner import (
     CsDecisionStatus,
     PractitionerCsfDecision,
@@ -125,7 +125,7 @@ async def practitioner_form_copilot(
     ]
 
     try:
-        rag_answer: RegulatoryRagAnswer = explain_csf_practitioner_decision(
+        rag_answer: RegulatoryRagAnswer = csf_copilot.explain_csf_practitioner_decision(
             decision={**decision.model_dump(), "form": form.model_dump()},
             question=form.question or DEFAULT_COPILOT_QUESTION,
             regulatory_references=decision.regulatory_references,
