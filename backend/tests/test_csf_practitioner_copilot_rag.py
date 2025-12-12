@@ -1,15 +1,14 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.api.routes.csf_practitioner import router as practitioner_router
+from src.api.routes.csf_practitioner import router
 import src.api.routes.csf_practitioner as csf_practitioner_route
 from src.autocomply.domain.csf_copilot import CsfCopilotResult
 from src.autocomply.domain.csf_practitioner import CsDecisionStatus
 from src.api.models.compliance_models import RegulatorySource
 
-# Local FastAPI app with the practitioner router mounted
 app = FastAPI()
-app.include_router(practitioner_router)
+app.include_router(router)
 
 client = TestClient(app)
 
