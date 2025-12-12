@@ -24,6 +24,9 @@ router = APIRouter(
 
 logger = get_logger(__name__)
 
+# Expose the copilot explainer for easy monkeypatching in tests.
+explain_csf_practitioner_decision = csf_copilot.explain_csf_practitioner_decision
+
 
 DEFAULT_COPILOT_QUESTION = (
     "Explain to a verification specialist what this Practitioner CSF decision "
@@ -125,7 +128,7 @@ async def practitioner_form_copilot(
     ]
 
     try:
-        rag_answer: RegulatoryRagAnswer = csf_copilot.explain_csf_practitioner_decision(
+        rag_answer: RegulatoryRagAnswer = explain_csf_practitioner_decision(
             decision={**decision.model_dump(), "form": form.model_dump()},
             question=form.question or DEFAULT_COPILOT_QUESTION,
             regulatory_references=decision.regulatory_references,
