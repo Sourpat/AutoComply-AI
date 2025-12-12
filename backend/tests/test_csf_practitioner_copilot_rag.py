@@ -1,15 +1,9 @@
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.api.routes.csf_practitioner import router
+from src.api.main import app
 from src.api.models.compliance_models import RegulatorySource
 from src.autocomply.domain.rag_regulatory_explain import RegulatoryRagAnswer
-
-import src.api.routes.csf_practitioner as practitioner_route
 import src.autocomply.domain.csf_copilot as csf_copilot
-
-app = FastAPI()
-app.include_router(router)
 
 client = TestClient(app)
 
