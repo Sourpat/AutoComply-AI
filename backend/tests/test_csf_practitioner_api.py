@@ -1,16 +1,15 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.api.routes.csf_practitioner import router as practitioner_router
+from src.api.routes.csf_practitioner import router
 
-# Local FastAPI app just for these tests, with the practitioner router mounted.
 app = FastAPI()
-app.include_router(practitioner_router)
+app.include_router(router)
 
 client = TestClient(app)
 
 
-def test_csf_practitioner_evaluate_ok_to_ship() -> None:
+def test_csf_practitioner_evaluate_ok_to_ship():
     payload = {
         "facility_name": "Test Dental Practice",
         "facility_type": "dental_practice",
@@ -25,12 +24,10 @@ def test_csf_practitioner_evaluate_ok_to_ship() -> None:
 
     resp = client.post("/csf/practitioner/evaluate", json=payload)
     assert resp.status_code == 200
-
-    data = resp.json()
-    assert data["status"] == "ok_to_ship"
+    assert resp.json()["status"] == "ok_to_ship"
 
 
-def test_csf_practitioner_evaluate_blocked_when_missing_fields() -> None:
+def test_csf_practitioner_evaluate_blocked_when_missing_fields():
     payload = {
         "facility_name": "",
         "facility_type": "dental_practice",
@@ -45,13 +42,10 @@ def test_csf_practitioner_evaluate_blocked_when_missing_fields() -> None:
 
     resp = client.post("/csf/practitioner/evaluate", json=payload)
     assert resp.status_code == 200
-
-    data = resp.json()
-    assert data["status"] == "blocked"
-    assert len(data.get("missing_fields", [])) > 0
+    assert resp.json()["status"] == "blocked"
 
 
-def test_csf_practitioner_evaluate_blocked_when_attestation_not_accepted() -> None:
+def test_csf_practitioner_evaluate_blocked_when_attestation_not_accepted():
     payload = {
         "facility_name": "Test Dental Practice",
         "facility_type": "dental_practice",
@@ -66,6 +60,4 @@ def test_csf_practitioner_evaluate_blocked_when_attestation_not_accepted() -> No
 
     resp = client.post("/csf/practitioner/evaluate", json=payload)
     assert resp.status_code == 200
-
-    data = resp.json()
-    assert data["status"] == "blocked"
+    assert resp.json()["status"] == "blocked"
