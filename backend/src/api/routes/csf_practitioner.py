@@ -110,7 +110,8 @@ async def practitioner_form_copilot(
     base_reason = (
         "Based on the information provided and the modeled rules for the "
         "Practitioner CSF vertical, AutoComply AI considers this request "
-        "approved to proceed with shipment."
+        "appropriate to proceed with shipment. This assessment is informed "
+        "by Practitioner CSF."
     )
 
     # Defaults if RAG is unavailable or fails.
@@ -176,7 +177,13 @@ async def practitioner_form_copilot(
         )
 
     # `reason` is a high-level, stable narrative summary that the tests key off of.
-    reason = base_reason
+    # If RAG produced an explicit answer, surface it alongside the base narrative
+    # so callers get both the deterministic template and any generative detail.
+    reason = (
+        f"{base_reason} {rag_explanation}"
+        if rag_explanation and rag_explanation != base_reason
+        else base_reason
+    )
 
     return PractitionerCopilotResponse(
         status=decision.status,
