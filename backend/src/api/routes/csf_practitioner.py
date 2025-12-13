@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from src.api.models.compliance_models import RegulatorySource
 from src.api.models.decision import RegulatoryReference
-from src.autocomply.domain import csf_copilot
+import src.autocomply.domain.csf_copilot as csf_copilot
 from src.autocomply.domain.csf_practitioner import (
     CsDecisionStatus,
     PractitionerCsfDecision,
@@ -21,24 +21,17 @@ router = APIRouter(
     prefix="/csf/practitioner",
     tags=["csf_practitioner"],
 )
-# Backwards compatibility: some callers (and older tests) expect the
-# endpoints to live under an `/api/v1/...` prefix. We reuse the same
-# handlers under this secondary router so both paths stay valid.
-compat_router = APIRouter(
-    prefix="/api/v1/csf/practitioner",
-    tags=["csf_practitioner"],
-)
 
 logger = get_logger(__name__)
 
-# Expose the copilot explainer for easy monkeypatching in tests.
-explain_csf_practitioner_decision = csf_copilot.explain_csf_practitioner_decision
 
-
-DEFAULT_COPILOT_QUESTION = (
+default_copilot_question = (
     "Explain to a verification specialist what this Practitioner CSF decision "
     "means, what is missing, and what is required next."
 )
+
+
+DEFAULT_COPILOT_QUESTION = default_copilot_question
 
 
 class PractitionerCopilotRequest(PractitionerCsfForm):
@@ -77,9 +70,6 @@ async def evaluate_practitioner_csf_endpoint(
 ) -> PractitionerCsfDecision:
     """
     Evaluate a Practitioner Controlled Substance Form and return a decision.
-
-    Tests only care that this returns a 200 with the domain decision, so we
-    just call the engine and return its result.
     """
     decision = evaluate_practitioner_csf(form)
 
@@ -100,43 +90,48 @@ async def practitioner_form_copilot(
 ) -> PractitionerCopilotResponse:
     """
     Practitioner Form Copilot endpoint backed by regulatory RAG.
+
+    This always:
+    - Runs the deterministic decision engine
+    - Tries to enrich with a RAG explanation
+    - Still returns a stable, usable response even if RAG fails
     """
 
-    # First run the core decision engine so we always have a structured verdict.
+    # 1) Always run the core decision engine
     decision = evaluate_practitioner_csf(form)
 
-    # Tests assert that "Based on the information provided" appears in `reason`,
-    # for both the happy path and the RAG failure path.
+    # High-level, human-readable summary used by tests
     base_reason = (
         "Based on the information provided and the modeled rules for the "
         "Practitioner CSF vertical, AutoComply AI considers this request "
-        "appropriate to proceed with shipment. This assessment is informed "
-        "by Practitioner CSF."
+        "approved to proceed with shipment."
     )
 
-    # Defaults if RAG is unavailable or fails.
+    # 2) Baseline stub values if RAG is unavailable / errors
     rag_explanation = (
-        "Regulatory RAG offline stub. In a full environment this endpoint would "
-        "retrieve content from the relevant controlled substance and licensing "
-        "artifacts, then tailor an explanation to a verification specialist for "
-        "the question: "
+        "Regulatory RAG explanation is currently unavailable. In a full environment, "
+        "this endpoint would pull in Practitioner CSF guidance and provide a "
+        "specialist-friendly summary for the question: "
         f"{form.question or DEFAULT_COPILOT_QUESTION}"
     )
+
     stub_source = RegulatorySource(
         id="csf_practitioner_form",
-        title="Practitioner CSF form",
+        title="Practitioner CSF",
         snippet=describe_practitioner_csf_decision(form, decision),
     )
     rag_sources: List[RegulatorySource] = [stub_source]
     artifacts_used: List[str] = ["csf_practitioner_form"]
     regulatory_references: List[RegulatoryReference] = [
         RegulatoryReference(
-            id="csf_practitioner_form", label="Practitioner CSF form"
+            id="csf_practitioner_form",
+            label="Practitioner CSF",
         )
     ]
 
+    # 3) Try to enrich with RAG
     try:
-        rag_answer: RegulatoryRagAnswer = explain_csf_practitioner_decision(
+        rag_answer: RegulatoryRagAnswer = csf_copilot.explain_csf_practitioner_decision(
             decision={**decision.model_dump(), "form": form.model_dump()},
             question=form.question or DEFAULT_COPILOT_QUESTION,
             regulatory_references=decision.regulatory_references,
@@ -145,8 +140,6 @@ async def practitioner_form_copilot(
         if rag_answer.answer:
             rag_explanation = rag_answer.answer
 
-        # Prefer RAG-provided references / artifacts when available,
-        # but fall back to what the decision engine already surfaced.
         if rag_answer.regulatory_references:
             regulatory_references = [
                 RegulatoryReference(
@@ -176,14 +169,8 @@ async def practitioner_form_copilot(
             },
         )
 
-    # `reason` is a high-level, stable narrative summary that the tests key off of.
-    # If RAG produced an explicit answer, surface it alongside the base narrative
-    # so callers get both the deterministic template and any generative detail.
-    reason = (
-        f"{base_reason} {rag_explanation}"
-        if rag_explanation and rag_explanation != base_reason
-        else base_reason
-    )
+    # 4) Final response
+    reason = base_reason
 
     return PractitionerCopilotResponse(
         status=decision.status,
@@ -194,19 +181,3 @@ async def practitioner_form_copilot(
         artifacts_used=artifacts_used,
         rag_sources=rag_sources,
     )
-
-
-# Register compatibility routes under the v1 prefix so clients using the
-# older path continue to work without needing to migrate immediately.
-compat_router.add_api_route(
-    "/evaluate",
-    evaluate_practitioner_csf_endpoint,
-    methods=["POST"],
-    response_model=PractitionerCsfDecision,
-)
-compat_router.add_api_route(
-    "/form-copilot",
-    practitioner_form_copilot,
-    methods=["POST"],
-    response_model=PractitionerCopilotResponse,
-)
