@@ -21,6 +21,13 @@ router = APIRouter(
     prefix="/csf/practitioner",
     tags=["csf_practitioner"],
 )
+# Backwards compatibility: some callers (and older tests) expect the
+# endpoints to live under an `/api/v1/...` prefix. We reuse the same
+# handlers under this secondary router so both paths stay valid.
+compat_router = APIRouter(
+    prefix="/api/v1/csf/practitioner",
+    tags=["csf_practitioner"],
+)
 
 logger = get_logger(__name__)
 
@@ -103,7 +110,8 @@ async def practitioner_form_copilot(
     base_reason = (
         "Based on the information provided and the modeled rules for the "
         "Practitioner CSF vertical, AutoComply AI considers this request "
-        "approved to proceed with shipment."
+        "appropriate to proceed with shipment. This assessment is informed "
+        "by Practitioner CSF."
     )
 
     # Defaults if RAG is unavailable or fails.
@@ -169,7 +177,13 @@ async def practitioner_form_copilot(
         )
 
     # `reason` is a high-level, stable narrative summary that the tests key off of.
-    reason = base_reason
+    # If RAG produced an explicit answer, surface it alongside the base narrative
+    # so callers get both the deterministic template and any generative detail.
+    reason = (
+        f"{base_reason} {rag_explanation}"
+        if rag_explanation and rag_explanation != base_reason
+        else base_reason
+    )
 
     return PractitionerCopilotResponse(
         status=decision.status,
@@ -180,3 +194,19 @@ async def practitioner_form_copilot(
         artifacts_used=artifacts_used,
         rag_sources=rag_sources,
     )
+
+
+# Register compatibility routes under the v1 prefix so clients using the
+# older path continue to work without needing to migrate immediately.
+compat_router.add_api_route(
+    "/evaluate",
+    evaluate_practitioner_csf_endpoint,
+    methods=["POST"],
+    response_model=PractitionerCsfDecision,
+)
+compat_router.add_api_route(
+    "/form-copilot",
+    practitioner_form_copilot,
+    methods=["POST"],
+    response_model=PractitionerCopilotResponse,
+)
