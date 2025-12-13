@@ -7,7 +7,9 @@ client = TestClient(app)
 def test_debug_print_routes():
     for route in app.routes:
         print("ROUTE:", route.path, "METHODS:", route.methods)
-    assert False, "Route debug output above"
+    # This used to force a failure just to dump the route table.
+    # Keeping it as a no-op so CI passes while still allowing route debug output if needed.
+    assert True
 
 
 def test_csf_practitioner_evaluate_ok_to_ship():
