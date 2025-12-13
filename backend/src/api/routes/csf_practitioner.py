@@ -21,6 +21,13 @@ router = APIRouter(
     prefix="/csf/practitioner",
     tags=["csf_practitioner"],
 )
+# Backwards compatibility: some callers (and older tests) expect the
+# endpoints to live under an `/api/v1/...` prefix. We reuse the same
+# handlers under this secondary router so both paths stay valid.
+compat_router = APIRouter(
+    prefix="/api/v1/csf/practitioner",
+    tags=["csf_practitioner"],
+)
 
 logger = get_logger(__name__)
 
@@ -180,3 +187,19 @@ async def practitioner_form_copilot(
         artifacts_used=artifacts_used,
         rag_sources=rag_sources,
     )
+
+
+# Register compatibility routes under the v1 prefix so clients using the
+# older path continue to work without needing to migrate immediately.
+compat_router.add_api_route(
+    "/evaluate",
+    evaluate_practitioner_csf_endpoint,
+    methods=["POST"],
+    response_model=PractitionerCsfDecision,
+)
+compat_router.add_api_route(
+    "/form-copilot",
+    practitioner_form_copilot,
+    methods=["POST"],
+    response_model=PractitionerCopilotResponse,
+)
