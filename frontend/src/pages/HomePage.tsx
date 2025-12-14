@@ -1,195 +1,189 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { DocsLinksCard } from "../components/DocsLinksCard";
-import { HomeDemoBanner } from "../components/HomeDemoBanner";
-import { HomeNextSteps } from "../components/HomeNextSteps";
+import "../styles/AutoComplyConsole.css";
 
 export function HomePage() {
   return (
-    <div className="space-y-12 py-8">
-      <header className="rounded-2xl bg-white/80 p-8 shadow-sm ring-1 ring-slate-200">
-        <div className="flex flex-col gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
-              Welcome
-            </p>
-            <h1 className="text-3xl font-bold text-slate-900">AutoComply AI</h1>
-          </div>
-          <p className="max-w-3xl text-base text-slate-600">
-            A sandbox for explainable controlled-substance and license
-            compliance decisions, built for demos, learning, and portfolio
-            storytelling.
+    <div className="ac-console">
+      <header className="ac-console__topbar">
+        <div>
+          <h1 className="ac-console__title">AutoComply Console</h1>
+          <p className="ac-console__subtitle">
+            Sandbox for controlled substances, licenses, and mock orders – tuned for demos and interviews.
           </p>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-3 pt-2">
-            <Link
-              to="/console"
-              className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-slate-800"
-            >
-              Open Compliance Console
-            </Link>
-            <Link
-              to="/csf"
-              className="inline-flex items-center justify-center rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-900 ring-1 ring-slate-200 hover:bg-slate-200"
-            >
-              Explore CSF Suite
-            </Link>
-            <Link
-              to="/license"
-              className="inline-flex items-center justify-center rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-900 ring-1 ring-slate-200 hover:bg-slate-200"
-            >
-              Explore License Suite
-            </Link>
-          </div>
+        <div className="ac-console__top-actions">
+          <span className="ac-console__env-pill">Local Demo</span>
+          <Link to="/console" className="ac-console__primary-btn">
+            Run Guided Demo
+          </Link>
         </div>
       </header>
 
-      <section>
-        <HomeDemoBanner />
-      </section>
+      <div className="ac-console__layout">
+        <div className="ac-console__left">
+          <section className="ac-console__card ac-console__hero">
+            <div className="ac-console__hero-header">
+              <div>
+                <h2>Ohio Hospital – Controlled Substance Suite</h2>
+                <p>
+                  Walk through CSF, license checks, and mock orders in one place. Designed for a 2–3 minute interview demo.
+                </p>
+              </div>
+              <div className="ac-console__hero-badge">
+                <span className="ac-console__hero-badge-dot" />
+                Demo ready
+              </div>
+            </div>
 
-      <section>
-        <HomeNextSteps />
-      </section>
+            <div className="ac-console__hero-grid">
+              <div>
+                <p className="ac-console__metric-label">Engines</p>
+                <p className="ac-console__metric-value">3</p>
+                <p className="ac-console__metric-caption">CSF, License, Order</p>
+              </div>
+              <div>
+                <p className="ac-console__metric-label">Sample journeys</p>
+                <p className="ac-console__metric-value">4</p>
+                <p className="ac-console__metric-caption">Happy, Missing TDDD, Non-Ohio, Needs review</p>
+              </div>
+              <div>
+                <p className="ac-console__metric-label">Explainable traces</p>
+                <p className="ac-console__metric-value">✔</p>
+                <p className="ac-console__metric-caption">Toggle dev trace to show JSON</p>
+              </div>
+            </div>
 
-      <section className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-2xl font-semibold text-slate-900">
-            What you can do here
-          </h2>
+            <div className="ac-console__hero-actions">
+              <Link to="/console" className="ac-console__primary-btn">
+                Open Ohio Hospital Journey
+              </Link>
+              <Link to="/csf" className="ac-console__ghost-btn">
+                View CSF &amp; License Suite
+              </Link>
+            </div>
+          </section>
+
+          <section className="ac-console__card">
+            <div className="ac-console__section-header">
+              <h3>Highlighted journeys</h3>
+              <span className="ac-console__section-pill">Interview ready</span>
+            </div>
+
+            <div className="ac-console__list">
+              <div className="ac-console__list-item">
+                <div>
+                  <p className="ac-console__list-title">Ohio Hospital Order Journey</p>
+                  <p className="ac-console__list-subtitle">
+                    Show ok_to_ship vs needs_review vs blocked using Ohio TDDD + CSF + non-Ohio scenarios.
+                  </p>
+                </div>
+                <Link to="/console" className="ac-console__chip-btn">
+                  Open flow
+                </Link>
+              </div>
+
+              <div className="ac-console__list-item">
+                <div>
+                  <p className="ac-console__list-title">NY Pharmacy License-Only Gate</p>
+                  <p className="ac-console__list-subtitle">
+                    License-only order gate driven by NY license rules. Show happy path and missing license flows.
+                  </p>
+                </div>
+                <Link to="/license/ny-pharmacy" className="ac-console__chip-btn">
+                  Open flow
+                </Link>
+              </div>
+
+              <div className="ac-console__list-item">
+                <div>
+                  <p className="ac-console__list-title">Developer trace + docs</p>
+                  <p className="ac-console__list-subtitle">
+                    Turn on the dev trace and open the Docs &amp; Links section to show how APIs, architecture, and tests line up.
+                  </p>
+                </div>
+                <Link to="/projects/autocomply-ai" className="ac-console__chip-btn">
+                  Open docs
+                </Link>
+              </div>
+            </div>
+          </section>
         </div>
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="flex h-full flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">
-                1. See the big picture
-              </h3>
-              <p className="mt-1 text-sm text-slate-600">
-                Start with the <strong>Compliance Console</strong> to see CSF
-                Suite, License Suite, and end-to-end order journeys in a single
-                view. The console also includes a System Status card powered by
-                the <code>/health</code> endpoint.
-              </p>
-            </div>
-            <p className="text-sm font-semibold text-slate-900">
-              <Link to="/console" className="inline-flex items-center gap-1 text-slate-900 hover:text-slate-700">
-                Go to Compliance Console →
-              </Link>
-            </p>
-          </div>
 
-          <div className="flex h-full flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">
-                2. Test Controlled Substance Forms (CSF)
-              </h3>
-              <p className="mt-1 text-sm text-slate-600">
-                Use the <strong>CSF Suite</strong> sandboxes to evaluate forms for
-                hospitals, facilities, practitioners, EMS, and researchers. Each
-                sandbox calls a CSF decision engine and a CSF Form Copilot backed
-                by RAG.
-              </p>
-            </div>
-            <p className="text-sm font-semibold text-slate-900">
-              <Link to="/csf" className="inline-flex items-center gap-1 text-slate-900 hover:text-slate-700">
-                Open CSF Suite →
+        <div className="ac-console__right">
+          <section className="ac-console__card ac-console__stacked">
+            <h3>Suites &amp; engines</h3>
+            <div className="ac-console__pill-list">
+              <Link to="/csf" className="ac-console__pill-btn">
+                CSF Suite
               </Link>
-            </p>
-          </div>
-
-          <div className="flex h-full flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">
-                3. Exercise License Engines
-              </h3>
-              <p className="mt-1 text-sm text-slate-600">
-                Use the <strong>License Suite</strong> to test license decisions for:
-              </p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
-                <li>Ohio TDDD – used alongside Hospital CSF for Ohio orders.</li>
-                <li>NY Pharmacy – used standalone as a license-only order gate.</li>
-              </ul>
-            </div>
-            <p className="text-sm font-semibold text-slate-900">
-              <Link to="/license" className="inline-flex items-center gap-1 text-slate-900 hover:text-slate-700">
-                Open License Suite →
+              <Link to="/license" className="ac-console__pill-btn">
+                License Suite
               </Link>
-            </p>
-          </div>
-        </div>
-      </section>
+              <Link to="/console" className="ac-console__pill-btn">
+                Order Sandbox
+              </Link>
+            </div>
 
-      <section className="space-y-4">
-        <h2 className="text-2xl font-semibold text-slate-900">Highlighted journeys</h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="flex h-full flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">
-              Ohio Hospital Order Journey
-            </h3>
-            <p className="text-sm text-slate-600">
-              Run three realistic scenarios from the Compliance Console:
-            </p>
-            <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
-              <li>Ohio + valid CSF + valid TDDD → <code>ok_to_ship</code>.</li>
+            <div className="ac-console__mini-grid">
+              <div className="ac-console__mini-card">
+                <p className="ac-console__mini-label">CSF engines</p>
+                <p className="ac-console__mini-value">5</p>
+                <p className="ac-console__mini-caption">Practitioner, hospital, facility, EMS, researcher</p>
+              </div>
+              <div className="ac-console__mini-card">
+                <p className="ac-console__mini-label">License engines</p>
+                <p className="ac-console__mini-value">2</p>
+                <p className="ac-console__mini-caption">Ohio TDDD, NY Pharmacy</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="ac-console__card">
+            <div className="ac-console__section-header">
+              <h3>For interviews &amp; portfolio</h3>
+            </div>
+            <ul className="ac-console__bullet-list">
+              <li>Each engine has its own API, decision model, and tests.</li>
               <li>
-                Ohio + valid CSF + missing TDDD → final decision not <code>ok_to_ship</code>.
+                Decisions normalize to <code>ok_to_ship</code>, <code>needs_review</code>, and <code>blocked</code>.
               </li>
               <li>
-                Non-Ohio hospital → CSF only, no TDDD, final decision <code>ok_to_ship</code>.
+                Use this console with the architecture + case study docs when walking recruiters through the system.
               </li>
             </ul>
-            <p className="text-sm text-slate-600">
-              Toggle the developer trace to see raw JSON and copy requests as <code>curl</code> or JSON.
-            </p>
-          </div>
+          </section>
 
-          <div className="flex h-full flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">
-              NY Pharmacy License-Only Gate
-            </h3>
-            <p className="text-sm text-slate-600">
-              From the NY Pharmacy sandbox, run a license-only mock order decision that gates shipping purely based on the NY license engine:
-            </p>
-            <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
-              <li>Happy path → license and final decision <code>ok_to_ship</code>.</li>
-              <li>
-                Negative path → wrong state / missing license → <code>needs_review</code> or <code>blocked</code>.
-              </li>
-            </ul>
-            <p className="text-sm text-slate-600">
-              Developer trace shows the exact request and response used for the decision, with copy-as-cURL helpers.
-            </p>
-          </div>
+          <section className="ac-console__card ac-console__stacked">
+            <h3>Docs &amp; links</h3>
+            <div className="ac-console__docs-grid">
+              <a
+                href="https://github.com/Sourpat/AutoComply-AI"
+                target="_blank"
+                rel="noreferrer"
+                className="ac-console__docs-btn"
+              >
+                GitHub repo
+              </a>
+              <Link to="/projects/autocomply-ai" className="ac-console__docs-btn">
+                System architecture
+              </Link>
+              <Link to="/projects/autocomply-ai" className="ac-console__docs-btn">
+                Portfolio case study
+              </Link>
+              <a
+                href="https://github.com/Sourpat/AutoComply-AI/blob/main/scripts/smoke_test_autocomply.py"
+                target="_blank"
+                rel="noreferrer"
+                className="ac-console__docs-btn"
+              >
+                Smoke test script
+              </a>
+            </div>
+          </section>
         </div>
-      </section>
-
-      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-2xl font-semibold text-slate-900">For interviews and portfolio</h2>
-        <p className="text-sm text-slate-600">This project is designed to be explainable end-to-end:</p>
-        <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
-          <li>Each engine has clear APIs and tests.</li>
-          <li>
-            Decisions are normalized to <code>ok_to_ship</code>, <code>needs_review</code>, and <code>blocked</code>.
-          </li>
-          <li>
-            The Compliance Console and sandboxes provide live demos of CSF, licenses, and mock order approvals.
-          </li>
-        </ul>
-        <p className="text-sm text-slate-600">
-          Pair this UI with the case study and architecture docs in <code>docs/</code> when you walk someone through the system.
-        </p>
-      </section>
-
-      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900 md:text-xl">Resources & documentation</h2>
-        <p className="mt-2 text-sm text-slate-600">
-          When you’re sharing this project with someone (recruiter, hiring manager, architect), these links and docs help you
-          tell the full story.
-        </p>
-        <div className="mt-4">
-          <DocsLinksCard />
-        </div>
-      </section>
+      </div>
     </div>
   );
 }
