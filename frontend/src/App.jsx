@@ -4,7 +4,7 @@ import { HomePage } from "./pages/HomePage";
 import { CsfOverviewPage } from "./pages/CsfOverviewPage";
 import { OhioTdddSandbox } from "./components/OhioTdddSandbox";
 import { LicenseOverviewPage } from "./pages/LicenseOverviewPage";
-import { ComplianceConsolePage } from "./pages/ComplianceConsolePage";
+import ConsoleDashboard from "./pages/ConsoleDashboard";
 import { NyPharmacyLicenseSandbox } from "./components/NyPharmacyLicenseSandbox";
 import AutoComplyAiCaseStudy from "./pages/projects/AutoComplyAiCaseStudy";
 
@@ -17,7 +17,7 @@ export default function App() {
           <Route path="/csf" element={<CsfOverviewPage />} />
           <Route path="/csf/:sandboxId" element={<CsfOverviewPage />} />
           <Route path="/license" element={<LicenseOverviewPage />} />
-          <Route path="/console" element={<ComplianceConsolePage />} />
+          <Route path="/console" element={<ConsoleDashboard />} />
           <Route path="/license/ohio-tddd" element={<OhioTdddSandbox />} />
           <Route
             path="/license/ny-pharmacy"
