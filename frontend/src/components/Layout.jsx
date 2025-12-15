@@ -11,8 +11,8 @@ export default function Layout({ children }) {
     <div className="flex min-h-screen flex-col bg-slate-950 text-[11px] text-slate-50">
       <AppHeader />
 
-      <main className="flex-1">
-        <div className="mx-auto max-w-5xl px-6 pb-12 pt-6">
+      <main className="flex-1 pt-20">
+        <div className="mx-auto max-w-5xl px-6 pb-12">
           <div className="mb-4 flex items-center justify-end gap-2">
             <ApiStatusChip />
 
