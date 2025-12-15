@@ -1,5 +1,5 @@
 import React from "react";
-import { Github, FileText, BookOpen } from "lucide-react";
+import { FileText, BookOpen } from "lucide-react";
 
 export function AppFooter() {
   const year = new Date().getFullYear();
@@ -18,16 +18,6 @@ export function AppFooter() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <a
-            href="https://github.com/Sourpat/AutoComply-AI"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 text-[11px] text-slate-300 hover:text-cyan-200"
-            title="Open the full source code on GitHub"
-          >
-            <Github className="h-3.5 w-3.5" />
-            <span>Repo</span>
-          </a>
           <a
             href="https://github.com/Sourpat/AutoComply-AI/blob/main/docs/system_architecture_autocomply_ai.md"
             target="_blank"
