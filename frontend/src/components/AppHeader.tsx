@@ -11,26 +11,24 @@ const navItems = [
 export function AppHeader() {
   return (
     <header className="ac-header">
-      <div className="ac-header-inner">
-        <div className="ac-header__spacer" aria-hidden="true" />
+      <div className="ac-header__brand">AutoComply AI</div>
 
-        <div className="ac-header__brand">AutoComply AI</div>
-
-        <nav className="ac-header__nav" aria-label="Main navigation">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.exact}
-              className={({ isActive }) =>
-                `ac-header__link${isActive ? " ac-header__link--active" : ""}`
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-      </div>
+      <nav className="ac-header__nav" aria-label="Main navigation">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.exact}
+            className={({ isActive }) =>
+              `ac-header__nav-link${
+                isActive ? " ac-header__nav-link--active" : ""
+              }`
+            }
+          >
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
     </header>
   );
 }
