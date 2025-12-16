@@ -158,14 +158,6 @@ export function HomePage() {
           <section className="ac-console__card ac-console__stacked">
             <h3>Docs &amp; links</h3>
             <div className="ac-console__docs-grid">
-              <a
-                href="https://github.com/Sourpat/AutoComply-AI"
-                target="_blank"
-                rel="noreferrer"
-                className="ac-console__docs-btn"
-              >
-                GitHub repo
-              </a>
               <Link to="/projects/autocomply-ai" className="ac-console__docs-btn">
                 System architecture
               </Link>
