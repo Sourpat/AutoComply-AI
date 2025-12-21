@@ -52,11 +52,12 @@ export async function runOhioHospitalOrderScenario(
   const isNonOhio = scenario === "non_ohio_no_tddd";
 
   const baseCsfPayload = {
-    hospital_name: isNonOhio
+    facility_name: isNonOhio
       ? "Pennsylvania General Hospital"
       : "Ohio General Hospital",
     facility_type: "hospital",
     account_number: isNonOhio ? "800987654" : "800123456",
+    pharmacy_license_number: isNonOhio ? "PA-PRX-98765" : "OH-PRX-12345",
     ship_to_state: isNonOhio ? "PA" : "OH",
     dea_number: isNonOhio ? "CD7654321" : "AB1234567",
     pharmacist_in_charge_name: isNonOhio ? "Dr. John Smith" : "Dr. Jane Doe",
@@ -70,7 +71,12 @@ export async function runOhioHospitalOrderScenario(
         : "Mock order test – non-Ohio hospital Schedule II, no Ohio TDDD payload.",
     controlled_substances: [
       {
-        drug_name: "Oxycodone 10mg",
+        id: "cs-oxy-10mg-tab",
+        name: "Oxycodone 10mg",
+        ndc: "12345-6789-02",
+        strength: "10 mg",
+        dosage_form: "tablet",
+        dea_schedule: "II",
         schedule: "II",
         quantity: 100,
       },
@@ -115,10 +121,26 @@ export async function runOhioHospitalOrderScenario(
   });
 
   if (!resp.ok) {
-    const message = await resp.text();
-    throw new Error(
-      `Ohio Hospital mock order approval failed with status ${resp.status}: ${message}`
-    );
+    let detailedError = `Ohio Hospital mock order approval failed with status ${resp.status}`;
+    try {
+      const errorJson = await resp.json();
+      if (errorJson?.detail) {
+        if (Array.isArray(errorJson.detail)) {
+          // Pydantic validation errors
+          const fieldErrors = errorJson.detail
+            .map((err: any) => `${err.loc?.join('.') || 'field'}: ${err.msg}`)
+            .join('; ');
+          detailedError = `Validation failed: ${fieldErrors}`;
+        } else if (typeof errorJson.detail === 'string') {
+          detailedError = errorJson.detail;
+        }
+      }
+    } catch {
+      // If JSON parsing fails, use text
+      const text = await resp.text();
+      if (text) detailedError += `: ${text}`;
+    }
+    throw new Error(detailedError);
   }
 
   const json = await resp.json();

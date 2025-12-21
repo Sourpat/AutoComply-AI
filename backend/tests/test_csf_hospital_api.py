@@ -149,3 +149,116 @@ def test_csf_hospital_form_copilot_basic(
     assert refs and refs[0]["id"] == "csf_hospital_form"
     rag_sources = data.get("rag_sources", [])
     assert rag_sources and rag_sources[0]["id"] == "csf_hospital_form"
+
+
+# ============================================================================
+# Demo Scenario Tests (matching Hospital CSF Sandbox presets)
+# ============================================================================
+
+
+def test_csf_hospital_happy_path_ohio_schedule_ii():
+    """
+    Test: Ohio hospital – Schedule II (happy path)
+    Expected: ok_to_ship
+    """
+    payload = {
+        "facility_name": "Scenario Hospital",
+        "facility_type": "hospital",
+        "account_number": "ACC-TEST",
+        "pharmacy_license_number": "TDDD-123456",
+        "dea_number": "DEA-123456",
+        "pharmacist_in_charge_name": "Dr. Scenario",
+        "pharmacist_contact_phone": "555-0000",
+        "ship_to_state": "OH",
+        "attestation_accepted": True,
+        "internal_notes": "Happy path hospital CSF for Ohio Schedule II order.",
+        "controlled_substances": [
+            {
+                "id": "oh-sched-ii-happy",
+                "name": "Schedule II Pain Med",
+                "dea_schedule": "II",
+            }
+        ],
+    }
+
+    resp = client.post("/csf/hospital/evaluate", json=payload)
+    assert resp.status_code == 200
+
+    data = resp.json()
+    decision = data["decision"]
+
+    assert decision["status"] == "ok_to_ship", f"Expected ok_to_ship, got {decision['status']} - {decision['reason']}"
+    assert "approved" in decision["reason"].lower() or "proceed" in decision["reason"].lower()
+    assert data["missing_fields"] == []
+
+
+def test_csf_hospital_expired_tddd():
+    """
+    Test: Ohio hospital – Schedule II (expired TDDD)
+    Expected: blocked with message about expired license
+    """
+    payload = {
+        "facility_name": "Scenario Hospital",
+        "facility_type": "hospital",
+        "account_number": "ACC-TEST",
+        "pharmacy_license_number": "TDDD-EXPIRED",
+        "dea_number": "DEA-123456",
+        "pharmacist_in_charge_name": "Dr. Scenario",
+        "pharmacist_contact_phone": "555-0000",
+        "ship_to_state": "OH",
+        "attestation_accepted": True,
+        "internal_notes": "Expired TDDD license for Ohio Schedule II order.",
+        "controlled_substances": [
+            {
+                "id": "oh-sched-ii-expired",
+                "name": "Schedule II Pain Med",
+                "dea_schedule": "II",
+            }
+        ],
+    }
+
+    resp = client.post("/csf/hospital/evaluate", json=payload)
+    assert resp.status_code == 200
+
+    data = resp.json()
+    decision = data["decision"]
+
+    assert decision["status"] == "blocked", f"Expected blocked, got {decision['status']}"
+    assert "expired" in decision["reason"].lower(), f"Expected 'expired' in reason: {decision['reason']}"
+    assert "tddd" in decision["reason"].lower() or "license" in decision["reason"].lower()
+
+
+def test_csf_hospital_wrong_ship_to_state():
+    """
+    Test: Ohio hospital – Schedule II (wrong ship-to state)
+    Expected: blocked with message about state mismatch
+    """
+    payload = {
+        "facility_name": "Scenario Hospital",
+        "facility_type": "hospital",
+        "account_number": "ACC-TEST",
+        "pharmacy_license_number": "TDDD-123456",
+        "dea_number": "DEA-123456",
+        "pharmacist_in_charge_name": "Dr. Scenario",
+        "pharmacist_contact_phone": "555-0000",
+        "ship_to_state": "PA",  # Wrong state!
+        "attestation_accepted": True,
+        "internal_notes": "Hospital CSF data is fine; ship-to is outside Ohio.",
+        "controlled_substances": [
+            {
+                "id": "oh-sched-ii-wrong-state",
+                "name": "Schedule II Pain Med",
+                "dea_schedule": "II",
+            }
+        ],
+    }
+
+    resp = client.post("/csf/hospital/evaluate", json=payload)
+    assert resp.status_code == 200
+
+    data = resp.json()
+    decision = data["decision"]
+
+    assert decision["status"] == "blocked", f"Expected blocked, got {decision['status']}"
+    assert ("mismatch" in decision["reason"].lower() or "state" in decision["reason"].lower()), \
+        f"Expected state mismatch message: {decision['reason']}"

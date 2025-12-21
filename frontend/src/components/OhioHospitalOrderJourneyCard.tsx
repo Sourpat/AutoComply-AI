@@ -8,11 +8,7 @@ import { OhioHospitalOrderApprovalResult } from "../domain/orderMockApproval";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { copyToClipboard } from "../utils/clipboard";
 import { buildCurlCommand } from "../utils/curl";
-import { UnderTheHoodInfo } from "../components/UnderTheHoodInfo";
-import { DecisionStatusLegend } from "./DecisionStatusLegend";
-import { MockOrderScenarioBadge } from "./MockOrderScenarioBadge";
-import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
-import type { DecisionOutcome, RegulatoryReference } from "../types/decision";
+import type { DecisionOutcome, DecisionStatus } from "../types/decision";
 import { VerticalBadge } from "./VerticalBadge";
 
 type OhioJourneyScenarioId = OrderScenarioKind;
@@ -22,50 +18,75 @@ const OHIO_HOSPITAL_VERTICAL_LABEL = "Ohio Hospital vertical";
 const OHIO_JOURNEY_SCENARIOS: {
   id: OhioJourneyScenarioId;
   label: string;
-  verticalLabel?: string;
-  badge?: string;
+  shortLabel: string;
+  expectedOutcome: string;
   description: string;
 }[] = [
   {
     id: "happy_path",
-    label: "Ohio Hospital – TDDD vertical demo",
-    verticalLabel: OHIO_HOSPITAL_VERTICAL_LABEL,
-    badge: "Recommended",
+    label: "Compliant CSF + Valid TDDD",
+    shortLabel: "Happy Path",
+    expectedOutcome: "OK to ship",
     description:
-      "Ohio hospital order using Hospital CSF and Ohio TDDD license to showcase the Ohio Hospital vertical end-to-end.",
+      "Ohio hospital with valid CSF and valid Ohio TDDD license. Expected final decision: OK to ship.",
   },
   {
     id: "missing_tddd",
-    label: "Ohio Hospital – missing TDDD",
-    verticalLabel: OHIO_HOSPITAL_VERTICAL_LABEL,
+    label: "Valid CSF + Missing TDDD",
+    shortLabel: "Missing License",
+    expectedOutcome: "Needs review or blocked",
     description:
-      "Ohio hospital with valid CSF but no valid TDDD → final decision is not ok_to_ship for the vertical demo.",
+      "Ohio hospital with valid CSF but missing/invalid TDDD number. Expected final decision: Needs review or blocked.",
   },
   {
     id: "non_ohio_no_tddd",
-    label: "Ohio Hospital – non-Ohio (CSF only)",
-    verticalLabel: OHIO_HOSPITAL_VERTICAL_LABEL,
+    label: "Non-Ohio Hospital (CSF Only)",
+    shortLabel: "Out of State",
+    expectedOutcome: "OK to ship",
     description:
-      "Non-Ohio hospital with valid CSF only → final decision ok_to_ship without TDDD for out-of-state vertical validation.",
+      "Non-Ohio hospital with valid CSF. No TDDD required for out-of-state shipments. Expected final decision: OK to ship.",
   },
 ];
 
+// Helper functions
+const getStatusColor = (status: string | undefined) => {
+  if (status === "ok_to_ship") return "bg-emerald-100 text-emerald-900 border border-emerald-300";
+  if (status === "blocked") return "bg-red-100 text-red-900 border border-red-300";
+  return "bg-amber-100 text-amber-900 border border-amber-300";
+};
+
+const getStatusLabel = (status: string | undefined) => {
+  if (status === "ok_to_ship") return "OK to Ship";
+  if (status === "blocked") return "Blocked";
+  if (status === "needs_review") return "Needs Review";
+  return status || "Unknown";
+};
+
+const getStatusMeaning = (status: string | undefined) => {
+  if (status === "ok_to_ship") return "Order can proceed without manual review.";
+  if (status === "blocked") return "Order cannot proceed until issues are fixed.";
+  if (status === "needs_review") return "Order requires compliance review before shipment.";
+  return "Status unknown.";
+};
+
+const getNextAction = (status: string | undefined) => {
+  if (status === "ok_to_ship") return "Proceed to fulfillment";
+  if (status === "blocked") return "Fix missing/invalid information then re-run";
+  if (status === "needs_review") return "Submit to verification team";
+  return "Review decision details";
+};
+
 export function OhioHospitalOrderJourneyCard() {
-  const [result, setResult] = useState<OhioHospitalOrderApprovalResult | null>(
-    null
-  );
+  const [result, setResult] = useState<OhioHospitalOrderApprovalResult | null>(null);
   const [loading, setLoading] = useState<null | OrderScenarioKind>(null);
   const [error, setError] = useState<string | null>(null);
-  const [traceEnabled, setTraceEnabled] = useState(false);
-  const [lastRun, setLastRun] = useState<OhioHospitalOrderScenarioRun | null>(
-    null
-  );
+  const [showDevTrace, setShowDevTrace] = useState(false);
+  const [lastRun, setLastRun] = useState<OhioHospitalOrderScenarioRun | null>(null);
   const [traceCopyMessage, setTraceCopyMessage] = useState<string | null>(null);
-  const [selectedScenarioId, setSelectedScenarioId] =
-    React.useState<OhioJourneyScenarioId>("happy_path");
+  const [selectedScenarioId, setSelectedScenarioId] = useState<OhioJourneyScenarioId>("happy_path");
+  const [showUnderHood, setShowUnderHood] = useState(false);
 
-  const activeScenario =
-    OHIO_JOURNEY_SCENARIOS.find((s) => s.id === selectedScenarioId) ?? null;
+  const activeScenario = OHIO_JOURNEY_SCENARIOS.find((s) => s.id === selectedScenarioId) ?? null;
 
   async function runScenario(kind: OrderScenarioKind) {
     setLoading(kind);
@@ -92,9 +113,7 @@ export function OhioHospitalOrderJourneyCard() {
         tddd_status: run.response.license_decision?.status,
       });
     } catch (err: any) {
-      const message =
-        err?.message ??
-        "Mock order journey failed. Please check the backend and try again.";
+      const message = err?.message ?? "Mock order journey failed. Please check the backend and try again.";
       setError(message);
 
       trackSandboxEvent("order_mock_ohio_hospital_error", {
@@ -113,268 +132,457 @@ export function OhioHospitalOrderJourneyCard() {
     runScenario(id);
   }
 
-  async function handleCopyRequestCurl() {
-    if (!lastRun) return;
-    const curl = buildCurlCommand(
-      "/orders/mock/ohio-hospital-approval",
-      "POST",
-      lastRun.request
-    );
-    const ok = await copyToClipboard(curl);
-    setTraceCopyMessage(
-      ok ? "Request cURL copied to clipboard." : "Unable to copy cURL."
-    );
-    setTimeout(() => setTraceCopyMessage(null), 2000);
-  }
-
-  async function handleCopyRequestJson() {
-    if (!lastRun) return;
-    const json = JSON.stringify(lastRun.request, null, 2);
+  async function handleCopyJson(data: any, label: string) {
+    const json = JSON.stringify(data, null, 2);
     const ok = await copyToClipboard(json);
-    setTraceCopyMessage(
-      ok ? "Request JSON copied to clipboard." : "Unable to copy JSON."
-    );
+    setTraceCopyMessage(ok ? `${label} copied to clipboard.` : `Unable to copy ${label}.`);
     setTimeout(() => setTraceCopyMessage(null), 2000);
   }
-
-  async function handleCopyResponseJson() {
-    if (!lastRun) return;
-    const json = JSON.stringify(lastRun.response, null, 2);
-    const ok = await copyToClipboard(json);
-    setTraceCopyMessage(
-      ok ? "Response JSON copied to clipboard." : "Unable to copy JSON."
-    );
-    setTimeout(() => setTraceCopyMessage(null), 2000);
-  }
-
-  const missingFromDecision = (
-    decision?: Partial<DecisionOutcome> & {
-      missing_fields?: string[];
-      missingFields?: string[];
-    }
-  ) => decision?.missing_fields ?? decision?.missingFields ?? [];
-
-  const referencesFromDecision = (
-    decision?: Partial<DecisionOutcome>
-  ): RegulatoryReference[] => decision?.regulatory_references ?? [];
 
   const finalDecision = result?.decision;
   const csfDecision = result?.csf_decision;
   const licenseDecision = result?.license_decision;
 
+  const missingFields = (decision?: DecisionOutcome) => 
+    (decision as any)?.missing_fields ?? (decision as any)?.missingFields ?? [];
+
   return (
-    <div className="sandbox-card order-journey-card space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-      <header className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <h3 className="text-base font-semibold text-slate-900">
-              Ohio Hospital Order Journey
-            </h3>
+    <div className="space-y-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      {/* Page Header */}
+      <header className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold text-slate-900">
+              End-to-End Order Journey
+            </h2>
             <VerticalBadge label={OHIO_HOSPITAL_VERTICAL_LABEL} />
           </div>
-          <UnderTheHoodInfo
-            lines={[
-              "Calls /csf/hospital/evaluate to decide if the Hospital CSF is ok_to_ship, needs_review, or blocked.",
-              "Calls /license/ohio-tddd/evaluate to validate the Ohio TDDD license when the ship-to state is OH.",
-              "Combines both decisions via /orders/mock/ohio-hospital-approval to produce the final order decision.",
-            ]}
-          />
+          <button
+            type="button"
+            onClick={() => setShowUnderHood(!showUnderHood)}
+            className="text-xs text-slate-500 hover:text-slate-700 underline"
+          >
+            {showUnderHood ? "Hide" : "Show"} technical details
+          </button>
         </div>
-        <p className="text-sm text-slate-600">
-          Simulates an Ohio hospital order that combines the Hospital CSF
-          engine and the Ohio TDDD license engine into a single approval
-          decision.
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Simulates an Ohio hospital controlled substance order that combines Hospital CSF compliance 
+          and Ohio TDDD license validation into a single approval decision.
         </p>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <MockOrderScenarioBadge
-            label="Scenario: compliant CSF + valid Ohio TDDD license"
-            severity="happy_path"
-          />
-          <p className="text-[10px] text-slate-500">
-            Upstream: Hospital CSF sandbox + Ohio TDDD license engine.
-          </p>
+      </header>
+
+      {/* How This Page Works */}
+      <section className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+        <h3 className="text-sm font-semibold text-blue-900 mb-3">How this page works</h3>
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 text-white font-bold text-sm flex-shrink-0">
+              1
+            </div>
+            <div>
+              <p className="text-sm font-medium text-blue-900">Pick a scenario</p>
+              <p className="text-xs text-blue-700">Select from predefined test cases below</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 text-white font-bold text-sm flex-shrink-0">
+              2
+            </div>
+            <div>
+              <p className="text-sm font-medium text-blue-900">Run engines</p>
+              <p className="text-xs text-blue-700">Hospital CSF + Ohio TDDD evaluate automatically</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 text-white font-bold text-sm flex-shrink-0">
+              3
+            </div>
+            <div>
+              <p className="text-sm font-medium text-blue-900">Review decision</p>
+              <p className="text-xs text-blue-700">See final result and recommended action</p>
+            </div>
+          </div>
         </div>
-        <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700">
-          <li>Hospital CSF decision</li>
-          <li>Ohio TDDD license decision (when applicable)</li>
-          <li>Final order-level decision</li>
-        </ul>
-        <div className="mt-3">
-          <p className="text-xs font-medium text-slate-300">Quick scenarios</p>
-          <p className="text-[11px] text-slate-400">
-            Pick a preset to simulate an Ohio hospital order with different CSF
-            and TDDD combinations.
-          </p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {OHIO_JOURNEY_SCENARIOS.map((scenario) => {
-              const isActive = scenario.id === selectedScenarioId;
-              return (
-                <button
-                  key={scenario.id}
-                  type="button"
-                  onClick={() => runScenarioFromChip(scenario.id)}
-                  disabled={loading !== null}
-                  className={[
-                    "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60",
-                    isActive
-                      ? "border-cyan-400 bg-cyan-500/15 text-cyan-100"
-                      : "border-slate-700 bg-slate-900/80 text-slate-200 hover:border-slate-500 hover:bg-slate-800",
-                  ].join(" ")}
-                >
-                  <span>{scenario.label}</span>
+      </section>
+
+      {/* Scenario Selection */}
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold text-slate-900">Select scenario</h3>
+        <div className="grid gap-3 md:grid-cols-3">
+          {OHIO_JOURNEY_SCENARIOS.map((scenario) => {
+            const isActive = scenario.id === selectedScenarioId;
+            return (
+              <button
+                key={scenario.id}
+                type="button"
+                onClick={() => runScenarioFromChip(scenario.id)}
+                disabled={loading !== null}
+                aria-pressed={isActive}
+                className={[
+                  "flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50",
+                  isActive
+                    ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200"
+                    : "border-slate-300 bg-white hover:border-slate-400 hover:bg-slate-50",
+                ].join(" ")}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <span className={[
+                    "text-xs font-semibold",
+                    isActive ? "text-blue-900" : "text-slate-900"
+                  ].join(" ")}>
+                    {scenario.shortLabel}
+                  </span>
                   {scenario.badge && (
-                    <span className="rounded-full bg-cyan-500/20 px-2 py-[1px] text-[9px] font-semibold uppercase tracking-wide text-cyan-200">
+                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-700">
                       {scenario.badge}
                     </span>
                   )}
-                </button>
-              );
-            })}
-          </div>
-          {activeScenario?.verticalLabel && (
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
-              <VerticalBadge label={activeScenario.verticalLabel} />
-              <span>Ohio Hospital preset (CSF + Ohio TDDD)</span>
-            </div>
-          )}
-          <div className="mt-1 text-[11px] text-slate-400">
-            {activeScenario?.description ?? ""}
-          </div>
+                </div>
+                <p className={[
+                  "text-xs",
+                  isActive ? "text-blue-700" : "text-slate-600"
+                ].join(" ")}>
+                  {scenario.label}
+                </p>
+                <p className={[
+                  "text-[10px] leading-relaxed",
+                  isActive ? "text-blue-600" : "text-slate-500"
+                ].join(" ")}>
+                  Expected: {scenario.expectedOutcome}
+                </p>
+              </button>
+            );
+          })}
         </div>
-      </header>
-
-      <section className="sandbox-trace-toggle">
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            className="h-4 w-4"
-            checked={traceEnabled}
-            onChange={(e) => setTraceEnabled(e.target.checked)}
-          />
-          <span>Show developer trace (request + response JSON)</span>
-        </label>
       </section>
 
       {error && (
-        <section className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
+        <section className="rounded-lg bg-red-50 border border-red-200 p-4">
+          <div className="flex items-start gap-3">
+            <span className="text-red-700 text-lg">⚠</span>
+            <div className="flex-1 space-y-2">
+              <p className="text-sm font-semibold text-red-900">Error running order journey</p>
+              <p className="text-sm text-red-700">{error}</p>
+              {error.includes('Validation failed') && (
+                <details className="mt-2">
+                  <summary className="text-xs text-red-600 cursor-pointer hover:text-red-800 underline">
+                    Show validation details
+                  </summary>
+                  <pre className="mt-2 text-[10px] text-red-800 bg-red-100 p-2 rounded overflow-x-auto max-h-48">
+                    {error}
+                  </pre>
+                </details>
+              )}
+            </div>
+          </div>
         </section>
       )}
 
       {result && finalDecision && (
-        <section className="space-y-3 rounded-lg border border-slate-100 bg-slate-50 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h4 className="text-sm font-semibold text-slate-900">Order Decision</h4>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-xs uppercase tracking-wide text-slate-500">
-              Final decision
-            </span>
-          </div>
-        </div>
+        <>
+          {/* Final Decision Panel - Most Important */}
+          <section className="rounded-lg border-2 border-slate-300 bg-white p-5 shadow-md">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-bold text-slate-900">Final Decision</h3>
+                <div className={[
+                  "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold",
+                  getStatusColor(finalDecision.status)
+                ].join(" ")}>
+                  <span className="text-lg">●</span>
+                  <span>{getStatusLabel(finalDecision.status)}</span>
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+                    What this means
+                  </p>
+                  <p className="text-sm text-slate-900 leading-relaxed">
+                    {getStatusMeaning(finalDecision.status)}
+                  </p>
+                </div>
 
-        <RegulatoryInsightsPanel
-          title="Order decision"
-          decision={finalDecision}
-          missingFields={missingFromDecision(finalDecision)}
-        />
+                <div>
+                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+                    Next action
+                  </p>
+                  <p className="text-sm text-slate-900 leading-relaxed font-medium">
+                    {getNextAction(finalDecision.status)}
+                  </p>
+                </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="order-journey-panel rounded-md border border-slate-200 bg-white p-3 shadow-sm">
-              <h5 className="text-sm font-semibold text-slate-900">
-                Hospital CSF Decision
-              </h5>
+                {finalDecision.rationale && (
+                  <div>
+                    <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+                      Reason
+                    </p>
+                    <p className="text-sm text-slate-700 leading-relaxed">
+                      {finalDecision.rationale}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          {/* Decision Rollup Strip */}
+          <section className="rounded-lg border border-slate-200 bg-gradient-to-r from-slate-50 to-white p-4">
+            <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">
+              How the decision was made
+            </h3>
+            <div className="flex items-center gap-2 flex-wrap">
+              {csfDecision && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-600">Hospital CSF:</span>
+                    <span className={[
+                      "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold",
+                      getStatusColor(csfDecision.status)
+                    ].join(" ")}>
+                      <span className="text-sm">●</span>
+                      {getStatusLabel(csfDecision.status)}
+                    </span>
+                  </div>
+                  <span className="text-slate-400">+</span>
+                </>
+              )}
+              
+              {licenseDecision && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-600">Ohio TDDD:</span>
+                    <span className={[
+                      "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold",
+                      getStatusColor(licenseDecision.status)
+                    ].join(" ")}>
+                      <span className="text-sm">●</span>
+                      {getStatusLabel(licenseDecision.status)}
+                    </span>
+                  </div>
+                  <span className="text-slate-400">→</span>
+                </>
+              )}
+              
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-600 font-bold">Final:</span>
+                <span className={[
+                  "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-bold",
+                  getStatusColor(finalDecision.status)
+                ].join(" ")}>
+                  <span className="text-sm">●</span>
+                  {getStatusLabel(finalDecision.status)}
+                </span>
+              </div>
+            </div>
+          </section>
+
+          {/* Engine Decision Cards */}
+          <div className="grid gap-4 md:grid-cols-2">
+            {/* Hospital CSF Card */}
+            <section className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-slate-900">Hospital CSF Engine</h4>
+                {csfDecision && (
+                  <span className={[
+                    "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold",
+                    getStatusColor(csfDecision.status)
+                  ].join(" ")}>
+                    <span className="text-sm">●</span>
+                    {getStatusLabel(csfDecision.status)}
+                  </span>
+                )}
+              </div>
+
               {csfDecision ? (
-                <RegulatoryInsightsPanel
-                  title="CSF regulatory insights"
-                  decision={csfDecision}
-                  missingFields={missingFromDecision(csfDecision)}
-                />
+                <div className="space-y-3">
+                  {csfDecision.rationale && (
+                    <div>
+                      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+                        Rationale
+                      </p>
+                      <p className="text-xs text-slate-700 leading-relaxed">
+                        {csfDecision.rationale}
+                      </p>
+                    </div>
+                  )}
+
+                  {csfDecision.regulatory_references && csfDecision.regulatory_references.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
+                        Regulatory Evidence
+                      </p>
+                      <ul className="space-y-2">
+                        {csfDecision.regulatory_references.map((ref: any, idx: number) => (
+                          <li key={idx} className="text-xs text-slate-700 pl-3 border-l-2 border-blue-200">
+                            {ref.label || ref.citation || ref.id || String(ref)}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {missingFields(csfDecision).length > 0 && (
+                    <div className="rounded-md bg-amber-50 border border-amber-200 p-2">
+                      <p className="text-xs font-semibold text-amber-900 mb-1">
+                        Missing fields
+                      </p>
+                      <p className="text-xs text-amber-700">
+                        {missingFields(csfDecision).join(', ')}
+                      </p>
+                    </div>
+                  )}
+                </div>
               ) : (
-                <p className="text-sm text-slate-700">
+                <p className="text-xs text-slate-600 italic">
                   No Hospital CSF evaluation was returned for this scenario.
                 </p>
               )}
-            </div>
+            </section>
 
-            <div className="order-journey-panel rounded-md border border-slate-200 bg-white p-3 shadow-sm">
-              <h5 className="text-sm font-semibold text-slate-900">
-                Ohio TDDD License Decision
-              </h5>
+            {/* Ohio TDDD License Card */}
+            <section className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-slate-900">Ohio TDDD License</h4>
+                {licenseDecision && (
+                  <span className={[
+                    "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold",
+                    getStatusColor(licenseDecision.status)
+                  ].join(" ")}>
+                    <span className="text-sm">●</span>
+                    {getStatusLabel(licenseDecision.status)}
+                  </span>
+                )}
+              </div>
+
               {licenseDecision ? (
-                <RegulatoryInsightsPanel
-                  title="License regulatory insights"
-                  decision={licenseDecision}
-                  missingFields={missingFromDecision(licenseDecision)}
-                />
+                <div className="space-y-3">
+                  {licenseDecision.rationale && (
+                    <div>
+                      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+                        Rationale
+                      </p>
+                      <p className="text-xs text-slate-700 leading-relaxed">
+                        {licenseDecision.rationale}
+                      </p>
+                    </div>
+                  )}
+
+                  {licenseDecision.regulatory_references && licenseDecision.regulatory_references.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
+                        Regulatory Evidence
+                      </p>
+                      <ul className="space-y-2">
+                        {licenseDecision.regulatory_references.map((ref: any, idx: number) => (
+                          <li key={idx} className="text-xs text-slate-700 pl-3 border-l-2 border-blue-200">
+                            {ref.label || ref.citation || ref.id || String(ref)}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {missingFields(licenseDecision).length > 0 && (
+                    <div className="rounded-md bg-amber-50 border border-amber-200 p-2">
+                      <p className="text-xs font-semibold text-amber-900 mb-1">
+                        Missing fields
+                      </p>
+                      <p className="text-xs text-amber-700">
+                        {missingFields(licenseDecision).join(', ')}
+                      </p>
+                    </div>
+                  )}
+                </div>
               ) : (
-                <p className="text-sm text-slate-700">
+                <p className="text-xs text-slate-600 italic">
                   No Ohio TDDD evaluation was run for this scenario.
                 </p>
               )}
-            </div>
+            </section>
           </div>
 
-          <p className="text-xs text-slate-600">
-            This endpoint is listed in the API reference as{" "}
-            <span className="font-mono text-slate-800">
-              Mock orders → Ohio hospital mock order
-            </span>
-            .
-          </p>
-
+          {/* Notes Section */}
           {result.notes && result.notes.length > 0 && (
-            <div className="order-journey-notes space-y-2">
-              <h5 className="text-sm font-semibold text-slate-900">Notes</h5>
+            <section className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-2">
+              <h4 className="text-sm font-bold text-slate-900">Additional Notes</h4>
               <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
                 {result.notes.map((note, idx) => (
-                  <li key={idx}>{note}</li>
+                  <li key={idx} className="leading-relaxed">{note}</li>
                 ))}
               </ul>
-            </div>
+            </section>
           )}
-        </section>
+        </>
       )}
 
-      {traceEnabled && lastRun && (
-        <section className="order-journey-trace">
-          <h3 className="text-base font-semibold text-slate-900">
-            Developer Trace
-          </h3>
-
-          <div className="trace-actions">
-            <button type="button" onClick={handleCopyRequestCurl}>
-              Copy request as cURL
-            </button>
-            <button type="button" onClick={handleCopyRequestJson}>
-              Copy request JSON
-            </button>
-            <button type="button" onClick={handleCopyResponseJson}>
-              Copy response JSON
+      {/* Under the Hood - Developer Trace */}
+      {showUnderHood && lastRun && (
+        <section className="rounded-lg border border-slate-300 bg-slate-50 p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-900">Under the Hood</h3>
+            <button
+              type="button"
+              onClick={() => setShowUnderHood(false)}
+              className="text-xs text-slate-500 hover:text-slate-700 underline"
+            >
+              Hide
             </button>
           </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => handleCopyJson(lastRun.request, 'Request JSON')}
+              className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+            >
+              Copy request JSON
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCopyJson(lastRun.response, 'Response JSON')}
+              className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+            >
+              Copy response JSON
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                const curl = buildCurlCommand("/orders/mock/ohio-hospital-approval", "POST", lastRun.request);
+                const ok = await copyToClipboard(curl);
+                setTraceCopyMessage(ok ? "cURL copied to clipboard." : "Unable to copy cURL.");
+                setTimeout(() => setTraceCopyMessage(null), 2000);
+              }}
+              className="inline-flex items-center gap-1 rounded-md bg-slate-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+            >
+              Copy as cURL
+            </button>
+          </div>
+
           {traceCopyMessage && (
-            <p className="trace-copy-message">{traceCopyMessage}</p>
+            <p className="text-xs text-emerald-700 font-medium">{traceCopyMessage}</p>
           )}
 
-          <details open>
-            <summary>Request payload</summary>
-            <pre className="code-block">
+          <details className="space-y-2">
+            <summary className="cursor-pointer text-xs font-semibold text-slate-700 hover:text-slate-900">
+              Request payload
+            </summary>
+            <pre className="mt-2 overflow-x-auto rounded-md bg-slate-800 p-3 text-[10px] text-slate-100">
               {JSON.stringify(lastRun.request, null, 2)}
             </pre>
           </details>
 
-          <details open>
-            <summary>Raw response</summary>
-            <pre className="code-block">
+          <details className="space-y-2">
+            <summary className="cursor-pointer text-xs font-semibold text-slate-700 hover:text-slate-900">
+              Response payload
+            </summary>
+            <pre className="mt-2 overflow-x-auto rounded-md bg-slate-800 p-3 text-[10px] text-slate-100">
               {JSON.stringify(lastRun.response, null, 2)}
             </pre>
           </details>
         </section>
       )}
-
-      <div className="mt-4">
-        <DecisionStatusLegend />
-      </div>
     </div>
   );
 }

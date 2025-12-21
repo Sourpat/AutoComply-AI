@@ -1,7 +1,5 @@
 // src/api/ragRegulatoryClient.ts
-
-const API_BASE =
-  (import.meta as any).env?.VITE_API_BASE || "";
+import { API_BASE } from "./csfHospitalClient";
 
 export interface RegulatoryRagRequest {
   question: string;
@@ -28,9 +26,9 @@ export async function callRegulatoryRag(
   });
 
   if (!resp.ok) {
-    throw new Error(
-      `/rag/regulatory-explain failed with status ${resp.status}`
-    );
+    const text = await resp.text().catch(() => "");
+    const message = text ? `${resp.status}: ${text}` : `${resp.status}`;
+    throw new Error(`RAG regulatory explain failed: ${message}`);
   }
 
   return resp.json();

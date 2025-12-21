@@ -12,7 +12,11 @@ from src.autocomply.audit.decision_log import get_decision_log
 from src.autocomply.domain.csf_copilot import CsfCopilotResult, run_csf_copilot
 from src.autocomply.domain.csf_hospital import HospitalCsfForm, evaluate_hospital_csf
 from src.autocomply.domain.decision_risk import compute_risk_for_status
-from src.autocomply.domain.trace import TRACE_HEADER_NAME, ensure_trace_id
+from src.autocomply.domain.trace import TRACE_HEADER_NAME, ensure_trace_id, generate_trace_id
+from src.autocomply.domain.submissions_store import (
+    get_submission_store,
+    SubmissionPriority,
+)
 from src.autocomply.tenancy.context import TenantContext, get_tenant_context
 from src.utils.logger import get_logger
 
@@ -135,3 +139,83 @@ async def hospital_form_copilot(form: HospitalCsfForm) -> CsfCopilotResult:
     )
 
     return rag_result
+
+
+class SubmissionResponse(BaseModel):
+    """Response for Hospital CSF submission."""
+    submission_id: str
+    status: str
+    created_at: str
+    decision_status: DecisionStatus | None = None
+    reason: str | None = None
+
+
+@router.post("/submit", response_model=SubmissionResponse)
+async def submit_hospital_csf(form: HospitalCsfForm) -> SubmissionResponse:
+    """
+    Submit a Hospital CSF for internal verification tracking.
+    
+    Creates a submission record in the unified submissions store
+    with trace_id for replay in Compliance Console.
+    """
+    # Run decision engine
+    decision = evaluate_hospital_csf(form)
+    
+    # Generate trace ID for replay
+    trace_id = generate_trace_id()
+    
+    # Map status
+    status_map = {
+        "ok_to_ship": DecisionStatus.OK_TO_SHIP,
+        "blocked": DecisionStatus.BLOCKED,
+        "manual_review": DecisionStatus.NEEDS_REVIEW,
+    }
+    normalized_status = status_map.get(decision.status.value, DecisionStatus.NEEDS_REVIEW)
+    
+    # Determine priority
+    priority = SubmissionPriority.HIGH if normalized_status == DecisionStatus.BLOCKED else SubmissionPriority.MEDIUM
+    
+    # Create title and subtitle
+    facility_name = form.facility_name or form.account_number
+    title = f"Hospital CSF \u2013 {facility_name}"
+    
+    if normalized_status == DecisionStatus.BLOCKED:
+        subtitle = f"Blocked: {decision.reason}"
+    elif normalized_status == DecisionStatus.NEEDS_REVIEW:
+        subtitle = f"Review required: {decision.reason}"
+    else:
+        subtitle = "Submitted for verification"
+    
+    # Create submission
+    store = get_submission_store()
+    submission = store.create_submission(
+        csf_type="hospital",
+        tenant=getattr(form, 'tenant', 'hospital-default'),
+        title=title,
+        subtitle=subtitle,
+        trace_id=trace_id,
+        payload={
+            "form": form.model_dump(),
+            "decision": decision.model_dump(),
+        },
+        decision_status=normalized_status.value,
+        risk_level="High" if normalized_status == DecisionStatus.BLOCKED else "Medium",
+        priority=priority,
+    )
+    
+    logger.info(
+        "Hospital CSF submitted for verification",
+        extra={
+            "submission_id": submission.submission_id,
+            "trace_id": trace_id,
+            "decision_status": normalized_status.value,
+        },
+    )
+    
+    return SubmissionResponse(
+        submission_id=submission.submission_id,
+        status="submitted",
+        created_at=submission.created_at,
+        decision_status=normalized_status,
+        reason=decision.reason,
+    )

@@ -1,4 +1,6 @@
 from typing import List, Optional
+from datetime import datetime
+import uuid
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -14,6 +16,11 @@ from src.autocomply.domain.csf_practitioner import (
     evaluate_practitioner_csf,
 )
 from src.autocomply.domain.rag_regulatory_explain import RegulatoryRagAnswer
+from src.autocomply.domain.submissions_store import (
+    get_submission_store,
+    SubmissionPriority,
+)
+from src.autocomply.domain.trace import generate_trace_id
 from src.utils.logger import get_logger
 
 
@@ -23,6 +30,10 @@ router = APIRouter(
 )
 
 logger = get_logger(__name__)
+
+# In-memory submission store (replace with database in production)
+# TODO: Replace with proper database persistence
+SUBMISSION_STORE: dict = {}
 
 
 default_copilot_question = (
@@ -173,3 +184,99 @@ async def practitioner_form_copilot(
         artifacts_used=artifacts_used,
         rag_sources=rag_sources,
     )
+
+
+class SubmissionResponse(BaseModel):
+    """Response for CSF submission."""
+    submission_id: str
+    status: str
+    created_at: str
+    decision_status: Optional[CsDecisionStatus] = None
+    reason: Optional[str] = None
+
+
+@router.post("/submit", response_model=SubmissionResponse)
+async def submit_practitioner_csf(
+    form: PractitionerCsfForm,
+) -> SubmissionResponse:
+    """
+    Submit a Practitioner CSF for internal verification tracking.
+    
+    This endpoint:
+    1. Evaluates the CSF using the decision engine
+    2. Creates a submission record in the unified submissions store
+    3. Generates trace_id for trace replay in Compliance Console
+    4. Returns submission ID and status for user confirmation
+    """
+    # Run decision engine
+    decision = evaluate_practitioner_csf(form)
+    
+    # Generate trace ID for replay
+    trace_id = generate_trace_id()
+    
+    # Determine priority based on decision status
+    priority = SubmissionPriority.HIGH if decision.status == CsDecisionStatus.BLOCKED else SubmissionPriority.MEDIUM
+    
+    # Create human-readable title and subtitle
+    practitioner_name = getattr(form, 'prescriber_name', None) or form.account_number
+    title = f"Practitioner CSF – {practitioner_name}"
+    
+    if decision.status == CsDecisionStatus.BLOCKED:
+        subtitle = f"Blocked: {decision.reason}"
+    elif decision.status == CsDecisionStatus.NEEDS_REVIEW:
+        subtitle = f"Review required: {decision.reason}"
+    else:
+        subtitle = f"Submitted for verification"
+    
+    # Get store and create submission
+    store = get_submission_store()
+    submission = store.create_submission(
+        csf_type="practitioner",
+        tenant=getattr(form, 'tenant', 'practitioner-default'),
+        title=title,
+        subtitle=subtitle,
+        trace_id=trace_id,
+        payload={
+            "form": form.model_dump(),
+            "decision": decision.model_dump(),
+        },
+        decision_status=decision.status.value if decision.status else None,
+        risk_level="High" if decision.status == CsDecisionStatus.BLOCKED else "Medium",
+        priority=priority,
+    )
+    
+    logger.info(
+        "Practitioner CSF submitted for verification",
+        extra={
+            "submission_id": submission.submission_id,
+            "trace_id": trace_id,
+            "decision_status": decision.status,
+            "account_number": form.account_number,
+        },
+    )
+    
+    return SubmissionResponse(
+        submission_id=submission.submission_id,
+        status="submitted",
+        created_at=submission.created_at,
+        decision_status=decision.status,
+        reason=decision.reason,
+    )
+
+
+@router.get("/submissions/{submission_id}", response_model=dict)
+async def get_submission(submission_id: str) -> dict:
+    """
+    Retrieve a previously submitted Practitioner CSF by ID.
+    
+    Returns full submission details including form data, decision, and metadata.
+    """
+    submission = SUBMISSION_STORE.get(submission_id)
+    
+    if not submission:
+        return {
+            "error": "Submission not found",
+            "submission_id": submission_id,
+        }
+    
+    return submission

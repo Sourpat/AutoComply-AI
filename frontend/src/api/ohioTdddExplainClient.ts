@@ -1,8 +1,6 @@
 // src/api/ohioTdddExplainClient.ts
+import { API_BASE } from "./csfHospitalClient";
 import type { DecisionStatus, RegulatoryReference } from "../types/decision";
-
-const API_BASE =
-  (import.meta as any).env?.VITE_API_BASE || "";
 
 export interface OhioTdddDecisionSummary {
   status: DecisionStatus;

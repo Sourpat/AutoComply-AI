@@ -1,11 +1,7 @@
 // src/api/csfHospitalCopilotClient.ts
+import { API_BASE } from "./csfHospitalClient";
 import { HospitalCsfFormData } from "../domain/csfHospital";
 import type { CsfCopilotResponse } from "../types/csfCopilot";
-
-const API_BASE =
-  (import.meta as any)?.env?.VITE_API_BASE ||
-  (import.meta as any)?.env?.VITE_API_BASE_URL ||
-  "";
 
 export async function callHospitalFormCopilot(
   form: HospitalCsfFormData
@@ -31,7 +27,7 @@ export async function callHospitalFormCopilot(
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
     const message = text ? `${resp.status}: ${text}` : `${resp.status}`;
-    throw new Error(`Hospital Form Copilot failed with status ${message}`);
+    throw new Error(`Hospital Form Copilot failed: ${message}`);
   }
 
   return resp.json();

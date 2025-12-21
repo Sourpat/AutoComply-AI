@@ -190,3 +190,102 @@ def test_csf_facility_form_copilot_basic(
     assert refs and refs[0]["id"] == "csf_facility_form"
     rag_sources = data.get("rag_sources", [])
     assert rag_sources and rag_sources[0]["id"] == "csf_facility_form"
+
+
+def test_facility_csf_explain_endpoint(base_facility_payload: dict) -> None:
+    """Test Facility CSF explain endpoint returns 200 with explanation."""
+    # First evaluate to get a decision
+    eval_resp = client.post("/csf/facility/evaluate", json=base_facility_payload)
+    assert eval_resp.status_code == 200
+    decision = eval_resp.json()["decision"]
+
+    # Now request explain for the decision
+    explain_payload = {
+        "csf_type": "facility",
+        "decision_status": decision["status"],
+        "decision_reason": decision["reason"],
+        "missing_fields": [],
+        "regulatory_references": decision["regulatory_references"],
+    }
+    resp = client.post("/csf/explain", json=explain_payload)
+    assert resp.status_code == 200
+
+    data = resp.json()
+    assert "plain_english" in data
+    assert isinstance(data["plain_english"], str)
+    assert len(data["plain_english"]) > 0
+    assert data["csf_type"] == "facility"
+
+
+def test_facility_csf_rag_regulatory_explain() -> None:
+    """Test RAG regulatory explain endpoint returns 200 with answer."""
+    payload = {
+        "csf_type": "facility",
+        "question": "What are the requirements for facility DEA registration?",
+        "regulatory_references": ["csf_facility_form"],
+        "missing_fields": [],
+        "decision_status": "ok_to_ship",
+    }
+    resp = client.post("/rag/regulatory-explain", json=payload)
+    assert resp.status_code == 200
+
+    data = resp.json()
+    assert "answer" in data
+    assert isinstance(data["answer"], str)
+    assert len(data["answer"]) > 0
+    assert "sources" in data
+    assert isinstance(data["sources"], list)
+
+
+def test_facility_csf_submit_endpoint(base_facility_payload: dict) -> None:
+    """Test Facility CSF submission endpoint returns submission ID."""
+    # First evaluate to get a decision
+    eval_resp = client.post("/csf/facility/evaluate", json=base_facility_payload)
+    assert eval_resp.status_code == 200
+    decision_data = eval_resp.json()
+
+    # Now submit for verification
+    submit_payload = {
+        "facility_name": base_facility_payload["facility_name"],
+        "account_number": base_facility_payload["account_number"],
+        "decision_status": decision_data["status"],
+        "copilot_used": False,
+    }
+    resp = client.post("/csf/facility/submit", json=submit_payload)
+    assert resp.status_code == 200
+
+    data = resp.json()
+    assert "submission_id" in data
+    assert isinstance(data["submission_id"], str)
+    assert len(data["submission_id"]) > 0
+    assert "submitted_at" in data
+    assert data["status"] == decision_data["status"]
+
+
+def test_facility_csf_get_submission_endpoint(base_facility_payload: dict) -> None:
+    """Test retrieving a Facility CSF submission by ID."""
+    # First submit
+    eval_resp = client.post("/csf/facility/evaluate", json=base_facility_payload)
+    assert eval_resp.status_code == 200
+    decision_data = eval_resp.json()
+
+    submit_payload = {
+        "facility_name": base_facility_payload["facility_name"],
+        "account_number": base_facility_payload["account_number"],
+        "decision_status": decision_data["status"],
+        "copilot_used": False,
+    }
+    submit_resp = client.post("/csf/facility/submit", json=submit_payload)
+    assert submit_resp.status_code == 200
+    submission_id = submit_resp.json()["submission_id"]
+
+    # Now retrieve
+    get_resp = client.get(f"/csf/facility/submissions/{submission_id}")
+    assert get_resp.status_code == 200
+
+    data = get_resp.json()
+    assert data["submission_id"] == submission_id
+    assert data["facility_name"] == base_facility_payload["facility_name"]
+    assert data["account_number"] == base_facility_payload["account_number"]
+    assert data["status"] == decision_data["status"]
+    assert "submitted_at" in data

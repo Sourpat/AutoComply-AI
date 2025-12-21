@@ -7,7 +7,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from autocomply.domain.controlled_substances_catalog import (
+from src.autocomply.domain.controlled_substances_catalog import (
     get_history_for_account,
     search_controlled_substances,
 )

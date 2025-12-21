@@ -2,10 +2,10 @@ from typing import List
 
 from pydantic import BaseModel, Field
 
-from autocomply.domain.ohio_tddd import (
+from src.autocomply.domain.ohio_tddd import (
     OhioTdddDecisionStatus,
 )
-from autocomply.domain.compliance_artifacts import (
+from src.autocomply.domain.compliance_artifacts import (
     COMPLIANCE_ARTIFACTS,
     ComplianceArtifact,
 )

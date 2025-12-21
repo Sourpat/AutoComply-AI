@@ -112,46 +112,7 @@ const Home = () => {
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 dark:bg-slate-950 dark:text-slate-50">
       <div className="mx-auto max-w-6xl">
-        {/* Header */}
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
-              AutoComply AI
-            </h1>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Multimodal license compliance co-pilot for regulated e-commerce
-              — upload a license or enter details, and get an audit-ready
-              decision with attestation support.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <a
-              href="https://www.linkedin.com/in/sourabh-patil1995/"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 shadow-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-            >
-              {/* Simple LinkedIn-like icon */}
-              <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-sky-600 text-[10px] font-bold text-white">
-                in
-              </span>
-              <span>Connect on LinkedIn</span>
-            </a>
-            <a
-              href="https://sourpat.github.io/sourabh-portfolio/"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-50 shadow-sm hover:bg-slate-800 dark:border-slate-500 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
-            >
-              {/* Simple portfolio icon */}
-              <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm border border-slate-400 text-[10px] font-bold">
-                🗂
-              </span>
-              <span>View portfolio</span>
-            </a>
-          </div>
-        </header>
-
+        
         {/* Main layout */}
         <div className="grid gap-6 md:grid-cols-2 md:items-start">
           {/* Left: Input / forms */}

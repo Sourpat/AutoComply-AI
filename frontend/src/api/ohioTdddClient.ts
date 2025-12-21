@@ -1,7 +1,5 @@
+import { API_BASE } from "./csfHospitalClient";
 import { OhioTdddFormData, OhioTdddDecision } from "../domain/ohioTddd";
-
-const API_BASE =
-  (import.meta as any).env?.VITE_API_BASE || "";
 
 export async function evaluateOhioTddd(
   form: OhioTdddFormData

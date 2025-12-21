@@ -28,7 +28,9 @@ export async function callEmsFormCopilot(
 
   if (!resp.ok) {
     const message = await resp.text();
-    throw new Error(`EMS Form Copilot failed with status ${message}`);
+    throw new Error(
+      `EMS Form Copilot failed with status ${resp.status}: ${message || "no error details"}`
+    );
   }
 
   return (await resp.json()) as CsfCopilotResponse;

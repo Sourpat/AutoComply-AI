@@ -7,6 +7,7 @@ import { PractitionerCsfSandbox } from "../components/PractitionerCsfSandbox";
 import { ResearcherCsfSandbox } from "../components/ResearcherCsfSandbox";
 import { CsfSuiteCard } from "../components/CsfSuiteCard";
 import { trackSandboxEvent } from "../devsupport/telemetry";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 
 type CsfSandboxMeta = {
   id: string;
@@ -227,7 +228,9 @@ export function CsfOverviewPage() {
             </div>
 
             <div id={`csf-${meta.id}-sandbox`} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              {meta.component}
+              <ErrorBoundary>
+                {meta.component}
+              </ErrorBoundary>
             </div>
           </section>
         ))}

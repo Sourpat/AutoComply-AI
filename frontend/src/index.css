@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@reference "tailwindcss";
 
 /* -----------------------------------------
    Global UI Polish for AutoComply AI
@@ -15,6 +14,21 @@ html, body {
 /* Smooth transitions on interactive UI elements */
 button, input, select, textarea {
   @apply transition-all;
+}
+
+/* Fix white-on-white input text issue */
+input, textarea, select {
+  color: #1f2937;
+  background-color: #ffffff;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #9ca3af;
+}
+
+input:disabled, textarea:disabled, select:disabled {
+  color: #6b7280;
+  background-color: #f3f4f6;
 }
 
 /* Better button defaults */
@@ -273,4 +287,73 @@ h1, h2, h3 {
   .brand-tagline {
     font-size: 10px;
   }
+}
+
+/* ===== AutoComply AppHeader fallback (no Tailwind required) ===== */
+.ac-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: rgba(2, 6, 23, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 10px 40px -24px rgba(0, 0, 0, 0.85);
+}
+
+.ac-header__inner {
+  position: relative;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ac-header__brand {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #fff;
+  pointer-events: none;
+}
+
+.ac-nav {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.ac-nav a {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  color: rgba(226, 232, 240, 0.88);
+  border: 1px solid transparent;
+}
+
+.ac-nav a:hover {
+  background: rgba(30, 41, 59, 0.7);
+  border-color: rgba(100, 116, 139, 0.6);
+  color: #fff;
+}
+
+.ac-nav a.active {
+  background: rgba(34, 211, 238, 0.15);
+  border-color: rgba(34, 211, 238, 0.35);
+  color: #fff;
 }

@@ -5,22 +5,6 @@ import "../styles/AutoComplyConsole.css";
 export function HomePage() {
   return (
     <div className="ac-console">
-      <header className="ac-console__topbar">
-        <div>
-          <h1 className="ac-console__title">AutoComply Console</h1>
-          <p className="ac-console__subtitle">
-            Sandbox for controlled substances, licenses, and mock orders – tuned for demos and interviews.
-          </p>
-        </div>
-
-        <div className="ac-console__top-actions">
-          <span className="ac-console__env-pill">Local Demo</span>
-          <Link to="/console" className="ac-console__primary-btn">
-            Run Guided Demo
-          </Link>
-        </div>
-      </header>
-
       <div className="ac-console__layout">
         <div className="ac-console__left">
           <section className="ac-console__card ac-console__hero">

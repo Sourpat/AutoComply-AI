@@ -1,6 +1,5 @@
 // src/api/controlledSubstancesClient.ts
-
-const API_BASE = (import.meta as any).env?.VITE_API_BASE || "";
+import { API_BASE } from "./csfHospitalClient";
 
 export interface ControlledSubstance {
   id: string;

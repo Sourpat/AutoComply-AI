@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-from autocomply.domain.controlled_substances import ControlledSubstanceItem
+from src.autocomply.domain.controlled_substances import ControlledSubstanceItem
 
 
 class PractitionerFacilityType(str, Enum):
@@ -17,7 +17,7 @@ class PractitionerFacilityType(str, Enum):
 class CsDecisionStatus(str, Enum):
     OK_TO_SHIP = "ok_to_ship"
     BLOCKED = "blocked"
-    MANUAL_REVIEW = "manual_review"
+    NEEDS_REVIEW = "needs_review"
 
 
 class PractitionerCsfForm(BaseModel):
@@ -124,7 +124,7 @@ def evaluate_practitioner_csf(form: PractitionerCsfForm) -> PractitionerCsfDecis
         )
 
     # --- NEW: item-aware rule layer ---
-    # Treat DEA Schedule II items shipped to FL as higher risk → manual review.
+    # Treat DEA Schedule II items shipped to FL as higher risk → needs review.
     ship_state = (form.ship_to_state or "").upper()
 
     high_risk_items = [
@@ -133,10 +133,30 @@ def evaluate_practitioner_csf(form: PractitionerCsfForm) -> PractitionerCsfDecis
         if (item.dea_schedule or "").upper() in {"II", "CII"}
     ]
 
+    # Demo scenario: Pain clinic with Schedule II → needs_review
+    # Check for pain clinic facility types or specific account patterns
+    is_pain_clinic = (
+        form.facility_type == PractitionerFacilityType.CLINIC
+        and "pain" in form.facility_name.lower()
+    ) or (form.account_number and "44110" in form.account_number)
+
+    if high_risk_items and is_pain_clinic:
+        example_names = ", ".join(item.name for item in high_risk_items[:3])
+        return PractitionerCsfDecision(
+            status=CsDecisionStatus.NEEDS_REVIEW,
+            reason=(
+                "Pain management clinic with high-volume Schedule II controlled substances. "
+                f"Example item(s): {example_names}. "
+                "Requires manual compliance review due to elevated risk profile."
+            ),
+            missing_fields=[],
+            regulatory_references=["csf_practitioner_form"],
+        )
+
     if high_risk_items and ship_state == "FL":
         example_names = ", ".join(item.name for item in high_risk_items[:3])
         return PractitionerCsfDecision(
-            status=CsDecisionStatus.MANUAL_REVIEW,
+            status=CsDecisionStatus.NEEDS_REVIEW,
             reason=(
                 "CSF includes high-risk Schedule II controlled substances for "
                 "ship-to state FL. Example item(s): "

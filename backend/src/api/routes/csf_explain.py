@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from autocomply.domain.csf_explain import (
+from src.autocomply.domain.csf_explain import (
     CsfDecisionSummary,
     CsfExplanation,
     CsfType,

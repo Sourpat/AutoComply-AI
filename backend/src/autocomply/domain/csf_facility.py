@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-from autocomply.domain.controlled_substances import ControlledSubstanceItem
+from src.autocomply.domain.controlled_substances import ControlledSubstanceItem
 from src.autocomply.domain.csf_hospital import (
     HospitalCsfDecision,
     HospitalCsfForm,

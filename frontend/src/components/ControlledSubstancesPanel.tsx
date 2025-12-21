@@ -167,8 +167,8 @@ export function ControlledSubstancesPanel(
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name, NDC, or DEA code"
-              className="w-full rounded-md border border-gray-300 px-2 py-1 text-[11px] text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              placeholder="Try: Hydrocodone, NDC 00093-3102-01, DEA Schedule II"
+              className="w-full rounded-md border border-gray-300 px-2 py-1 text-[11px] text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 ring-indigo-500"
             />
             <button
               type="button"

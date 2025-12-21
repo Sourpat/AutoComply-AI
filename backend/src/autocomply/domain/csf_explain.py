@@ -3,8 +3,8 @@ from typing import List
 
 from pydantic import BaseModel, Field
 
-from autocomply.domain.csf_practitioner import CsDecisionStatus
-from autocomply.domain.compliance_artifacts import (
+from src.autocomply.domain.csf_practitioner import CsDecisionStatus
+from src.autocomply.domain.compliance_artifacts import (
     COMPLIANCE_ARTIFACTS,
     ComplianceArtifact,
 )
@@ -13,6 +13,7 @@ from autocomply.domain.compliance_artifacts import (
 class CsfType(str, Enum):
     PRACTITIONER = "practitioner"
     HOSPITAL = "hospital"
+    FACILITY = "facility"
     RESEARCHER = "researcher"
     SURGERY_CENTER = "surgery_center"
     EMS = "ems"
@@ -71,6 +72,7 @@ def explain_csf_decision(
     type_label_map = {
         CsfType.PRACTITIONER: "Practitioner CSF",
         CsfType.HOSPITAL: "Hospital CSF",
+        CsfType.FACILITY: "Facility CSF",
         CsfType.RESEARCHER: "Researcher CSF",
         CsfType.SURGERY_CENTER: "Surgery Center CSF",
         CsfType.EMS: "EMS CSF",

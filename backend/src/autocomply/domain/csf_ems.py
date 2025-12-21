@@ -4,8 +4,8 @@ from typing import List, Optional
 from pydantic import AliasChoices, BaseModel, Field
 from pydantic.config import ConfigDict
 
-from autocomply.domain.controlled_substances import ControlledSubstanceItem
-from autocomply.domain.csf_practitioner import CsDecisionStatus
+from src.autocomply.domain.controlled_substances import ControlledSubstanceItem
+from src.autocomply.domain.csf_practitioner import CsDecisionStatus
 
 
 class EmsServiceType(str, Enum):

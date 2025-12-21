@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field, root_validator
 from typing import Any, Dict, List, Optional
 
-from autocomply.domain.rag_regulatory_explain import (
+from src.autocomply.domain.rag_regulatory_explain import (
     RegulatoryRagAnswer,
     RegulatoryRagRequestModel,
     explain_csf_practitioner_decision,

@@ -19,6 +19,8 @@ import { ControlledSubstancesPanel } from "./ControlledSubstancesPanel";
 import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
+import { emitCodexCommand } from "../utils/codexLogger";
+import { API_BASE } from "../api/csfHospitalClient";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { buildCurlCommand } from "../utils/curl";
 import {
@@ -26,6 +28,8 @@ import {
   type ResearcherCsfPresetId,
 } from "../domain/csfResearcherPresets";
 import { VerticalBadge } from "./VerticalBadge";
+import { useCsfActions } from "../hooks/useCsfActions";
+import { SubmitForVerificationBar } from "./SubmitForVerificationBar";
 
 const RESEARCHER_ENGINE_FAMILY = "csf";
 const RESEARCHER_DECISION_TYPE = "csf_researcher";
@@ -38,7 +42,7 @@ type ResearcherExample = {
   overrides: Partial<ResearcherCsfFormData>;
 };
 
-const RESEARCHER_EXAMPLES: ResearcherExample[] = RESEARCHER_CSF_PRESETS.map(
+const RESEARCHER_EXAMPLES: ResearcherExample[] = (RESEARCHER_CSF_PRESETS || []).map(
   (preset) => ({
     id: preset.id,
     label: preset.label,
@@ -80,9 +84,10 @@ export function ResearcherCsfSandbox() {
   const [ragError, setRagError] = useState<string | null>(null);
   const [selectedPresetId, setSelectedPresetId] =
     useState<ResearcherCsfPresetId | null>(null);
+  const [selectedExampleId, setSelectedExampleId] = useState<string | null>(null);
   const activePreset = selectedPresetId
     ?
-      RESEARCHER_CSF_PRESETS.find(
+      (RESEARCHER_CSF_PRESETS || []).find(
         (preset) => preset.id === selectedPresetId
       ) ?? null
     : null;
@@ -92,6 +97,20 @@ export function ResearcherCsfSandbox() {
     useState<ResearcherFormCopilotResponse | null>(null);
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
+  const [lastCopilotPayload, setLastCopilotPayload] = useState<string | null>(null);
+
+  // Use shared CSF actions hook for submit
+  const csfActions = useCsfActions("researcher");
+
+  // Copilot staleness detection
+  const getCurrentCopilotPayloadString = () => {
+    return JSON.stringify({ ...form, controlledSubstances });
+  };
+
+  const copilotIsStale =
+    copilotResponse !== null &&
+    lastCopilotPayload !== null &&
+    getCurrentCopilotPayloadString() !== lastCopilotPayload;
 
   const applyResearcherPreset = (presetId: ResearcherCsfPresetId | null) => {
     if (!presetId) {
@@ -99,7 +118,7 @@ export function ResearcherCsfSandbox() {
       return;
     }
 
-    const preset = RESEARCHER_CSF_PRESETS.find(
+    const preset = (RESEARCHER_CSF_PRESETS || []).find(
       (candidate) => candidate.id === presetId
     );
     if (!preset) return;
@@ -110,8 +129,9 @@ export function ResearcherCsfSandbox() {
     setDecision(null);
     setExplanation(null);
     setCopilotResponse(null);
-    setExplainError(null);
     setCopilotError(null);
+    setLastCopilotPayload(null);
+    setExplainError(null);
 
     trackSandboxEvent("researcher_csf_preset_applied", {
       engine_family: RESEARCHER_ENGINE_FAMILY,
@@ -123,6 +143,7 @@ export function ResearcherCsfSandbox() {
   };
 
   function applyResearcherExample(example: ResearcherExample) {
+    setSelectedExampleId(example.id);
     applyResearcherPreset(example.id as ResearcherCsfPresetId);
     const nextForm = {
       ...initialForm,
@@ -134,6 +155,11 @@ export function ResearcherCsfSandbox() {
     if (example.overrides.controlledSubstances) {
       setControlledSubstances(example.overrides.controlledSubstances);
     }
+
+    // Clear copilot state when example changes
+    setCopilotResponse(null);
+    setCopilotError(null);
+    setLastCopilotPayload(null);
 
     trackSandboxEvent("csf_researcher_example_selected", {
       engine_family: RESEARCHER_ENGINE_FAMILY,
@@ -156,6 +182,13 @@ export function ResearcherCsfSandbox() {
       ...prev,
       [field]: value,
     }));
+
+    // Clear copilot state when form changes
+    if (copilotResponse !== null) {
+      setCopilotResponse(null);
+      setCopilotError(null);
+      setLastCopilotPayload(null);
+    }
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -192,6 +225,7 @@ export function ResearcherCsfSandbox() {
         decision_status: result.status,
       });
     } catch (err: any) {
+      console.error("[Researcher CSF] Evaluate failed:", err);
       setError(err?.message ?? "Failed to evaluate Researcher CSF");
       trackSandboxEvent("csf_researcher_evaluate_error", {
         engine_family: RESEARCHER_ENGINE_FAMILY,
@@ -223,12 +257,33 @@ export function ResearcherCsfSandbox() {
       const res = await explainCsfDecision("researcher", summary);
       setExplanation(res.explanation);
     } catch (err: any) {
+      console.error("[Researcher CSF] Explain failed:", err);
       setExplainError(
         err?.message ?? "Failed to generate CSF decision explanation"
       );
     } finally {
       setIsExplaining(false);
     }
+  };
+
+  const handleSubmitForVerification = async () => {
+    if (!API_BASE) {
+      throw new Error("API base URL not configured");
+    }
+
+    await csfActions.submit({
+      facility_name: form.facilityName,
+      facility_type: form.facilityType,
+      account_number: form.accountNumber ?? null,
+      pharmacy_license_number: form.pharmacyLicenseNumber,
+      dea_number: form.deaNumber,
+      pharmacist_in_charge_name: form.pharmacistInChargeName,
+      pharmacist_contact_phone: form.pharmacistContactPhone ?? null,
+      ship_to_state: form.shipToState,
+      attestation_accepted: form.attestationAccepted,
+      internal_notes: form.internalNotes ?? null,
+      controlled_substances: controlledSubstances,
+    });
   };
 
   const runResearcherCsfCopilot = async () => {
@@ -253,6 +308,7 @@ export function ResearcherCsfSandbox() {
         controlledSubstances,
       });
       setCopilotResponse(response);
+      setLastCopilotPayload(getCurrentCopilotPayloadString());
 
       trackSandboxEvent("csf_researcher_form_copilot_success", {
         engine_family: RESEARCHER_ENGINE_FAMILY,
@@ -263,6 +319,7 @@ export function ResearcherCsfSandbox() {
         decision_status: response.status,
       });
     } catch (err: any) {
+      console.error("[Researcher CSF] Copilot failed:", err);
       const errorMessage = err?.message?.trim()
         ? err.message
         : defaultCopilotErrorMessage;
@@ -341,19 +398,21 @@ export function ResearcherCsfSandbox() {
   };
 
   return (
-    <div className="bg-white shadow rounded-lg p-6 mb-8">
-      <div className="flex items-center justify-between mb-4">
+    <section className="rounded-xl border border-gray-200 bg-white p-3 text-[11px] shadow-sm">
+      <header className="mb-2 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold">Researcher CSF Sandbox</h2>
-          <p className="text-gray-600">
-            Test Researcher controlled substance forms end-to-end (decision +
-            Copilot).
+          <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-700">
+            Researcher CSF Sandbox
+          </h2>
+          <p className="text-[10px] text-gray-500">
+            Test researcher controlled substance forms with live decisioning and
+            RAG explain.
           </p>
         </div>
-      </div>
+      </header>
 
-      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-6">
-        <p className="text-sm text-blue-900">
+      <div className="mb-2 rounded-md bg-blue-50 border border-blue-100 px-3 py-2">
+        <p className="text-[10px] text-blue-900">
           Use this sandbox to simulate Researcher CSF submissions. Fill in the
           form, run the engine, and optionally generate a RAG-backed explanation
           for the decision.
@@ -361,24 +420,33 @@ export function ResearcherCsfSandbox() {
       </div>
 
       {/* Example selector */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+      <div className="mb-2">
+        <label className="block text-[10px] font-medium text-gray-700 mb-1">
           Quick examples
         </label>
-        <div className="flex flex-wrap gap-2">
-          {RESEARCHER_EXAMPLES.map((example) => (
-            <button
-              key={example.id}
-              onClick={() => applyResearcherExample(example)}
-              className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm"
-            >
-              {example.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-1">
+          {(RESEARCHER_EXAMPLES || []).map((example) => {
+            const isActive = example.id === selectedExampleId;
+            return (
+              <button
+                key={example.id}
+                type="button"
+                onClick={() => applyResearcherExample(example)}
+                className={[
+                  "inline-flex items-center rounded-lg border px-2 py-1 text-[10px] font-medium transition",
+                  isActive
+                    ? "border-blue-500 bg-blue-50 text-blue-900 ring-2 ring-blue-200"
+                    : "border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50",
+                ].join(" ")}
+              >
+                {example.label}
+              </button>
+            );
+          })}
         </div>
 
-        <div className="mt-3 flex items-center gap-2 text-xs">
-          <span className="text-[10px] uppercase tracking-wide text-gray-500">
+        <div className="mt-2 flex items-center gap-2">
+          <span className="text-[9px] uppercase tracking-wide text-gray-500">
             Scenario presets
           </span>
           <select
@@ -387,7 +455,7 @@ export function ResearcherCsfSandbox() {
             onChange={handlePresetChange}
           >
             <option value="">Manual inputs</option>
-            {RESEARCHER_CSF_PRESETS.map((preset) => (
+            {(RESEARCHER_CSF_PRESETS || []).map((preset) => (
               <option key={preset.id} value={preset.id}>
                 {preset.label}
               </option>
@@ -411,17 +479,17 @@ export function ResearcherCsfSandbox() {
         )}
       </div>
 
-      <form onSubmit={onSubmit} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <form onSubmit={onSubmit} className="space-y-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           <div>
-            <label className="block text-sm font-medium text-gray-700">
+            <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
               Facility / Lab name
             </label>
             <input
               type="text"
               value={form.facilityName}
               onChange={(e) => onChange("facilityName", e.target.value)}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              className="block w-full rounded-md border-gray-300 text-[11px] shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-2 py-1"
               placeholder="Research institution name"
               required
             />
@@ -578,16 +646,24 @@ export function ResearcherCsfSandbox() {
         <div className="flex items-center space-x-3">
           <button
             type="submit"
-            className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+            className="rounded-md bg-blue-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             disabled={isLoading}
           >
             {isLoading ? "Evaluating…" : "Evaluate Researcher CSF"}
           </button>
 
-        <CopyCurlButton
-          getCommand={() => buildCurlCommand("/csf/researcher/evaluate", form)}
+          <CopyCurlButton
+            getCommand={() => buildCurlCommand("/csf/researcher/evaluate", form)}
+          />
+        </div>
+
+        <SubmitForVerificationBar
+          disabled={!API_BASE}
+          isSubmitting={csfActions.isSubmitting}
+          onSubmit={handleSubmitForVerification}
+          submissionId={csfActions.submissionId}
+          error={csfActions.error}
         />
-      </div>
       </form>
 
       {/* Decision results */}
@@ -599,7 +675,7 @@ export function ResearcherCsfSandbox() {
 
           {decision.missing_fields?.length ? (
             <p className="text-sm text-gray-800">
-              Missing fields: {decision.missing_fields.join(", ")}
+              Missing fields: {decision.missing_fields?.join(", ")}
             </p>
           ) : null}
 
@@ -607,8 +683,12 @@ export function ResearcherCsfSandbox() {
             <div className="mt-2">
               <h4 className="text-sm font-medium">Regulatory references</h4>
               <div className="flex flex-wrap gap-2 mt-1">
-                {decision.regulatory_references.map((ref) => (
-                  <SourceDocumentChip key={ref} id={ref} />
+                {decision.regulatory_references?.map((ref, idx) => (
+                  <SourceDocumentChip 
+                    key={idx} 
+                    id={typeof ref === 'string' ? ref : ref.id} 
+                    label={typeof ref === 'string' ? undefined : (ref.label || ref.citation)}
+                  />
                 ))}
               </div>
             </div>
@@ -663,11 +743,11 @@ export function ResearcherCsfSandbox() {
           {regulatoryError && (
             <p className="text-sm text-red-600 mt-2">{regulatoryError}</p>
           )}
-          {regulatoryArtifacts.length > 0 && (
+          {regulatoryArtifacts && regulatoryArtifacts.length > 0 && (
             <div className="mt-3">
               <h4 className="text-sm font-medium">Referenced artifacts</h4>
               <ul className="list-disc ml-5 text-sm text-gray-800">
-                {regulatoryArtifacts.map((artifact) => (
+                {(regulatoryArtifacts || []).map((artifact) => (
                   <li key={artifact.id}>
                     <span className="font-medium">{artifact.name}</span> —
                     {" "}
@@ -681,13 +761,13 @@ export function ResearcherCsfSandbox() {
       )}
 
       {/* Researcher Copilot */}
-      <section className="mt-6 p-4 border rounded-lg bg-white">
-        <div className="flex items-center justify-between gap-2">
+      <section className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
+        <header className="mb-2 flex items-center justify-between gap-2">
           <div>
-            <h3 className="text-sm font-semibold text-gray-800">
-              Researcher CSF Copilot (beta)
+            <h3 className="text-[11px] font-semibold text-slate-800">
+              Form Copilot (beta)
             </h3>
-            <p className="text-sm text-gray-600">
+            <p className="text-[10px] text-slate-500">
               Runs the Researcher CSF engine on the current form and asks the
               regulatory RAG service to explain what&apos;s allowed or blocked.
             </p>
@@ -696,40 +776,53 @@ export function ResearcherCsfSandbox() {
             type="button"
             onClick={runResearcherCsfCopilot}
             disabled={copilotLoading}
-            className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm disabled:opacity-60"
+            className="h-7 rounded-md bg-slate-900 px-3 text-[11px] font-medium text-slate-50 hover:bg-slate-800 disabled:opacity-50"
           >
             {copilotLoading ? "Running Copilot…" : "Check & Explain"}
           </button>
-        </div>
+        </header>
 
         {copilotLoading && (
-          <p className="mt-2 text-sm text-gray-700">
+          <div className="mb-2 text-[10px] text-slate-600">
             Running Researcher CSF Copilot…
-          </p>
+          </div>
+        )}
+
+        {copilotIsStale && (
+          <div className="mb-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 flex items-start gap-2">
+            <span className="text-amber-600 mt-0.5">⚠️</span>
+            <p className="text-[11px] text-amber-800">
+              Form has changed since last copilot analysis. Click "Check & Explain" for updated guidance.
+            </p>
+          </div>
         )}
 
         {copilotError && (
-          <div className="mt-2 rounded-md bg-rose-50 px-2 py-1 text-sm text-rose-700">
+          <div className="mb-2 rounded-md bg-rose-50 border border-rose-200 px-2 py-1 text-[10px] text-rose-700">
             {copilotError}
           </div>
         )}
 
         {copilotResponse && (
-          <div className="mt-3 p-3 bg-gray-50 border rounded space-y-2">
-            <h4 className="text-sm font-medium">Researcher CSF Copilot</h4>
-            <p className="text-sm text-gray-800">Status: {copilotResponse.status}</p>
-            <p className="text-sm text-gray-800">Reason: {copilotResponse.reason}</p>
+          <div className="rounded-md bg-slate-50 p-2 text-[10px] text-slate-800 space-y-1">
+            <h4 className="text-[10px] font-semibold text-slate-700">Researcher CSF Copilot</h4>
+            <p className="text-[10px] text-slate-800"><strong>Status:</strong> {copilotResponse.status}</p>
+            <p className="text-[10px] text-slate-800"><strong>Reason:</strong> {copilotResponse.reason}</p>
             {copilotResponse.missing_fields?.length ? (
-              <p className="text-sm text-gray-800">
-                Missing fields: {copilotResponse.missing_fields.join(", ")}
+              <p className="text-[10px] text-slate-800">
+                <strong>Missing fields:</strong> {copilotResponse.missing_fields?.join(", ")}
               </p>
             ) : null}
             {copilotResponse.regulatory_references?.length ? (
-              <div>
-                <h5 className="text-sm font-medium">Regulatory references</h5>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {copilotResponse.regulatory_references.map((ref) => (
-                    <SourceDocumentChip key={ref} id={ref} />
+              <div className="mt-1">
+                <h5 className="text-[10px] font-semibold text-slate-700">Regulatory references</h5>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {copilotResponse.regulatory_references?.map((ref, idx) => (
+                    <SourceDocumentChip 
+                      key={idx} 
+                      id={typeof ref === 'string' ? ref : ref.id}
+                      label={typeof ref === 'string' ? undefined : (ref.label || ref.citation)}
+                    />
                   ))}
                 </div>
               </div>
@@ -746,7 +839,7 @@ export function ResearcherCsfSandbox() {
               <div>
                 <h5 className="text-sm font-medium">RAG sources</h5>
                 <ul className="list-disc ml-5 text-sm text-gray-800">
-                  {copilotResponse.rag_sources.map((source, idx) => (
+                  {copilotResponse.rag_sources?.map((source, idx) => (
                     <li key={idx}>
                       <span className="font-medium">{source.title}</span>
                       {source.snippet ? ` — ${source.snippet}` : ""}
@@ -758,6 +851,6 @@ export function ResearcherCsfSandbox() {
           </div>
         )}
       </section>
-    </div>
+    </section>
   );
 }

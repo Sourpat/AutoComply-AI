@@ -3,9 +3,9 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-from autocomply.domain.controlled_substances import ControlledSubstanceItem
+from src.autocomply.domain.controlled_substances import ControlledSubstanceItem
 # Reuse the same decision status enum as Practitioner CSF to keep things consistent.
-from autocomply.domain.csf_practitioner import CsDecisionStatus
+from src.autocomply.domain.csf_practitioner import CsDecisionStatus
 
 
 class HospitalFacilityType(str, Enum):
@@ -91,7 +91,41 @@ def evaluate_hospital_csf(form: HospitalCsfForm) -> HospitalCsfDecision:
     - Require attestation_accepted to be True to allow shipping.
     - BLOCKED when required fields are missing or attestation is not accepted.
     - MANUAL_REVIEW reserved for future complex edge cases (state-specific addendums, etc.).
+    
+    **Demo Scenarios (for Hospital CSF Sandbox):**
+    - EXPIRED TDDD: If pharmacy_license_number contains "EXPIRED", return BLOCKED.
+    - State mismatch: If TDDD license but ship_to_state != OH, return BLOCKED.
     """
+    
+    # --- Demo Scenario: Expired TDDD license ---
+    if form.pharmacy_license_number and "EXPIRED" in form.pharmacy_license_number.upper():
+        return HospitalCsfDecision(
+            status=CsDecisionStatus.BLOCKED,
+            reason=(
+                "Ohio TDDD license has expired. The facility must provide a current, "
+                "active TDDD license before controlled substance orders can be processed."
+            ),
+            missing_fields=["pharmacy_license_number_active"],
+            regulatory_references=["csf_hospital_form", "csf_oh_addendum"],
+        )
+
+    # --- Demo Scenario: State mismatch (TDDD but not OH) ---
+    if form.ship_to_state and form.pharmacy_license_number:
+        ship_state = form.ship_to_state.upper().strip()
+        license_num = form.pharmacy_license_number.upper().strip()
+        
+        if "TDDD" in license_num and ship_state and ship_state != "OH":
+            return HospitalCsfDecision(
+                status=CsDecisionStatus.BLOCKED,
+                reason=(
+                    f"State mismatch: This Hospital CSF references an Ohio TDDD license, "
+                    f"but the ship-to state is {form.ship_to_state}. Ohio TDDD licenses "
+                    "are only valid for shipments to Ohio addresses."
+                ),
+                missing_fields=["ship_to_state_valid"],
+                regulatory_references=["csf_hospital_form", "csf_oh_addendum"],
+            )
+    
     missing: List[str] = []
 
     if not form.facility_name.strip():

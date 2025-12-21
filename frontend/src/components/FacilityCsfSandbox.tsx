@@ -40,6 +40,10 @@ import { useRagDebug } from "../devsupport/RagDebugContext";
 import { MockOrderScenarioBadge } from "./MockOrderScenarioBadge";
 import { VerticalBadge } from "./VerticalBadge";
 import type { DecisionOutcome } from "../types/decision";
+import { useCsfActions } from "../hooks/useCsfActions";
+import { SubmitForVerificationBar } from "./SubmitForVerificationBar";
+
+const SHOW_DEV_INFO = import.meta.env.VITE_SHOW_DEV_INFO === "true";
 
 function buildFacilityCsfEvaluateCurl(form: any): string {
   const payload = form ?? {};
@@ -263,6 +267,11 @@ export function FacilityCsfSandbox() {
     useState<FacilityFormCopilotResponse | null>(null);
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
+  const [lastCopilotPayload, setLastCopilotPayload] = useState<string | null>(null);
+  
+  // Use shared CSF actions hook for submit
+  const csfActions = useCsfActions("facility");
+  
   const copilotDecisionOutcome =
     (copilotResponse as unknown as DecisionOutcome | null) ?? null;
   const copilotDebugInfo =
@@ -276,6 +285,20 @@ export function FacilityCsfSandbox() {
         debug_info: copilotDecisionOutcome.debug_info ?? copilotDebugInfo,
       }
     : null;
+
+  // Helper to compute current copilot payload string for staleness checking
+  const getCurrentCopilotPayloadString = () => {
+    return JSON.stringify({
+      form,
+      controlledSubstances,
+    });
+  };
+
+  // Check if copilot results are stale (inputs changed since last run)
+  const copilotIsStale =
+    copilotResponse !== null &&
+    lastCopilotPayload !== null &&
+    lastCopilotPayload !== getCurrentCopilotPayloadString();
 
   useEffect(() => {
     trackSandboxEvent("facility_csf_test_coverage_note_shown");
@@ -392,6 +415,11 @@ export function FacilityCsfSandbox() {
     setForm(example.formData);
     setControlledSubstances(example.formData.controlledSubstances ?? []);
 
+    // Clear copilot state when scenario changes
+    setCopilotResponse(null);
+    setCopilotError(null);
+    setLastCopilotPayload(null);
+
     emitCodexCommand("csf_facility_example_selected", {
       engine_family: FACILITY_ENGINE_FAMILY,
       decision_type: FACILITY_DECISION_TYPE,
@@ -441,6 +469,13 @@ export function FacilityCsfSandbox() {
       ...prev,
       [field]: value,
     }));
+
+    // Clear copilot state when form changes
+    if (copilotResponse !== null) {
+      setCopilotResponse(null);
+      setCopilotError(null);
+      setLastCopilotPayload(null);
+    }
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -574,11 +609,16 @@ export function FacilityCsfSandbox() {
     setIsExplaining(true);
     setExplainError(null);
 
+    // Normalize regulatory_references to string[] (extract IDs if objects)
+    const normalizedRefs = (decision.regulatory_references ?? []).map((ref) =>
+      typeof ref === "string" ? ref : (ref as any).id
+    );
+
     const summary: CsfDecisionSummary = {
       status: decision.status,
       reason: decision.reason,
       missing_fields: decision.missing_fields ?? [],
-      regulatory_references: decision.regulatory_references ?? [],
+      regulatory_references: normalizedRefs,
     };
 
     try {
@@ -591,6 +631,26 @@ export function FacilityCsfSandbox() {
     } finally {
       setIsExplaining(false);
     }
+  };
+
+  const handleSubmitForVerification = async () => {
+    if (!API_BASE) {
+      throw new Error("API base URL not configured");
+    }
+
+    await csfActions.submit({
+      facility_name: form.facilityName,
+      facility_type: form.facilityType,
+      account_number: form.accountNumber ?? null,
+      pharmacy_license_number: form.pharmacyLicenseNumber,
+      dea_number: form.deaNumber,
+      pharmacist_in_charge_name: form.pharmacistInChargeName,
+      pharmacist_contact_phone: form.pharmacistContactPhone ?? null,
+      ship_to_state: form.shipToState,
+      attestation_accepted: form.attestationAccepted,
+      internal_notes: form.internalNotes ?? null,
+      controlled_substances: controlledSubstances,
+    });
   };
 
   const runFacilityCsfCopilot = async () => {
@@ -619,6 +679,7 @@ export function FacilityCsfSandbox() {
       });
 
       setCopilotResponse(copilotResponse);
+      setLastCopilotPayload(getCurrentCopilotPayloadString());
 
       emitCodexCommand("csf_facility_form_copilot_success", {
         engine_family: FACILITY_ENGINE_FAMILY,
@@ -735,16 +796,27 @@ export function FacilityCsfSandbox() {
             </div>
           )}
 
-          <TestCoverageNote
-            size="sm"
-            files={["backend/tests/test_csf_facility_api.py"]}
-          />
+          <div className="mt-1 rounded-md bg-emerald-50 px-3 py-1.5 border border-emerald-200">
+            <div className="flex items-center gap-2">
+              <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-[11px] font-medium text-emerald-800">
+                Backed by automated tests
+              </span>
+              <span className="text-[10px] font-mono text-emerald-700">
+                backend/tests/test_csf_facility_api.py
+              </span>
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <SourceDocumentChip
-            label="Facility CSF PDF"
-            url="/mnt/data/Online Controlled Substance Form - Facility.pdf"
-          />
+          {SHOW_DEV_INFO && (
+            <SourceDocumentChip
+              label="Facility CSF PDF"
+              url="/mnt/data/Online Controlled Substance Form - Facility.pdf"
+            />
+          )}
           <button
             type="button"
             onClick={reset}
@@ -762,10 +834,10 @@ export function FacilityCsfSandbox() {
       )}
 
       <section className="mt-3">
-        <p className="text-xs font-medium text-slate-300">
+        <p className="text-xs font-medium text-gray-700">
           Realistic facility examples
         </p>
-        <p className="mt-1 text-[11px] text-slate-400">
+        <p className="mt-1 text-[11px] text-gray-600">
           Use these presets when you&apos;re demoing the Facility CSF engine:
           clinic chain, long-term care, and an out-of-state surgery center.
         </p>
@@ -778,10 +850,10 @@ export function FacilityCsfSandbox() {
                 type="button"
                 onClick={() => applyFacilityExample(example)}
                 className={[
-                  "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-medium transition",
+                  "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-medium transition",
                   isActive
-                    ? "border-cyan-400 bg-cyan-500/15 text-cyan-100"
-                    : "border-slate-700 bg-slate-900/80 text-slate-200 hover:border-slate-500 hover:bg-slate-800",
+                    ? "border-blue-500 bg-blue-50 text-blue-900 ring-2 ring-blue-200"
+                    : "border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50",
                 ].join(" ")}
               >
                 <span>{example.label}</span>
@@ -789,9 +861,12 @@ export function FacilityCsfSandbox() {
             );
           })}
         </div>
-        <div className="mt-1 text-[11px] text-slate-400">
-          {FACILITY_EXAMPLES.find((ex) => ex.id === selectedExampleId)?.description}
-        </div>
+        {selectedExampleId && (
+          <div className="mt-2 rounded-md bg-blue-50 px-3 py-2 text-[11px] text-blue-900 border border-blue-200">
+            <strong className="font-semibold">Scenario: </strong>
+            {FACILITY_EXAMPLES.find((ex) => ex.id === selectedExampleId)?.description}
+          </div>
+        )}
       </section>
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -950,14 +1025,22 @@ export function FacilityCsfSandbox() {
               </button>
             </div>
 
+            <SubmitForVerificationBar
+              disabled={!API_BASE}
+              isSubmitting={csfActions.isSubmitting}
+              onSubmit={handleSubmitForVerification}
+              submissionId={csfActions.submissionId}
+              error={csfActions.error}
+            />
+
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <CopyCurlButton
                 getCommand={() => buildFacilityCsfEvaluateCurl(form)}
                 label="Copy Facility CSF cURL"
               />
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-slate-600 dark:text-slate-300">
                 Copies a ready-to-run POST{" "}
-                <span className="font-mono text-slate-200">
+                <span className="font-mono">
                   /csf/facility/evaluate
                 </span>{" "}
                 using the current Facility CSF form payload.
@@ -1058,10 +1141,15 @@ export function FacilityCsfSandbox() {
                         decision.status +
                         "' and how the facility CSF form and any state addendums apply.";
 
+                      // Normalize regulatory_references to string[] (extract IDs if objects)
+                      const normalizedRefs = (decision.regulatory_references ?? []).map((ref) =>
+                        typeof ref === "string" ? ref : (ref as any).id
+                      );
+
                       try {
                         const res = await callRegulatoryRag({
                           question,
-                          regulatory_references: decision.regulatory_references ?? [],
+                          regulatory_references: normalizedRefs,
                           decision,
                         });
 
@@ -1072,8 +1160,7 @@ export function FacilityCsfSandbox() {
                           "rag_regulatory_explain_facility",
                           {
                             question,
-                            regulatory_references:
-                              decision.regulatory_references ?? [],
+                            regulatory_references: normalizedRefs,
                             decision,
                             controlled_substances: controlledSubstances,
                             source_document:
@@ -1255,6 +1342,15 @@ export function FacilityCsfSandbox() {
             </div>
           )}
 
+          {copilotIsStale && (
+            <div className="mb-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 flex items-start gap-2">
+              <span className="text-amber-600 mt-0.5">⚠️</span>
+              <p className="text-[11px] text-amber-800">
+                Form has changed since last copilot analysis. Click "Check & Explain" for updated guidance.
+              </p>
+            </div>
+          )}
+
           {copilotError && (
             <div className="mb-2 rounded-md bg-rose-50 px-2 py-1 text-[10px] text-rose-700">
               {copilotError}
@@ -1377,16 +1473,16 @@ export function FacilityCsfSandbox() {
             {isRunningOhioFacilityOrder ? (
               <>
                 <span className="h-3 w-3 animate-spin rounded-full border border-cyan-300 border-t-transparent" />
-                <span>Running mock order trace…</span>
+                <span>Simulating order approval…</span>
               </>
             ) : (
               <>
-                <span>Run mock order trace</span>
+                <span>Simulate Order Approval</span>
               </>
             )}
           </button>
           <p className="text-[10px] text-slate-500">
-            Uses the last Facility CSF decision + the selected Ohio TDDD outcome.
+            Combines Facility CSF decision + Ohio TDDD result to simulate final order approval.
           </p>
         </div>
 
@@ -1404,24 +1500,28 @@ export function FacilityCsfSandbox() {
             </p>
             <div className="mt-1 flex items-center gap-2">
               <DecisionStatusBadge status={ohioFacilityOrderDecision.final_decision} />
-              <span className="text-[11px] text-slate-400">
-                Result from{" "}
-                <span className="font-mono text-slate-200">
-                  /orders/mock/ohio-facility-approval
+              {SHOW_DEV_INFO && (
+                <span className="text-[11px] text-slate-400">
+                  Result from{" "}
+                  <span className="font-mono text-slate-200">
+                    /orders/mock/ohio-facility-approval
+                  </span>
+                  .
                 </span>
-                .
-              </span>
+              )}
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-slate-200">
               {ohioFacilityOrderDecision.explanation}
             </p>
-            <p className="mt-1 text-[10px] text-slate-500">
-              You can also find this endpoint in the API reference under{" "}
-              <span className="font-mono text-slate-200">
-                Mock orders → Ohio facility mock order
-              </span>
-              .
-            </p>
+            {SHOW_DEV_INFO && (
+              <p className="mt-1 text-[10px] text-slate-500">
+                You can also find this endpoint in the API reference under{" "}
+                <span className="font-mono text-slate-200">
+                  Mock orders → Ohio facility mock order
+                </span>
+                .
+              </p>
+            )}
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <CopyCurlButton
                 getCommand={() =>
@@ -1437,7 +1537,7 @@ export function FacilityCsfSandbox() {
           </div>
         )}
 
-        {ohioFacilityOrderTrace && (
+        {SHOW_DEV_INFO && ohioFacilityOrderTrace && (
           <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/90 px-3 py-3 text-[11px]">
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-semibold text-slate-100">
@@ -1471,7 +1571,15 @@ export function FacilityCsfSandbox() {
       <ControlledSubstancesPanel
         accountNumber={form.accountNumber ?? ""}
         value={controlledSubstances}
-        onChange={setControlledSubstances}
+        onChange={(newSubstances) => {
+          setControlledSubstances(newSubstances);
+          // Clear copilot state when controlled substances change
+          if (copilotResponse !== null) {
+            setCopilotResponse(null);
+            setCopilotError(null);
+            setLastCopilotPayload(null);
+          }
+        }}
       />
       </div>
     </section>

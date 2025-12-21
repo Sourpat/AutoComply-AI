@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from autocomply.domain.compliance_artifacts import (
+from src.autocomply.domain.compliance_artifacts import (
     COMPLIANCE_ARTIFACTS,
     ComplianceArtifact,
 )

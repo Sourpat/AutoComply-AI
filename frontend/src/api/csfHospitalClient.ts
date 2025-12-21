@@ -38,6 +38,11 @@ const getApiBase = (): string => {
 // Exported so other CSF clients (facility, copilot, etc.) can reuse it
 export const API_BASE = getApiBase();
 
+// Developer visibility: log the resolved API base on page load
+if (typeof window !== "undefined") {
+  console.info("[AutoComply] API_BASE =", API_BASE);
+}
+
 export async function evaluateHospitalCsf(
   form: HospitalCsfFormData
 ): Promise<HospitalCsfDecision> {

@@ -20,10 +20,13 @@ import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { callEmsFormCopilot } from "../api/csfEmsCopilotClient";
 import { API_BASE } from "../api/csfHospitalClient";
+import { emitCodexCommand } from "../utils/codexLogger";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { buildCurlCommand } from "../utils/curl";
 import { EMS_CSF_PRESETS, type EmsCsfPresetId } from "../domain/csfEmsPresets";
 import { VerticalBadge } from "./VerticalBadge";
+import { useCsfActions } from "../hooks/useCsfActions";
+import { SubmitForVerificationBar } from "./SubmitForVerificationBar";
 
 const EMS_ENGINE_FAMILY = "csf";
 const EMS_DECISION_TYPE = "csf_ems";
@@ -85,6 +88,20 @@ export function EmsCsfSandbox() {
     useState<EmsFormCopilotResponse | null>(null);
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
+  const [lastCopilotPayload, setLastCopilotPayload] = useState<string | null>(null);
+
+  // Use shared CSF actions hook for submit
+  const csfActions = useCsfActions("ems");
+
+  // Copilot staleness detection
+  const getCurrentCopilotPayloadString = () => {
+    return JSON.stringify({ ...form, controlledSubstances });
+  };
+
+  const copilotIsStale =
+    copilotResponse !== null &&
+    lastCopilotPayload !== null &&
+    getCurrentCopilotPayloadString() !== lastCopilotPayload;
 
   const applyEmsPreset = (presetId: EmsCsfPresetId | null) => {
     if (!presetId) {
@@ -101,8 +118,9 @@ export function EmsCsfSandbox() {
     setDecision(null);
     setExplanation(null);
     setCopilotResponse(null);
-    setExplainError(null);
     setCopilotError(null);
+    setLastCopilotPayload(null);
+    setExplainError(null);
 
     trackSandboxEvent("ems_csf_preset_applied", {
       engine_family: EMS_ENGINE_FAMILY,
@@ -125,6 +143,11 @@ export function EmsCsfSandbox() {
     if (example.overrides.controlledSubstances) {
       setControlledSubstances(example.overrides.controlledSubstances);
     }
+
+    // Clear copilot state when example changes
+    setCopilotResponse(null);
+    setCopilotError(null);
+    setLastCopilotPayload(null);
 
     trackSandboxEvent("csf_ems_example_selected", {
       engine_family: EMS_ENGINE_FAMILY,
@@ -149,6 +172,13 @@ export function EmsCsfSandbox() {
       ...prev,
       [field]: value,
     }));
+
+    // Clear copilot state when form changes
+    if (copilotResponse !== null) {
+      setCopilotResponse(null);
+      setCopilotError(null);
+      setLastCopilotPayload(null);
+    }
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -185,6 +215,7 @@ export function EmsCsfSandbox() {
         decision_status: result.status,
       });
     } catch (err: any) {
+      console.error("[EMS CSF] Evaluate failed:", err);
       setError(err?.message ?? "Failed to evaluate EMS CSF");
 
       trackSandboxEvent("csf_ems_evaluate_error", {
@@ -218,6 +249,26 @@ export function EmsCsfSandbox() {
     setIsLoadingRegulatory(false);
   };
 
+  const handleSubmitForVerification = async () => {
+    if (!API_BASE) {
+      throw new Error("API base URL not configured");
+    }
+
+    await csfActions.submit({
+      facility_name: form.facilityName,
+      facility_type: form.facilityType,
+      account_number: form.accountNumber ?? null,
+      pharmacy_license_number: form.pharmacyLicenseNumber,
+      dea_number: form.deaNumber,
+      pharmacist_in_charge_name: form.pharmacistInChargeName,
+      pharmacist_contact_phone: form.pharmacistContactPhone ?? null,
+      ship_to_state: form.shipToState,
+      attestation_accepted: form.attestationAccepted,
+      internal_notes: form.internalNotes ?? null,
+      controlled_substances: controlledSubstances,
+    });
+  };
+
   const handleExplain = async () => {
     if (!decision) return;
 
@@ -235,6 +286,7 @@ export function EmsCsfSandbox() {
       const res = await explainCsfDecision("ems", summary);
       setExplanation(res.explanation);
     } catch (err: any) {
+      console.error("[EMS CSF] Explain failed:", err);
       setExplainError(
         err?.message ?? "Failed to generate CSF decision explanation"
       );
@@ -269,6 +321,7 @@ export function EmsCsfSandbox() {
       });
 
       setCopilotResponse(copilotResponse);
+      setLastCopilotPayload(getCurrentCopilotPayloadString());
 
       trackSandboxEvent("csf_ems_form_copilot_success", {
         engine_family: EMS_ENGINE_FAMILY,
@@ -280,7 +333,7 @@ export function EmsCsfSandbox() {
         regulatory_references: copilotResponse.regulatory_references ?? [],
       });
     } catch (err: any) {
-      console.error(err);
+      console.error("[EMS CSF] Copilot failed:", err);
       setCopilotError(
         err?.message ||
           "EMS CSF Copilot could not run. Please check the form and try again."
@@ -579,6 +632,14 @@ export function EmsCsfSandbox() {
                 getCommand={() => buildCurlCommand("/csf/ems/evaluate", form)}
               />
             </div>
+
+            <SubmitForVerificationBar
+              disabled={!API_BASE}
+              isSubmitting={csfActions.isSubmitting}
+              onSubmit={handleSubmitForVerification}
+              submissionId={csfActions.submissionId}
+              error={csfActions.error}
+            />
           </form>
 
           {/* Result & error */}
@@ -744,7 +805,7 @@ export function EmsCsfSandbox() {
                       regulatoryArtifacts.length === 0 &&
                       !isLoadingRegulatory && (
                         <div className="text-[11px] text-gray-400">
-                          No matching artifacts found for: {decision.regulatory_references.join(", ")}.
+                          No matching artifacts found for: {decision.regulatory_references.map(r => r.label || r.citation || r.id).join(", ")}.
                         </div>
                       )}
 
@@ -829,6 +890,15 @@ export function EmsCsfSandbox() {
             </div>
           )}
 
+          {copilotIsStale && (
+            <div className="mb-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 flex items-start gap-2">
+              <span className="text-amber-600 mt-0.5">⚠️</span>
+              <p className="text-[11px] text-amber-800">
+                Form has changed since last copilot analysis. Click "Check & Explain" for updated guidance.
+              </p>
+            </div>
+          )}
+
           {copilotError && (
             <div className="mb-2 rounded-md bg-rose-50 px-2 py-1 text-[10px] text-rose-700">
               {copilotError}
@@ -869,8 +939,8 @@ export function EmsCsfSandbox() {
                     Regulatory references
                   </h4>
                   <ul className="list-inside list-disc text-[10px] text-slate-700">
-                    {copilotResponse.regulatory_references.map((ref) => (
-                      <li key={ref}>{ref}</li>
+                    {copilotResponse.regulatory_references.map((ref, idx) => (
+                      <li key={idx}>{typeof ref === 'string' ? ref : ref.label || ref.citation || ref.id}</li>
                     ))}
                   </ul>
                 </div>
@@ -937,7 +1007,15 @@ export function EmsCsfSandbox() {
         <ControlledSubstancesPanel
           accountNumber={form.accountNumber ?? ""}
           value={controlledSubstances}
-          onChange={setControlledSubstances}
+          onChange={(newSubstances) => {
+            setControlledSubstances(newSubstances);
+            // Clear copilot state when controlled substances change
+            if (copilotResponse !== null) {
+              setCopilotResponse(null);
+              setCopilotError(null);
+              setLastCopilotPayload(null);
+            }
+          }}
         />
       </div>
     </section>

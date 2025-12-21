@@ -1,6 +1,10 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 
+type AppHeaderProps = {
+  onToggleDevSupport?: () => void;
+};
+
 const navItems = [
   { to: "/", label: "Home", exact: true },
   { to: "/csf", label: "CSF Suite" },
@@ -14,35 +18,44 @@ function navLinkClass({ isActive }: { isActive: boolean }) {
     : "px-3 py-2 rounded-lg text-sm font-medium text-slate-200 hover:text-white hover:bg-slate-800/70 hover:border hover:border-slate-700";
 }
 
-export function AppHeader() {
+export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-slate-950/95 to-slate-900/80 backdrop-blur border-b border-slate-800/70">
-      <div className="relative mx-auto max-w-6xl px-6">
-        <div className="flex h-16 items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500/70 via-indigo-500/70 to-emerald-500/70 text-base font-bold text-white shadow-lg shadow-cyan-500/25">
-              A
-            </div>
+    <header className="fixed top-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur border-b border-slate-800/70 shadow-[0_10px_40px_-24px_rgba(0,0,0,0.85)]">
+      <div className="mx-auto max-w-6xl px-6">
+        {/* TOP ROW: brand */}
+        <div className="h-10 flex items-center justify-center">
+          <div className="text-xl font-semibold tracking-tight text-white drop-shadow-[0_6px_18px_rgba(34,211,238,0.25)]">
+            AutoComply AI
           </div>
+        </div>
 
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
-            <div className="text-2xl font-semibold tracking-tight text-white">
-              AutoComply AI
-            </div>
-          </div>
+        {/* BOTTOM ROW: nav + devsupport */}
+        <div className="h-12 flex items-center pb-2">
+          <div className="flex w-full items-center justify-center">
+            <nav className="flex items-center justify-center gap-2 flex-wrap text-sm">
+              {navItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.exact}
+                  className={navLinkClass}
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
 
-          <nav className="flex flex-1 items-center justify-end gap-2">
-            {navItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.exact}
-                className={navLinkClass}
+            {/* Right side button (doesn't affect centering) */}
+            {onToggleDevSupport && (
+              <button
+                type="button"
+                onClick={onToggleDevSupport}
+                className="ml-auto inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 bg-slate-900 text-slate-200 ring-slate-700 hover:ring-cyan-500/60"
               >
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
+                DevSupport
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </header>

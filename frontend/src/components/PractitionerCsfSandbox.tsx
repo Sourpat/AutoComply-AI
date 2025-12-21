@@ -34,6 +34,8 @@ import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import { useRagDebug } from "../devsupport/RagDebugContext";
 import type { DecisionOutcome } from "../types/decision";
 import { VerticalBadge } from "./VerticalBadge";
+import { useCsfActions } from "../hooks/useCsfActions";
+import { SubmitForVerificationBar } from "./SubmitForVerificationBar";
 
 const ErrorAlert = ({
   message,
@@ -290,6 +292,11 @@ export function PractitionerCsfSandbox() {
     useState<PractitionerFormCopilotResponse | null>(null);
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
+  const [lastCopilotPayload, setLastCopilotPayload] = useState<string | null>(null);
+  
+  // Use shared CSF actions hook for evaluate/submit
+  const csfActions = useCsfActions("practitioner");
+  
   const copilotDecisionOutcome =
     (copilotResponse as unknown as DecisionOutcome | null) ?? null;
   const copilotDebugInfo =
@@ -325,6 +332,20 @@ export function PractitionerCsfSandbox() {
       null
     : null;
 
+  // Helper to compute current copilot payload as a stable string for staleness checking
+  const getCurrentCopilotPayloadString = () => {
+    return JSON.stringify({
+      form: buildPractitionerCsfPayload(form),
+      controlledSubstances,
+    });
+  };
+
+  // Check if copilot results are stale (inputs changed since last run)
+  const copilotIsStale =
+    copilotResponse !== null &&
+    lastCopilotPayload !== null &&
+    lastCopilotPayload !== getCurrentCopilotPayloadString();
+
   useEffect(() => {
     if (!API_BASE) {
       setApiBaseError(
@@ -340,6 +361,13 @@ export function PractitionerCsfSandbox() {
     setSelectedExampleId(example.id);
     setForm(example.formData);
     setControlledSubstances(example.formData.controlledSubstances ?? []);
+
+    // Clear copilot state when scenario changes
+    setCopilotResponse(null);
+    setCopilotError(null);
+    setLastCopilotPayload(null);
+    setDecision(null);
+    setError(null);
 
     emitCodexCommand("csf_practitioner_example_selected", {
       example_id: example.id,
@@ -385,6 +413,7 @@ export function PractitionerCsfSandbox() {
     setCopilotLoading(false);
     setCopilotResponse(null);
     setCopilotError(null);
+    setLastCopilotPayload(null);
     setLastEvaluatedPayload(null);
     setDecisionSnapshotId(null);
     setRegulatoryArtifacts([]);
@@ -405,6 +434,12 @@ export function PractitionerCsfSandbox() {
       ...prev,
       [field]: value,
     }));
+    // Clear copilot results when form fields change
+    if (copilotResponse !== null) {
+      setCopilotResponse(null);
+      setCopilotError(null);
+      setLastCopilotPayload(null);
+    }
   };
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -692,6 +727,21 @@ export function PractitionerCsfSandbox() {
     }
   };
 
+  const handleSubmitForVerification = async () => {
+    if (!API_BASE) {
+      setApiBaseError(
+        "Sandbox misconfigured: missing API base URL. Please set VITE_API_BASE in your environment before using Practitioner CSF tools."
+      );
+      return;
+    }
+
+    const payload = buildPractitionerCsfPayload(form);
+    await csfActions.submit({
+      ...payload,
+      controlled_substances: controlledSubstances,
+    });
+  };
+
   const runFormCopilot = async () => {
     if (!API_BASE) {
       setApiBaseError(
@@ -722,6 +772,7 @@ export function PractitionerCsfSandbox() {
         regulatory_references: copilotResult.regulatory_references,
       });
       setLastEvaluatedPayload(normalizedPayload);
+      setLastCopilotPayload(getCurrentCopilotPayloadString());
       setNotice(null);
 
       emitCodexCommand("csf_practitioner_form_copilot_run", {
@@ -930,11 +981,18 @@ export function PractitionerCsfSandbox() {
               <span className="text-[10px] text-gray-500">{activePreset.group}</span>
             )}
           </div>
-          <div className="mt-1">
-            <TestCoverageNote
-              size="sm"
-              files={["backend/tests/test_csf_practitioner_api.py"]}
-            />
+          <div className="mt-1 rounded-md bg-emerald-50 px-3 py-1.5 border border-emerald-200">
+            <div className="flex items-center gap-2">
+              <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-[11px] font-medium text-emerald-800">
+                Backed by automated tests
+              </span>
+              <span className="text-[10px] font-mono text-emerald-700">
+                backend/tests/test_csf_practitioner_api.py
+              </span>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -956,10 +1014,10 @@ export function PractitionerCsfSandbox() {
         {/* Left: form + results */}
         <div className="space-y-3">
           <section className="mt-3">
-            <p className="text-xs font-medium text-slate-300">
+            <p className="text-xs font-medium text-gray-700">
               Realistic practitioner examples
             </p>
-            <p className="mt-1 text-[11px] text-slate-400">
+            <p className="mt-1 text-[11px] text-gray-600">
               Use these presets when you&apos;re demoing the Practitioner CSF engine:
               primary care, pain management, and telehealth-only prescribing.
             </p>
@@ -972,10 +1030,10 @@ export function PractitionerCsfSandbox() {
                     type="button"
                     onClick={() => applyPractitionerExample(example)}
                     className={[
-                      "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-medium transition",
+                      "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-medium transition",
                       isActive
-                        ? "border-cyan-400 bg-cyan-500/15 text-cyan-100"
-                        : "border-slate-700 bg-slate-900/80 text-slate-200 hover:border-slate-500 hover:bg-slate-800",
+                        ? "border-blue-500 bg-blue-50 text-blue-900 ring-2 ring-blue-200"
+                        : "border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50",
                     ].join(" ")}
                   >
                     <span>{example.label}</span>
@@ -983,12 +1041,15 @@ export function PractitionerCsfSandbox() {
                 );
               })}
             </div>
-            <div className="mt-1 text-[11px] text-slate-400">
-              {
-                PRACTITIONER_EXAMPLES.find((ex) => ex.id === selectedExampleId)
-                  ?.description
-              }
-            </div>
+            {selectedExampleId && (
+              <div className="mt-2 rounded-md bg-blue-50 px-3 py-2 text-[11px] text-blue-900 border border-blue-200">
+                <strong className="font-semibold">Scenario: </strong>
+                {
+                  PRACTITIONER_EXAMPLES.find((ex) => ex.id === selectedExampleId)
+                    ?.description
+                }
+              </div>
+            )}
           </section>
 
           {selectedPresetId && (
@@ -1278,14 +1339,22 @@ export function PractitionerCsfSandbox() {
               </button>
             </div>
 
+            <SubmitForVerificationBar
+              disabled={!!apiBaseError}
+              isSubmitting={csfActions.isSubmitting}
+              onSubmit={handleSubmitForVerification}
+              submissionId={csfActions.submissionId}
+              error={csfActions.error}
+            />
+
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <CopyCurlButton
                 getCommand={() => buildPractitionerCsfEvaluateCurl(form)}
                 label="Copy Practitioner CSF cURL"
               />
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-slate-600 dark:text-slate-300">
                 Copies a ready-to-run POST{" "}
-                <span className="font-mono text-slate-200">
+                <span className="font-mono">
                   /csf/practitioner/evaluate
                 </span>{" "}
                 using the current Practitioner CSF form payload.
@@ -1591,6 +1660,15 @@ export function PractitionerCsfSandbox() {
                 <p className="mb-1 text-[10px] text-amber-700">{notice}</p>
               )}
 
+              {copilotIsStale && (
+                <div className="mb-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 flex items-start gap-2">
+                  <span className="text-amber-600 mt-0.5">⚠️</span>
+                  <p className="text-[11px] text-amber-800">
+                    Form has changed since last copilot analysis. Click "Check & Explain" for updated guidance.
+                  </p>
+                </div>
+              )}
+
               {copilotError && (
                 <p className="text-red-600 text-sm">
                   Form Copilot could not run. Please check the form and try again.
@@ -1620,7 +1698,15 @@ export function PractitionerCsfSandbox() {
         <ControlledSubstancesPanel
           accountNumber={form.accountNumber ?? ""}
           value={controlledSubstances}
-          onChange={setControlledSubstances}
+          onChange={(newSubstances) => {
+            setControlledSubstances(newSubstances);
+            // Clear copilot results when controlled substances change
+            if (copilotResponse !== null) {
+              setCopilotResponse(null);
+              setCopilotError(null);
+              setLastCopilotPayload(null);
+            }
+          }}
         />
       </div>
     </section>

@@ -39,12 +39,32 @@ import { buildCurlCommand } from "../utils/curl";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import { useRagDebug } from "../devsupport/RagDebugContext";
 import type { DecisionOutcome } from "../types/decision";
+import { useCsfActions } from "../hooks/useCsfActions";
+import { SubmitForVerificationBar } from "./SubmitForVerificationBar";
 
 type HospitalExample = {
   id: string;
   label: string;
   overrides: Partial<HospitalCsfFormData>;
   controlledSubstances?: ControlledSubstance[];
+};
+
+// Transform camelCase form data to snake_case for backend
+const buildHospitalCsfPayload = (form: HospitalCsfFormData) => {
+  const trim = (v: string | undefined | null) => (v ?? "").trim();
+
+  return {
+    facility_name: trim(form.facilityName),
+    facility_type: form.facilityType,
+    account_number: trim(form.accountNumber),
+    pharmacy_license_number: trim(form.pharmacyLicenseNumber),
+    dea_number: trim(form.deaNumber),
+    pharmacist_in_charge_name: trim(form.pharmacistInChargeName),
+    pharmacist_contact_phone: trim(form.pharmacistContactPhone) || null,
+    ship_to_state: form.shipToState,
+    attestation_accepted: form.attestationAccepted,
+    internal_notes: trim(form.internalNotes) || null,
+  };
 };
 
 const HOSPITAL_EXAMPLES: HospitalExample[] = [
@@ -147,6 +167,7 @@ export function HospitalCsfSandbox() {
   const { enabled: ragDebugEnabled } = useRagDebug();
   const [form, setForm] = useState<HospitalCsfFormData>(initialForm);
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+  const [selectedExampleId, setSelectedExampleId] = useState<string | null>(null);
   const [decision, setDecision] = useState<HospitalCsfDecision | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +195,11 @@ export function HospitalCsfSandbox() {
   const [copilotDecision, setCopilotDecision] =
     useState<HospitalFormCopilotResponse | null>(null);
   const [copilotError, setCopilotError] = useState<string | null>(null);
+  const [lastCopilotPayload, setLastCopilotPayload] = useState<string | null>(null);
+  
+  // Use shared CSF actions hook for submit
+  const csfActions = useCsfActions("hospital");
+  
   const copilotDecisionOutcome =
     (copilotDecision as unknown as DecisionOutcome | null) ?? null;
   const copilotDebugInfo =
@@ -190,21 +216,48 @@ export function HospitalCsfSandbox() {
 
   const hospitalEvaluateCurl = () =>
     buildCurlCommand("/csf/hospital/evaluate", {
-      ...form,
-      controlledSubstances,
+      ...buildHospitalCsfPayload(form),
+      controlled_substances: controlledSubstances,
     });
+
+  // Helper to compute current copilot payload as a stable string for staleness checking
+  const getCurrentCopilotPayloadString = () => {
+    return JSON.stringify({
+      facilityName: form.facilityName,
+      facilityType: form.facilityType,
+      accountNumber: form.accountNumber,
+      pharmacyLicenseNumber: form.pharmacyLicenseNumber,
+      deaNumber: form.deaNumber,
+      pharmacistInChargeName: form.pharmacistInChargeName,
+      pharmacistContactPhone: form.pharmacistContactPhone,
+      shipToState: form.shipToState,
+      attestationAccepted: form.attestationAccepted,
+      internalNotes: form.internalNotes,
+      controlledSubstances: controlledSubstances,
+    });
+  };
+
+  // Check if copilot results are stale (inputs changed since last run)
+  const copilotIsStale = copilotDecision !== null && 
+    lastCopilotPayload !== null && 
+    lastCopilotPayload !== getCurrentCopilotPayloadString();
 
   function applyHospitalExample(example: HospitalExample) {
     setSelectedPresetId(null);
+    setSelectedExampleId(example.id);
 
     const nextForm = {
       ...initialForm,
-      ...form,
       ...example.overrides,
     };
 
     setForm(nextForm);
     setControlledSubstances(example.controlledSubstances ?? []);
+
+    // Clear copilot results when scenario changes
+    setCopilotDecision(null);
+    setCopilotError(null);
+    setLastCopilotPayload(null);
 
     emitCodexCommand("csf_hospital_example_selected", {
       example_id: example.id,
@@ -232,6 +285,7 @@ export function HospitalCsfSandbox() {
     }
 
     setSelectedPresetId(preset.id);
+    setSelectedExampleId(null);
 
     trackSandboxEvent("hospital_csf_preset_applied", {
       preset_id: preset.id,
@@ -246,6 +300,7 @@ export function HospitalCsfSandbox() {
     setError(null);
     setCopilotDecision(null);
     setCopilotError(null);
+    setLastCopilotPayload(null);
     setOhioTdddDecision(null);
     setOhioTdddError(null);
     setRagAnswer(null);
@@ -257,6 +312,13 @@ export function HospitalCsfSandbox() {
       ...prev,
       [field]: value,
     }));
+    
+    // Clear copilot results when form changes to prevent showing stale data
+    if (copilotDecision !== null) {
+      setCopilotDecision(null);
+      setCopilotError(null);
+      setLastCopilotPayload(null);
+    }
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -271,8 +333,8 @@ export function HospitalCsfSandbox() {
 
     try {
       const result = await evaluateHospitalCsf({
-        ...form,
-        controlledSubstances,
+        ...buildHospitalCsfPayload(form),
+        controlled_substances: controlledSubstances,
       });
       setDecision(result);
     } catch (err: any) {
@@ -282,9 +344,17 @@ export function HospitalCsfSandbox() {
     }
   };
 
+  const handleSubmitForVerification = async () => {
+    await csfActions.submit({
+      ...buildHospitalCsfPayload(form),
+      controlled_substances: controlledSubstances,
+    });
+  };
+
   const reset = () => {
     setForm(initialForm);
     setSelectedPresetId(null);
+    setSelectedExampleId(null);
     setDecision(null);
     setError(null);
     setControlledSubstances([]);
@@ -298,6 +368,10 @@ export function HospitalCsfSandbox() {
     setRagAnswer(null);
     setRagError(null);
     setIsRagLoading(false);
+
+    setCopilotDecision(null);
+    setCopilotError(null);
+    setLastCopilotPayload(null);
 
     setRegulatoryArtifacts([]);
     setRegulatoryError(null);
@@ -314,7 +388,9 @@ export function HospitalCsfSandbox() {
       status: decision.status,
       reason: decision.reason,
       missing_fields: decision.missing_fields ?? [],
-      regulatory_references: decision.regulatory_references ?? [],
+      regulatory_references: (decision.regulatory_references ?? []).map(ref => 
+        typeof ref === 'string' ? ref : ref.id
+      ),
     };
 
     try {
@@ -391,11 +467,12 @@ export function HospitalCsfSandbox() {
       }
 
       const copilotResponse = await callHospitalFormCopilot({
-        ...form,
-        controlledSubstances,
+        ...buildHospitalCsfPayload(form),
+        controlled_substances: controlledSubstances,
       });
 
       setCopilotDecision(copilotResponse);
+      setLastCopilotPayload(getCurrentCopilotPayloadString());
 
       emitCodexCommand("csf_hospital_form_copilot_run", {
         engine_family: "csf",
@@ -492,22 +569,34 @@ export function HospitalCsfSandbox() {
               ))}
             </select>
           </div>
-          <TestCoverageNote
-            size="sm"
-            files={["backend/tests/test_csf_hospital_api.py"]}
-          />
+          <div className="mt-1 rounded-md bg-emerald-50 border border-emerald-200 px-2 py-1">
+            <p className="text-[10px] font-medium text-emerald-900">
+              ✓ Backed by automated tests:
+              <code className="ml-1 text-[9px] font-mono text-emerald-800">
+                backend/tests/test_csf_hospital_api.py
+              </code>
+            </p>
+          </div>
 
-          <div className="mt-1 flex flex-wrap gap-1">
-            {HOSPITAL_EXAMPLES.map((ex) => (
-              <button
-                key={ex.id}
-                type="button"
-                onClick={() => applyHospitalExample(ex)}
-                className="rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
-              >
-                {ex.label}
-              </button>
-            ))}
+          <div className="mt-2">
+            <span className="text-[10px] font-semibold text-gray-700">Demo scenarios:</span>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {HOSPITAL_EXAMPLES.map((ex) => (
+                <button
+                  key={ex.id}
+                  type="button"
+                  onClick={() => applyHospitalExample(ex)}
+                  aria-pressed={selectedExampleId === ex.id}
+                  className={
+                    selectedExampleId === ex.id
+                      ? "rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-900 ring-2 ring-blue-500"
+                      : "rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
+                  }
+                >
+                  {ex.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -694,6 +783,14 @@ export function HospitalCsfSandbox() {
                 label="Copy eval as cURL"
               />
             </div>
+
+            <SubmitForVerificationBar
+              disabled={false}
+              isSubmitting={csfActions.isSubmitting}
+              onSubmit={handleSubmitForVerification}
+              submissionId={csfActions.submissionId}
+              error={csfActions.error}
+            />
           </form>
 
           {/* Result & error */}
@@ -789,10 +886,14 @@ export function HospitalCsfSandbox() {
                         decision.status +
                         "' and how the hospital CSF form and any state addendums apply.";
 
+                      const regulatoryRefs = (decision.regulatory_references ?? []).map(ref => 
+                        typeof ref === 'string' ? ref : ref.id
+                      );
+
                       try {
                         const res = await callRegulatoryRag({
                           question,
-                          regulatory_references: decision.regulatory_references ?? [],
+                          regulatory_references: regulatoryRefs,
                           decision,
                         });
 
@@ -803,8 +904,7 @@ export function HospitalCsfSandbox() {
                           "rag_regulatory_explain_hospital",
                           {
                             question,
-                            regulatory_references:
-                              decision.regulatory_references ?? [],
+                            regulatory_references: regulatoryRefs,
                             decision,
                             controlled_substances: controlledSubstances,
                             source_document:
@@ -889,24 +989,14 @@ export function HospitalCsfSandbox() {
                 <div className="mt-3 flex items-center justify-between">
                   <button
                     type="button"
-                    className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50"
-                    onClick={() => {
-                      emitCodexCommand(
-                        "explain_csf_hospital_decision",
-                        {
-                          form,
-                          decision,
-                          controlled_substances: controlledSubstances,
-                          source_document:
-                            "/mnt/data/Online Controlled Substance Form - Hospital Pharmacy.pdf",
-                        }
-                      );
-                    }}
+                    disabled
+                    className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-400 shadow-sm ring-1 ring-gray-200 cursor-not-allowed opacity-60"
+                    title="Coming soon: AI-powered narrative explanations for Hospital CSF decisions"
                   >
                     Ask Codex to explain decision
                   </button>
-                  <span className="text-[10px] text-gray-400">
-                    Future: narrative explanation for hospital CSF decisions.
+                  <span className="text-[10px] text-gray-500">
+                    Coming soon: narrative explanation for hospital CSF decisions.
                   </span>
                 </div>
 
@@ -996,6 +1086,15 @@ export function HospitalCsfSandbox() {
             <p className="mb-1 text-[10px] text-rose-600">{copilotError}</p>
           )}
 
+          {copilotIsStale && (
+            <div className="mb-2 rounded-md bg-amber-50 border border-amber-200 px-2 py-1.5">
+              <p className="text-[10px] font-medium text-amber-900">
+                ⚠️ Results are out of date. Form inputs have changed since the last check.
+                Click <span className="font-semibold">"Check & Explain"</span> to refresh.
+              </p>
+            </div>
+          )}
+
           {copilotDecisionWithDebug && (
             <RegulatoryInsightsPanel
               title="Hospital CSF – Form Copilot"
@@ -1018,7 +1117,15 @@ export function HospitalCsfSandbox() {
         <ControlledSubstancesPanel
           accountNumber={form.accountNumber ?? ""}
           value={controlledSubstances}
-          onChange={setControlledSubstances}
+          onChange={(newSubstances) => {
+            setControlledSubstances(newSubstances);
+            // Clear copilot results when controlled substances change
+            if (copilotDecision !== null) {
+              setCopilotDecision(null);
+              setCopilotError(null);
+              setLastCopilotPayload(null);
+            }
+          }}
         />
       </div>
     </section>

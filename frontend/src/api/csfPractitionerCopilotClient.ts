@@ -27,7 +27,7 @@ export async function callPractitionerFormCopilot(
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
     const message = text ? `${resp.status}: ${text}` : `${resp.status}`;
-    throw new Error(`Practitioner Form Copilot failed with status ${message}`);
+    throw new Error(`Practitioner Form Copilot failed: ${message}`);
   }
 
   const data: CsfCopilotResponse = await resp.json();
