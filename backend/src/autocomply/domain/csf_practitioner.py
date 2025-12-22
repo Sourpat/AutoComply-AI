@@ -18,6 +18,7 @@ class CsDecisionStatus(str, Enum):
     OK_TO_SHIP = "ok_to_ship"
     BLOCKED = "blocked"
     NEEDS_REVIEW = "needs_review"
+    MANUAL_REVIEW = "manual_review"
 
 
 class PractitionerCsfForm(BaseModel):
@@ -156,7 +157,7 @@ def evaluate_practitioner_csf(form: PractitionerCsfForm) -> PractitionerCsfDecis
     if high_risk_items and ship_state == "FL":
         example_names = ", ".join(item.name for item in high_risk_items[:3])
         return PractitionerCsfDecision(
-            status=CsDecisionStatus.NEEDS_REVIEW,
+            status=CsDecisionStatus.MANUAL_REVIEW,
             reason=(
                 "CSF includes high-risk Schedule II controlled substances for "
                 "ship-to state FL. Example item(s): "
