@@ -12,8 +12,8 @@ const getApiBase = (): string => {
     (metaEnv.VITE_API_BASE as string | undefined) ??
     (metaEnv.VITE_API_BASE_URL as string | undefined);
 
-  // 1) Prefer explicit Vite env if set (including empty string)
-  if (viteBaseRaw !== undefined) {
+  // 1) Prefer explicit Vite env if set to a non-empty string
+  if (viteBaseRaw !== undefined && viteBaseRaw.trim().length > 0) {
     return viteBaseRaw;
   }
 
@@ -53,8 +53,8 @@ export async function evaluateHospitalCsf(
   };
 
   const facilityName = pick((form as any).facilityName, (form as any).facility_name);
-  const facilityType = pick((form as any).facilityType, (form as any).facility_type, "hospital");
-  const accountNumber = pick((form as any).accountNumber, (form as any).account_number, null);
+  const facilityType = pick((form as any).facilityType, (form as any).facility_type, "Hospital");
+  const accountNumber = pick((form as any).accountNumber, (form as any).account_number, "");
   const pharmacyLicenseNumber = pick(
     (form as any).pharmacyLicenseNumber,
     (form as any).pharmacy_license_number,
@@ -67,7 +67,7 @@ export async function evaluateHospitalCsf(
   const pharmacistContactPhone = pick(
     (form as any).pharmacistContactPhone,
     (form as any).pharmacist_contact_phone,
-    null,
+    undefined,
   );
   const shipToState = pick((form as any).shipToState, (form as any).ship_to_state);
   const attestationAccepted = pick(
@@ -75,55 +75,68 @@ export async function evaluateHospitalCsf(
     (form as any).attestation_accepted,
     false,
   );
-  const internalNotes = pick((form as any).internalNotes, (form as any).internal_notes, null);
+  const internalNotes = pick((form as any).internalNotes, (form as any).internal_notes, undefined);
   const controlledSubstances = pick(
     (form as any).controlledSubstances,
     (form as any).controlled_substances,
     [],
   );
 
+  const controlled = (controlledSubstances ?? []).map((x: any) => ({
+    id: x?.id,
+    name: x?.name,
+    ndc: x?.ndc,
+    strength: x?.strength,
+    dosage_form: x?.dosage_form ?? x?.dosageForm ?? null,
+    dea_schedule: x?.dea_schedule ?? x?.deaSchedule ?? null,
+  }));
+
+  const payload: Record<string, any> = {
+    facility_name: facilityName ?? "",
+    facility_type: (facilityType ?? "hospital").toString().toLowerCase(),
+    account_number: accountNumber?.toString() ?? "",
+    pharmacy_license_number: pharmacyLicenseNumber ?? "",
+    dea_number: deaNumber ?? "",
+    pharmacist_in_charge_name: pharmacistInChargeName ?? "",
+    ship_to_state: shipToState ?? "",
+    attestation_accepted: attestationAccepted,
+    controlled_substances: controlled,
+  };
+
+  const trimmedInternalNotes = typeof internalNotes === "string" ? internalNotes.trim() : internalNotes;
+  if (trimmedInternalNotes) {
+    payload.internal_notes = trimmedInternalNotes;
+  }
+
+  const trimmedPharmacistPhone =
+    typeof pharmacistContactPhone === "string" ? pharmacistContactPhone.trim() : pharmacistContactPhone;
+  if (trimmedPharmacistPhone) {
+    payload.pharmacist_contact_phone = trimmedPharmacistPhone;
+  }
+
   const resp = await fetch(`${API_BASE}/csf/hospital/evaluate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      facility_name: facilityName,
-      facility_type: facilityType,
-      account_number: accountNumber,
-      pharmacy_license_number: pharmacyLicenseNumber,
-      dea_number: deaNumber,
-      pharmacist_in_charge_name: pharmacistInChargeName,
-      pharmacist_contact_phone: pharmacistContactPhone,
-      ship_to_state: shipToState,
-      attestation_accepted: attestationAccepted,
-      internal_notes: internalNotes,
-
-      // NEW
-      controlled_substances: controlledSubstances ?? [],
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!resp.ok) {
-    let detail: string | undefined;
+    console.error("Hospital CSF evaluate payload", payload);
+
+    let errorBody: any = null;
     try {
-      const errorBody = await resp.json();
-      const detailItems: string[] =
-        (errorBody?.detail ?? [])
-          .map((d: any) => d?.msg || d?.message)
-          .filter(Boolean) || [];
-      if (detailItems.length > 0) {
-        detail = detailItems.join("; ");
-      }
+      errorBody = await resp.json();
     } catch (err) {
       // ignore JSON parse errors
     }
 
-    const message = detail
-      ? `Hospital CSF evaluation failed: ${detail}`
-      : `Hospital CSF evaluation failed with status ${resp.status}`;
+    const detail = errorBody?.detail
+      ? JSON.stringify(errorBody.detail)
+      : JSON.stringify(errorBody ?? {});
 
-    const error = new Error(message);
+    const error = new Error(`Hospital CSF evaluation failed (${resp.status}). ${detail}`);
     (error as any).status = resp.status;
     (error as any).detail = detail;
     throw error;
