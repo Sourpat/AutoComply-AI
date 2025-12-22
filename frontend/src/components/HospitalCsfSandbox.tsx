@@ -333,12 +333,16 @@ export function HospitalCsfSandbox() {
 
     try {
       const result = await evaluateHospitalCsf({
-        ...buildHospitalCsfPayload(form),
-        controlled_substances: controlledSubstances,
+        ...form,
+        controlledSubstances: controlledSubstances,
       });
       setDecision(result);
     } catch (err: any) {
-      setError(err?.message ?? "Failed to evaluate Hospital CSF");
+      const detail = err?.detail ? String(err.detail) : null;
+      const message = detail
+        ? `${err?.message ?? "Failed to evaluate Hospital CSF"} (${detail})`
+        : err?.message ?? "Failed to evaluate Hospital CSF";
+      setError(message);
     } finally {
       setIsLoading(false);
     }

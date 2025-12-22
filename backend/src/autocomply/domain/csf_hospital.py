@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.autocomply.domain.controlled_substances import ControlledSubstanceItem
 # Reuse the same decision status enum as Practitioner CSF to keep things consistent.
@@ -26,21 +26,23 @@ class HospitalCsfForm(BaseModel):
     detailed pass on the PDF.
     """
 
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
     # Facility / pharmacy identity
-    facility_name: str = Field(...)
-    facility_type: HospitalFacilityType
+    facility_name: str = Field(default="")
+    facility_type: HospitalFacilityType = Field(default=HospitalFacilityType.HOSPITAL)
     account_number: Optional[str] = None
 
     # Pharmacy licensing
-    pharmacy_license_number: str = Field(...)
-    dea_number: str = Field(...)
+    pharmacy_license_number: str = Field(default="")
+    dea_number: str = Field(default="")
 
     # Pharmacist-in-charge / contact
-    pharmacist_in_charge_name: str = Field(...)
+    pharmacist_in_charge_name: str = Field(default="")
     pharmacist_contact_phone: Optional[str] = None
 
     # Jurisdiction context
-    ship_to_state: str = Field(..., max_length=2)
+    ship_to_state: str = Field(default="", max_length=2)
 
     # Attestation checkbox – required to ship
     attestation_accepted: bool = Field(
