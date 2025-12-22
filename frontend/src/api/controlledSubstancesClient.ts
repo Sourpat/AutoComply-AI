@@ -1,5 +1,5 @@
 // src/api/controlledSubstancesClient.ts
-import { API_BASE } from "./csfHospitalClient";
+import { API_BASE } from "../lib/api";
 
 export interface ControlledSubstance {
   id: string;

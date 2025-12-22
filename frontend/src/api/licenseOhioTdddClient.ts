@@ -1,5 +1,5 @@
 import { OhioTdddDecision, OhioTdddFormData } from "../domain/licenseOhioTddd";
-import { API_BASE } from "./csfHospitalClient";
+import { API_BASE } from "../lib/api";
 
 export async function evaluateOhioTdddLicense(
   form: OhioTdddFormData

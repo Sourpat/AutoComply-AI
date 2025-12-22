@@ -1,4 +1,4 @@
-import { API_BASE } from "./csfHospitalClient";
+import { API_BASE } from "../lib/api";
 import { OhioTdddFormData, OhioTdddDecision } from "../domain/ohioTddd";
 
 export async function evaluateOhioTddd(

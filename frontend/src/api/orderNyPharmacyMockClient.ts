@@ -1,4 +1,4 @@
-import { API_BASE } from "./csfHospitalClient";
+import { API_BASE } from "../lib/api";
 import { NyPharmacyFormData } from "../domain/licenseNyPharmacy";
 import { NyPharmacyOrderApprovalResult } from "../domain/orderMockApproval";
 import type { DecisionOutcome, DecisionStatus } from "../types/decision";

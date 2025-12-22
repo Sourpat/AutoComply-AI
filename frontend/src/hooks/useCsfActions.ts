@@ -29,6 +29,7 @@ export function useCsfActions(csfType: CsfType) {
   const [error, setError] = useState<string | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [traceId, setTraceId] = useState<string | null>(null);
+  const [lastEvaluatedTraceId, setLastEvaluatedTraceId] = useState<string | null>(null);
 
   const evaluate = async (payload: Record<string, unknown>) => {
     setIsEvaluating(true);
@@ -41,6 +42,10 @@ export function useCsfActions(csfType: CsfType) {
         body: JSON.stringify(payload),
       });
       setDecision(data);
+      // Store trace_id from evaluate response
+      if (data.trace_id) {
+        setLastEvaluatedTraceId(data.trace_id);
+      }
       return data;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to evaluate CSF";
@@ -57,9 +62,15 @@ export function useCsfActions(csfType: CsfType) {
     setError(null);
 
     try {
+      // Include trace_id from last evaluate if available
+      const submitPayload = {
+        form: payload,
+        trace_id: lastEvaluatedTraceId,
+      };
+      
       const data = await apiFetch<SubmitResponse>(`/csf/${csfType}/submit`, {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify(submitPayload),
       });
       setSubmissionId(data.submission_id);
       setTraceId(data.trace_id || null);
@@ -79,6 +90,7 @@ export function useCsfActions(csfType: CsfType) {
     setError(null);
     setSubmissionId(null);
     setTraceId(null);
+    setLastEvaluatedTraceId(null);
   };
 
   return {
@@ -91,5 +103,6 @@ export function useCsfActions(csfType: CsfType) {
     error,
     submissionId,
     traceId,
+    lastEvaluatedTraceId,
   };
 }

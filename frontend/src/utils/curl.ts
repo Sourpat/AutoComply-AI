@@ -1,4 +1,4 @@
-import { API_BASE } from "../api/csfHospitalClient";
+import { API_BASE } from "../lib/api";
 
 type HttpMethod = "GET" | "POST";
 

@@ -20,7 +20,7 @@ import { CopyCurlButton } from "./CopyCurlButton";
 import { emitCodexCommand } from "../utils/codexLogger";
 import { callFacilityFormCopilot } from "../api/csfFacilityCopilotClient";
 import type { FacilityFormCopilotResponse } from "../domain/csfFacility";
-import { API_BASE } from "../api/csfHospitalClient";
+import { API_BASE } from "../lib/api";
 import { buildCurlCommand } from "../utils/curl";
 import {
   OhioTdddDecision,

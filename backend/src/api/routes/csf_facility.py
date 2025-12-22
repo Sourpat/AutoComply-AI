@@ -2,14 +2,17 @@ from typing import List, Optional
 from datetime import datetime
 import uuid
 
-from fastapi import APIRouter
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, Request
+from pydantic import BaseModel, Field
 
 from src.api.models.decision import (
     DecisionOutcome,
     DecisionStatus,
     RegulatoryReference,
 )
+from src.autocomply.domain.trace import ensure_trace_id, TRACE_HEADER_NAME
+from src.autocomply.audit.decision_log import get_decision_log
+from src.autocomply.domain.decision_risk import compute_risk_for_status
 from src.autocomply.domain.csf_copilot import CsfCopilotResult, run_csf_copilot
 from src.autocomply.domain.csf_facility import (
     FacilityControlledSubstance,
@@ -59,6 +62,7 @@ class FacilityCsfEvaluateResponse(BaseModel):
     reason: str
     missing_fields: List[str] = Field(default_factory=list)
     regulatory_references: List[str] = Field(default_factory=list)
+    trace_id: Optional[str] = None
 
 
 def _facility_success_reason(reason: str) -> str:
@@ -75,15 +79,21 @@ def _facility_success_reason(reason: str) -> str:
 
 @router.post("/evaluate", response_model=FacilityCsfEvaluateResponse)
 async def evaluate_facility_csf_endpoint(
+    request: Request,
     form: FacilityCsfForm,
 ) -> FacilityCsfEvaluateResponse:
     """Evaluate a Facility Controlled Substance Form and return a decision."""
+
+    # Generate trace ID for decision logging and trace replay
+    incoming_trace_id = request.headers.get(TRACE_HEADER_NAME)
+    trace_id = ensure_trace_id(incoming_trace_id)
 
     logger.info(
         "Facility CSF evaluation request received",
         extra={
             "engine_family": "csf",
             "decision_type": "csf_facility",
+            "trace_id": trace_id,
         },
     )
 
@@ -106,6 +116,25 @@ async def evaluate_facility_csf_endpoint(
         reason=decision.reason,
         regulatory_references=regulatory_references,
         debug_info={"missing_fields": decision.missing_fields} if decision.missing_fields else None,
+        trace_id=trace_id,
+    )
+
+    # Log decision to audit trail for trace replay
+    decision_log = get_decision_log()
+    decision_log.record(
+        trace_id=trace_id,
+        engine_family="csf",
+        decision_type="csf_facility",
+        decision=decision_outcome,
+    )
+
+    logger.info(
+        "Facility CSF decision recorded",
+        extra={
+            "trace_id": trace_id,
+            "decision_status": normalized_status.value,
+            "controlled_substances_count": len(form.controlled_substances) if form.controlled_substances else 0,
+        },
     )
 
     return FacilityCsfEvaluateResponse(
@@ -114,6 +143,7 @@ async def evaluate_facility_csf_endpoint(
         reason=decision_outcome.reason,
         missing_fields=decision.missing_fields,
         regulatory_references=[ref.id for ref in regulatory_references],
+        trace_id=trace_id,
     )
 
 
@@ -150,39 +180,25 @@ async def facility_form_copilot(form: FacilityCsfForm) -> CsfCopilotResult:
     return rag_result
 
 
+class FacilityCsfSubmitRequest(BaseModel):
+    """Request model for Facility CSF submission with optional trace_id."""
+    form: FacilityCsfForm
+    trace_id: Optional[str] = None
+
+
 class SubmissionResponse(BaseModel):
     """Response for Facility CSF submission."""
-
     submission_id: str
-    trace_id: str
     status: str
-    submitted_at: str
+    created_at: str
+    trace_id: str
     decision_status: Optional[DecisionStatus] = None
     reason: Optional[str] = None
 
 
-class FacilitySubmitRequest(BaseModel):
-    """Compatibility wrapper for legacy and new Facility submit payloads."""
-
-    model_config = ConfigDict(extra="allow")
-
-    facility_name: Optional[str] = None
-    account_number: Optional[str] = None
-    decision_status: Optional[str] = None
-    copilot_used: Optional[bool] = None
-    dea_number: Optional[str] = None
-    pharmacy_license_number: Optional[str] = None
-    pharmacist_in_charge_name: Optional[str] = None
-    ship_to_state: Optional[str] = None
-    attestation_accepted: Optional[bool] = None
-    facility_type: Optional[FacilityFacilityType] = None
-    controlled_substances: List[FacilityControlledSubstance] = Field(default_factory=list)
-    tenant: Optional[str] = None
-
-
 @router.post("/submit", response_model=SubmissionResponse)
 async def submit_facility_csf(
-    form: FacilitySubmitRequest,
+    request: FacilityCsfSubmitRequest,
 ) -> SubmissionResponse:
     """
     Submit a Facility CSF for internal verification tracking.
@@ -190,77 +206,51 @@ async def submit_facility_csf(
     This endpoint:
     1. Evaluates the CSF using the decision engine
     2. Creates a submission record in the unified submissions store
-    3. Generates trace_id for trace replay in Compliance Console
+    3. Uses provided trace_id from evaluate (or generates new one)
     4. Returns submission ID and status for user confirmation
     """
-    trace_id = generate_trace_id()
-    tenant = getattr(form, "tenant", None) or "facility-default"
-    form_payload = form.model_dump()
-
-    decision_status_value: str | None = None
-    risk_level: str | None = None
-    reason: str | None = None
-    priority = SubmissionPriority.MEDIUM
-    decision = None
-
-    if form.decision_status:
-        normalized_status = (
-            form.decision_status.value
-            if hasattr(form.decision_status, "value")
-            else str(form.decision_status)
-        )
-        decision_status_value = normalized_status
-        risk_level = "High" if normalized_status == DecisionStatus.BLOCKED else "Medium"
-        reason = form_payload.get("reason")
-    else:
-        try:
-            normalized_form = FacilityCsfForm.model_validate(
-                {
-                    "facility_name": form.facility_name or "Facility",
-                    "facility_type": form.facility_type or FacilityFacilityType.FACILITY,
-                    "account_number": form.account_number,
-                    "pharmacy_license_number": form.pharmacy_license_number or "",
-                    "dea_number": form.dea_number or "",
-                    "pharmacist_in_charge_name": form.pharmacist_in_charge_name or "",
-                    "pharmacist_contact_phone": form_payload.get("pharmacist_contact_phone"),
-                    "ship_to_state": form.ship_to_state or "",
-                    "attestation_accepted": bool(form.attestation_accepted),
-                    "controlled_substances": form.controlled_substances or [],
-                    "internal_notes": form_payload.get("internal_notes"),
-                }
-            )
-            decision = evaluate_facility_csf(normalized_form)
-            decision.reason = _facility_success_reason(decision.reason)
-            decision_status_value = decision.status.value if hasattr(decision.status, "value") else decision.status
-            risk_level = "High" if decision_status_value == "blocked" else "Medium"
-            reason = decision.reason
-            priority = (
-                SubmissionPriority.HIGH
-                if decision_status_value == "blocked"
-                else SubmissionPriority.MEDIUM
-            )
-        except Exception:
-            decision = None
-
-    facility_name = form.facility_name or form_payload.get("facility") or form.account_number
-    title = f"Facility CSF – {facility_name or 'Submission'}"
-    if decision_status_value == "blocked":
-        subtitle = f"Blocked: {reason or ''}"
-    elif decision_status_value in {"manual_review", "needs_review"}:
-        subtitle = f"Review required: {reason or ''}"
+    form = request.form
+    
+    # Use trace_id from evaluate or generate new
+    trace_id = request.trace_id or generate_trace_id()
+    
+    logger.info(
+        "Facility CSF submit request received",
+        extra={
+            "trace_id": trace_id,
+            "trace_id_from_evaluate": request.trace_id is not None,
+        },
+    )
+    
+    # Run decision engine
+    decision = evaluate_facility_csf(form)
+    decision.reason = _facility_success_reason(decision.reason)
+    
+    # Determine priority based on decision status
+    priority = SubmissionPriority.HIGH if decision.status == "blocked" else SubmissionPriority.MEDIUM
+    
+    # Create human-readable title and subtitle
+    facility_name = getattr(form, 'facility_name', None) or form.account_number
+    title = f"Facility CSF – {facility_name}"
+    
+    if decision.status == "blocked":
+        subtitle = f"Blocked: {decision.reason}"
+    elif decision.status == "manual_review":
+        subtitle = f"Review required: {decision.reason}"
     else:
         subtitle = "Submitted for verification"
-
+    
+    # Create submission
     store = get_submission_store()
     submission = store.create_submission(
         csf_type="facility",
-        tenant=tenant,
+        tenant="facility-default",
         title=title,
         subtitle=subtitle,
         trace_id=trace_id,
-        payload={"form": form_payload, "decision": decision.model_dump() if "decision" in locals() and decision else {}},
-        decision_status=decision_status_value,
-        risk_level=risk_level,
+        payload={"form": form.model_dump(), "decision": decision.model_dump()},
+        decision_status=decision.status.value if hasattr(decision.status, "value") else decision.status,
+        risk_level="High" if decision.status == "blocked" else "Medium",
         priority=priority,
     )
 
@@ -269,26 +259,48 @@ async def submit_facility_csf(
         extra={
             "submission_id": submission.submission_id,
             "trace_id": trace_id,
-            "decision_status": decision_status_value,
+            "decision_status": decision.status,
             "account_number": form.account_number,
         },
     )
     
+    # Map status for trace recording and response
     status_map = {
         "ok_to_ship": DecisionStatus.OK_TO_SHIP,
         "blocked": DecisionStatus.BLOCKED,
         "manual_review": DecisionStatus.NEEDS_REVIEW,
         "needs_review": DecisionStatus.NEEDS_REVIEW,
     }
-    normalized_status = status_map.get(decision_status_value, DecisionStatus.NEEDS_REVIEW)
-
+    normalized_status = status_map.get(decision.status.value if hasattr(decision.status, 'value') else decision.status, DecisionStatus.NEEDS_REVIEW)
+    
+    # Compute risk for trace recording
+    risk_level, risk_score = compute_risk_for_status(normalized_status.value)
+    
+    # Record submission step to trace log
+    decision_outcome = DecisionOutcome(
+        status=normalized_status,
+        reason=decision.reason,
+        risk_level=risk_level,
+        risk_score=risk_score,
+        regulatory_references=[],
+        trace_id=trace_id,
+    )
+    
+    decision_log = get_decision_log()
+    decision_log.record(
+        trace_id=trace_id,
+        engine_family="csf",
+        decision_type="csf_facility_submit",
+        decision=decision_outcome,
+    )
+    
     return SubmissionResponse(
         submission_id=submission.submission_id,
-        trace_id=submission.trace_id,
-        status=normalized_status,
-        submitted_at=submission.created_at,
+        status="submitted",
+        created_at=submission.created_at,
+        trace_id=trace_id,
         decision_status=normalized_status,
-        reason=reason,
+        reason=decision.reason,
     )
 
 
@@ -324,11 +336,12 @@ async def get_facility_submission(submission_id: str) -> dict:
 
 @compat_router.post("/evaluate", response_model=FacilityCsfEvaluateResponse)
 async def evaluate_facility_csf_endpoint_v1(
+    request: Request,
     form: FacilityCsfForm,
 ) -> FacilityCsfEvaluateResponse:
     """Versioned compatibility endpoint for Facility CSF evaluation."""
 
-    return await evaluate_facility_csf_endpoint(form)
+    return await evaluate_facility_csf_endpoint(request, form)
 
 
 @compat_router.post("/form-copilot", response_model=CsfCopilotResult)

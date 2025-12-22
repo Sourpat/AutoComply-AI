@@ -34,7 +34,7 @@ import {
 } from "../api/csfHospitalCopilotClient";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { TestCoverageNote } from "./TestCoverageNote";
-import { API_BASE } from "../api/csfHospitalClient";
+import { API_BASE } from "../lib/api";
 import { buildCurlCommand } from "../utils/curl";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import { useRagDebug } from "../devsupport/RagDebugContext";

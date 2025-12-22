@@ -4,7 +4,7 @@ import {
   MockOrderScenarioBadge,
   type MockOrderScenarioSeverity,
 } from "./MockOrderScenarioBadge";
-import { API_BASE } from "../api/csfHospitalClient";
+import { API_BASE } from "../lib/api";
 import type { MockOrderDecisionResponse } from "../types/api";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import { useRagDebug } from "../devsupport/RagDebugContext";

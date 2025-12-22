@@ -1,7 +1,7 @@
 // src/api/csfResearcherCopilotClient.ts
 import { ResearcherCsfFormData } from "../domain/csfResearcher";
 import type { CsfCopilotResponse } from "../types/csfCopilot";
-import { API_BASE } from "./csfHospitalClient";
+import { API_BASE } from "../lib/api";
 
 export async function callResearcherFormCopilot(
   form: ResearcherCsfFormData

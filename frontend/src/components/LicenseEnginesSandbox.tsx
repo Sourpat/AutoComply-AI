@@ -1,7 +1,7 @@
 import React from "react";
 import { Globe, ShieldCheck } from "lucide-react";
 
-import { API_BASE } from "../api/csfHospitalClient";
+import { API_BASE } from "../lib/api";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { RegulatoryInsightsPanel } from "./RegulatoryInsightsPanel";
 import { TestCoverageNote } from "./TestCoverageNote";

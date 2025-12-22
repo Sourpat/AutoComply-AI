@@ -73,6 +73,10 @@ class PractitionerCsfDecision(BaseModel):
             "informed this decision."
         ),
     )
+    trace_id: Optional[str] = Field(
+        default=None,
+        description="Trace ID for decision audit and replay",
+    )
 
 
 def evaluate_practitioner_csf(form: PractitionerCsfForm) -> PractitionerCsfDecision:

@@ -33,12 +33,13 @@ interface TraceReplayDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   trace: TraceData | null;
+  isLoading?: boolean;
 }
 
-export function TraceReplayDrawer({ isOpen, onClose, trace }: TraceReplayDrawerProps) {
+export function TraceReplayDrawer({ isOpen, onClose, trace, isLoading = false }: TraceReplayDrawerProps) {
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
 
-  if (!isOpen || !trace) return null;
+  if (!isOpen) return null;
 
   const toggleStep = (stepId: string) => {
     setExpandedSteps((prev) => {
@@ -133,6 +134,42 @@ export function TraceReplayDrawer({ isOpen, onClose, trace }: TraceReplayDrawerP
 
       {/* Drawer */}
       <div className="fixed right-0 top-0 z-50 h-full w-full max-w-2xl overflow-y-auto border-l border-slate-200 bg-white shadow-2xl">
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex h-full items-center justify-center px-6 py-12">
+            <div className="space-y-4 text-center">
+              <div className="mx-auto h-8 w-8 animate-spin rounded-full border-b-2 border-sky-600"></div>
+              <p className="text-sm text-slate-500">Loading trace data...</p>
+            </div>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!isLoading && !trace && (
+          <div className="flex h-full flex-col items-center justify-center px-6 py-12">
+            <div className="space-y-4 text-center">
+              <div className="mx-auto rounded-full bg-slate-100 p-3">
+                <svg className="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-slate-900">No trace data available</p>
+                <p className="mt-1 text-xs text-slate-500">This trace may not have any recorded decision steps yet.</p>
+              </div>
+              <button
+                onClick={onClose}
+                className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Trace Content */}
+        {!isLoading && trace && (
+          <>
         {/* Header */}
         <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-6 py-4 backdrop-blur-sm">
           <div className="flex items-start justify-between">
@@ -319,6 +356,8 @@ export function TraceReplayDrawer({ isOpen, onClose, trace }: TraceReplayDrawerP
             })}
           </div>
         </div>
+          </>
+        )}
       </div>
     </>
   );

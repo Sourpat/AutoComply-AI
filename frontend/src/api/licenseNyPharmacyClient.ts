@@ -1,4 +1,4 @@
-import { API_BASE } from "./csfHospitalClient";
+import { API_BASE } from "../lib/api";
 import { NyPharmacyDecision, NyPharmacyFormData } from "../domain/licenseNyPharmacy";
 import { OhioTdddFormCopilotResponse as LicenseCopilotResponse } from "../domain/licenseOhioTddd";
 

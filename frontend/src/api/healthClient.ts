@@ -1,4 +1,4 @@
-import { API_BASE } from "./csfHospitalClient";
+import { API_BASE } from "../lib/api";
 
 // Detailed full health view used by SystemHealthCard
 export type HealthComponentStatus = {

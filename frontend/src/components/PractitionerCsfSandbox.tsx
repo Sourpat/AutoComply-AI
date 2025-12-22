@@ -19,7 +19,7 @@ import { ControlledSubstancesPanel } from "./ControlledSubstancesPanel";
 import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
-import { API_BASE } from "../api/csfHospitalClient";
+import { API_BASE } from "../lib/api";
 import { emitCodexCommand } from "../utils/codexLogger";
 import {
   OhioTdddDecision,

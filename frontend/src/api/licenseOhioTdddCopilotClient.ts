@@ -2,7 +2,7 @@ import {
   OhioTdddFormData,
   OhioTdddFormCopilotResponse,
 } from "../domain/licenseOhioTddd";
-import { API_BASE } from "./csfHospitalClient";
+import { API_BASE } from "../lib/api";
 
 export async function callOhioTdddFormCopilot(
   form: OhioTdddFormData

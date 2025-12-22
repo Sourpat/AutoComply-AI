@@ -9,7 +9,7 @@ import { evaluateOhioTdddLicense } from "../api/licenseOhioTdddClient";
 import { callOhioTdddFormCopilot } from "../api/licenseOhioTdddCopilotClient";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { CopyCurlButton } from "./CopyCurlButton";
-import { API_BASE as OHIO_TDDD_API_BASE } from "../api/csfHospitalClient";
+import { API_BASE as OHIO_TDDD_API_BASE } from "../lib/api";
 import { buildCurlCommand } from "../utils/curl";
 
 const OHIO_TDDD_ENGINE_FAMILY = "license";

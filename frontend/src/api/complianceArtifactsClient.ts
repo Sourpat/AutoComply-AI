@@ -1,5 +1,5 @@
 // src/api/complianceArtifactsClient.ts
-import { API_BASE } from "./csfHospitalClient";
+import { API_BASE } from "../lib/api";
 
 export type ArtifactType =
   | "STATUTE"

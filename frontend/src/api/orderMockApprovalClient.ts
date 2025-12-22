@@ -1,6 +1,6 @@
 import { OhioHospitalOrderApprovalResult } from "../domain/orderMockApproval";
 import type { DecisionOutcome, DecisionStatus } from "../types/decision";
-import { API_BASE } from "./csfHospitalClient";
+import { API_BASE } from "../lib/api";
 
 export type OrderScenarioKind =
   | "happy_path"

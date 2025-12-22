@@ -1,5 +1,5 @@
 // src/api/ohioTdddExplainClient.ts
-import { API_BASE } from "./csfHospitalClient";
+import { API_BASE } from "../lib/api";
 import type { DecisionStatus, RegulatoryReference } from "../types/decision";
 
 export interface OhioTdddDecisionSummary {

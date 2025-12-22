@@ -1,8 +1,14 @@
-from fastapi import APIRouter
+from typing import Optional
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
+from src.api.models.decision import DecisionOutcome, DecisionStatus, RegulatoryReference
+from src.autocomply.domain.trace import ensure_trace_id, TRACE_HEADER_NAME
+from src.autocomply.audit.decision_log import get_decision_log
+from src.autocomply.domain.decision_risk import compute_risk_for_status
 from src.autocomply.domain.csf_copilot import CsfCopilotResult, run_csf_copilot
 from src.autocomply.domain.csf_researcher import (
+    CsDecisionStatus,
     ResearcherCsfDecision,
     ResearcherCsfForm,
     evaluate_researcher_csf,
@@ -21,16 +27,63 @@ logger = get_logger(__name__)
 
 @router.post("/evaluate", response_model=ResearcherCsfDecision)
 async def evaluate_researcher_csf_endpoint(
+    request: Request,
     form: ResearcherCsfForm,
 ) -> ResearcherCsfDecision:
     """Evaluate a Researcher Controlled Substance Form and return a decision."""
 
+    # Generate trace ID for decision logging
+    incoming_trace_id = request.headers.get(TRACE_HEADER_NAME)
+    trace_id = ensure_trace_id(incoming_trace_id)
+
     logger.info(
         "Researcher CSF evaluation request received",
-        extra={"engine_family": "csf", "decision_type": "csf_researcher"},
+        extra={"engine_family": "csf", "decision_type": "csf_researcher", "trace_id": trace_id},
     )
 
-    return evaluate_researcher_csf(form)
+    decision = evaluate_researcher_csf(form)
+
+    # Log to decision log for trace replay
+    status_map = {
+        CsDecisionStatus.OK_TO_SHIP: DecisionStatus.OK_TO_SHIP,
+        CsDecisionStatus.BLOCKED: DecisionStatus.BLOCKED,
+        CsDecisionStatus.NEEDS_REVIEW: DecisionStatus.NEEDS_REVIEW,
+    }
+    normalized_status = status_map.get(decision.status, DecisionStatus.NEEDS_REVIEW)
+
+    regulatory_references = [
+        RegulatoryReference(id=ref, label=ref) for ref in decision.regulatory_references or []
+    ]
+
+    risk_level, risk_score = compute_risk_for_status(normalized_status.value)
+
+    decision_outcome = DecisionOutcome(
+        status=normalized_status,
+        reason=decision.reason,
+        risk_level=risk_level,
+        risk_score=risk_score,
+        regulatory_references=regulatory_references,
+        trace_id=trace_id,
+    )
+
+    decision_log = get_decision_log()
+    decision_log.record(
+        trace_id=trace_id,
+        engine_family="csf",
+        decision_type="csf_researcher",
+        decision=decision_outcome,
+    )
+
+    logger.info(
+        "Researcher CSF decision recorded",
+        extra={
+            "trace_id": trace_id,
+            "decision_status": decision.status,
+            "controlled_substances_count": len(form.controlled_substances) if form.controlled_substances else 0,
+        },
+    )
+
+    return decision
 
 
 @router.post("/form-copilot", response_model=CsfCopilotResult)
@@ -68,28 +121,44 @@ async def researcher_form_copilot(
     return rag_result
 
 
+class ResearcherCsfSubmitRequest(BaseModel):
+    """Request model for Researcher CSF submission with optional trace_id."""
+    form: ResearcherCsfForm
+    trace_id: Optional[str] = None
+
+
 class SubmissionResponse(BaseModel):
     """Response for Researcher CSF submission."""
     submission_id: str
     status: str
     created_at: str
+    trace_id: str
     decision_status: str | None = None
     reason: str | None = None
 
 
 @router.post("/submit", response_model=SubmissionResponse)
-async def submit_researcher_csf(form: ResearcherCsfForm) -> SubmissionResponse:
+async def submit_researcher_csf(request: ResearcherCsfSubmitRequest) -> SubmissionResponse:
     """
     Submit a Researcher CSF for internal verification tracking.
     
-    Creates a submission record in the unified submissions store
-    with trace_id for replay in Compliance Console.
+    Uses provided trace_id from evaluate (or generates new one).
     """
+    form = request.form
+    
+    # Use trace_id from evaluate or generate new
+    trace_id = request.trace_id or generate_trace_id()
+    
+    logger.info(
+        "Researcher CSF submit request received",
+        extra={
+            "trace_id": trace_id,
+            "trace_id_from_evaluate": request.trace_id is not None,
+        },
+    )
+    
     # Run decision engine
     decision = evaluate_researcher_csf(form)
-    
-    # Generate trace ID for replay
-    trace_id = generate_trace_id()
     
     # Determine priority
     priority = SubmissionPriority.HIGH if decision.status == "blocked" else SubmissionPriority.MEDIUM
@@ -131,10 +200,40 @@ async def submit_researcher_csf(form: ResearcherCsfForm) -> SubmissionResponse:
         },
     )
     
+    # Map status for trace recording
+    status_map = {
+        "ok_to_ship": DecisionStatus.OK_TO_SHIP,
+        "blocked": DecisionStatus.BLOCKED,
+        "manual_review": DecisionStatus.NEEDS_REVIEW,
+    }
+    normalized_status = status_map.get(decision.status, DecisionStatus.NEEDS_REVIEW)
+    
+    # Compute risk for trace recording
+    risk_level, risk_score = compute_risk_for_status(normalized_status.value)
+    
+    # Record submission step to trace log
+    decision_outcome = DecisionOutcome(
+        status=normalized_status,
+        reason=decision.reason,
+        risk_level=risk_level,
+        risk_score=risk_score,
+        regulatory_references=[],
+        trace_id=trace_id,
+    )
+    
+    decision_log = get_decision_log()
+    decision_log.record(
+        trace_id=trace_id,
+        engine_family="csf",
+        decision_type="csf_researcher_submit",
+        decision=decision_outcome,
+    )
+    
     return SubmissionResponse(
         submission_id=submission.submission_id,
         status="submitted",
         created_at=submission.created_at,
+        trace_id=trace_id,
         decision_status=decision.status,
         reason=decision.reason,
     )

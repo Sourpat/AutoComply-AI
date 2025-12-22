@@ -2,11 +2,11 @@ from typing import List, Optional
 from datetime import datetime
 import uuid
 
-from fastapi import APIRouter
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, Request
+from pydantic import BaseModel, Field
 
 from src.api.models.compliance_models import RegulatorySource
-from src.api.models.decision import RegulatoryReference
+from src.api.models.decision import DecisionOutcome, DecisionStatus, RegulatoryReference
 import src.autocomply.domain.csf_copilot as csf_copilot
 from src.autocomply.domain.controlled_substances import ControlledSubstanceItem
 from src.autocomply.domain.csf_practitioner import (
@@ -17,12 +17,14 @@ from src.autocomply.domain.csf_practitioner import (
     describe_practitioner_csf_decision,
     evaluate_practitioner_csf,
 )
+from src.autocomply.domain.decision_risk import compute_risk_for_status
 from src.autocomply.domain.rag_regulatory_explain import RegulatoryRagAnswer
 from src.autocomply.domain.submissions_store import (
     get_submission_store,
     SubmissionPriority,
 )
-from src.autocomply.domain.trace import generate_trace_id
+from src.autocomply.domain.trace import TRACE_HEADER_NAME, ensure_trace_id, generate_trace_id
+from src.autocomply.audit.decision_log import get_decision_log
 from src.utils.logger import get_logger
 
 
@@ -80,20 +82,61 @@ class PractitionerCopilotResponse(BaseModel):
 @router.post("/evaluate", response_model=PractitionerCsfDecision)
 async def evaluate_practitioner_csf_endpoint(
     form: PractitionerCsfForm,
+    request: Request,
 ) -> PractitionerCsfDecision:
     """
     Evaluate a Practitioner Controlled Substance Form and return a decision.
     """
+    # Generate or extract trace ID
+    incoming_trace_id = request.headers.get(TRACE_HEADER_NAME)
+    trace_id = ensure_trace_id(incoming_trace_id)
+    
     decision = evaluate_practitioner_csf(form)
+
+    # Log to decision audit
+    status_map = {
+        CsDecisionStatus.OK_TO_SHIP: DecisionStatus.OK_TO_SHIP,
+        CsDecisionStatus.BLOCKED: DecisionStatus.BLOCKED,
+        CsDecisionStatus.NEEDS_REVIEW: DecisionStatus.NEEDS_REVIEW,
+    }
+    normalized_status = status_map.get(decision.status, DecisionStatus.NEEDS_REVIEW)
+    
+    regulatory_references = [
+        RegulatoryReference(id=ref, label=ref) for ref in decision.regulatory_references or []
+    ]
+    
+    # Compute risk level and score based on decision status
+    risk_level, risk_score = compute_risk_for_status(normalized_status.value)
+    
+    decision_outcome = DecisionOutcome(
+        status=normalized_status,
+        reason=decision.reason,
+        risk_level=risk_level,
+        risk_score=risk_score,
+        regulatory_references=regulatory_references,
+        trace_id=trace_id,
+        debug_info={"missing_fields": decision.missing_fields} if decision.missing_fields else None,
+    )
+    
+    decision_log = get_decision_log()
+    decision_log.record(
+        trace_id=trace_id,
+        engine_family="csf",
+        decision_type="csf_practitioner",
+        decision=decision_outcome,
+    )
 
     logger.info(
         "Practitioner CSF decision evaluated",
         extra={
             "decision_status": decision.status,
             "missing_fields": decision.missing_fields,
+            "trace_id": trace_id,
         },
     )
 
+    # Add trace_id to response
+    decision.trace_id = trace_id
     return decision
 
 
@@ -190,38 +233,23 @@ async def practitioner_form_copilot(
 
 class SubmissionResponse(BaseModel):
     """Response for CSF submission."""
-
     submission_id: str
-    trace_id: str
     status: str
     created_at: str
+    trace_id: str
     decision_status: Optional[CsDecisionStatus] = None
     reason: Optional[str] = None
 
 
-class PractitionerSubmitRequest(BaseModel):
-    """
-    Accept both legacy minimal submit payloads and full Practitioner CSF forms.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    account_number: Optional[str] = None
-    prescriber_name: Optional[str] = None
-    practitioner_name: Optional[str] = None
-    facility_name: Optional[str] = None
-    facility_type: Optional[PractitionerFacilityType] = None
-    state_license_number: Optional[str] = None
-    dea_number: Optional[str] = None
-    ship_to_state: Optional[str] = None
-    attestation_accepted: Optional[bool] = None
-    controlled_substances: List[ControlledSubstanceItem] = Field(default_factory=list)
-    tenant: Optional[str] = None
+class PractitionerCsfSubmitRequest(BaseModel):
+    """Request model for Practitioner CSF submit with optional trace_id."""
+    form: PractitionerCsfForm
+    trace_id: Optional[str] = None
 
 
 @router.post("/submit", response_model=SubmissionResponse)
 async def submit_practitioner_csf(
-    form: PractitionerSubmitRequest,
+    request: PractitionerCsfSubmitRequest,
 ) -> SubmissionResponse:
     """
     Submit a Practitioner CSF for internal verification tracking.
@@ -229,81 +257,73 @@ async def submit_practitioner_csf(
     This endpoint:
     1. Evaluates the CSF using the decision engine
     2. Creates a submission record in the unified submissions store
-    3. Generates trace_id for trace replay in Compliance Console
+    3. Uses provided trace_id from evaluate (or generates new one)
     4. Returns submission ID and status for user confirmation
     """
-    # Normalize into PractitionerCsfForm when possible; otherwise fall back to
-    # a minimal submission that preserves backward compatibility for console
-    # tests and legacy clients.
-    form_payload = form.model_dump()
-    tenant = getattr(form, "tenant", None) or "practitioner-default"
-    trace_id = generate_trace_id()
-
-    try:
-        normalized_form = PractitionerCsfForm.model_validate(
-            {
-                "facility_name": form.facility_name
-                or form.practitioner_name
-                or form.prescriber_name
-                or "Practitioner",
-                "facility_type": form.facility_type
-                or PractitionerFacilityType.INDIVIDUAL_PRACTITIONER,
-                "account_number": form.account_number,
-                "practitioner_name": form.practitioner_name
-                or form.prescriber_name
-                or form.facility_name
-                or "",
-                "state_license_number": form.state_license_number or "",
-                "dea_number": form.dea_number or "",
-                "ship_to_state": form.ship_to_state or "",
-                "attestation_accepted": bool(form.attestation_accepted),
-                "controlled_substances": form.controlled_substances or [],
-                "internal_notes": form_payload.get("internal_notes"),
-            }
-        )
-        decision = evaluate_practitioner_csf(normalized_form)
-        priority = (
-            SubmissionPriority.HIGH
-            if decision.status == CsDecisionStatus.BLOCKED
-            else SubmissionPriority.MEDIUM
-        )
-
-        practitioner_name = (
-            getattr(normalized_form, "practitioner_name", None)
-            or normalized_form.account_number
-        )
-        title = f"Practitioner CSF – {practitioner_name}"
-
-        if decision.status == CsDecisionStatus.BLOCKED:
-            subtitle = f"Blocked: {decision.reason}"
-        elif decision.status in {CsDecisionStatus.NEEDS_REVIEW, CsDecisionStatus.MANUAL_REVIEW}:
-            subtitle = f"Review required: {decision.reason}"
-        else:
-            subtitle = "Submitted for verification"
-
-        risk_level = "High" if decision.status == CsDecisionStatus.BLOCKED else "Medium"
-        decision_status_value = decision.status.value if decision.status else None
-    except Exception:
-        # Legacy minimal payloads: skip decision engine and accept submission.
-        decision = None
-        priority = SubmissionPriority.MEDIUM
-        title = f"Practitioner CSF – {form.prescriber_name or form.account_number or 'Submission'}"
+    form = request.form
+    
+    # Run decision engine
+    decision = evaluate_practitioner_csf(form)
+    
+    # Use provided trace_id from evaluate, or generate new one
+    trace_id = request.trace_id or generate_trace_id()
+    
+    # Map status for trace recording
+    status_map = {
+        CsDecisionStatus.OK_TO_SHIP: DecisionStatus.OK_TO_SHIP,
+        CsDecisionStatus.BLOCKED: DecisionStatus.BLOCKED,
+        CsDecisionStatus.NEEDS_REVIEW: DecisionStatus.NEEDS_REVIEW,
+    }
+    normalized_status = status_map.get(decision.status, DecisionStatus.NEEDS_REVIEW)
+    
+    # Compute risk for trace recording
+    risk_level, risk_score = compute_risk_for_status(normalized_status.value)
+    
+    # Record submission step to trace log
+    decision_outcome = DecisionOutcome(
+        status=normalized_status,
+        reason=decision.reason,
+        risk_level=risk_level,
+        risk_score=risk_score,
+        regulatory_references=[],
+        trace_id=trace_id,
+    )
+    
+    decision_log = get_decision_log()
+    decision_log.record(
+        trace_id=trace_id,
+        engine_family="csf",
+        decision_type="csf_practitioner_submit",
+        decision=decision_outcome,
+    )
+    
+    # Determine priority based on decision status
+    priority = SubmissionPriority.HIGH if decision.status == CsDecisionStatus.BLOCKED else SubmissionPriority.MEDIUM
+    
+    # Create human-readable title and subtitle
+    practitioner_name = getattr(form, 'prescriber_name', None) or form.account_number
+    title = f"Practitioner CSF – {practitioner_name}"
+    
+    if decision.status == CsDecisionStatus.BLOCKED:
+        subtitle = f"Blocked: {decision.reason}"
+    elif decision.status == CsDecisionStatus.NEEDS_REVIEW:
+        subtitle = f"Review required: {decision.reason}"
+    else:
         subtitle = "Submitted for verification"
-        risk_level = None
-        decision_status_value = None
-
+    
+    # Get store and create submission
     store = get_submission_store()
     submission = store.create_submission(
         csf_type="practitioner",
-        tenant=tenant,
+        tenant="practitioner-default",
         title=title,
         subtitle=subtitle,
         trace_id=trace_id,
         payload={
-            "form": form_payload,
-            "decision": decision.model_dump() if decision else {},
+            "form": form.model_dump(),
+            "decision": decision.model_dump(),
         },
-        decision_status=decision_status_value,
+        decision_status=decision.status.value if hasattr(decision.status, 'value') else str(decision.status),
         risk_level=risk_level,
         priority=priority,
     )
@@ -320,22 +340,23 @@ async def submit_practitioner_csf(
     
     return SubmissionResponse(
         submission_id=submission.submission_id,
-        trace_id=submission.trace_id,
         status="submitted",
         created_at=submission.created_at,
-        decision_status=decision.status if decision else None,
-        reason=decision.reason if decision else None,
+        trace_id=trace_id,
+        decision_status=decision.status,
+        reason=decision.reason,
     )
 
 
 @router.get("/submissions/{submission_id}", response_model=dict)
-async def get_submission(submission_id: str) -> dict:
+async def get_practitioner_submission(submission_id: str) -> dict:
     """
     Retrieve a previously submitted Practitioner CSF by ID.
     
     Returns full submission details including form data, decision, and metadata.
     """
-    submission = SUBMISSION_STORE.get(submission_id)
+    store = get_submission_store()
+    submission = store.get_submission(submission_id)
     
     if not submission:
         return {
@@ -343,4 +364,15 @@ async def get_submission(submission_id: str) -> dict:
             "submission_id": submission_id,
         }
     
-    return submission
+    payload = submission.payload or {}
+    form_data = payload.get("form", {})
+    
+    return {
+        "submission_id": submission.submission_id,
+        "practitioner_name": form_data.get("prescriber_name"),
+        "account_number": form_data.get("account_number"),
+        "status": submission.decision_status or submission.status,
+        "submitted_at": submission.created_at,
+        "trace_id": submission.trace_id,
+        "payload": payload,
+    }

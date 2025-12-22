@@ -1,5 +1,5 @@
 // src/api/csfPractitionerCopilotClient.ts
-import { API_BASE } from "./csfHospitalClient";
+import { API_BASE } from "../lib/api";
 import { PractitionerCsfFormData } from "../domain/csfPractitioner";
 import type { CsfCopilotResponse } from "../types/csfCopilot";
 

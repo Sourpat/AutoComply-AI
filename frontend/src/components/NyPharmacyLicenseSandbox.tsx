@@ -12,7 +12,7 @@ import { NyPharmacyOrderApprovalResult } from "../domain/orderMockApproval";
 import { runNyPharmacyOrderMock } from "../api/orderNyPharmacyMockClient";
 import { OhioTdddFormCopilotResponse as LicenseCopilotResponse } from "../domain/licenseOhioTddd";
 import { trackSandboxEvent } from "../devsupport/telemetry";
-import { API_BASE as NY_PHARMACY_API_BASE } from "../api/csfHospitalClient";
+import { API_BASE as NY_PHARMACY_API_BASE } from "../lib/api";
 import { copyToClipboard } from "../utils/clipboard";
 import { buildCurlCommand } from "../utils/curl";
 import { CopyCurlButton } from "./CopyCurlButton";

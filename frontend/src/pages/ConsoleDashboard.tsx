@@ -347,11 +347,26 @@ const ConsoleDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedTenant, setSelectedTenant] = useState("ohio");
+  
+  // Track if initial load is complete and prevent overlapping fetches
+  const isInitialLoadRef = React.useRef(true);
+  const isFetchingRef = React.useRef(false);
+  const lastSignatureRef = React.useRef<string>("");
 
   // Fetch work queue from backend
   useEffect(() => {
     const fetchWorkQueue = async () => {
-      setIsLoading(true);
+      // Prevent overlapping fetches
+      if (isFetchingRef.current) {
+        return;
+      }
+      
+      isFetchingRef.current = true;
+      
+      // Only show loading on initial page load, not on polls
+      if (isInitialLoadRef.current) {
+        setIsLoading(true);
+      }
       setError(null);
       
       try {
@@ -359,8 +374,17 @@ const ConsoleDashboard: React.FC = () => {
           `/console/work-queue?status=submitted,in_review`
         );
         
-        // Transform backend submissions to WorkQueueItem format
-        const items: WorkQueueItem[] = data.items.map((sub: BackendSubmission) => {
+        // Compute signature to detect actual changes
+        const signature = data.items
+          .map((s) => `${s.submission_id}:${s.status}:${s.trace_id}:${s.updated_at || s.created_at}`)
+          .join("|");
+        
+        // Only update state if data actually changed
+        if (signature !== lastSignatureRef.current) {
+          lastSignatureRef.current = signature;
+          
+          // Transform backend submissions to WorkQueueItem format
+          const items: WorkQueueItem[] = data.items.map((sub: BackendSubmission) => {
           // Calculate age from created_at
           const createdDate = new Date(sub.created_at);
           const now = new Date();
@@ -395,15 +419,20 @@ const ConsoleDashboard: React.FC = () => {
             priority: priorityInfo.label as "High" | "Medium" | "Low",
             priorityColor: priorityInfo.color,
           };
-        });
-        
-        setWorkQueueItems(items);
+          });
+          
+          setWorkQueueItems(items);
+        }
       } catch (err) {
         console.error("Failed to fetch work queue:", err);
         setError(err instanceof Error ? err.message : "Failed to load work queue");
-        setWorkQueueItems([]);
+        // Don't clear items on error, keep showing the last successful fetch
       } finally {
-        setIsLoading(false);
+        if (isInitialLoadRef.current) {
+          setIsLoading(false);
+          isInitialLoadRef.current = false;
+        }
+        isFetchingRef.current = false;
       }
     };
     
@@ -415,6 +444,12 @@ const ConsoleDashboard: React.FC = () => {
   }, [selectedTenant]);
 
   const handleViewTrace = async (traceId: string) => {
+    if (!traceId) {
+      console.error("[ConsoleDashboard] No trace_id provided");
+      setError("Cannot open trace: missing trace ID");
+      return;
+    }
+    
     setSelectedTraceId(traceId);
     setIsTraceOpen(true);
     setIsLoadingTrace(true);
@@ -493,6 +528,7 @@ const ConsoleDashboard: React.FC = () => {
         isOpen={isTraceOpen}
         onClose={handleCloseTrace}
         trace={selectedTrace}
+        isLoading={isLoadingTrace}
       />
       {/* Sidebar */}
       <aside className="console-sidebar">
@@ -710,7 +746,7 @@ const ConsoleDashboard: React.FC = () => {
               </span>
             </div>
 
-            <div className="space-y-3 pt-4">
+            <div className="max-h-[520px] overflow-y-auto pr-2 space-y-3 pt-4">
               {isLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="text-sm text-slate-500">Loading work queue...</div>
@@ -749,8 +785,10 @@ const ConsoleDashboard: React.FC = () => {
                       </div>
                     </div>
                     <button 
-                      className="ml-4 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700"
+                      className="ml-4 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed"
                       onClick={() => handleViewTrace(item.trace_id)}
+                      disabled={!item.trace_id}
+                      title={item.trace_id ? `Open trace ${item.trace_id}` : "No trace ID available"}
                     >
                       Open trace
                     </button>

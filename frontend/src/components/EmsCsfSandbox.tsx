@@ -19,7 +19,7 @@ import type { ControlledSubstance } from "../api/controlledSubstancesClient";
 import { SourceDocumentChip } from "./SourceDocumentChip";
 import { CopyCurlButton } from "./CopyCurlButton";
 import { callEmsFormCopilot } from "../api/csfEmsCopilotClient";
-import { API_BASE } from "../api/csfHospitalClient";
+import { API_BASE } from "../lib/api";
 import { emitCodexCommand } from "../utils/codexLogger";
 import { trackSandboxEvent } from "../devsupport/telemetry";
 import { buildCurlCommand } from "../utils/curl";
