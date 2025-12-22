@@ -45,6 +45,8 @@ class CsfExplanation(BaseModel):
     """
 
     explanation: str
+    plain_english: str
+    csf_type: CsfType
     regulatory_references: List[str] = Field(
         default_factory=list,
         description="Echo of the decision's regulatory_references field.",
@@ -123,5 +125,7 @@ def explain_csf_decision(
 
     return CsfExplanation(
         explanation=explanation_text,
+        plain_english=explanation_text,
+        csf_type=csf_type,
         regulatory_references=decision.regulatory_references,
     )

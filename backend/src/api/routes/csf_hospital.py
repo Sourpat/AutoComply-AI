@@ -1,7 +1,7 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.api.models.decision import (
     DecisionOutcome,
@@ -10,7 +10,12 @@ from src.api.models.decision import (
 )
 from src.autocomply.audit.decision_log import get_decision_log
 from src.autocomply.domain.csf_copilot import CsfCopilotResult, run_csf_copilot
-from src.autocomply.domain.csf_hospital import HospitalCsfForm, evaluate_hospital_csf
+from src.autocomply.domain.controlled_substances import ControlledSubstanceItem
+from src.autocomply.domain.csf_hospital import (
+    HospitalCsfForm,
+    HospitalFacilityType,
+    evaluate_hospital_csf,
+)
 from src.autocomply.domain.decision_risk import compute_risk_for_status
 from src.autocomply.domain.trace import TRACE_HEADER_NAME, ensure_trace_id, generate_trace_id
 from src.autocomply.domain.submissions_store import (
@@ -144,65 +149,102 @@ async def hospital_form_copilot(form: HospitalCsfForm) -> CsfCopilotResult:
 class SubmissionResponse(BaseModel):
     """Response for Hospital CSF submission."""
     submission_id: str
+    trace_id: str
     status: str
     created_at: str
     decision_status: DecisionStatus | None = None
     reason: str | None = None
 
 
+class HospitalSubmitRequest(BaseModel):
+    """Accept both minimal and full Hospital CSF submit payloads."""
+
+    model_config = ConfigDict(extra="allow")
+
+    account_number: str | None = None
+    facility_name: str | None = None
+    pharmacy_license_number: str | None = None
+    dea_number: str | None = None
+    ship_to_state: str | None = None
+    attestation_accepted: bool | None = None
+    facility_type: HospitalFacilityType | None = None
+    pharmacist_in_charge_name: str | None = None
+    pharmacist_contact_phone: str | None = None
+    controlled_substances: list[ControlledSubstanceItem] = Field(default_factory=list)
+    tenant: str | None = None
+
+
 @router.post("/submit", response_model=SubmissionResponse)
-async def submit_hospital_csf(form: HospitalCsfForm) -> SubmissionResponse:
+async def submit_hospital_csf(form: HospitalSubmitRequest) -> SubmissionResponse:
     """
     Submit a Hospital CSF for internal verification tracking.
-    
+
     Creates a submission record in the unified submissions store
     with trace_id for replay in Compliance Console.
     """
-    # Run decision engine
-    decision = evaluate_hospital_csf(form)
-    
-    # Generate trace ID for replay
     trace_id = generate_trace_id()
-    
-    # Map status
+    tenant = getattr(form, "tenant", None) or "hospital-default"
+    form_payload = form.model_dump()
+
+    try:
+        normalized_form = HospitalCsfForm.model_validate(
+            {
+                "facility_name": form.facility_name or "Hospital",
+                "facility_type": form.facility_type or HospitalFacilityType.HOSPITAL,
+                "account_number": form.account_number,
+                "pharmacy_license_number": form.pharmacy_license_number or "",
+                "dea_number": form.dea_number or "",
+                "pharmacist_in_charge_name": form.pharmacist_in_charge_name or "",
+                "pharmacist_contact_phone": form.pharmacist_contact_phone,
+                "ship_to_state": form.ship_to_state or "",
+                "attestation_accepted": bool(form.attestation_accepted),
+                "controlled_substances": form.controlled_substances or [],
+                "internal_notes": form_payload.get("internal_notes"),
+            }
+        )
+        decision = evaluate_hospital_csf(normalized_form)
+    except Exception:
+        decision = None
+
     status_map = {
         "ok_to_ship": DecisionStatus.OK_TO_SHIP,
         "blocked": DecisionStatus.BLOCKED,
         "manual_review": DecisionStatus.NEEDS_REVIEW,
+        "needs_review": DecisionStatus.NEEDS_REVIEW,
     }
-    normalized_status = status_map.get(decision.status.value, DecisionStatus.NEEDS_REVIEW)
-    
-    # Determine priority
+    normalized_status = (
+        status_map.get(decision.status.value, DecisionStatus.NEEDS_REVIEW)
+        if decision
+        else DecisionStatus.NEEDS_REVIEW
+    )
+
     priority = SubmissionPriority.HIGH if normalized_status == DecisionStatus.BLOCKED else SubmissionPriority.MEDIUM
-    
-    # Create title and subtitle
+
     facility_name = form.facility_name or form.account_number
-    title = f"Hospital CSF \u2013 {facility_name}"
-    
+    title = f"Hospital CSF – {facility_name or 'Submission'}"
+
     if normalized_status == DecisionStatus.BLOCKED:
-        subtitle = f"Blocked: {decision.reason}"
+        subtitle = f"Blocked: {decision.reason if decision else ''}"
     elif normalized_status == DecisionStatus.NEEDS_REVIEW:
-        subtitle = f"Review required: {decision.reason}"
+        subtitle = f"Review required: {decision.reason if decision else ''}"
     else:
         subtitle = "Submitted for verification"
-    
-    # Create submission
+
     store = get_submission_store()
     submission = store.create_submission(
         csf_type="hospital",
-        tenant=getattr(form, 'tenant', 'hospital-default'),
+        tenant=tenant,
         title=title,
         subtitle=subtitle,
         trace_id=trace_id,
         payload={
-            "form": form.model_dump(),
-            "decision": decision.model_dump(),
+            "form": form_payload,
+            "decision": decision.model_dump() if decision else {},
         },
         decision_status=normalized_status.value,
         risk_level="High" if normalized_status == DecisionStatus.BLOCKED else "Medium",
         priority=priority,
     )
-    
     logger.info(
         "Hospital CSF submitted for verification",
         extra={
@@ -214,8 +256,9 @@ async def submit_hospital_csf(form: HospitalCsfForm) -> SubmissionResponse:
     
     return SubmissionResponse(
         submission_id=submission.submission_id,
+        trace_id=submission.trace_id,
         status="submitted",
         created_at=submission.created_at,
         decision_status=normalized_status,
-        reason=decision.reason,
+        reason=decision.reason if decision else None,
     )

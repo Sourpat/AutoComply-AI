@@ -94,6 +94,10 @@ def evaluate_researcher_csf(form: ResearcherCsfForm) -> ResearcherCsfDecision:
             cs_items.append(item.to_controlled_substance_item())
         elif isinstance(item, ControlledSubstanceItem):
             cs_items.append(item)
+        elif hasattr(item, "model_dump"):
+            cs_items.append(ControlledSubstanceItem.model_validate(item.model_dump()))
+        elif isinstance(item, dict):
+            cs_items.append(ControlledSubstanceItem.model_validate(item))
         else:
             cs_items.append(ControlledSubstanceItem.model_validate(item))
 
