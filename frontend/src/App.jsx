@@ -9,6 +9,9 @@ import { NyPharmacyLicenseSandbox } from "./components/NyPharmacyLicenseSandbox"
 import AutoComplyAiCaseStudy from "./pages/projects/AutoComplyAiCaseStudy";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { BackendConnectionIndicator } from "./components/BackendConnectionIndicator";
+// Learn After First Unknown pages
+import { ChatPage } from "./pages/ChatPage";
+import { AdminReviewPage } from "./pages/AdminReviewPage";
 
 export default function App() {
   return (
@@ -35,6 +38,9 @@ export default function App() {
               path="/projects/autocomply-ai"
               element={<AutoComplyAiCaseStudy repoUrl="https://github.com/Sourpat/AutoComply-AI" />}
             />
+            {/* Learn After First Unknown routes */}
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/admin/review/*" element={<AdminReviewPage />} />
           </Routes>
         </Layout>
         <BackendConnectionIndicator />

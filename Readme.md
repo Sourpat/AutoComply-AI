@@ -13,6 +13,111 @@ AutoComply AI simulates a realistic compliance environment where:
 - **Controlled Substance Forms (CSF) Suite** – multi-tenant sandboxes + RAG explanations for Hospital, Practitioner, Facility, EMS, and Researcher CSFs. See [`docs/csf_suite_overview.md`](docs/csf_suite_overview.md) for details.
 - **License Compliance Suite** – license evaluation + RAG-based explanations, starting with Ohio TDDD. See [`docs/license_suite_overview.md`](docs/license_suite_overview.md) for details.
 - **End-to-End Compliance Journey** – how CSF decisions and Ohio TDDD license checks work together, with explainable RAG copilots. See [`docs/compliance_journey_csf_license.md`](docs/compliance_journey_csf_license.md).
+- **🆕 Learn After First Unknown Question** – A human-in-the-loop chatbot that learns from reviewers and builds a knowledge base over time. See [Learn After First Unknown](#learn-after-first-unknown-feature) section below.
+
+## 🆕 Learn After First Unknown Feature
+
+AutoComply AI now includes a working **"Learn After First Unknown Question"** prototype that demonstrates how AI systems can improve over time through human feedback:
+
+### How It Works
+
+1. **Ask a Question**: Users ask compliance questions via the chatbot (`/chat`)
+2. **KB Similarity Search**: System searches the knowledge base using semantic similarity (sentence-transformers)
+3. **Gating Logic**:
+   - **Similarity Gate**: If best match score ≥ 78% threshold → Answer immediately
+   - **Policy Gate**: Basic content filtering for inappropriate queries
+   - If either gate fails → Route to human review queue
+4. **Human Review**: Reviewers approve/edit answers in the Admin UI (`/admin/review`)
+5. **Publish to KB**: Approved answers become immediately searchable for future queries
+6. **Decision Trace**: Every response includes full transparency (scores, gating decisions, queue IDs)
+
+### Quick Demo (3 minutes)
+
+**Step 1: Start the servers**
+```bash
+# Terminal 1 - Backend
+cd backend
+pip install -r requirements.txt
+uvicorn src.api.main:app --reload --host 127.0.0.1 --port 8001
+
+# Terminal 2 - Frontend
+cd frontend
+npm install
+npm run dev
+```
+
+**Step 2: Seed the knowledge base**
+```bash
+# Terminal 3 (or use API endpoint)
+cd backend
+python scripts/seed_kb.py
+
+# OR use the API endpoint:
+curl -X POST http://127.0.0.1:8001/api/v1/admin/kb/seed
+```
+
+**Step 3: Try the chatbot**
+- Navigate to http://localhost:5173/chat
+- Ask: "What are the requirements for Schedule II controlled substances in Florida?"
+- If no KB match exists → See "submitted for review" message + decision trace showing queue_item_id
+
+**Step 4: Review and publish**
+- Navigate to http://localhost:5173/admin/review
+- Click on the pending question
+- Edit the AI draft answer
+- Click "Approve & Publish to KB"
+
+**Step 5: Ask again**
+- Return to /chat
+- Ask the same question
+- This time it answers immediately from KB with high confidence score in decision trace
+
+### API Endpoints
+
+**Chat:**
+- `POST /api/v1/chat/ask` - Ask a question
+- `GET /api/v1/chat/history/{session_id}` - Get chat history
+
+**Admin Review Queue:**
+- `GET /api/v1/admin/review-queue/items` - List review items (filter by status)
+- `GET /api/v1/admin/review-queue/items/{item_id}` - Get item details
+- `POST /api/v1/admin/review-queue/items/{item_id}/publish` - Approve & publish to KB
+
+**Metrics:**
+- `GET /api/v1/metrics/` - Full metrics (answer rate, avg publish time, top unknowns)
+- `GET /api/v1/metrics/summary` - Quick dashboard stats
+
+### Architecture Highlights
+
+**Backend:**
+- SQLite database (`backend/data/autocomply.db`) with tables: Conversation, Message, QuestionEvent, ReviewQueueItem, KBEntry
+- Sentence-transformers (`all-MiniLM-L6-v2`) for semantic similarity
+- Configurable similarity threshold (default 0.78)
+- Decision trace on every response
+
+**Frontend:**
+- React + TypeScript chat UI with decision trace expansion
+- Admin review queue with status filtering
+- Clean approve/publish workflow
+
+**Data Flow:**
+```
+User Question 
+  → KB Search (similarity scoring)
+  → Gating (similarity + policy)
+  → IF pass: Return KB answer
+  → IF fail: Create QuestionEvent + ReviewQueueItem
+  → Human reviews in Admin UI
+  → Publish creates KBEntry with embedding
+  → Future queries match immediately
+```
+
+### Configuration
+
+Edit similarity threshold in `backend/src/services/kb_service.py`:
+```python
+SIMILARITY_THRESHOLD = 0.78  # Adjust between 0.0 - 1.0
+```
 
 ## How this maps to an AI PM lifecycle
 
