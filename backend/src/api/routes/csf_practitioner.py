@@ -242,8 +242,28 @@ class SubmissionResponse(BaseModel):
 
 
 class PractitionerCsfSubmitRequest(BaseModel):
-    """Request model for Practitioner CSF submit with optional trace_id."""
-    form: PractitionerCsfForm
+    """Request model for Practitioner CSF submit - accepts flat form fields with optional trace_id."""
+    # Identity fields - use prescriber_name (matches tests) which we'll map to practitioner_name
+    prescriber_name: Optional[str] = ""
+    facility_name: Optional[str] = ""
+    facility_type: Optional[PractitionerFacilityType] = PractitionerFacilityType.INDIVIDUAL_PRACTITIONER
+    account_number: Optional[str] = None
+    
+    # Licensing
+    state_license_number: Optional[str] = ""
+    dea_number: Optional[str] = ""
+    
+    # Shipping
+    ship_to_state: Optional[str] = ""
+    
+    # Attestation
+    attestation_accepted: bool = False
+    
+    # Controlled substances
+    controlled_substances: List[ControlledSubstanceItem] = Field(default_factory=list)
+    
+    # Optional fields
+    internal_notes: Optional[str] = None
     trace_id: Optional[str] = None
 
 
@@ -260,7 +280,19 @@ async def submit_practitioner_csf(
     3. Uses provided trace_id from evaluate (or generates new one)
     4. Returns submission ID and status for user confirmation
     """
-    form = request.form
+    # Convert request to form (map prescriber_name to practitioner_name)
+    form = PractitionerCsfForm(
+        facility_name=request.facility_name,
+        facility_type=request.facility_type,
+        account_number=request.account_number,
+        practitioner_name=request.prescriber_name,  # Map prescriber_name -> practitioner_name
+        state_license_number=request.state_license_number,
+        dea_number=request.dea_number,
+        ship_to_state=request.ship_to_state,
+        attestation_accepted=request.attestation_accepted,
+        controlled_substances=request.controlled_substances,
+        internal_notes=request.internal_notes,
+    )
     
     # Run decision engine
     decision = evaluate_practitioner_csf(form)

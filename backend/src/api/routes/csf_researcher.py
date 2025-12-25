@@ -121,9 +121,8 @@ async def researcher_form_copilot(
     return rag_result
 
 
-class ResearcherCsfSubmitRequest(BaseModel):
-    """Request model for Researcher CSF submission with optional trace_id."""
-    form: ResearcherCsfForm
+class ResearcherCsfSubmitRequest(ResearcherCsfForm):
+    """Request model for Researcher CSF submission - accepts flat form fields with optional trace_id."""
     trace_id: Optional[str] = None
 
 
@@ -144,7 +143,8 @@ async def submit_researcher_csf(request: ResearcherCsfSubmitRequest) -> Submissi
     
     Uses provided trace_id from evaluate (or generates new one).
     """
-    form = request.form
+    # Convert request to form (exclude trace_id)
+    form = ResearcherCsfForm(**request.model_dump(exclude={'trace_id'}))
     
     # Use trace_id from evaluate or generate new
     trace_id = request.trace_id or generate_trace_id()
