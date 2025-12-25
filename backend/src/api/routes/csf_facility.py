@@ -201,6 +201,7 @@ class SubmissionResponse(BaseModel):
     submission_id: str
     status: str
     created_at: str
+    submitted_at: str  # Backward compatibility alias for created_at
     trace_id: str
     decision_status: Optional[DecisionStatus] = None
     reason: Optional[str] = None
@@ -309,6 +310,7 @@ async def submit_facility_csf(
         submission_id=submission.submission_id,
         status="submitted",
         created_at=submission.created_at,
+        submitted_at=submission.created_at,  # Backward compatibility alias
         trace_id=trace_id,
         decision_status=normalized_status,
         reason=decision.reason,

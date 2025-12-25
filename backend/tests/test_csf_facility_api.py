@@ -244,12 +244,11 @@ def test_facility_csf_submit_endpoint(base_facility_payload: dict) -> None:
     assert eval_resp.status_code == 200
     decision_data = eval_resp.json()
 
-    # Now submit for verification
+    # Now submit for verification - copy base payload and add decision fields
     submit_payload = {
-        "facility_name": base_facility_payload["facility_name"],
-        "account_number": base_facility_payload["account_number"],
+        **base_facility_payload,
         "decision_status": decision_data["status"],
-        "copilot_used": False,
+        "trace_id": "trace-test-facility-1",
     }
     resp = client.post("/csf/facility/submit", json=submit_payload)
     assert resp.status_code == 200
@@ -258,22 +257,22 @@ def test_facility_csf_submit_endpoint(base_facility_payload: dict) -> None:
     assert "submission_id" in data
     assert isinstance(data["submission_id"], str)
     assert len(data["submission_id"]) > 0
+    assert data["decision_status"] == "ok_to_ship"
     assert "submitted_at" in data
-    assert data["status"] == decision_data["status"]
 
 
 def test_facility_csf_get_submission_endpoint(base_facility_payload: dict) -> None:
     """Test retrieving a Facility CSF submission by ID."""
-    # First submit
+    # First evaluate to get a decision
     eval_resp = client.post("/csf/facility/evaluate", json=base_facility_payload)
     assert eval_resp.status_code == 200
     decision_data = eval_resp.json()
 
+    # Submit with full payload and decision fields
     submit_payload = {
-        "facility_name": base_facility_payload["facility_name"],
-        "account_number": base_facility_payload["account_number"],
+        **base_facility_payload,
         "decision_status": decision_data["status"],
-        "copilot_used": False,
+        "trace_id": "trace-test-facility-get-1",
     }
     submit_resp = client.post("/csf/facility/submit", json=submit_payload)
     assert submit_resp.status_code == 200
