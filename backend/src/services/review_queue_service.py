@@ -33,6 +33,7 @@ class ReviewQueueService:
         self,
         question_event_id: int,
         draft_answer: Optional[str] = None,
+        draft_metadata: Optional[dict] = None,
         tags: Optional[List[str]] = None,
         priority: int = 0
     ) -> ReviewQueueItem:
@@ -43,6 +44,7 @@ class ReviewQueueService:
             question_event_id=question_event_id,
             status=ReviewStatus.OPEN,
             draft_answer=draft_answer,
+            draft_metadata=draft_metadata,
             tags=tags,
             priority=priority
         )
@@ -150,13 +152,16 @@ class ReviewQueueService:
             logger.error(f"Question event {item.question_event_id} not found")
             return None
         
-        # Create KB entry
+        # Create KB entry with auto-generated variants
         kb_entry = self.kb_service.create_kb_entry(
             canonical_question=question_event.question_text,
             answer=final_answer,
             tags=tags or item.tags,
-            source="review_queue"
+            source="review_queue",
+            auto_generate_variants=True  # Generate 3-5 variants automatically
         )
+        
+        logger.info(f"Published KB entry {kb_entry.id} with {len(kb_entry.question_variants) if kb_entry.question_variants else 0} variants")
         
         # Update review item
         item.final_answer = final_answer

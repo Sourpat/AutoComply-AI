@@ -36,6 +36,7 @@ class ReviewQueueItemResponse(BaseModel):
     question_text: str  # From related question_event
     status: str
     draft_answer: Optional[str] = None
+    draft_metadata: Optional[dict] = None  # Triage, top_matches, scores
     final_answer: Optional[str] = None
     assigned_to: Optional[str] = None
     tags: Optional[List[str]] = None
@@ -129,6 +130,7 @@ async def list_review_items(
             question_text=question_event.question_text if question_event else "",
             status=item.status.value,
             draft_answer=item.draft_answer,
+            draft_metadata=item.draft_metadata,
             final_answer=item.final_answer,
             assigned_to=item.assigned_to,
             tags=item.tags,
@@ -172,6 +174,7 @@ async def get_review_item(
         question_text=question_event.question_text if question_event else "",
         status=item.status.value,
         draft_answer=item.draft_answer,
+        draft_metadata=item.draft_metadata,
         final_answer=item.final_answer,
         assigned_to=item.assigned_to,
         tags=item.tags,
@@ -243,11 +246,38 @@ async def publish_answer(
     2. Creates a new KB entry
     3. Makes the answer immediately available for future queries
     """
+    # Validate final_answer
+    final_answer = request.final_answer.strip()
+    
+    if not final_answer:
+        raise HTTPException(
+            status_code=400,
+            detail="Final answer cannot be empty"
+        )
+    
+    # Check for draft markers that should not be in final answer (case-insensitive)
+    final_answer_lower = final_answer.lower()
+    draft_markers = [
+        "draft answer",
+        "requires human review",
+        "reviewer:",
+        "**draft**",
+        "please write a complete answer",
+        "must be reviewed",
+        "ai-generated draft"
+    ]
+    for marker in draft_markers:
+        if marker in final_answer_lower:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Final answer looks like a draft. Please provide a clean customer-facing answer."
+            )
+    
     review_service = ReviewQueueService(db)
     
     item = review_service.approve_and_publish(
         item_id=item_id,
-        final_answer=request.final_answer,
+        final_answer=final_answer,
         tags=request.tags
     )
     

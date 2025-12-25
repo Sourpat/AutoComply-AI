@@ -1,30 +1,111 @@
-# backend/scripts/seed_kb.py
+# backend/src/api/routes/demo.py
 """
-Quick script to seed the knowledge base with sample questions.
-Run this after starting the backend to populate initial data for testing.
+Demo endpoints for resetting and reseeding the database for demonstrations.
+
+ADMIN ONLY - These endpoints clear and reset data.
 """
 
-import sys
-from pathlib import Path
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import Dict
+import logging
 
-# Add backend/src to path
-backend_src = Path(__file__).parent.parent / "src"
-sys.path.insert(0, str(backend_src))
+from src.database.connection import get_db
+from src.database.models import (
+    KBEntry,
+    QuestionEvent,
+    ReviewQueueItem,
+    Message,
+    Conversation
+)
+from src.services.kb_service import KBService
 
-from database.connection import SessionLocal, init_db
-from services.kb_service import KBService
+logger = logging.getLogger(__name__)
+
+router = APIRouter(
+    prefix="/api/v1/demo",
+    tags=["demo"],
+)
 
 
-def seed_knowledge_base():
-    """Seed the KB with sample compliance questions."""
+@router.post("/reset")
+async def reset_demo(db: Session = Depends(get_db)) -> Dict[str, str]:
+    """
+    Reset demo database to clean state and reseed KB.
     
-    # Initialize database
-    print("Initializing database...")
-    init_db()
+    ADMIN ONLY endpoint for portfolio demonstrations.
     
-    db = SessionLocal()
-    kb_service = KBService(db)
+    Workflow:
+    1. Delete all question events and review queue items
+    2. Delete all messages and conversations
+    3. Delete all KB entries
+    4. Reseed KB with demo questions (including state-specific ones)
     
+    Returns:
+        Status message with counts of deleted and created items
+    """
+    try:
+        logger.info("Starting demo reset...")
+        
+        # 1. Delete review queue items first (has FK to question_events)
+        review_count = db.query(ReviewQueueItem).delete()
+        logger.info(f"Deleted {review_count} review queue items")
+        
+        # 2. Delete messages (has FK to conversations and question_events)
+        message_count = db.query(Message).delete()
+        logger.info(f"Deleted {message_count} messages")
+        
+        # 3. Delete question events (has FK to conversations)
+        event_count = db.query(QuestionEvent).delete()
+        logger.info(f"Deleted {event_count} question events")
+        
+        # 4. Delete conversations
+        conv_count = db.query(Conversation).delete()
+        logger.info(f"Deleted {conv_count} conversations")
+        
+        # 5. Delete KB entries
+        kb_count = db.query(KBEntry).delete()
+        logger.info(f"Deleted {kb_count} KB entries")
+        
+        db.commit()
+        
+        # 6. Reseed KB with demo data
+        kb_service = KBService(db)
+        seeded_count = await _reseed_kb(kb_service, db)
+        
+        logger.info(f"Demo reset completed successfully. Seeded {seeded_count} KB entries.")
+        
+        return {
+            "status": "success",
+            "message": f"Demo reset completed. Deleted {kb_count} KB entries, {event_count} events, {review_count} review items. Seeded {seeded_count} new KB entries.",
+            "deleted": {
+                "kb_entries": kb_count,
+                "question_events": event_count,
+                "review_items": review_count,
+                "messages": message_count,
+                "conversations": conv_count
+            },
+            "seeded": {
+                "kb_entries": seeded_count
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Demo reset failed: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Demo reset failed: {str(e)}"
+        )
+
+
+async def _reseed_kb(kb_service: KBService, db: Session) -> int:
+    """
+    Reseed KB with demo data including state-specific questions.
+    
+    Returns:
+        Number of KB entries created
+    """
     sample_entries = [
         {
             "canonical_question": "What is a Schedule II drug?",
@@ -79,43 +160,20 @@ def seed_knowledge_base():
         }
     ]
     
-    print(f"\nSeeding {len(sample_entries)} knowledge base entries...")
-    created = 0
-    
-    for entry in sample_entries:
+    created_count = 0
+    for entry_data in sample_entries:
         try:
             kb_entry = kb_service.create_kb_entry(
-                canonical_question=entry["canonical_question"],
-                answer=entry["answer"],
-                tags=entry.get("tags", []),
-                source="seed",
-                question_variants=entry.get("question_variants"),
-                auto_generate_variants=entry.get("auto_generate_variants", False)
+                canonical_question=entry_data["canonical_question"],
+                answer=entry_data["answer"],
+                tags=entry_data.get("tags", []),
+                source="demo_seed",
+                question_variants=entry_data.get("question_variants"),
+                auto_generate_variants=entry_data.get("auto_generate_variants", False)
             )
-            
-            variants_info = ""
-            if kb_entry.question_variants:
-                variants_info = f" with {len(kb_entry.question_variants)} variants"
-            
-            print(f"✓ Created KB entry {kb_entry.id}: {entry['canonical_question'][:60]}...{variants_info}")
-            
-            # Show variants if generated
-            if kb_entry.question_variants:
-                for i, variant in enumerate(kb_entry.question_variants, 1):
-                    print(f"  Variant {i}: {variant}")
-            
-            created += 1
+            logger.info(f"Created KB entry {kb_entry.id}: {entry_data['canonical_question'][:60]}...")
+            created_count += 1
         except Exception as e:
-            print(f"✗ Failed to create entry: {e}")
+            logger.error(f"Failed to create KB entry: {e}")
     
-    db.close()
-    
-    print(f"\n✓ Successfully seeded {created} KB entries!")
-    print("\nYou can now:")
-    print("1. Navigate to http://localhost:5173/chat")
-    print("2. Try asking one of the seeded questions")
-    print("3. Or ask a new question to see the review queue workflow\n")
-
-
-if __name__ == "__main__":
-    seed_knowledge_base()
+    return created_count

@@ -413,6 +413,9 @@ function ComplianceConsolePageInner() {
               Explore sandbox flows for different customer types like hospitals, facilities, practitioners, EMS, and
               researchers. Each sandbox calls a CSF decision engine and a CSF Form Copilot backed by RAG.
             </p>
+            <p className="text-[11px] leading-relaxed text-blue-700 font-medium">
+              This queue contains CSF and License verification artifacts submitted for review.
+            </p>
           </div>
           <ul className="list-disc space-y-1 pl-5 text-[11px] text-slate-700">
             <li>Evaluate CSF requests (`/csf/{type}/evaluate`).</li>
@@ -453,6 +456,9 @@ function ComplianceConsolePageInner() {
             <p className="text-[11px] leading-relaxed text-slate-600">
               Test license decision flows starting with Ohio TDDD (Terminal Distributor of Dangerous Drugs). Evaluate
               requests and run the License Copilot for explainable outcomes.
+            </p>
+            <p className="text-[11px] leading-relaxed text-blue-700 font-medium">
+              License verification requests appear here, separate from Chat Q&A review.
             </p>
           </div>
           <ul className="list-disc space-y-1 pl-5 text-[11px] text-slate-700">

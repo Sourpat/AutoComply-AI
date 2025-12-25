@@ -45,6 +45,8 @@ from src.api.routes import chat
 from src.api.routes import admin_review
 from src.api.routes import metrics
 from src.api.routes import kb_admin
+from src.api.routes import demo
+from src.api.routes import ops
 
 # Database initialization
 from src.database.connection import init_db
@@ -120,6 +122,8 @@ app.include_router(chat.router)
 app.include_router(admin_review.router)
 app.include_router(metrics.router)
 app.include_router(kb_admin.router)
+app.include_router(demo.router)
+app.include_router(ops.router)
 
 # Compatibility endpoint for older/tests path:
 # Tests expect: POST /api/v1/license/validate-pdf (singular "license")

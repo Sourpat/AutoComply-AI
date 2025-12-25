@@ -12,6 +12,9 @@ import { BackendConnectionIndicator } from "./components/BackendConnectionIndica
 // Learn After First Unknown pages
 import { ChatPage } from "./pages/ChatPage";
 import { AdminReviewPage } from "./pages/AdminReviewPage";
+import { AdminLoginPage } from "./pages/AdminLoginPage";
+import { AdminOpsDashboard } from "./pages/AdminOpsDashboard";
+import { ProtectedAdminRoute } from "./components/ProtectedAdminRoute";
 
 export default function App() {
   return (
@@ -40,7 +43,23 @@ export default function App() {
             />
             {/* Learn After First Unknown routes */}
             <Route path="/chat" element={<ChatPage />} />
-            <Route path="/admin/review/*" element={<AdminReviewPage />} />
+            <Route path="/admin/login" element={<AdminLoginPage />} />
+            <Route 
+              path="/admin/review/*" 
+              element={
+                <ProtectedAdminRoute>
+                  <AdminReviewPage />
+                </ProtectedAdminRoute>
+              } 
+            />
+            <Route 
+              path="/admin/ops" 
+              element={
+                <ProtectedAdminRoute>
+                  <AdminOpsDashboard />
+                </ProtectedAdminRoute>
+              } 
+            />
           </Routes>
         </Layout>
         <BackendConnectionIndicator />

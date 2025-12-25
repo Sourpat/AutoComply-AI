@@ -51,6 +51,8 @@ class ReasonCode(str, enum.Enum):
     LOW_SIMILARITY = "low_similarity"  # Below similarity threshold
     POLICY_GATE = "policy_gate"  # Triggered policy safety gate
     NO_KB_MATCH = "no_kb_match"  # No KB entries exist yet
+    JURISDICTION_MISMATCH = "jurisdiction_mismatch"  # State in question doesn't match KB entry states
+    INTERNAL_ERROR = "internal_error"  # Exception caught during processing
 
 
 # ============================================================================
@@ -100,6 +102,13 @@ class QuestionEvent(Base):
     status = Column(SQLEnum(QuestionStatus), nullable=False, index=True)
     reason_code = Column(SQLEnum(ReasonCode), nullable=True)
     
+    # Triage results (lightweight classification before retrieval)
+    intent_category = Column(String(100), nullable=True)  # 'license_inquiry', 'csf_question', etc.
+    risk_level = Column(String(50), nullable=True)  # 'low', 'medium', 'high'
+    needs_clarification = Column(Integer, default=0)  # Boolean: 1=needs clarification
+    recommended_action = Column(String(50), nullable=True)  # 'ANSWER', 'ASK_CLARIFY', 'NEEDS_REVIEW', 'BLOCK'
+    triage_metadata = Column(JSON, nullable=True)  # Additional triage details
+    
     # KB retrieval info
     top_match_score = Column(Float, nullable=True)  # Similarity score of best match
     top_match_kb_id = Column(Integer, ForeignKey("kb_entries.id"), nullable=True)
@@ -125,6 +134,7 @@ class ReviewQueueItem(Base):
     
     # Review workflow
     draft_answer = Column(Text, nullable=True)  # AI-generated draft (marked as draft)
+    draft_metadata = Column(JSON, nullable=True)  # Draft context: top_matches, scores, triage
     final_answer = Column(Text, nullable=True)  # Human-approved answer
     assigned_to = Column(String(255), nullable=True)  # Reviewer username/email
     
@@ -155,6 +165,9 @@ class KBEntry(Base):
     canonical_question = Column(Text, nullable=False)
     answer = Column(Text, nullable=False)
     
+    # Question variants for improved matching
+    question_variants = Column(JSON, nullable=True)  # Array of paraphrased variants
+    
     # Metadata
     tags = Column(JSON, nullable=True)  # Array of tags
     source = Column(String(255), nullable=True)  # 'manual', 'review_queue', 'import'
@@ -162,6 +175,7 @@ class KBEntry(Base):
     
     # Embedding for similarity search (stored as JSON array)
     embedding = Column(JSON, nullable=True)
+    variant_embeddings = Column(JSON, nullable=True)  # Array of embeddings for variants
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

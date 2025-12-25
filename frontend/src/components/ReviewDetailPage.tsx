@@ -57,6 +57,15 @@ export function ReviewDetailPage() {
       return;
     }
 
+    // Validate no draft markers in final answer
+    const draftMarkers = ["DRAFT ANSWER", "REQUIRES HUMAN REVIEW", "Reviewer:", "**DRAFT**"];
+    for (const marker of draftMarkers) {
+      if (finalAnswer.includes(marker)) {
+        alert(`Final answer contains draft marker "${marker}". Please provide a clean, user-ready answer.`);
+        return;
+      }
+    }
+
     if (!confirm("Publish this answer to the knowledge base?")) {
       return;
     }

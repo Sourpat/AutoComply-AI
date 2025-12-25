@@ -29,6 +29,7 @@ export interface ChatResponse {
   decision_trace: DecisionTrace;
   session_id: string;
   message_id: number;
+  reviewer_draft?: string;  // Detailed markdown draft for admin views (only present for NEEDS_REVIEW)
 }
 
 export async function askQuestion(
