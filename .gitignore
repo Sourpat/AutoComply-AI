@@ -13,3 +13,6 @@ frontend/package-lock.json
 backend/data/*.db
 backend/data/*.sqlite
 backend/data/*.sqlite3
+backend/.venv*/
+backend/.venv311/
+
