@@ -181,8 +181,18 @@ async def facility_form_copilot(form: FacilityCsfForm) -> CsfCopilotResult:
 
 
 class FacilityCsfSubmitRequest(BaseModel):
-    """Request model for Facility CSF submission with optional trace_id."""
-    form: FacilityCsfForm
+    """Request model for Facility CSF submission - accepts flat form fields with optional trace_id."""
+    facility_name: Optional[str] = ""
+    facility_type: Optional[FacilityFacilityType] = FacilityFacilityType.FACILITY
+    account_number: Optional[str] = None
+    pharmacy_license_number: Optional[str] = ""
+    dea_number: Optional[str] = ""
+    pharmacist_in_charge_name: Optional[str] = ""
+    pharmacist_contact_phone: Optional[str] = None
+    ship_to_state: Optional[str] = ""
+    attestation_accepted: bool = False
+    controlled_substances: List[FacilityControlledSubstance] = Field(default_factory=list)
+    internal_notes: Optional[str] = None
     trace_id: Optional[str] = None
 
 
@@ -209,7 +219,8 @@ async def submit_facility_csf(
     3. Uses provided trace_id from evaluate (or generates new one)
     4. Returns submission ID and status for user confirmation
     """
-    form = request.form
+    # Convert request to form (exclude trace_id)
+    form = FacilityCsfForm(**request.model_dump(exclude={'trace_id'}))
     
     # Use trace_id from evaluate or generate new
     trace_id = request.trace_id or generate_trace_id()

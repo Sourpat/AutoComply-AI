@@ -157,9 +157,8 @@ class SubmissionResponse(BaseModel):
     reason: str | None = None
 
 
-class HospitalCsfSubmitRequest(BaseModel):
-    """Request model for Hospital CSF submit with optional trace_id."""
-    form: HospitalCsfForm
+class HospitalCsfSubmitRequest(HospitalCsfForm):
+    """Request model for Hospital CSF submit - accepts flat form fields with optional trace_id."""
     trace_id: str | None = None
 
 
@@ -171,7 +170,8 @@ async def submit_hospital_csf(request: HospitalCsfSubmitRequest) -> SubmissionRe
     Creates a submission record in the unified submissions store
     with trace_id for replay in Compliance Console.
     """
-    form = request.form
+    # Convert request to form (exclude trace_id)
+    form = HospitalCsfForm(**request.model_dump(exclude={'trace_id'}))
     
     # Run decision engine
     decision = evaluate_hospital_csf(form)

@@ -116,9 +116,8 @@ async def ems_form_copilot(form: EmsCsfForm) -> CsfCopilotResult:
     return rag_result
 
 
-class EmsCsfSubmitRequest(BaseModel):
-    """Request model for EMS CSF submission with optional trace_id."""
-    form: EmsCsfForm
+class EmsCsfSubmitRequest(EmsCsfForm):
+    """Request model for EMS CSF submission - accepts flat form fields with optional trace_id."""
     trace_id: Optional[str] = None
 
 
@@ -139,7 +138,8 @@ async def submit_ems_csf(request: EmsCsfSubmitRequest) -> SubmissionResponse:
     
     Uses provided trace_id from evaluate (or generates new one).
     """
-    form = request.form
+    # Convert request to form (exclude trace_id)
+    form = EmsCsfForm(**request.model_dump(exclude={'trace_id'}))
     
     # Use trace_id from evaluate or generate new
     trace_id = request.trace_id or generate_trace_id()
