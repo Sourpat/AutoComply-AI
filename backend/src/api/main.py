@@ -40,6 +40,17 @@ from src.api.routes import decision_insights
 from src.api.routes import tenant_debug
 from src.api.routes import console
 
+# Learn After First Unknown - new routes
+from src.api.routes import chat
+from src.api.routes import admin_review
+from src.api.routes import metrics
+from src.api.routes import kb_admin
+from src.api.routes import demo
+from src.api.routes import ops
+
+# Database initialization
+from src.database.connection import init_db
+
 app = FastAPI(
     title="AutoComply AI – Compliance API",
     version="0.1.0",
@@ -58,6 +69,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Startup event - initialize database
+# ---------------------------------------------------------------------------
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database on startup."""
+    init_db()
+
 
 # ---------------------------------------------------------------------------
 # Routers
@@ -94,6 +116,14 @@ app.include_router(decision_insights.router)
 app.include_router(case_summary.router)
 app.include_router(tenant_debug.router)
 app.include_router(console.router)
+
+# Learn After First Unknown routes
+app.include_router(chat.router)
+app.include_router(admin_review.router)
+app.include_router(metrics.router)
+app.include_router(kb_admin.router)
+app.include_router(demo.router)
+app.include_router(ops.router)
 
 # Compatibility endpoint for older/tests path:
 # Tests expect: POST /api/v1/license/validate-pdf (singular "license")

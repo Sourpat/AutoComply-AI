@@ -23,13 +23,21 @@ pypdf>=4.0.0
 unstructured>=0.15.0
 unstructured[html]>=0.15.0
 
-pdf2image==1.17.0
-Pillow==10.3.0
+# OCR/PDF features (not required for HITL feature)
+# Loosened versions for Python 3.14+ compatibility
+pdf2image>=1.16.0
+Pillow>=10.0.0
 
-numpy==1.26.4
+numpy>=1.26.0
 
 python-dotenv==1.0.1
 
 pytest>=8.0.0,<10.0.0
 
 requests>=2.31.0,<3.0.0
+
+# SQLAlchemy for database persistence (Learn After First Unknown feature)
+sqlalchemy>=2.0.0,<3.0.0
+
+# Sentence transformers for semantic similarity in KB
+sentence-transformers>=2.2.0

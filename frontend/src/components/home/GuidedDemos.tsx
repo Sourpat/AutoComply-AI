@@ -4,11 +4,19 @@ import { Link } from "react-router-dom";
 interface GuidedDemoCard {
   title: string;
   description: string;
-  outcome: "ok_to_ship" | "blocked";
+  outcome: "ok_to_ship" | "blocked" | "learning";
   route: string;
+  badge?: string;
 }
 
 const demoScenarios: GuidedDemoCard[] = [
+  {
+    title: "🆕 Learn After First Unknown",
+    description: "Ask questions to the AI chatbot. Unknown questions go to human review and build the knowledge base.",
+    outcome: "learning",
+    route: "/chat",
+    badge: "NEW",
+  },
   {
     title: "Hospital CSF Journey",
     description: "Complete hospital pharmacy controlled substance form with valid license and attestation",
@@ -40,6 +48,9 @@ export function GuidedDemos() {
     if (outcome === "ok_to_ship") {
       return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
     }
+    if (outcome === "learning") {
+      return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
+    }
     return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
   };
 
@@ -64,13 +75,20 @@ export function GuidedDemos() {
               <h4 className="font-semibold text-gray-900 dark:text-white">
                 {scenario.title}
               </h4>
-              <span
-                className={`text-xs px-2 py-1 rounded-full font-medium ${getOutcomeBadgeClass(
-                  scenario.outcome
-                )}`}
-              >
-                {scenario.outcome}
-              </span>
+              <div className="flex items-center space-x-2">
+                {scenario.badge && (
+                  <span className="text-xs px-2 py-1 rounded-full font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                    {scenario.badge}
+                  </span>
+                )}
+                <span
+                  className={`text-xs px-2 py-1 rounded-full font-medium ${getOutcomeBadgeClass(
+                    scenario.outcome
+                  )}`}
+                >
+                  {scenario.outcome === "learning" ? "AI + Human" : scenario.outcome}
+                </span>
+              </div>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
               {scenario.description}
@@ -79,7 +97,7 @@ export function GuidedDemos() {
               to={scenario.route}
               className="inline-block text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
             >
-              Run scenario →
+              {scenario.outcome === "learning" ? "Try chatbot →" : "Run scenario →"}
             </Link>
           </div>
         ))}

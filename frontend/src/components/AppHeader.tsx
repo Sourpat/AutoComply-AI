@@ -1,15 +1,21 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { NavLink } from "react-router-dom";
 
 type AppHeaderProps = {
   onToggleDevSupport?: () => void;
 };
 
-const navItems = [
+const baseNavItems = [
   { to: "/", label: "Home", exact: true },
+  { to: "/chat", label: "Chat" },
   { to: "/csf", label: "CSF Suite" },
   { to: "/license", label: "License Suite" },
   { to: "/console", label: "Compliance Console" },
+];
+
+const adminNavItems = [
+  { to: "/admin/review", label: "Review Queue" },
+  { to: "/admin/ops", label: "Ops Dashboard" },
 ];
 
 function navLinkClass({ isActive }: { isActive: boolean }) {
@@ -18,7 +24,24 @@ function navLinkClass({ isActive }: { isActive: boolean }) {
     : "px-3 py-2 rounded-lg text-sm font-medium text-slate-200 hover:text-white hover:bg-slate-800/70 hover:border hover:border-slate-700";
 }
 
+function isAdminUnlocked(): boolean {
+  return localStorage.getItem("admin_unlocked") === "true";
+}
+
 export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
+  const [showAdmin, setShowAdmin] = useState(isAdminUnlocked());
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setShowAdmin(isAdminUnlocked());
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
+  const navItems = showAdmin 
+    ? [...baseNavItems.slice(0, 2), ...adminNavItems, ...baseNavItems.slice(2)] 
+    : baseNavItems;
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur border-b border-slate-800/70 shadow-[0_10px_40px_-24px_rgba(0,0,0,0.85)]">
       <div className="mx-auto max-w-6xl px-6">
@@ -37,7 +60,7 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
                 <NavLink
                   key={item.to}
                   to={item.to}
-                  end={item.exact}
+                  end={(item as any).exact}
                   className={navLinkClass}
                 >
                   {item.label}
