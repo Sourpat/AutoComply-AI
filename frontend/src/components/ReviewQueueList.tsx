@@ -12,6 +12,7 @@ export function ReviewQueueList() {
   const [data, setData] = useState<ReviewQueueListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("open");
+  const [resetting, setResetting] = useState(false);
 
   const loadQueue = async () => {
     setLoading(true);
@@ -22,6 +23,38 @@ export function ReviewQueueList() {
       console.error("Failed to load review queue:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResetDemo = async () => {
+    if (!confirm("Are you sure you want to reset the demo? This will delete all conversations, review items, and KB entries, then reseed with demo data.")) {
+      return;
+    }
+
+    setResetting(true);
+    try {
+      const response = await fetch("http://localhost:8001/api/v1/demo/reset", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Reset failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log("Demo reset result:", result);
+      alert(`Demo reset successful! Seeded ${result.seeded.kb_entries} KB entries.`);
+      
+      // Reload the queue
+      await loadQueue();
+    } catch (error) {
+      console.error("Failed to reset demo:", error);
+      alert("Failed to reset demo. Check console for details.");
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -60,11 +93,30 @@ export function ReviewQueueList() {
     <div className="bg-gray-900 text-gray-100 p-6 min-h-screen">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-2">Review Queue</h1>
-          <p className="text-gray-400">
-            Manage questions that need human review before being added to the knowledge base
-          </p>
+        <div className="mb-6 flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Review Queue</h1>
+            <p className="text-gray-400">
+              Manage questions that need human review before being added to the knowledge base
+            </p>
+          </div>
+          <button
+            onClick={handleResetDemo}
+            disabled={resetting}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-lg font-medium transition-colors flex items-center space-x-2"
+          >
+            {resetting ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>Resetting...</span>
+              </>
+            ) : (
+              <>
+                <span>🔄</span>
+                <span>Reset Demo</span>
+              </>
+            )}
+          </button>
         </div>
 
         {/* Stats Summary */}
@@ -113,10 +165,39 @@ export function ReviewQueueList() {
           </div>
         ) : !data || data.items.length === 0 ? (
           <div className="bg-gray-800 border border-gray-700 rounded-lg p-12 text-center">
-            <div className="text-gray-400 text-lg">No items in queue</div>
-            <div className="text-gray-500 text-sm mt-2">
-              Questions needing review will appear here
-            </div>
+            {statusFilter === "open" ? (
+              <div className="max-w-md mx-auto">
+                <div className="text-gray-400 text-lg mb-3">✨ No open items</div>
+                <div className="text-gray-500 text-sm mb-4">
+                  Great! All questions have been reviewed. 
+                  {data && data.stats.published > 0 && (
+                    <> {data.stats.published} published items in the knowledge base.</>
+                  )}
+                </div>
+                <div className="bg-gray-900 border border-gray-600 rounded-lg p-4 mb-4">
+                  <p className="text-gray-400 text-sm mb-2">💡 Want to see the queue in action?</p>
+                  <p className="text-gray-500 text-xs">
+                    Go to <span className="text-blue-400 font-mono">/chat</span> and ask an unknown question.
+                    It will appear here for review.
+                  </p>
+                </div>
+                {data && data.stats.published > 0 && (
+                  <button
+                    onClick={() => setStatusFilter("published")}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
+                  >
+                    View Published Items →
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div>
+                <div className="text-gray-400 text-lg">No {statusFilter.replace("_", " ")} items</div>
+                <div className="text-gray-500 text-sm mt-2">
+                  Try a different filter or check back later
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
