@@ -26,6 +26,7 @@ import { RecentDecisionsPanel } from "../features/audit/RecentDecisionsPanel";
 import { DecisionInsightsPanel } from "../features/audit/DecisionInsightsPanel";
 import { OperationalOverviewPanel } from "../features/ops/OperationalOverviewPanel";
 import { TraceSelectionProvider } from "../state/traceSelectionContext";
+import { VerificationWorkQueue } from "../components/VerificationWorkQueue";
 
 type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
   id: string;
@@ -403,6 +404,11 @@ function ComplianceConsolePageInner() {
 
       <section className="console-section console-section-status rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
         <SystemStatusCard />
+      </section>
+
+      {/* Verification Work Queue */}
+      <section className="console-section rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
+        <VerificationWorkQueue />
       </section>
 
       <section className="console-grid grid gap-4 md:grid-cols-2">

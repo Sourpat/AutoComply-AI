@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 
 from src.database.connection import get_db
 from src.database.models import ReviewQueueItem, ReviewStatus, QuestionEvent, QuestionStatus
+from src.autocomply.domain.submissions_store import get_submission_store, SubmissionStatus
 
 router = APIRouter(
     prefix="/api/v1/admin/ops",
@@ -52,6 +53,20 @@ class OpsTrendDataPoint(BaseModel):
     date: str
     open_created: int
     published: int
+
+
+class OpsSubmissionResponse(BaseModel):
+    """CSF/License submission for verification queue."""
+    submission_id: str
+    csf_type: str
+    status: str
+    created_at: str
+    updated_at: str
+    title: str
+    subtitle: str
+    decision_status: Optional[str]
+    risk_level: Optional[str]
+    trace_id: str
 
 
 # ============================================================================
@@ -290,5 +305,51 @@ async def get_ops_trends(
         OpsTrendDataPoint(**data)
         for data in sorted(result_dict.values(), key=lambda x: x["date"])
     ]
+    
+    return result
+
+
+@router.get("/submissions", response_model=List[OpsSubmissionResponse])
+async def get_ops_submissions(
+    status: Optional[str] = None,
+    limit: int = 100
+) -> List[OpsSubmissionResponse]:
+    """
+    Get CSF/License submissions for verification work queue.
+    
+    Query params:
+    - status: Filter by status (submitted, in_review, approved, rejected, blocked)
+    - limit: Max items to return (default 100)
+    """
+    store = get_submission_store()
+    
+    # Parse status filter if provided
+    status_filter = None
+    if status:
+        try:
+            status_filter = [SubmissionStatus(status)]
+        except ValueError:
+            # Invalid status, return empty list
+            return []
+    
+    submissions = store.list_submissions(
+        status=status_filter,
+        limit=limit
+    )
+    
+    result = []
+    for submission in submissions:
+        result.append(OpsSubmissionResponse(
+            submission_id=submission.submission_id,
+            csf_type=submission.csf_type,
+            status=submission.status,
+            created_at=submission.created_at,
+            updated_at=submission.updated_at,
+            title=submission.title,
+            subtitle=submission.subtitle,
+            decision_status=submission.decision_status,
+            risk_level=submission.risk_level,
+            trace_id=submission.trace_id
+        ))
     
     return result

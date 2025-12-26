@@ -13,4 +13,8 @@ export default defineConfig({
       "lucide-react": path.resolve(__dirname, "./src/lib/lucide-react.tsx"),
     },
   },
+  server: {
+    port: 5173,
+    strictPort: true,
+  },
 });

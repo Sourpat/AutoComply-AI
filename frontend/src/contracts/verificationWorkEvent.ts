@@ -274,9 +274,13 @@ export function fromCSFArtifact(csfItem: any): VerificationWorkEvent {
 
   // Map CSF-specific status
   let status = VerificationWorkStatus.OPEN;
-  if (csfItem.status === "approved" || csfItem.status === "ok_to_ship") {
+  if (csfItem.status === "approved") {
     status = VerificationWorkStatus.RESOLVED;
-  } else if (csfItem.status === "blocked" || csfItem.status === "needs_review") {
+  } else if (csfItem.status === "ok_to_ship") {
+    status = VerificationWorkStatus.OPEN;
+  } else if (csfItem.status === "needs_review") {
+    status = VerificationWorkStatus.IN_REVIEW;
+  } else if (csfItem.status === "blocked") {
     status = VerificationWorkStatus.BLOCKED;
   }
 
@@ -297,8 +301,8 @@ export function fromCSFArtifact(csfItem: any): VerificationWorkEvent {
     title,
     summary: csfItem.summary || title,
     link: {
-      label: "Open in Compliance Console",
-      href: `/console`, // TODO: Add specific CSF route when available
+      label: "Open",
+      href: csfItem.trace_id ? `/console?trace=${csfItem.trace_id}` : `/console`,
     },
     artifact: {
       type: "CSF_SUBMISSION",

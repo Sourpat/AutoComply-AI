@@ -66,14 +66,16 @@ class FacilityCsfEvaluateResponse(BaseModel):
 
 
 def _facility_success_reason(reason: str) -> str:
-    """Normalize success copy to be Facility-specific."""
+    """Normalize all Hospital CSF references to Facility CSF in decision reasons."""
 
     if not reason:
         return reason
 
-    return reason.replace(
-        "Hospital CSF is approved to proceed.",
-        "Facility CSF is approved to proceed.",
+    # Replace all variations of Hospital CSF with Facility CSF
+    return (
+        reason.replace("Hospital CSF", "Facility CSF")
+        .replace("Hospital has", "Facility has")
+        .replace("This Hospital", "This Facility")
     )
 
 
