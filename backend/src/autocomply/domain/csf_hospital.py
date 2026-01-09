@@ -35,6 +35,7 @@ class HospitalCsfForm(BaseModel):
 
     # Pharmacy licensing
     pharmacy_license_number: str = Field(default="")
+    pharmacy_license_expiration: Optional[str] = Field(None, description="Pharmacy license expiration date")
     dea_number: str = Field(default="")
 
     # Pharmacist-in-charge / contact

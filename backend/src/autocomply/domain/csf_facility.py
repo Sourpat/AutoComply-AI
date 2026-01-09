@@ -1,7 +1,8 @@
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from pydantic.alias_generators import to_camel
 
 from src.autocomply.domain.controlled_substances import ControlledSubstanceItem
 from src.autocomply.domain.csf_hospital import (
@@ -22,17 +23,40 @@ class FacilityFacilityType(str, Enum):
 
 
 class FacilityControlledSubstance(BaseModel):
-    """Payload shape for Facility CSF controlled substances (frontend aligned)."""
+    """Payload shape for Facility CSF controlled substances (frontend aligned).
+    
+    Supports backward-compatible field aliases:
+    - quantity, qty -> maps to quantity field
+    - licenseExpiration, license_expiration, expires_on -> maps to license_expiration
+    """
 
-    id: str
-    name: str
-    strength: Optional[str] = None
-    unit: Optional[str] = None
-    schedule: Optional[str] = None
-    dea_code: Optional[str] = None
-    ndc: Optional[str] = None
-    dosage_form: Optional[str] = None
-    dea_schedule: Optional[str] = None
+    id: str = Field(..., description="Unique identifier for the controlled substance")
+    name: str = Field(..., description="Name of the controlled substance")
+    strength: Optional[str] = Field(None, description="Strength/dosage (e.g., '5mg')")
+    unit: Optional[str] = Field(None, description="Unit of measurement")
+    quantity: Optional[int] = Field(
+        None,
+        validation_alias="qty",
+        description="Quantity requested (accepts 'qty' or 'quantity')"
+    )
+    schedule: Optional[str] = Field(None, description="DEA schedule (legacy field)")
+    dea_code: Optional[str] = Field(None, description="DEA code")
+    ndc: Optional[str] = Field(None, description="National Drug Code")
+    dosage_form: Optional[str] = Field(None, description="Dosage form (e.g., 'tablet', 'capsule')")
+    dea_schedule: Optional[str] = Field(None, description="DEA schedule (II-V)")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "oxy-5mg",
+                "name": "Oxycodone 5mg",
+                "ndc": "00406-0512-01",
+                "strength": "5mg",
+                "dosage_form": "tablet",
+                "dea_schedule": "II",
+                "quantity": 100
+            }
+        }
 
     def to_controlled_substance_item(self) -> ControlledSubstanceItem:
         """Normalize facility items into the core ControlledSubstanceItem shape."""
@@ -48,19 +72,28 @@ class FacilityControlledSubstance(BaseModel):
 
 
 class FacilityCsfForm(BaseModel):
-    """Normalized representation of the Facility Pharmacy Controlled Substance Form."""
+    """Normalized representation of the Facility Pharmacy Controlled Substance Form.
+    
+    Supports backward-compatible field aliases:
+    - licenseExpiration, license_expiration, expires_on -> pharmacy_license_expiration
+    """
 
-    facility_name: str = Field(...)
-    facility_type: FacilityFacilityType
-    account_number: Optional[str] = None
+    facility_name: str = Field(..., description="Name of the facility")
+    facility_type: FacilityFacilityType = Field(..., description="Type of facility")
+    account_number: Optional[str] = Field(None, description="Account number")
 
-    pharmacy_license_number: str = Field(...)
-    dea_number: str = Field(...)
+    pharmacy_license_number: str = Field(..., description="State pharmacy license number")
+    pharmacy_license_expiration: Optional[str] = Field(
+        None,
+        validation_alias="licenseExpiration",
+        description="Pharmacy license expiration date (accepts licenseExpiration, license_expiration, or expires_on)"
+    )
+    dea_number: str = Field(..., description="DEA registration number")
 
-    pharmacist_in_charge_name: str = Field(...)
-    pharmacist_contact_phone: Optional[str] = None
+    pharmacist_in_charge_name: str = Field(..., description="Name of pharmacist in charge")
+    pharmacist_contact_phone: Optional[str] = Field(None, description="Contact phone number")
 
-    ship_to_state: str = Field(..., max_length=2)
+    ship_to_state: str = Field(..., max_length=2, description="Two-letter state code for shipping destination")
 
     attestation_accepted: bool = Field(
         default=False,
@@ -78,7 +111,43 @@ class FacilityCsfForm(BaseModel):
         ),
     )
 
-    internal_notes: Optional[str] = None
+    internal_notes: Optional[str] = Field(None, description="Internal notes for verification team")
+
+    # Support multiple field name variations for license expiration
+    @field_validator('pharmacy_license_expiration', mode='before')
+    @classmethod
+    def normalize_license_expiration(cls, v, info):
+        """Accept license_expiration, licenseExpiration, or expires_on."""
+        # Pydantic v2 validation_alias handles this, but add explicit support
+        return v
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "facility_name": "SummitCare Clinics – East Region",
+                "facility_type": "facility",
+                "account_number": "ACCT-445210",
+                "pharmacy_license_number": "PHOH-76321",
+                "pharmacy_license_expiration": "2025-12-31",
+                "dea_number": "BS1234567",
+                "pharmacist_in_charge_name": "Dr. Alexis Monroe",
+                "pharmacist_contact_phone": "614-555-0198",
+                "ship_to_state": "OH",
+                "attestation_accepted": True,
+                "internal_notes": "Standard facility CSF submission",
+                "controlled_substances": [
+                    {
+                        "id": "oxy-5mg",
+                        "name": "Oxycodone 5mg",
+                        "ndc": "00406-0512-01",
+                        "strength": "5mg",
+                        "dosage_form": "tablet",
+                        "dea_schedule": "II",
+                        "quantity": 100
+                    }
+                ]
+            }
+        }
 
 
 class FacilityCsfDecision(HospitalCsfDecision):
@@ -105,6 +174,7 @@ def evaluate_facility_csf(form: FacilityCsfForm) -> FacilityCsfDecision:
         ),
         account_number=form.account_number,
         pharmacy_license_number=form.pharmacy_license_number,
+        pharmacy_license_expiration=getattr(form, 'pharmacy_license_expiration', None),
         dea_number=form.dea_number,
         pharmacist_in_charge_name=form.pharmacist_in_charge_name,
         pharmacist_contact_phone=form.pharmacist_contact_phone,
