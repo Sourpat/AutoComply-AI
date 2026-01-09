@@ -27,6 +27,7 @@ import { DecisionInsightsPanel } from "../features/audit/DecisionInsightsPanel";
 import { OperationalOverviewPanel } from "../features/ops/OperationalOverviewPanel";
 import { TraceSelectionProvider } from "../state/traceSelectionContext";
 import { VerificationWorkQueue } from "../components/VerificationWorkQueue";
+import { useEffect, useState } from "react";
 
 type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
   id: string;
@@ -363,6 +364,34 @@ const CSF_CONSOLE_CARDS = [
 
 function ComplianceConsolePageInner() {
   const { enabled, setEnabled } = useRagDebug();
+  const [isAdmin, setIsAdmin] = useState(() => {
+    return localStorage.getItem('admin_unlocked') === 'true';
+  });
+
+  // Check URL query params for ?admin=true
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('admin') === 'true' && !isAdmin) {
+      localStorage.setItem('admin_unlocked', 'true');
+      setIsAdmin(true);
+      // Clean URL without reload
+      const url = new URL(window.location.href);
+      url.searchParams.delete('admin');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [isAdmin]);
+
+  const handleToggleAdmin = () => {
+    if (isAdmin) {
+      localStorage.removeItem('admin_unlocked');
+      setIsAdmin(false);
+      window.location.reload();
+    } else {
+      localStorage.setItem('admin_unlocked', 'true');
+      setIsAdmin(true);
+      window.location.reload();
+    }
+  };
 
   return (
     <div className="compliance-console-page space-y-8 py-6">
@@ -378,29 +407,57 @@ function ComplianceConsolePageInner() {
               the compliance brain behaves.
             </p>
           </div>
-          <div className="mt-2 flex items-center gap-2 md:mt-0">
-            <span className="text-[11px] text-slate-400">AI / RAG debug</span>
+          <div className="mt-2 flex items-center gap-4 md:mt-0">
+            {/* Admin Mode Badge */}
+            {isAdmin && (
+              <div className="flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3 py-1">
+                <svg className="h-3 w-3 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span className="text-[11px] font-medium text-amber-800">Admin Mode</span>
+              </div>
+            )}
+            
+            {/* Admin Toggle Button */}
             <button
               type="button"
-              onClick={() => setEnabled(!enabled)}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full border text-[10px] ${
-                enabled
-                  ? "border-emerald-400 bg-emerald-500/30"
-                  : "border-slate-600 bg-slate-900"
+              onClick={handleToggleAdmin}
+              className={`rounded-md px-3 py-1 text-[11px] font-medium transition-colors ${
+                isAdmin
+                  ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
+                  : "bg-slate-700 text-white hover:bg-slate-600"
               }`}
-              aria-pressed={enabled}
+              title={isAdmin ? "Disable admin mode" : "Enable admin mode"}
             >
-              <span
-                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                  enabled ? "translate-x-4" : "translate-x-1"
-                }`}
-              />
+              {isAdmin ? "Disable Admin" : "Enable Admin"}
             </button>
+
+            {/* RAG Debug Toggle */}
+            <div className="flex items-center gap-2 border-l border-slate-300 pl-4">
+              <span className="text-[11px] text-slate-400">AI / RAG debug</span>
+              <button
+                type="button"
+                onClick={() => setEnabled(!enabled)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full border text-[10px] ${
+                  enabled
+                    ? "border-emerald-400 bg-emerald-500/30"
+                    : "border-slate-600 bg-slate-900"
+                }`}
+                aria-pressed={enabled}
+              >
+                <span
+                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                    enabled ? "translate-x-4" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
-      <ConsoleTourCard />
+      {/* Admin-only: avoid exposing tour narrative to recruiters */}
+      {isAdmin && <ConsoleTourCard />}
 
       <section className="console-section console-section-status rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
         <SystemStatusCard />
@@ -561,29 +618,34 @@ function ComplianceConsolePageInner() {
         <SystemHealthCard />
       </section>
 
-      <section className="console-section console-section-testing">
-        <TestingReliabilityCard />
-      </section>
+      {/* Admin-only: Portfolio/demo content hidden from recruiters */}
+      {isAdmin && (
+        <>
+          <section className="console-section console-section-testing">
+            <TestingReliabilityCard />
+          </section>
 
-      <IntegrationsCard />
-      <FutureWorkCard />
+          <IntegrationsCard />
+          <FutureWorkCard />
 
-      <section className="console-section console-section-run-locally">
-        <RunLocallyCard />
-      </section>
+          <section className="console-section console-section-run-locally">
+            <RunLocallyCard />
+          </section>
+
+          <section className="console-section console-section-docs space-y-2 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
+            <h2 className="text-sm font-semibold text-slate-900">Docs, repo, and how to run this</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Use these links when you want to dive deeper into the architecture, show the code, or run the demo locally.
+            </p>
+            <div className="mt-3">
+              <DocsLinksCard />
+            </div>
+          </section>
+        </>
+      )}
 
       <section className="console-section console-section-legend rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
         <DecisionStatusLegend />
-      </section>
-
-      <section className="console-section console-section-docs space-y-2 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
-        <h2 className="text-sm font-semibold text-slate-900">Docs, repo, and how to run this</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Use these links when you want to dive deeper into the architecture, show the code, or run the demo locally.
-        </p>
-        <div className="mt-3">
-          <DocsLinksCard />
-        </div>
       </section>
     </div>
   );

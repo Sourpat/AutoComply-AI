@@ -25,6 +25,7 @@ from src.autocomply.domain.submissions_store import (
 )
 from src.autocomply.domain.trace import TRACE_HEADER_NAME, ensure_trace_id, generate_trace_id
 from src.autocomply.audit.decision_log import get_decision_log
+from src.stores.decision_store import get_decision_store
 from src.utils.logger import get_logger
 
 
@@ -241,10 +242,45 @@ class SubmissionResponse(BaseModel):
     reason: Optional[str] = None
 
 
+def _build_evidence_from_form(form: PractitionerCsfForm) -> dict:
+    """
+    Build evidence dictionary from CSF form for decision evaluation.
+    
+    This mirrors the evidence structure used by the deterministic evaluator.
+    For a real implementation, this would query actual systems (DEA registry,
+    state licensing boards, etc.). Here we use simple heuristics from form data.
+    """
+    # Simple heuristics - in production, query real systems
+    has_dea = bool(form.dea_number and len(form.dea_number) >= 9)
+    has_state_license = bool(form.state_license_number and len(form.state_license_number) > 0)
+    
+    # Extract requested schedules from controlled substances
+    requested_schedules = []
+    for cs in form.controlled_substances:
+        schedule = getattr(cs, 'schedule', None)
+        if schedule and schedule not in requested_schedules:
+            requested_schedules.append(schedule)
+    
+    return {
+        "dea_registration": has_dea,
+        "dea_expiry_days": 180,  # Default: valid for 6 months
+        "state_license_status": "Active" if has_state_license else "Unknown",
+        "state_license_expiry_days": 365,  # Default: valid for 1 year
+        "authorized_schedules": ["II", "III", "IV", "V"] if has_dea else [],
+        "requested_schedules": requested_schedules or ["III", "IV", "V"],
+        "has_prior_violations": False,  # Would query violation database
+        "telemedicine_practice": False,  # Would check form metadata
+        "has_ryan_haight_attestation": False,  # Would check attestation records
+        "multi_state": False,  # Would check license jurisdictions
+        "documented_jurisdictions": [form.ship_to_state] if form.ship_to_state else [],
+        "has_npi": True,  # Would verify NPI registry
+    }
+
+
 class PractitionerCsfSubmitRequest(BaseModel):
     """Request model for Practitioner CSF submit - accepts flat form fields with optional trace_id."""
-    # Identity fields - use prescriber_name (matches tests) which we'll map to practitioner_name
-    prescriber_name: Optional[str] = ""
+    # Identity fields
+    practitioner_name: Optional[str] = ""  # Changed from prescriber_name to match domain model
     facility_name: Optional[str] = ""
     facility_type: Optional[PractitionerFacilityType] = PractitionerFacilityType.INDIVIDUAL_PRACTITIONER
     account_number: Optional[str] = None
@@ -280,12 +316,12 @@ async def submit_practitioner_csf(
     3. Uses provided trace_id from evaluate (or generates new one)
     4. Returns submission ID and status for user confirmation
     """
-    # Convert request to form (map prescriber_name to practitioner_name)
+    # Convert request to form
     form = PractitionerCsfForm(
         facility_name=request.facility_name,
         facility_type=request.facility_type,
         account_number=request.account_number,
-        practitioner_name=request.prescriber_name,  # Map prescriber_name -> practitioner_name
+        practitioner_name=request.practitioner_name,
         state_license_number=request.state_license_number,
         dea_number=request.dea_number,
         ship_to_state=request.ship_to_state,
@@ -299,6 +335,9 @@ async def submit_practitioner_csf(
     
     # Use provided trace_id from evaluate, or generate new one
     trace_id = request.trace_id or generate_trace_id()
+    
+    # Set trace_id on decision for payload storage
+    decision.trace_id = trace_id
     
     # Map status for trace recording
     status_map = {
@@ -358,6 +397,21 @@ async def submit_practitioner_csf(
         decision_status=decision.status.value if hasattr(decision.status, 'value') else str(decision.status),
         risk_level=risk_level,
         priority=priority,
+    )
+    
+    # Save decision to DecisionStore for RAG Explorer "Connected Mode"
+    evidence = _build_evidence_from_form(form)
+    decision_store = get_decision_store()
+    decision_store.save_decision(
+        engine_family="csf",
+        decision_type="csf_practitioner",
+        evidence=evidence,
+        meta={
+            "form": form.model_dump(),
+            "decision": decision.model_dump(),
+            "submission_id": submission.submission_id,
+            "trace_id": trace_id,
+        }
     )
     
     logger.info(

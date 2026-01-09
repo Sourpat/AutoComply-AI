@@ -87,6 +87,15 @@ class Submission(BaseModel):
     risk_level: Optional[str] = Field(
         None, description="Risk assessment (Low, Medium, High)"
     )
+    reviewer_notes: Optional[str] = Field(
+        None, description="Notes added by compliance reviewer"
+    )
+    reviewed_by: Optional[str] = Field(
+        None, description="Username/email of reviewer who took action"
+    )
+    reviewed_at: Optional[str] = Field(
+        None, description="ISO 8601 timestamp when reviewed (approved/rejected)"
+    )
 
     class Config:
         use_enum_values = True
@@ -202,6 +211,34 @@ class SubmissionStore:
             return None
 
         submission.status = status
+        submission.updated_at = datetime.utcnow().isoformat() + "Z"
+        return submission
+
+    def update_submission(
+        self,
+        submission_id: str,
+        status: Optional[SubmissionStatus] = None,
+        reviewer_notes: Optional[str] = None,
+        reviewed_by: Optional[str] = None,
+    ) -> Optional[Submission]:
+        """Update submission with status, notes, and reviewer info."""
+        submission = self._store.get(submission_id)
+        if not submission:
+            return None
+
+        if status is not None:
+            submission.status = status
+            # Set reviewed_at when status changes to approved or rejected
+            if status in [SubmissionStatus.APPROVED, SubmissionStatus.REJECTED]:
+                if not submission.reviewed_at:
+                    submission.reviewed_at = datetime.utcnow().isoformat() + "Z"
+        
+        if reviewer_notes is not None:
+            submission.reviewer_notes = reviewer_notes
+        
+        if reviewed_by is not None:
+            submission.reviewed_by = reviewed_by
+        
         submission.updated_at = datetime.utcnow().isoformat() + "Z"
         return submission
 

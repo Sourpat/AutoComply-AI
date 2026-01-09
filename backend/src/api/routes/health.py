@@ -13,6 +13,26 @@ class HealthStatus(BaseModel):
 router = APIRouter(tags=["health"])
 
 
+@router.get("/healthz")
+async def healthz() -> dict:
+    """
+    Ultra-fast health check endpoint for load balancers and orchestrators.
+    
+    - Does NOT touch database
+    - Does NOT check RAG features
+    - Does NOT call external services
+    - Returns immediately with 200 OK
+    
+    Use this for:
+    - Render.com health checks
+    - Kubernetes liveness/readiness probes
+    - Load balancer health monitoring
+    
+    For detailed health status, use /health or /health/full instead.
+    """
+    return {"status": "ok"}
+
+
 @router.get("/health", response_model=HealthStatus)
 async def health_check() -> HealthStatus:
     """

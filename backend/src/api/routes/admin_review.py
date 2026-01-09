@@ -9,6 +9,8 @@ Allows reviewers to:
 - Update draft answers
 - Approve and publish answers to KB
 - Reject items
+
+SECURITY: All endpoints require admin role via X-User-Role header.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -19,10 +21,12 @@ from sqlalchemy.orm import Session
 from src.database.connection import get_db
 from src.database.models import ReviewStatus, ReviewQueueItem, QuestionEvent
 from src.services.review_queue_service import ReviewQueueService
+from src.api.dependencies.auth import require_admin_role
 
 router = APIRouter(
     prefix="/api/v1/admin/review-queue",
     tags=["admin", "review-queue"],
+    dependencies=[Depends(require_admin_role)],  # All endpoints require admin role
 )
 
 

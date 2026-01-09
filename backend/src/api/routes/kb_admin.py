@@ -1,6 +1,11 @@
 # backend/src/api/routes/kb_admin.py
 """
 KB Admin endpoints for seeding and managing knowledge base entries.
+
+SECURITY: All endpoints require admin role via X-User-Role header.
+
+RAG DEPENDENCY: These endpoints require RAG features (sentence-transformers, embeddings).
+Returns 501 Not Implemented if RAG is disabled in production.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,11 +14,13 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from src.database.connection import get_db
-from src.services.kb_service import KBService
+from src.config import get_settings
+from src.api.dependencies.auth import require_admin_role
 
 router = APIRouter(
     prefix="/api/v1/admin/kb",
     tags=["admin", "kb"],
+    dependencies=[Depends(require_admin_role)],  # All endpoints require admin role
 )
 
 
@@ -23,12 +30,29 @@ class CreateKBRequest(BaseModel):
     tags: Optional[List[str]] = None
 
 
+def check_rag_enabled():
+    """Raise 501 if RAG features are disabled."""
+    settings = get_settings()
+    if not settings.rag_enabled:
+        raise HTTPException(
+            status_code=501,
+            detail="RAG features are disabled. KB admin endpoints require RAG_ENABLED=true and ML dependencies (sentence-transformers, openai)."
+        )
+
+
 @router.post("/seed")
 async def seed_kb(db: Session = Depends(get_db)):
     """
     Seed the knowledge base with sample compliance questions.
     Useful for testing and demos.
+    
+    Requires RAG features enabled (RAG_ENABLED=true).
     """
+    check_rag_enabled()
+    
+    # Lazy import to avoid import errors when RAG disabled
+    from src.services.kb_service import KBService
+    
     kb_service = KBService(db)
     
     sample_entries = [
@@ -91,7 +115,16 @@ async def create_kb_entry(
     request: CreateKBRequest,
     db: Session = Depends(get_db)
 ):
-    """Create a new KB entry manually."""
+    """
+    Create a new KB entry manually.
+    
+    Requires RAG features enabled (RAG_ENABLED=true).
+    """
+    check_rag_enabled()
+    
+    # Lazy import to avoid import errors when RAG disabled
+    from src.services.kb_service import KBService
+    
     kb_service = KBService(db)
     
     kb_entry = kb_service.create_kb_entry(
@@ -114,7 +147,16 @@ async def list_kb_entries(
     offset: int = 0,
     db: Session = Depends(get_db)
 ):
-    """List all KB entries."""
+    """
+    List all KB entries.
+    
+    Requires RAG features enabled (RAG_ENABLED=true).
+    """
+    check_rag_enabled()
+    
+    # Lazy import to avoid import errors when RAG disabled
+    from src.services.kb_service import KBService
+    
     kb_service = KBService(db)
     entries = kb_service.get_all_kb_entries(limit=limit, offset=offset)
     
@@ -139,7 +181,16 @@ async def delete_kb_entry(
     kb_id: int,
     db: Session = Depends(get_db)
 ):
-    """Delete a KB entry."""
+    """
+    Delete a KB entry.
+    
+    Requires RAG features enabled (RAG_ENABLED=true).
+    """
+    check_rag_enabled()
+    
+    # Lazy import to avoid import errors when RAG disabled
+    from src.services.kb_service import KBService
+    
     kb_service = KBService(db)
     success = kb_service.delete_kb_entry(kb_id)
     

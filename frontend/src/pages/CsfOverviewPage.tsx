@@ -16,7 +16,7 @@ type CsfSandboxMeta = {
   evaluateEndpoint: string;
   copilotEndpoint: string;
   ragDocId: string;
-  component: JSX.Element;
+  Component: React.ComponentType;
 };
 
 const CSF_OVERVIEW_CARDS = [
@@ -89,7 +89,7 @@ const CSF_SANDBOXES: CsfSandboxMeta[] = [
     evaluateEndpoint: "/csf/hospital/evaluate",
     copilotEndpoint: "/csf/hospital/form-copilot",
     ragDocId: "csf_hospital_form",
-    component: <HospitalCsfSandbox />,
+    Component: HospitalCsfSandbox,
   },
   {
     id: "practitioner",
@@ -99,7 +99,7 @@ const CSF_SANDBOXES: CsfSandboxMeta[] = [
     evaluateEndpoint: "/csf/practitioner/evaluate",
     copilotEndpoint: "/csf/practitioner/form-copilot",
     ragDocId: "csf_practitioner_form",
-    component: <PractitionerCsfSandbox />,
+    Component: PractitionerCsfSandbox,
   },
   {
     id: "facility",
@@ -109,7 +109,7 @@ const CSF_SANDBOXES: CsfSandboxMeta[] = [
     evaluateEndpoint: "/csf/facility/evaluate",
     copilotEndpoint: "/csf/facility/form-copilot",
     ragDocId: "csf_facility_form",
-    component: <FacilityCsfSandbox />,
+    Component: FacilityCsfSandbox,
   },
   {
     id: "ems",
@@ -119,7 +119,7 @@ const CSF_SANDBOXES: CsfSandboxMeta[] = [
     evaluateEndpoint: "/csf/ems/evaluate",
     copilotEndpoint: "/csf/ems/form-copilot",
     ragDocId: "csf_ems_form",
-    component: <EmsCsfSandbox />,
+    Component: EmsCsfSandbox,
   },
   {
     id: "researcher",
@@ -129,7 +129,7 @@ const CSF_SANDBOXES: CsfSandboxMeta[] = [
     evaluateEndpoint: "/csf/researcher/evaluate",
     copilotEndpoint: "/csf/researcher/form-copilot",
     ragDocId: "csf_researcher_form",
-    component: <ResearcherCsfSandbox />,
+    Component: ResearcherCsfSandbox,
   },
 ];
 
@@ -229,7 +229,7 @@ export function CsfOverviewPage() {
 
             <div id={`csf-${meta.id}-sandbox`} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <ErrorBoundary>
-                {meta.component}
+                <meta.Component />
               </ErrorBoundary>
             </div>
           </section>

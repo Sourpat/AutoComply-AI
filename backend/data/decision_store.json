@@ -1,0 +1,68 @@
+{
+  "csf:csf_practitioner": {
+    "engine_family": "csf",
+    "decision_type": "csf_practitioner",
+    "saved_at": "2026-01-06T19:00:57.190784Z",
+    "evidence": {
+      "dea_registration": true,
+      "dea_expiry_days": 180,
+      "state_license_status": "Unknown",
+      "state_license_expiry_days": 365,
+      "authorized_schedules": [
+        "II",
+        "III",
+        "IV",
+        "V"
+      ],
+      "requested_schedules": [
+        "III",
+        "IV",
+        "V"
+      ],
+      "has_prior_violations": false,
+      "telemedicine_practice": false,
+      "has_ryan_haight_attestation": false,
+      "multi_state": false,
+      "documented_jurisdictions": [
+        "OH"
+      ],
+      "has_npi": true
+    },
+    "meta": {
+      "form": {
+        "facility_name": "Bridgeway Telehealth",
+        "facility_type": "individual_practitioner",
+        "account_number": "ACCT-88990",
+        "practitioner_name": "Dr. Emily Novak",
+        "state_license_number": "",
+        "dea_number": "BN3456789",
+        "ship_to_state": "OH",
+        "attestation_accepted": false,
+        "controlled_substances": [
+          {
+            "id": "cs_adderall_xr_20mg",
+            "name": "Adderall XR 20mg",
+            "ndc": "54092-0381-01",
+            "strength": null,
+            "dosage_form": null,
+            "dea_schedule": "II"
+          }
+        ],
+        "internal_notes": "Telehealth-only practice; state-level restrictions may apply for Schedule II shipments."
+      },
+      "decision": {
+        "status": "blocked",
+        "reason": "Practitioner CSF is missing required facility/practitioner/licensing fields: state_license_number",
+        "missing_fields": [
+          "state_license_number"
+        ],
+        "regulatory_references": [
+          "csf_practitioner_form"
+        ],
+        "trace_id": "87c137ab-572e-473b-bfeb-a6d1936ca6b6"
+      },
+      "submission_id": "5ea352ea-8754-46ef-8ac4-d900ad3ebe95",
+      "trace_id": "87c137ab-572e-473b-bfeb-a6d1936ca6b6"
+    }
+  }
+}

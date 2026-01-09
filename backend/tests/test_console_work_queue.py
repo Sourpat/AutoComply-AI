@@ -393,3 +393,289 @@ def test_work_queue_decision_status_mapping():
     blocked_item = items_by_account["BLOCKED-002"]
     assert blocked_item["decision_status"] == "blocked"
     assert blocked_item["status"] == "submitted"
+
+
+def test_update_submission_status():
+    """Test updating submission status via PATCH endpoint."""
+    # Create a submission
+    submit_response = client.post("/csf/practitioner/submit", json={
+        "account_number": "TEST-001",
+        "prescriber_name": "Dr. Test",
+        "dea_number": "AP1234567",
+        "ship_to_state": "OH",
+        "attestation_accepted": True,
+    })
+    submission_id = submit_response.json()["submission_id"]
+    
+    # Update to in_review
+    update_response = client.patch(
+        f"/console/work-queue/{submission_id}",
+        json={"status": "in_review"}
+    )
+    assert update_response.status_code == 200
+    data = update_response.json()
+    assert data["status"] == "in_review"
+    assert data["updated_at"] is not None
+    
+    # Verify in queue
+    queue_response = client.get("/console/work-queue")
+    item = queue_response.json()["items"][0]
+    assert item["status"] == "in_review"
+
+
+def test_update_submission_to_approved():
+    """Test status transition: submitted -> in_review -> approved."""
+    # Create submission
+    submit_response = client.post("/csf/practitioner/submit", json={
+        "account_number": "TEST-002",
+        "prescriber_name": "Dr. Reviewer",
+        "dea_number": "AP1234568",
+        "ship_to_state": "NY",
+        "attestation_accepted": True,
+    })
+    submission_id = submit_response.json()["submission_id"]
+    
+    # Start review
+    client.patch(
+        f"/console/work-queue/{submission_id}",
+        json={"status": "in_review"}
+    )
+    
+    # Approve
+    update_response = client.patch(
+        f"/console/work-queue/{submission_id}",
+        json={"status": "approved"}
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["status"] == "approved"
+
+
+def test_update_submission_to_rejected():
+    """Test rejecting a submission."""
+    # Create submission
+    submit_response = client.post("/csf/practitioner/submit", json={
+        "account_number": "TEST-003",
+        "prescriber_name": "Dr. Reject",
+        "dea_number": "AP1234569",
+        "ship_to_state": "TX",
+        "attestation_accepted": False,  # Will be blocked
+    })
+    submission_id = submit_response.json()["submission_id"]
+    
+    # Reject
+    update_response = client.patch(
+        f"/console/work-queue/{submission_id}",
+        json={"status": "rejected"}
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["status"] == "rejected"
+
+
+def test_update_submission_reviewer_notes():
+    """Test adding reviewer notes to a submission."""
+    # Create submission
+    submit_response = client.post("/csf/practitioner/submit", json={
+        "account_number": "TEST-004",
+        "prescriber_name": "Dr. Notes",
+        "dea_number": "AP1234570",
+        "ship_to_state": "FL",
+        "attestation_accepted": True,
+    })
+    submission_id = submit_response.json()["submission_id"]
+    
+    # Add notes
+    notes = "Verified DEA number against ARCOS database. All checks passed."
+    update_response = client.patch(
+        f"/console/work-queue/{submission_id}",
+        json={"reviewer_notes": notes}
+    )
+    assert update_response.status_code == 200
+    data = update_response.json()
+    assert data["reviewer_notes"] == notes
+    
+    # Verify notes persist
+    get_response = client.get(f"/console/submissions/{submission_id}")
+    assert get_response.json()["reviewer_notes"] == notes
+
+
+def test_update_submission_status_and_notes():
+    """Test updating both status and notes in single request."""
+    # Create submission
+    submit_response = client.post("/csf/practitioner/submit", json={
+        "account_number": "TEST-005",
+        "prescriber_name": "Dr. Both",
+        "dea_number": "AP1234571",
+        "ship_to_state": "CA",
+        "attestation_accepted": True,
+    })
+    submission_id = submit_response.json()["submission_id"]
+    
+    # Update both
+    update_response = client.patch(
+        f"/console/work-queue/{submission_id}",
+        json={
+            "status": "approved",
+            "reviewer_notes": "Approved after manual verification of credentials."
+        }
+    )
+    assert update_response.status_code == 200
+    data = update_response.json()
+    assert data["status"] == "approved"
+    assert "manual verification" in data["reviewer_notes"]
+
+
+def test_update_submission_not_found():
+    """Test updating non-existent submission returns 404."""
+    update_response = client.patch(
+        "/console/work-queue/nonexistent-id",
+        json={"status": "approved"}
+    )
+    assert update_response.status_code == 404
+
+
+def test_update_submission_no_fields():
+    """Test updating with no fields returns 400."""
+    # Create submission
+    submit_response = client.post("/csf/practitioner/submit", json={
+        "account_number": "TEST-006",
+        "prescriber_name": "Dr. Empty",
+        "dea_number": "AP1234572",
+        "ship_to_state": "WA",
+        "attestation_accepted": True,
+    })
+    submission_id = submit_response.json()["submission_id"]
+    
+    # Try to update with no fields
+    update_response = client.patch(
+        f"/console/work-queue/{submission_id}",
+        json={}
+    )
+    assert update_response.status_code == 400
+
+
+def test_statistics_count_by_status():
+    """Test that statistics correctly count submissions by status."""
+    # Create submissions with different statuses
+    # Submitted
+    for i in range(3):
+        client.post("/csf/practitioner/submit", json={
+            "account_number": f"SUB-{i}",
+            "prescriber_name": f"Dr. Submitted {i}",
+            "dea_number": f"AP123457{i}",
+            "ship_to_state": "OH",
+            "attestation_accepted": True,
+        })
+    
+    # Create one and move to in_review
+    submit_response = client.post("/csf/practitioner/submit", json={
+        "account_number": "REV-001",
+        "prescriber_name": "Dr. Review",
+        "dea_number": "AP1234580",
+        "ship_to_state": "OH",
+        "attestation_accepted": True,
+    })
+    client.patch(
+        f"/console/work-queue/{submit_response.json()['submission_id']}",
+        json={"status": "in_review"}
+    )
+    
+    # Create one and approve
+    submit_response = client.post("/csf/practitioner/submit", json={
+        "account_number": "APP-001",
+        "prescriber_name": "Dr. Approved",
+        "dea_number": "AP1234581",
+        "ship_to_state": "OH",
+        "attestation_accepted": True,
+    })
+    client.patch(
+        f"/console/work-queue/{submit_response.json()['submission_id']}",
+        json={"status": "approved"}
+    )
+    
+    # Get statistics
+    queue_response = client.get("/console/work-queue")
+    stats = queue_response.json()["statistics"]
+    
+    assert stats["total"] == 5
+    assert stats["by_status"]["submitted"] == 3
+    assert stats["by_status"]["in_review"] == 1
+    assert stats["by_status"]["approved"] == 1
+
+
+def test_reviewed_by_and_reviewed_at_fields():
+    """Test that reviewed_by and reviewed_at are set correctly."""
+    # Create submission
+    submit_response = client.post("/csf/practitioner/submit", json={
+        "account_number": "TEST-AUDIT-001",
+        "prescriber_name": "Dr. Audit",
+        "dea_number": "AP1234590",
+        "ship_to_state": "CA",
+        "attestation_accepted": True,
+    })
+    submission_id = submit_response.json()["submission_id"]
+    
+    # Approve with custom reviewed_by
+    update_response = client.patch(
+        f"/console/work-queue/{submission_id}",
+        json={"status": "approved", "reviewed_by": "jane@example.com"}
+    )
+    
+    assert update_response.status_code == 200
+    data = update_response.json()
+    assert data["status"] == "approved"
+    assert data["reviewed_by"] == "jane@example.com"
+    assert data["reviewed_at"] is not None
+    assert isinstance(data["reviewed_at"], str)  # Should be ISO timestamp
+
+
+def test_reviewed_by_defaults_to_admin():
+    """Test that reviewed_by defaults to 'admin' when not provided."""
+    # Create submission
+    submit_response = client.post("/csf/practitioner/submit", json={
+        "account_number": "TEST-AUDIT-002",
+        "prescriber_name": "Dr. Default",
+        "dea_number": "AP1234591",
+        "ship_to_state": "FL",
+        "attestation_accepted": True,
+    })
+    submission_id = submit_response.json()["submission_id"]
+    
+    # Approve without reviewed_by (should default to "admin")
+    update_response = client.patch(
+        f"/console/work-queue/{submission_id}",
+        json={"status": "approved"}
+    )
+    
+    assert update_response.status_code == 200
+    data = update_response.json()
+    assert data["reviewed_by"] == "admin"
+    assert data["reviewed_at"] is not None
+
+
+def test_reviewed_at_only_set_on_final_decision():
+    """Test that reviewed_at is only set when status becomes approved/rejected."""
+    # Create submission
+    submit_response = client.post("/csf/practitioner/submit", json={
+        "account_number": "TEST-AUDIT-003",
+        "prescriber_name": "Dr. Timeline",
+        "dea_number": "AP1234592",
+        "ship_to_state": "WA",
+        "attestation_accepted": True,
+    })
+    submission_id = submit_response.json()["submission_id"]
+    
+    # Start review (should not set reviewed_at)
+    update_response = client.patch(
+        f"/console/work-queue/{submission_id}",
+        json={"status": "in_review"}
+    )
+    assert update_response.json()["reviewed_at"] is None
+    
+    # Approve (should set reviewed_at)
+    update_response = client.patch(
+        f"/console/work-queue/{submission_id}",
+        json={"status": "approved", "reviewed_by": "john@example.com"}
+    )
+    assert update_response.json()["reviewed_at"] is not None
+    assert update_response.json()["reviewed_by"] == "john@example.com"
+

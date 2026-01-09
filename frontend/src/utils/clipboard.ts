@@ -13,7 +13,9 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     textarea.focus();
     textarea.select();
     const ok = document.execCommand("copy");
-    document.body.removeChild(textarea);
+    if (textarea.parentNode === document.body) {
+      document.body.removeChild(textarea);
+    }
     return ok;
   } catch {
     return false;

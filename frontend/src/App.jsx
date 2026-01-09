@@ -5,6 +5,8 @@ import { CsfOverviewPage } from "./pages/CsfOverviewPage";
 import { OhioTdddSandbox } from "./components/OhioTdddSandbox";
 import { LicenseOverviewPage } from "./pages/LicenseOverviewPage";
 import ConsoleDashboard from "./pages/ConsoleDashboard";
+import RagExplorerPage from "./pages/RagExplorerPage";
+import CaseWorkspace from "./pages/CaseWorkspace";
 import { NyPharmacyLicenseSandbox } from "./components/NyPharmacyLicenseSandbox";
 import AutoComplyAiCaseStudy from "./pages/projects/AutoComplyAiCaseStudy";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -15,6 +17,13 @@ import { AdminReviewPage } from "./pages/AdminReviewPage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { AdminOpsDashboard } from "./pages/AdminOpsDashboard";
 import { ProtectedAdminRoute } from "./components/ProtectedAdminRoute";
+import { ReviewQueuePage } from "./pages/ReviewQueuePage";
+import CoverageDashboardPage from "./pages/CoverageDashboardPage";
+import { AnalyticsDashboardPage } from "./pages/AnalyticsDashboardPage";
+// New submission pages
+import { OhioTdddSubmissionPage } from "./pages/OhioTdddSubmissionPage";
+import { NyPharmacyLicenseSubmissionPage } from "./pages/NyPharmacyLicenseSubmissionPage";
+import { CsfFacilitySubmissionPage } from "./pages/CsfFacilitySubmissionPage";
 
 export default function App() {
   return (
@@ -32,11 +41,20 @@ export default function App() {
             <Route path="/csf/:sandboxId" element={<CsfOverviewPage />} />
             <Route path="/license" element={<LicenseOverviewPage />} />
             <Route path="/console" element={<ConsoleDashboard />} />
+            <Route path="/console/cases" element={<CaseWorkspace />} />
+            <Route path="/console/rag" element={<RagExplorerPage />} />
+            <Route path="/console/review-queue" element={<ReviewQueuePage />} />
+            <Route path="/coverage" element={<CoverageDashboardPage />} />
+            <Route path="/analytics" element={<AnalyticsDashboardPage />} />
             <Route path="/license/ohio-tddd" element={<OhioTdddSandbox />} />
             <Route
               path="/license/ny-pharmacy"
               element={<NyPharmacyLicenseSandbox />}
             />
+            {/* New submission pages */}
+            <Route path="/submit/ohio-tddd" element={<OhioTdddSubmissionPage />} />
+            <Route path="/submit/ny-pharmacy" element={<NyPharmacyLicenseSubmissionPage />} />
+            <Route path="/submit/csf-facility" element={<CsfFacilitySubmissionPage />} />
             <Route
               path="/projects/autocomply-ai"
               element={<AutoComplyAiCaseStudy repoUrl="https://github.com/Sourpat/AutoComply-AI" />}

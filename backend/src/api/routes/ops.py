@@ -3,8 +3,7 @@
 Ops Dashboard endpoints for Verification team.
 Read-only endpoints that provide operational metrics and review queue analytics.
 
-TODO: Add proper backend authentication when available.
-Currently relies on frontend admin unlock gating.
+SECURITY: All endpoints require admin role via X-User-Role header.
 """
 
 from fastapi import APIRouter, Depends
@@ -17,10 +16,12 @@ from datetime import datetime, timedelta
 from src.database.connection import get_db
 from src.database.models import ReviewQueueItem, ReviewStatus, QuestionEvent, QuestionStatus
 from src.autocomply.domain.submissions_store import get_submission_store, SubmissionStatus
+from src.api.dependencies.auth import require_admin_role
 
 router = APIRouter(
     prefix="/api/v1/admin/ops",
     tags=["admin", "ops"],
+    dependencies=[Depends(require_admin_role)],  # All endpoints require admin role
 )
 
 

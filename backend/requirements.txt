@@ -42,3 +42,6 @@ sqlalchemy>=2.0.0,<3.0.0
 
 # Sentence transformers for semantic similarity in KB
 sentence-transformers>=2.2.0
+
+# PDF generation for case exports
+reportlab>=4.0.0

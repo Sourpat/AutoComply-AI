@@ -1,0 +1,4 @@
+# Procfile for Heroku/Railway/Render
+# This file defines the command to start the backend server in production
+
+web: cd backend && ./start.sh

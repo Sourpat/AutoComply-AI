@@ -16,12 +16,21 @@ export interface WorkQueueSubmission {
   payload: Record<string, unknown>;
   decision_status: string | null;
   risk_level: string | null;
+  reviewer_notes: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
 }
 
 export interface WorkQueueResponse {
   items: WorkQueueSubmission[];
   statistics: Record<string, unknown>;
   total: number;
+}
+
+export interface UpdateSubmissionRequest {
+  status?: "submitted" | "in_review" | "approved" | "rejected";
+  reviewer_notes?: string;
+  reviewed_by?: string;
 }
 
 export async function getWorkQueue(
@@ -38,6 +47,25 @@ export async function getWorkQueue(
 
   if (!resp.ok) {
     throw new Error(`Failed to fetch work queue: ${resp.status}`);
+  }
+
+  return await resp.json();
+}
+
+export async function updateSubmission(
+  submissionId: string,
+  update: UpdateSubmissionRequest
+): Promise<WorkQueueSubmission> {
+  const resp = await fetch(`${API_BASE}/console/work-queue/${submissionId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(update),
+  });
+
+  if (!resp.ok) {
+    throw new Error(`Failed to update submission: ${resp.status}`);
   }
 
   return await resp.json();

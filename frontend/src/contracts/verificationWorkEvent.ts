@@ -46,6 +46,7 @@ export interface VerificationWorkEvent {
   id: string; // stable identifier, e.g. "chat:7" or "csf:12345"
   source: VerificationSource;
   status: VerificationWorkStatus;
+  raw_status?: string; // original backend status value for CSF submissions
   risk: RiskLevel;
   created_at: string; // ISO string
   updated_at?: string; // ISO string optional
@@ -276,11 +277,15 @@ export function fromCSFArtifact(csfItem: any): VerificationWorkEvent {
   let status = VerificationWorkStatus.OPEN;
   if (csfItem.status === "approved") {
     status = VerificationWorkStatus.RESOLVED;
+  } else if (csfItem.status === "submitted") {
+    status = VerificationWorkStatus.OPEN;
+  } else if (csfItem.status === "in_review") {
+    status = VerificationWorkStatus.IN_REVIEW;
   } else if (csfItem.status === "ok_to_ship") {
     status = VerificationWorkStatus.OPEN;
   } else if (csfItem.status === "needs_review") {
     status = VerificationWorkStatus.IN_REVIEW;
-  } else if (csfItem.status === "blocked") {
+  } else if (csfItem.status === "blocked" || csfItem.status === "rejected") {
     status = VerificationWorkStatus.BLOCKED;
   }
 
@@ -294,6 +299,7 @@ export function fromCSFArtifact(csfItem: any): VerificationWorkEvent {
     id: `csf:${csfItem.id || "unknown"}`,
     source: VerificationSource.CSF,
     status,
+    raw_status: csfItem.status, // preserve raw backend status
     risk,
     created_at: csfItem.created_at || new Date().toISOString(),
     jurisdiction: csfItem.jurisdiction,

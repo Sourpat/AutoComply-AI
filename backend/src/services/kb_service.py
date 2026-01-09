@@ -3,38 +3,67 @@
 Knowledge Base service for semantic similarity search and management.
 
 Uses sentence-transformers for embeddings and cosine similarity for retrieval.
+
+RAG DEPENDENCY: This module requires sentence-transformers which is excluded
+from production builds. Check settings.rag_enabled before calling compute_embedding().
 """
 
-from typing import List, Dict, Any, Optional, Tuple, Set
+from typing import List, Dict, Any, Optional, Tuple, Set, TYPE_CHECKING
 from sqlalchemy.orm import Session
 import numpy as np
-from sentence_transformers import SentenceTransformer
 import logging
 
 from src.database.models import KBEntry
 from src.services.jurisdiction import extract_states, has_jurisdiction_mismatch, detect_requested_state
+from src.config import get_settings
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
 # Global model instance (lazy loaded)
-_embedding_model: Optional[SentenceTransformer] = None
+_embedding_model: Optional["SentenceTransformer"] = None
 
 # Configuration
 SIMILARITY_THRESHOLD = 0.78  # Configurable threshold for "confident" match
 MODEL_NAME = "all-MiniLM-L6-v2"  # Fast, good quality model (384 dimensions)
 
 
-def get_embedding_model() -> SentenceTransformer:
-    """Get or initialize the sentence transformer model."""
+def get_embedding_model() -> "SentenceTransformer":
+    """
+    Get or initialize the sentence transformer model.
+    
+    Raises:
+        ImportError: If RAG is disabled or sentence-transformers not installed.
+    """
+    settings = get_settings()
+    if not settings.rag_enabled:
+        raise ImportError(
+            "RAG features are disabled. Set RAG_ENABLED=true and install "
+            "sentence-transformers to use embedding functionality."
+        )
+    
     global _embedding_model
     if _embedding_model is None:
-        logger.info(f"Loading sentence transformer model: {MODEL_NAME}")
-        _embedding_model = SentenceTransformer(MODEL_NAME)
+        try:
+            from sentence_transformers import SentenceTransformer
+            logger.info(f"Loading sentence transformer model: {MODEL_NAME}")
+            _embedding_model = SentenceTransformer(MODEL_NAME)
+        except ImportError as e:
+            raise ImportError(
+                f"sentence-transformers not installed. Install with: pip install sentence-transformers"
+            ) from e
     return _embedding_model
 
 
 def compute_embedding(text: str) -> List[float]:
-    """Compute embedding vector for a text string."""
+    """
+    Compute embedding vector for a text string.
+    
+    Raises:
+        ImportError: If RAG is disabled or sentence-transformers not installed.
+    """
     model = get_embedding_model()
     embedding = model.encode(text, convert_to_numpy=True)
     return embedding.tolist()

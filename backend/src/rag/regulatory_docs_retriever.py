@@ -3,10 +3,13 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TYPE_CHECKING
 
-from langchain_community.vectorstores import Chroma
-from langchain_openai import OpenAIEmbeddings
+from src.config import get_settings
+
+if TYPE_CHECKING:
+    from langchain_community.vectorstores import Chroma
+    from langchain_openai import OpenAIEmbeddings
 
 AUTOCOMPLY_RAG_DIR_ENV = "AUTOCOMPLY_RAG_DIR"
 AUTOCOMPLY_RAG_COLLECTION_ENV = "AUTOCOMPLY_RAG_COLLECTION_NAME"
@@ -29,13 +32,30 @@ class RetrievedRegulatoryChunk:
 
 
 @lru_cache(maxsize=1)
-def _load_vectorstore() -> Chroma:
+def _load_vectorstore() -> "Chroma":
     """
     Lazily load the Chroma collection that the ingest script populated.
 
-    This assumes you’ve already run the ingest CLI so that the
+    This assumes you've already run the ingest CLI so that the
     `autocomply_regulatory_docs` collection exists on disk.
+    
+    Raises ImportError if RAG is disabled or langchain not installed.
     """
+    settings = get_settings()
+    if not settings.rag_enabled:
+        raise ImportError(
+            "RAG features are disabled. Set RAG_ENABLED=true and install "
+            "langchain libraries to use vector store functionality."
+        )
+    
+    try:
+        from langchain_community.vectorstores import Chroma
+        from langchain_openai import OpenAIEmbeddings
+    except ImportError as e:
+        raise ImportError(
+            "langchain libraries not installed. Install with: pip install langchain-community langchain-openai"
+        ) from e
+    
     persist_dir = os.getenv(AUTOCOMPLY_RAG_DIR_ENV, DEFAULT_PERSIST_DIR)
     collection_name = os.getenv(AUTOCOMPLY_RAG_COLLECTION_ENV, DEFAULT_COLLECTION_NAME)
 

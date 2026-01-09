@@ -1,5 +1,33 @@
+/**
+ * PractitionerCsfSandbox - CSF Practitioner Form with Submission Integration
+ * 
+ * Step 2.8: Submission Intake Integration
+ * 
+ * Features:
+ * - CSF practitioner form with evaluation
+ * - Submission creation and case intake
+ * - Success banner with "Open Case" CTA
+ * - Navigation to Console work queue
+ * 
+ * ============================================================================
+ * MANUAL VERIFICATION CHECKLIST:
+ * ============================================================================
+ * [ ] Navigate to CSF Practitioner form page
+ * [ ] Fill out form or select a preset (e.g., "Dr. Sarah Chen - Approved")
+ * [ ] Click "Submit Application" button
+ * [ ] Verify green success banner appears at top of page
+ * [ ] Verify banner shows: "Application submitted successfully!"
+ * [ ] Click "Open Case in Console" button
+ * [ ] Verify navigation to /console with case selected
+ * [ ] Verify case appears in left sidebar queue
+ * [ ] Verify case status is "NEW" with SLA due date
+ * [ ] Open case and check all tabs work (Summary, Submission, Evidence, etc.)
+ * ============================================================================
+ */
+
 // src/components/PractitionerCsfSandbox.tsx
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   PractitionerCsfDecision,
   PractitionerCsfFormData,
@@ -256,6 +284,7 @@ const initialForm: PractitionerCsfFormData = {
 };
 
 export function PractitionerCsfSandbox() {
+  const navigate = useNavigate();
   const { enabled: ragDebugEnabled } = useRagDebug();
   const [form, setForm] = useState<PractitionerCsfFormData>(initialForm);
   const [selectedExampleId, setSelectedExampleId] =
@@ -293,6 +322,7 @@ export function PractitionerCsfSandbox() {
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
   const [lastCopilotPayload, setLastCopilotPayload] = useState<string | null>(null);
+  const [submissionSuccess, setSubmissionSuccess] = useState<{ caseId: string; submissionId: string } | null>(null);
   
   // Use shared CSF actions hook for evaluate/submit
   const csfActions = useCsfActions("practitioner");
@@ -728,18 +758,39 @@ export function PractitionerCsfSandbox() {
   };
 
   const handleSubmitForVerification = async () => {
+    // Clear previous success state
+    setSubmissionSuccess(null);
+    
+    // Allow sandbox mode without backend (graceful degradation)
     if (!API_BASE) {
-      setApiBaseError(
-        "Sandbox misconfigured: missing API base URL. Please set VITE_API_BASE in your environment before using Practitioner CSF tools."
-      );
-      return;
+      console.warn('[PractitionerCSF] Backend unavailable, continuing in local-only mode');
     }
 
-    const payload = buildPractitionerCsfPayload(form);
-    await csfActions.submit({
-      ...payload,
-      controlled_substances: controlledSubstances,
-    });
+    try {
+      const payload = buildPractitionerCsfPayload(form);
+      const result = await csfActions.submit({
+        ...payload,
+        controlled_substances: controlledSubstances,
+      });
+      
+      // Show success banner with case link
+      if (result.case_id) {
+        setSubmissionSuccess({
+          caseId: result.case_id,
+          submissionId: result.local_submission_id || result.submission_id,
+        });
+        
+        // Track successful submission
+        trackSandboxEvent('csf_practitioner_submitted', {
+          source: 'csf_submit',
+          submissionId: result.local_submission_id,
+          caseId: result.case_id,
+        });
+      }
+    } catch (error) {
+      console.error('[PractitionerCSF] Submit failed:', error);
+      // Error is already handled by csfActions hook
+    }
   };
 
   const runFormCopilot = async () => {
@@ -952,6 +1003,43 @@ export function PractitionerCsfSandbox() {
           <ErrorAlert message={apiBaseError} />
         </div>
       )}
+      
+      {/* Submission Success Banner */}
+      {submissionSuccess && (
+        <div className="mb-3 rounded-lg border border-green-200 bg-green-50 p-3 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2">
+              <svg className="h-5 w-5 text-green-600 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              <div className="flex-1">
+                <div className="font-semibold text-green-900 text-sm">Submitted</div>
+                <p className="text-xs text-green-800 mt-1">
+                  Practitioner CSF submitted for verification. Case created with RAG evidence auto-attached.
+                </p>
+                <p className="text-[10px] text-green-700 mt-1 font-mono">
+                  Submission: {submissionSuccess.submissionId} → Case: {submissionSuccess.caseId}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => navigate(`/console/cases?caseId=${submissionSuccess.caseId}`)}
+                className="px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm"
+              >
+                Open Case
+              </button>
+              <button
+                onClick={() => setSubmissionSuccess(null)}
+                className="px-2 py-1.5 text-xs text-green-700 hover:text-green-900"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <header className="mb-2 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-700">

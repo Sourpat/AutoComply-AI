@@ -1,0 +1,71 @@
+# Production Requirements (Lean) - For Render/Cloud Deployment
+# 
+# This file excludes heavy ML/RAG dependencies to reduce build time and memory usage.
+# Use this for hosted deployments where RAG features are disabled or optional.
+#
+# For local development with full RAG capabilities, use requirements.txt
+
+# ============================================================================
+# Core FastAPI & Server
+# ============================================================================
+fastapi==0.110.0
+uvicorn==0.29.0
+python-multipart==0.0.9
+
+# ============================================================================
+# HTTP & Networking
+# ============================================================================
+httpx==0.27.0
+requests>=2.31.0,<3.0.0
+
+# ============================================================================
+# Pydantic & Settings
+# ============================================================================
+pydantic>=2.3.0,<3.0.0
+pydantic-settings>=2.2.1,<3.0.0
+
+# ============================================================================
+# Database & Persistence
+# ============================================================================
+sqlalchemy>=2.0.0,<3.0.0
+
+# ============================================================================
+# Configuration & Environment
+# ============================================================================
+python-dotenv==1.0.1
+
+# ============================================================================
+# Logging
+# ============================================================================
+python-json-logger==2.0.7
+
+# ============================================================================
+# Basic Data Processing (for CSF/License engines)
+# ============================================================================
+numpy>=1.26.0  # Required for basic data structures in decision engines
+
+# ============================================================================
+# PDF Generation (for case export packets)
+# ============================================================================
+reportlab>=4.0.0  # Required for PDF export functionality
+
+# ============================================================================
+# Testing (Optional - can remove for production builds)
+# ============================================================================
+pytest>=8.0.0,<10.0.0
+pytest-asyncio>=0.23.0,<1.0.0
+
+# ============================================================================
+# EXCLUDED (Heavy Dependencies - Not needed for demo deployment)
+# ============================================================================
+# openai                   - Not using LLM generation in v0.1-demo
+# langchain-*              - RAG disabled for hosted demo
+# chromadb                 - Vector DB not needed (pre-computed embeddings)
+# sentence-transformers    - Not computing embeddings at runtime
+# torch                    - Heavyweight ML framework (100s of MB)
+# transformers             - Not needed without live embedding
+# unstructured             - PDF/HTML parsing not used in runtime
+# pypdf                    - PDF parsing not used in hosted demo
+# pdf2image, Pillow        - OCR not used in runtime
+#
+# Total size reduction: ~500 MB → ~50 MB

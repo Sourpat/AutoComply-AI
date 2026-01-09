@@ -4,20 +4,26 @@ services:
   backend:
     build: ./backend
     container_name: autocomply-backend
-    env_file:
-      - .env
+    environment:
+      - APP_ENV=prod
+      - PORT=8001
+      - CORS_ORIGINS=*
+      - DB_PATH=/app/data/autocomply.db
+      - EXPORT_DIR=/app/data/exports
     ports:
-      - "8000:8000"
+      - "8001:8001"
+    volumes:
+      - backend_data:/app/data
+    restart: unless-stopped
 
   frontend:
     build: ./frontend
     container_name: autocomply-frontend
-    environment:
-      - VITE_API_BASE=http://backend:8000
     ports:
-      - "4173:4173"
+      - "80:80"
     depends_on:
       - backend
+    restart: unless-stopped
 
   n8n:
     image: n8nio/n8n:latest
@@ -29,4 +35,5 @@ services:
     restart: unless-stopped
 
 volumes:
+  backend_data:
   n8n_data:

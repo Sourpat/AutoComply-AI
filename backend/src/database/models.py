@@ -52,6 +52,8 @@ class ReasonCode(str, enum.Enum):
     POLICY_GATE = "policy_gate"  # Triggered policy safety gate
     NO_KB_MATCH = "no_kb_match"  # No KB entries exist yet
     JURISDICTION_MISMATCH = "jurisdiction_mismatch"  # State in question doesn't match KB entry states
+    RAG_DISABLED = "rag_disabled"  # RAG features disabled in production
+    IMPORT_ERROR = "import_error"  # Failed to import RAG dependencies
     INTERNAL_ERROR = "internal_error"  # Exception caught during processing
 
 

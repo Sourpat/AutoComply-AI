@@ -1,9 +1,25 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import "./ConsoleDashboard.css";
 import { TraceReplayDrawer, TraceData, TraceStep } from "../components/TraceReplayDrawer";
 import { apiFetch } from "../lib/api";
+import { demoStore } from "../lib/demoStore";
+import type { WorkQueueItem as DemoWorkQueueItem } from "../types/workQueue";
+import { buildDecisionPacket } from "../utils/buildDecisionPacket";
+import { downloadJson } from "../utils/exportPacket";
+import { useRole } from "../context/RoleContext";
+import { canViewWorkQueue, canViewRecentDecisions, canClearDemoData, canSeedDemoData, getConsoleInstructions } from "../auth/permissions";
+import { CaseDetailsDrawer } from "../components/CaseDetailsDrawer";
+import { canTransition, getAllowedTransitions, type WorkflowStatus } from "../workflow/statusTransitions";
+import type { AuditAction } from "../types/audit";
+import { DEMO_VERIFIERS, getCurrentDemoUser, type DemoUser } from "../demo/users";
+import { getAgeMs, formatAgeShort, isOverdue, formatDue, getSlaStatusColor } from "../workflow/sla";
+import { viewStore } from "../lib/viewStore";
+import type { QueueView, SortField, SortDirection } from "../types/views";
+import { AdminResetPanel } from "../features/admin/AdminResetPanel";
 
 type DecisionStatus = "ok_to_ship" | "blocked" | "needs_review";
+type ActiveSection = "dashboard" | "csf" | "licenses" | "orders" | "settings" | "about";
 
 // Backend submission interface
 interface BackendSubmission {
@@ -30,6 +46,7 @@ interface RecentDecisionRow {
   status: DecisionStatus;
   riskLevel: "Low" | "Medium" | "High";
   csfType: "Practitioner" | "Hospital" | "Researcher";
+  traceId: string;
 }
 
 interface ExpiringLicenseRow {
@@ -51,6 +68,12 @@ interface WorkQueueItem {
   priorityColor: string;
 }
 
+// Seed demo data on first load
+if (!demoStore.hasData()) {
+  console.log('[ConsoleDashboard] First load - seeding demo data');
+  demoStore.seedDemoDataIfEmpty();
+}
+
 const MOCK_DECISIONS: RecentDecisionRow[] = [
   {
     id: "AUTO-2025-00124",
@@ -59,6 +82,7 @@ const MOCK_DECISIONS: RecentDecisionRow[] = [
     status: "ok_to_ship",
     riskLevel: "Low",
     csfType: "Hospital",
+    traceId: "trace-hospital-morphine-124",
   },
   {
     id: "AUTO-2025-00123",
@@ -67,6 +91,7 @@ const MOCK_DECISIONS: RecentDecisionRow[] = [
     status: "blocked",
     riskLevel: "High",
     csfType: "Practitioner",
+    traceId: "trace-pharmacy-oxy-123",
   },
   {
     id: "AUTO-2025-00122",
@@ -75,6 +100,7 @@ const MOCK_DECISIONS: RecentDecisionRow[] = [
     status: "needs_review",
     riskLevel: "Medium",
     csfType: "Practitioner",
+    traceId: "trace-practitioner-tddd-122",
   },
 ];
 
@@ -338,7 +364,67 @@ const WORK_QUEUE_ITEMS: WorkQueueItem[] = [
   },
 ];
 
+// Helper: Get decision type display properties
+function getDecisionTypeDisplay(decisionType?: string): { label: string; colorClass: string } {
+  if (!decisionType) {
+    return { label: 'CSF Practitioner', colorClass: 'bg-sky-100 text-sky-700' };
+  }
+  
+  switch (decisionType) {
+    case 'csf_practitioner':
+      return { label: 'CSF Practitioner', colorClass: 'bg-sky-100 text-sky-700' };
+    case 'ohio_tddd':
+      return { label: 'Ohio TDDD', colorClass: 'bg-orange-100 text-orange-700' };
+    case 'ny_pharmacy_license':
+      return { label: 'NY Pharmacy', colorClass: 'bg-purple-100 text-purple-700' };
+    case 'csf_facility':
+      return { label: 'CSF Facility', colorClass: 'bg-green-100 text-green-700' };
+    default:
+      return { label: decisionType, colorClass: 'bg-slate-100 text-slate-700' };
+  }
+}
+
 const ConsoleDashboard: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { role, isSubmitter, isVerifier, isAdmin } = useRole();
+  
+  // Step 2.4: Redirect verifier/admin to CaseWorkspace if viewing dashboard section
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const section = searchParams.get('section');
+    
+    // If verifier/admin is on dashboard (not RAG or other section), redirect to CaseWorkspace
+    if ((isVerifier || isAdmin) && location.pathname === '/console' && !section) {
+      navigate('/console/cases', { replace: true });
+    }
+  }, [isVerifier, isAdmin, location, navigate]);
+  
+  // Derive active section from URL
+  const getActiveSectionFromPath = (): ActiveSection => {
+    const path = location.pathname;
+    if (path === "/console" || path === "/console/") return "dashboard";
+    if (path.startsWith("/console/csf")) return "csf";
+    if (path.startsWith("/console/licenses")) return "licenses";
+    if (path.startsWith("/console/orders")) return "orders";
+    if (path.startsWith("/console/settings")) return "settings";
+    if (path.startsWith("/console/about")) return "about";
+    return "dashboard";
+  };
+  
+  const activeSection = getActiveSectionFromPath();
+  
+  const setActiveSection = (section: ActiveSection) => {
+    const pathMap: Record<ActiveSection, string> = {
+      dashboard: "/console",
+      csf: "/console/csf",
+      licenses: "/console/licenses",
+      orders: "/console/orders",
+      settings: "/console/settings",
+      about: "/console/about",
+    };
+    navigate(pathMap[section]);
+  };
   const [isTraceOpen, setIsTraceOpen] = useState(false);
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [selectedTrace, setSelectedTrace] = useState<TraceData | null>(null);
@@ -347,101 +433,55 @@ const ConsoleDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedTenant, setSelectedTenant] = useState("ohio");
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [requestInfoCaseId, setRequestInfoCaseId] = useState<string | null>(null);
+  const [requestInfoMessage, setRequestInfoMessage] = useState("");
+  const [queueFilter, setQueueFilter] = useState<"all" | "mine" | "unassigned" | "overdue">("all");
+  const [assignMenuOpen, setAssignMenuOpen] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkActionOpen, setBulkActionOpen] = useState<string | null>(null);
+  const [bulkRequestInfoMessage, setBulkRequestInfoMessage] = useState("");
+  const [showBulkRequestInfoModal, setShowBulkRequestInfoModal] = useState(false);
+  const [bulkActionSummary, setBulkActionSummary] = useState<{ success: number; failed: number; errors: string[] } | null>(null);
   
-  // Track if initial load is complete and prevent overlapping fetches
-  const isInitialLoadRef = React.useRef(true);
-  const isFetchingRef = React.useRef(false);
-  const lastSignatureRef = React.useRef<string>("");
-
-  // Fetch work queue from backend
+  // Step 2.3: Queue search, sorting, and saved views
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
+  const [sortField, setSortField] = useState<SortField>((searchParams.get('sort') as SortField) || 'overdue');
+  const [sortDirection, setSortDirection] = useState<SortDirection>((searchParams.get('dir') as SortDirection) || 'desc');
+  const [decisionTypeFilter, setDecisionTypeFilter] = useState<string>(searchParams.get('decisionType') || 'all'); // Step 2.15
+  const [savedViews, setSavedViews] = useState<QueueView[]>([]);
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
+  const [showSaveViewModal, setShowSaveViewModal] = useState(false);
+  const [showManageViewsModal, setShowManageViewsModal] = useState(false);
+  const [newViewName, setNewViewName] = useState('');
+  const [setNewViewAsDefault, setSetNewViewAsDefault] = useState(false);
+  
+  // Get current user based on role
+  const currentUser = getCurrentDemoUser(role);
+  
+  // Load work queue from demoStore on mount
   useEffect(() => {
-    const fetchWorkQueue = async () => {
-      // Prevent overlapping fetches
-      if (isFetchingRef.current) {
-        return;
-      }
-      
-      isFetchingRef.current = true;
-      
-      // Only show loading on initial page load, not on polls
-      if (isInitialLoadRef.current) {
-        setIsLoading(true);
-      }
-      setError(null);
-      
-      try {
-        const data = await apiFetch<{ items: BackendSubmission[] }>(
-          `/console/work-queue?status=submitted,in_review`
-        );
-        
-        // Compute signature to detect actual changes
-        const signature = data.items
-          .map((s) => `${s.submission_id}:${s.status}:${s.trace_id}:${s.updated_at || s.created_at}`)
-          .join("|");
-        
-        // Only update state if data actually changed
-        if (signature !== lastSignatureRef.current) {
-          lastSignatureRef.current = signature;
-          
-          // Transform backend submissions to WorkQueueItem format
-          const items: WorkQueueItem[] = data.items.map((sub: BackendSubmission) => {
-          // Calculate age from created_at
-          const createdDate = new Date(sub.created_at);
-          const now = new Date();
-          const diffMs = now.getTime() - createdDate.getTime();
-          const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-          const diffDays = Math.floor(diffHours / 24);
-          
-          let age: string;
-          if (diffDays > 0) {
-            age = `Flagged ${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
-          } else if (diffHours > 0) {
-            age = `Flagged ${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
-          } else {
-            age = `Flagged recently`;
-          }
-          
-          // Map priority to display
-          const priorityMap: Record<string, { label: string; color: string }> = {
-            high: { label: "High", color: "text-amber-700" },
-            medium: { label: "Medium", color: "text-slate-600" },
-            low: { label: "Low", color: "text-slate-600" },
-          };
-          
-          const priorityInfo = priorityMap[sub.priority.toLowerCase()] || { label: "Medium", color: "text-slate-600" };
-          
-          return {
-            id: sub.submission_id,
-            trace_id: sub.trace_id,
-            facility: sub.title,
-            reason: sub.subtitle,
-            age: age,
-            priority: priorityInfo.label as "High" | "Medium" | "Low",
-            priorityColor: priorityInfo.color,
-          };
-          });
-          
-          setWorkQueueItems(items);
-        }
-      } catch (err) {
-        console.error("Failed to fetch work queue:", err);
-        setError(err instanceof Error ? err.message : "Failed to load work queue");
-        // Don't clear items on error, keep showing the last successful fetch
-      } finally {
-        if (isInitialLoadRef.current) {
-          setIsLoading(false);
-          isInitialLoadRef.current = false;
-        }
-        isFetchingRef.current = false;
-      }
-    };
+    console.log('[ConsoleDashboard] Loading work queue from demoStore');
+    const items = demoStore.getWorkQueue();
     
-    fetchWorkQueue();
+    // Map to display format
+    const displayItems: WorkQueueItem[] = items.map(item => ({
+      id: item.id,
+      trace_id: item.traceId || '',
+      facility: item.title,
+      reason: item.reason || item.subtitle || '',
+      age: item.age || 'Recently',
+      priority: item.priority === 'high' ? 'High' : item.priority === 'medium' ? 'Medium' : 'Low',
+      priorityColor: item.priorityColor || (
+        item.priority === 'high' ? 'text-amber-700' : 'text-slate-600'
+      )
+    }));
     
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchWorkQueue, 30000);
-    return () => clearInterval(interval);
-  }, [selectedTenant]);
+    setWorkQueueItems(displayItems);
+    setIsLoading(false);
+    console.log(`[ConsoleDashboard] Loaded ${displayItems.length} work queue items`);
+  }, []);
 
   const handleViewTrace = async (traceId: string) => {
     if (!traceId) {
@@ -522,6 +562,480 @@ const ConsoleDashboard: React.FC = () => {
     setSelectedTrace(null);
   };
 
+  // Status transition handlers
+  const handleStatusChange = (caseId: string, newStatus: WorkflowStatus) => {
+    const item = demoStore.getWorkQueue().find((i) => i.id === caseId);
+    if (!item) return;
+
+    // Check if transition is allowed
+    if (!canTransition(item.status as WorkflowStatus, newStatus, role)) {
+      alert(`Cannot transition from ${item.status} to ${newStatus}`);
+      return;
+    }
+
+    // Update work queue item status
+    demoStore.updateWorkQueueItem(caseId, { status: newStatus });
+
+    // Update submission status if linked
+    if (item.submissionId) {
+      const submissions = demoStore.getSubmissions();
+      const subIndex = submissions.findIndex((s) => s.id === item.submissionId);
+      if (subIndex !== -1) {
+        submissions[subIndex].status = newStatus;
+        demoStore.saveSubmissions(submissions);
+      }
+    }
+
+    // Add audit event
+    const actionMap: Record<WorkflowStatus, AuditAction> = {
+      approved: "APPROVED",
+      blocked: "BLOCKED",
+      needs_review: "NEEDS_REVIEW",
+      request_info: "REQUEST_INFO",
+      submitted: "SUBMITTED",
+    };
+
+    demoStore.addAuditEvent({
+      caseId,
+      submissionId: item.submissionId,
+      actorRole: role,
+      actorName: role === "admin" ? "Admin" : "Verifier",
+      action: actionMap[newStatus],
+      message: newStatus === "approved" ? "All requirements met" : 
+               newStatus === "blocked" ? "Missing required information" :
+               newStatus === "needs_review" ? "Flagged for manual review" : undefined,
+    });
+
+    // Refresh work queue
+    refreshWorkQueue();
+  };
+
+  const handleRequestInfo = () => {
+    if (!requestInfoCaseId) return;
+
+    handleStatusChange(requestInfoCaseId, "request_info");
+
+    // Add note with request message
+    if (requestInfoMessage.trim()) {
+      demoStore.addAuditEvent({
+        caseId: requestInfoCaseId,
+        submissionId: demoStore.getWorkQueue().find((i) => i.id === requestInfoCaseId)?.submissionId,
+        actorRole: role,
+        actorName: role === "admin" ? "Admin" : "Verifier",
+        action: "REQUEST_INFO",
+        message: requestInfoMessage,
+      });
+    }
+
+    setRequestInfoCaseId(null);
+    setRequestInfoMessage("");
+  };
+
+  // Step 2.3: Load saved views on mount
+  useEffect(() => {
+    setSavedViews(viewStore.listViews());
+  }, []);
+
+  // Step 2.3: URL synchronization - update URL when state changes
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (searchQuery) params.set('q', searchQuery);
+    if (sortField !== 'overdue') params.set('sort', sortField);
+    if (sortDirection !== 'desc') params.set('dir', sortDirection);
+    if (queueFilter !== 'all') params.set('filter', queueFilter);
+    if (decisionTypeFilter !== 'all') params.set('decisionType', decisionTypeFilter); // Step 2.15
+    
+    // Use replace to avoid polluting history
+    setSearchParams(params, { replace: true });
+  }, [searchQuery, sortField, sortDirection, queueFilter, decisionTypeFilter, setSearchParams]);
+
+  // Step 2.3: Filter, search, and sort work queue items
+  const filteredAndSortedItems = useMemo(() => {
+    let items = demoStore.getWorkQueue();
+    
+    // Apply queue filter (all, mine, unassigned, overdue)
+    if (queueFilter === "mine" && currentUser) {
+      items = items.filter((i) => i.assignedTo?.id === currentUser.id);
+    } else if (queueFilter === "unassigned") {
+      items = items.filter((i) => !i.assignedTo);
+    } else if (queueFilter === "overdue") {
+      items = items.filter((i) => isOverdue(i.dueAt));
+    }
+    
+    // Step 2.15: Apply decision type filter
+    if (decisionTypeFilter !== 'all') {
+      items = items.filter((i) => i.decisionType === decisionTypeFilter);
+    }
+    
+    // Apply search query (multi-token AND logic)
+    if (searchQuery.trim()) {
+      const tokens = searchQuery.toLowerCase().trim().split(/\s+/);
+      items = items.filter((item) => {
+        const searchableText = [
+          item.id,
+          item.title,
+          item.subtitle,
+          item.reason,
+          item.status,
+          item.priority,
+          item.assignedTo?.name || '',
+          item.submissionId || '',
+        ].join(' ').toLowerCase();
+        
+        // All tokens must match
+        return tokens.every((token) => searchableText.includes(token));
+      });
+    }
+    
+    // Apply sorting
+    items.sort((a, b) => {
+      let compareResult = 0;
+      
+      switch (sortField) {
+        case 'overdue':
+          const aOverdue = isOverdue(a.dueAt);
+          const bOverdue = isOverdue(b.dueAt);
+          if (aOverdue && !bOverdue) compareResult = -1;
+          else if (!aOverdue && bOverdue) compareResult = 1;
+          else {
+            // Secondary: priority
+            const priorityOrder = { high: 0, medium: 1, low: 2 };
+            const aPri = priorityOrder[a.priority];
+            const bPri = priorityOrder[b.priority];
+            if (aPri !== bPri) compareResult = aPri - bPri;
+            else {
+              // Tertiary: age
+              compareResult = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+            }
+          }
+          break;
+        case 'priority':
+          const priorityOrder = { high: 0, medium: 1, low: 2 };
+          compareResult = priorityOrder[a.priority] - priorityOrder[b.priority];
+          break;
+        case 'age':
+          compareResult = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          break;
+        case 'status':
+          compareResult = a.status.localeCompare(b.status);
+          break;
+        case 'assignee':
+          const aAssignee = a.assignedTo?.name || '';
+          const bAssignee = b.assignedTo?.name || '';
+          compareResult = aAssignee.localeCompare(bAssignee);
+          break;
+      }
+      
+      return sortDirection === 'asc' ? compareResult : -compareResult;
+    });
+
+    // Map to display format
+    return items.map((i) => ({
+      id: i.id,
+      trace_id: i.traceId || "",
+      facility: i.title,
+      reason: i.reason || i.subtitle || "",
+      age: i.age || "Recently",
+      priority: i.priority === "high" ? "High" : i.priority === "medium" ? "Medium" : "Low",
+      priorityColor: i.priorityColor || (i.priority === "high" ? "text-amber-700" : "text-slate-600"),
+    }));
+  }, [queueFilter, decisionTypeFilter, searchQuery, sortField, sortDirection, currentUser]); // Step 2.15: Added decisionTypeFilter
+
+  // Update workQueueItems when filtered/sorted items change
+  useEffect(() => {
+    setWorkQueueItems(filteredAndSortedItems);
+  }, [filteredAndSortedItems]);
+
+  // Helper to refresh work queue display (now just triggers re-render)
+  const refreshWorkQueue = () => {
+    // Force re-render by updating a dependency
+    setWorkQueueItems([...filteredAndSortedItems]);
+  };
+
+  // Assignment handlers
+  const handleAssign = (caseId: string, user: DemoUser) => {
+    demoStore.assignWorkQueueItem(
+      caseId,
+      { id: user.id, name: user.name },
+      currentUser?.name || "Admin"
+    );
+    setAssignMenuOpen(null);
+    refreshWorkQueue();
+  };
+
+  const handleUnassign = (caseId: string) => {
+    demoStore.unassignWorkQueueItem(caseId, currentUser?.name || "Admin");
+    setAssignMenuOpen(null);
+    refreshWorkQueue();
+  };
+
+  // Selection helpers
+  const toggleRowSelection = (id: string) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setSelectedIds(newSet);
+  };
+
+  const selectAllVisible = () => {
+    const visibleIds = new Set(workQueueItems.map((item) => item.id));
+    setSelectedIds(visibleIds);
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    setBulkActionSummary(null);
+  };
+
+  const isAllVisibleSelected = workQueueItems.length > 0 && workQueueItems.every((item) => selectedIds.has(item.id));
+  const isSomeSelected = selectedIds.size > 0 && !isAllVisibleSelected;
+
+  // Bulk operations
+  const handleBulkAssign = (user: DemoUser | null) => {
+    let success = 0;
+    selectedIds.forEach((caseId) => {
+      if (user) {
+        demoStore.assignWorkQueueItem(caseId, { id: user.id, name: user.name }, currentUser?.name || "Admin");
+      } else {
+        demoStore.unassignWorkQueueItem(caseId, currentUser?.name || "Admin");
+      }
+      success++;
+    });
+    setBulkActionOpen(null);
+    refreshWorkQueue();
+    clearSelection();
+    setBulkActionSummary({ success, failed: 0, errors: [] });
+    setTimeout(() => setBulkActionSummary(null), 5000);
+  };
+
+  const handleBulkStatusChange = (newStatus: WorkflowStatus) => {
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    selectedIds.forEach((caseId) => {
+      const item = demoStore.getWorkQueue().find((i) => i.id === caseId);
+      if (!item) return;
+
+      // Check transition validity
+      if (!canTransition(item.status as WorkflowStatus, newStatus, role)) {
+        failed++;
+        errors.push(`${item.title}: Cannot transition from ${item.status} to ${newStatus}`);
+        return;
+      }
+
+      // Update status
+      demoStore.updateWorkQueueItem(caseId, { status: newStatus });
+
+      // Update linked submission
+      if (item.submissionId) {
+        const submissions = demoStore.getSubmissions();
+        const subIndex = submissions.findIndex((s) => s.id === item.submissionId);
+        if (subIndex !== -1) {
+          submissions[subIndex].status = newStatus;
+          demoStore.saveSubmissions(submissions);
+        }
+      }
+
+      // Add audit event
+      const actionMap: Record<WorkflowStatus, AuditAction> = {
+        approved: "APPROVED",
+        blocked: "BLOCKED",
+        needs_review: "NEEDS_REVIEW",
+        request_info: "REQUEST_INFO",
+        submitted: "SUBMITTED",
+      };
+
+      demoStore.addAuditEvent({
+        caseId,
+        submissionId: item.submissionId,
+        actorRole: role,
+        actorName: currentUser?.name || "Admin",
+        action: actionMap[newStatus],
+        message: `Bulk status change to ${newStatus}`,
+      });
+
+      success++;
+    });
+
+    setBulkActionOpen(null);
+    refreshWorkQueue();
+    clearSelection();
+    setBulkActionSummary({ success, failed, errors });
+    setTimeout(() => setBulkActionSummary(null), 5000);
+  };
+
+  const handleBulkRequestInfo = () => {
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    selectedIds.forEach((caseId) => {
+      const item = demoStore.getWorkQueue().find((i) => i.id === caseId);
+      if (!item) return;
+
+      // Check if transition to request_info is allowed
+      if (!canTransition(item.status as WorkflowStatus, "request_info", role)) {
+        failed++;
+        errors.push(`${item.title}: Cannot request info from ${item.status} state`);
+        return;
+      }
+
+      // Update status
+      demoStore.updateWorkQueueItem(caseId, { status: "request_info" });
+
+      // Update linked submission
+      if (item.submissionId) {
+        const submissions = demoStore.getSubmissions();
+        const subIndex = submissions.findIndex((s) => s.id === item.submissionId);
+        if (subIndex !== -1) {
+          submissions[subIndex].status = "request_info";
+          demoStore.saveSubmissions(submissions);
+        }
+      }
+
+      // Add audit event
+      demoStore.addAuditEvent({
+        caseId,
+        submissionId: item.submissionId,
+        actorRole: role,
+        actorName: currentUser?.name || "Admin",
+        action: "REQUEST_INFO",
+        message: bulkRequestInfoMessage || "Please provide the following missing information:",
+      });
+
+      success++;
+    });
+
+    setShowBulkRequestInfoModal(false);
+    setBulkRequestInfoMessage("");
+    refreshWorkQueue();
+    clearSelection();
+    setBulkActionSummary({ success, failed, errors });
+    setTimeout(() => setBulkActionSummary(null), 5000);
+  };
+
+  const handleBulkExport = async () => {
+    const packets: any[] = [];
+    let success = 0;
+
+    for (const caseId of Array.from(selectedIds)) {
+      const item = demoStore.getWorkQueue().find((i) => i.id === caseId);
+      if (!item || !item.submissionId) continue;
+
+      const submission = demoStore.getSubmission(item.submissionId);
+      if (!submission) continue;
+
+      const packet = buildDecisionPacket(
+        submission.decisionTrace || {},
+        submission.payload || {},
+        {
+          submission_id: submission.id,
+          trace_id: submission.traceId || "",
+          tenant: submission.tenantId || "demo",
+          csf_type: submission.csfType || submission.kind,
+        }
+      );
+
+      packets.push(packet);
+      success++;
+    }
+
+    // Download combined JSON file
+    if (packets.length > 0) {
+      const combined = {
+        generatedAt: new Date().toISOString(),
+        exportedBy: currentUser?.name || "Admin",
+        totalPackets: packets.length,
+        packets,
+      };
+
+      downloadJson(combined, `bulk-export-${packets.length}-packets-${Date.now()}.json`);
+      setBulkActionSummary({ success, failed: 0, errors: [] });
+      setTimeout(() => setBulkActionSummary(null), 5000);
+    }
+
+    clearSelection();
+  };
+
+  // Refresh queue when filter changes
+  useEffect(() => {
+    refreshWorkQueue();
+    // Clear selection when filter changes
+    clearSelection();
+  }, [queueFilter]);
+
+  // Keyboard support
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && selectedIds.size > 0) {
+        clearSelection();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedIds]);
+
+  // Step 2.3: View management handlers
+  const handleSaveView = () => {
+    if (!newViewName.trim()) return;
+
+    const newView = viewStore.saveView({
+      name: newViewName,
+      query: searchQuery,
+      filters: {
+        status: queueFilter === 'all' ? undefined : [queueFilter],
+        decisionType: decisionTypeFilter === 'all' ? undefined : decisionTypeFilter, // Step 2.15
+      },
+      sort: { field: sortField, direction: sortDirection },
+      isDefault: setNewViewAsDefault,
+    });
+
+    setSavedViews(viewStore.listViews());
+    setShowSaveViewModal(false);
+    setNewViewName('');
+    setSetNewViewAsDefault(false);
+    setActiveViewId(newView.id);
+  };
+
+  const handleLoadView = (view: QueueView) => {
+    setSearchQuery(view.query);
+    setSortField(view.sort.field);
+    setSortDirection(view.sort.direction);
+    if (view.filters.status && view.filters.status.length > 0) {
+      setQueueFilter(view.filters.status[0] as "all" | "mine" | "unassigned" | "overdue");
+    }
+    // Step 2.15: Restore decisionType filter
+    if (view.filters.decisionType) {
+      setDecisionTypeFilter(view.filters.decisionType);
+    } else {
+      setDecisionTypeFilter('all');
+    }
+    setActiveViewId(view.id);
+  };
+
+  const handleDeleteView = (viewId: string) => {
+    viewStore.deleteView(viewId);
+    setSavedViews(viewStore.listViews());
+    if (activeViewId === viewId) {
+      setActiveViewId(null);
+    }
+  };
+
+  const handleSetDefaultView = (viewId: string) => {
+    viewStore.setDefaultView(viewId);
+    setSavedViews(viewStore.listViews());
+  };
+
+  // Step 2.3: Search handler with debouncing
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchQuery(value);
+  };
+
   return (
     <div className="console-shell">
       <TraceReplayDrawer
@@ -529,6 +1043,10 @@ const ConsoleDashboard: React.FC = () => {
         onClose={handleCloseTrace}
         trace={selectedTrace}
         isLoading={isLoadingTrace}
+      />
+      <CaseDetailsDrawer
+        caseId={selectedCaseId}
+        onClose={() => setSelectedCaseId(null)}
       />
       {/* Sidebar */}
       <aside className="console-sidebar">
@@ -542,17 +1060,62 @@ const ConsoleDashboard: React.FC = () => {
 
         <nav className="console-nav">
           <div className="console-nav-section">Overview</div>
-          <button className="console-nav-item console-nav-item--active">
+          <button 
+            className={`console-nav-item ${activeSection === "dashboard" ? "console-nav-item--active" : ""}`}
+            onClick={() => setActiveSection("dashboard")}
+          >
             Dashboard
           </button>
-          <button className="console-nav-item">CSF Forms</button>
-          <button className="console-nav-item">Licenses</button>
-          <button className="console-nav-item">Orders & Approvals</button>
-          <button className="console-nav-item">RAG Explorer</button>
+          <button 
+            className={`console-nav-item ${activeSection === "csf" ? "console-nav-item--active" : ""}`}
+            onClick={() => setActiveSection("csf")}
+          >
+            CSF Forms
+          </button>
+          <button 
+            className={`console-nav-item ${activeSection === "licenses" ? "console-nav-item--active" : ""}`}
+            onClick={() => setActiveSection("licenses")}
+          >
+            Licenses
+          </button>
+          <button 
+            className={`console-nav-item ${activeSection === "orders" ? "console-nav-item--active" : ""}`}
+            onClick={() => setActiveSection("orders")}
+          >
+            Orders & Approvals
+          </button>
+          <a 
+            href="/console/rag"
+            className="console-nav-item"
+          >
+            RAG Explorer
+          </a>
 
           <div className="console-nav-section">Admin</div>
-          <button className="console-nav-item">Settings</button>
-          <button className="console-nav-item">About AutoComply</button>
+          <a 
+            href="/coverage"
+            className="console-nav-item"
+          >
+            Coverage
+          </a>
+          <a 
+            href="/analytics"
+            className="console-nav-item"
+          >
+            Analytics
+          </a>
+          <button 
+            className={`console-nav-item ${activeSection === "settings" ? "console-nav-item--active" : ""}`}
+            onClick={() => setActiveSection("settings")}
+          >
+            Settings
+          </button>
+          <button 
+            className={`console-nav-item ${activeSection === "about" ? "console-nav-item--active" : ""}`}
+            onClick={() => setActiveSection("about")}
+          >
+            About AutoComply
+          </button>
         </nav>
 
         <div className="console-sidebar-footer">
@@ -574,21 +1137,34 @@ const ConsoleDashboard: React.FC = () => {
         {/* Top header */}
         <header className="console-header">
           <div>
-            <h1 className="console-page-title">Compliance snapshot</h1>
+            <h1 className="console-page-title">
+              {activeSection === "csf" ? "CSF Forms" :
+               activeSection === "licenses" ? "License Management" :
+               activeSection === "orders" ? "Orders & Approvals" :
+               activeSection === "settings" ? "Settings" :
+               activeSection === "about" ? "About AutoComply" :
+               "Compliance snapshot"}
+            </h1>
             <p className="console-page-subtitle">
-              One place to monitor controlled-substance risk, CSF pipeline,
-              and license health across your accounts.
+              {activeSection === "csf" ? "Manage Practitioner, Hospital, and Researcher controlled substance forms." :
+               activeSection === "licenses" ? "Monitor DEA, TDDD, and state pharmacy licenses for expiry windows." :
+               activeSection === "orders" ? "View and manage controlled substance orders and approvals." :
+               activeSection === "settings" ? "Configure your AutoComply AI environment." :
+               activeSection === "about" ? "Learn more about AutoComply AI." :
+               "One place to monitor controlled-substance risk, CSF pipeline, and license health across your accounts."}
             </p>
-            <p className="mt-1 text-xs text-slate-500">
-              Last updated: {new Date().toLocaleString("en-US", { 
-                month: "short", 
-                day: "numeric", 
-                year: "numeric", 
-                hour: "numeric", 
-                minute: "2-digit",
-                hour12: true 
-              })}
-            </p>
+            {activeSection === "dashboard" && (
+              <p className="mt-1 text-xs text-slate-500">
+                Last updated: {new Date().toLocaleString("en-US", { 
+                  month: "short", 
+                  day: "numeric", 
+                  year: "numeric", 
+                  hour: "numeric", 
+                  minute: "2-digit",
+                  hour12: true 
+                })}
+              </p>
+            )}
           </div>
 
           <div className="console-header-right">
@@ -615,6 +1191,9 @@ const ConsoleDashboard: React.FC = () => {
           </div>
         </header>
 
+        {/* Dashboard Content */}
+        {activeSection === "dashboard" && (
+          <>
         {/* Hero row */}
         <section className="console-hero-row">
           <div className="console-hero-card">
@@ -731,20 +1310,363 @@ const ConsoleDashboard: React.FC = () => {
           </div>
         </section>
 
-        {/* Verification work queue */}
-        <section className="console-section">
-          <div className="console-card">
-            <div className="console-card-header">
-              <div>
-                <h2 className="console-card-title">Verification work queue</h2>
-                <p className="console-card-subtitle">
-                  Items flagged for manual review or compliance verification.
-                </p>
+        {/* Verification work queue - Verifier/Admin only */}
+        {canViewWorkQueue(role) && (
+          <section className="console-section">
+            <div className="console-card">
+              <div className="console-card-header">
+                <div>
+                  <h2 className="console-card-title">Verification work queue</h2>
+                  <p className="console-card-subtitle">
+                    Items flagged for manual review or compliance verification.
+                  </p>
+                </div>
+                <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+                  {workQueueItems.length} items
+                </span>
               </div>
-              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
-                {workQueueItems.length} items
-              </span>
-            </div>
+
+              {/* Step 2.3: Search, Sort, and Saved Views */}
+              <div className="flex flex-col gap-3 pt-4 pb-2 border-b border-slate-200">
+                {/* Search Bar */}
+                <div className="flex gap-2 items-center">
+                  <div className="flex-1 relative">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={handleSearchChange}
+                      placeholder="Search cases (e.g., hospital ohio morphine)"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Sort Dropdown */}
+                  <div className="relative">
+                    <select
+                      value={`${sortField}-${sortDirection}`}
+                      onChange={(e) => {
+                        const [field, dir] = e.target.value.split('-') as [SortField, SortDirection];
+                        setSortField(field);
+                        setSortDirection(dir);
+                      }}
+                      className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    >
+                      <option value="overdue-desc">⚠️ Overdue First</option>
+                      <option value="priority-desc">🔴 Priority (High→Low)</option>
+                      <option value="priority-asc">🔵 Priority (Low→High)</option>
+                      <option value="age-desc">⏰ Newest First</option>
+                      <option value="age-asc">⏰ Oldest First</option>
+                      <option value="status-asc">📊 Status (A→Z)</option>
+                      <option value="status-desc">📊 Status (Z→A)</option>
+                      <option value="assignee-asc">👤 Assignee (A→Z)</option>
+                      <option value="assignee-desc">👤 Assignee (Z→A)</option>
+                    </select>
+                  </div>
+
+                  {/* Saved Views Dropdown */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowManageViewsModal(!showManageViewsModal)}
+                      className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white hover:bg-slate-50 font-medium"
+                    >
+                      📁 Views
+                    </button>
+                    {showManageViewsModal && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setShowManageViewsModal(false)} />
+                        <div className="absolute right-0 top-full mt-1 z-20 w-64 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+                          {savedViews.length === 0 ? (
+                            <div className="px-3 py-2 text-xs text-slate-500 italic">No saved views</div>
+                          ) : (
+                            savedViews.map((view) => (
+                              <div key={view.id} className="flex items-center justify-between px-3 py-2 hover:bg-slate-50">
+                                <button
+                                  onClick={() => {
+                                    handleLoadView(view);
+                                    setShowManageViewsModal(false);
+                                  }}
+                                  className="flex-1 text-left text-xs font-medium text-slate-700"
+                                >
+                                  {view.isDefault && "⭐ "}
+                                  {view.name}
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteView(view.id)}
+                                  className="ml-2 text-xs text-red-600 hover:text-red-800"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            ))
+                          )}
+                          <div className="border-t border-slate-200 mt-1 pt-1">
+                            <button
+                              onClick={() => {
+                                setShowManageViewsModal(false);
+                                setShowSaveViewModal(true);
+                              }}
+                              className="w-full text-left px-3 py-2 text-xs font-medium text-sky-600 hover:bg-sky-50"
+                            >
+                              + Save Current View
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Queue Filters */}
+              <div className="flex gap-2 pt-2 pb-2 border-b border-slate-200">
+                <button
+                  onClick={() => setQueueFilter("all")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    queueFilter === "all"
+                      ? "bg-sky-600 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  All
+                </button>
+                {currentUser && (
+                  <button
+                    onClick={() => setQueueFilter("mine")}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                      queueFilter === "mine"
+                        ? "bg-sky-600 text-white"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
+                    My Cases
+                  </button>
+                )}
+                <button
+                  onClick={() => setQueueFilter("unassigned")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    queueFilter === "unassigned"
+                      ? "bg-sky-600 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  Unassigned
+                </button>
+                <button
+                  onClick={() => setQueueFilter("overdue")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    queueFilter === "overdue"
+                      ? "bg-sky-600 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  Overdue
+                </button>
+              </div>
+              
+              {/* Step 2.15: Decision Type Filters */}
+              <div className="flex gap-2 pt-2 pb-2 border-b border-slate-200">
+                <span className="text-xs font-medium text-slate-600 flex items-center pr-2">Decision Type:</span>
+                <button
+                  onClick={() => setDecisionTypeFilter("all")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    decisionTypeFilter === "all"
+                      ? "bg-sky-600 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  All Types
+                </button>
+                <button
+                  onClick={() => setDecisionTypeFilter("csf_practitioner")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    decisionTypeFilter === "csf_practitioner"
+                      ? "bg-sky-600 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  CSF Practitioner
+                </button>
+                <button
+                  onClick={() => setDecisionTypeFilter("ohio_tddd")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    decisionTypeFilter === "ohio_tddd"
+                      ? "bg-sky-600 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  Ohio TDDD
+                </button>
+                <button
+                  onClick={() => setDecisionTypeFilter("ny_pharmacy_license")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    decisionTypeFilter === "ny_pharmacy_license"
+                      ? "bg-sky-600 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  NY Pharmacy
+                </button>
+                <button
+                  onClick={() => setDecisionTypeFilter("csf_facility")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    decisionTypeFilter === "csf_facility"
+                      ? "bg-sky-600 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  CSF Facility
+                </button>
+              </div>
+
+              {/* Bulk Action Bar */}
+              {selectedIds.size > 0 && (
+                <div className="sticky top-0 z-10 bg-sky-50 border-b border-sky-200 px-4 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm font-medium text-sky-900">
+                      {selectedIds.size} selected
+                    </span>
+                    {bulkActionSummary && (
+                      <span className="text-xs text-sky-700">
+                        ✓ Updated {bulkActionSummary.success}
+                        {bulkActionSummary.failed > 0 && `, skipped ${bulkActionSummary.failed}`}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {/* Bulk Assign */}
+                    {(isVerifier || isAdmin) && (
+                      <div className="relative">
+                        <button
+                          onClick={() => setBulkActionOpen(bulkActionOpen === "assign" ? null : "assign")}
+                          className="rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-50"
+                        >
+                          👤 Assign
+                        </button>
+                        {bulkActionOpen === "assign" && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setBulkActionOpen(null)} />
+                            <div className="absolute left-0 top-full mt-1 z-20 w-48 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+                              <button
+                                onClick={() => handleBulkAssign(null)}
+                                className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
+                              >
+                                Unassigned
+                              </button>
+                              {DEMO_VERIFIERS.map((user) => (
+                                <button
+                                  key={user.id}
+                                  onClick={() => handleBulkAssign(user)}
+                                  className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
+                                >
+                                  {user.name}
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Bulk Status */}
+                    {(isVerifier || isAdmin) && (
+                      <div className="relative">
+                        <button
+                          onClick={() => setBulkActionOpen(bulkActionOpen === "status" ? null : "status")}
+                          className="rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-50"
+                        >
+                          📋 Set Status
+                        </button>
+                        {bulkActionOpen === "status" && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setBulkActionOpen(null)} />
+                            <div className="absolute left-0 top-full mt-1 z-20 w-48 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+                              <button
+                                onClick={() => handleBulkStatusChange("approved")}
+                                className="w-full text-left px-3 py-2 text-xs text-green-700 hover:bg-green-50"
+                              >
+                                ✓ Approved
+                              </button>
+                              <button
+                                onClick={() => handleBulkStatusChange("needs_review")}
+                                className="w-full text-left px-3 py-2 text-xs text-amber-700 hover:bg-amber-50"
+                              >
+                                ⚠ Needs Review
+                              </button>
+                              <button
+                                onClick={() => handleBulkStatusChange("blocked")}
+                                className="w-full text-left px-3 py-2 text-xs text-red-700 hover:bg-red-50"
+                              >
+                                ✕ Blocked
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Bulk Request Info */}
+                    {(isVerifier || isAdmin) && (
+                      <button
+                        onClick={() => {
+                          setBulkRequestInfoMessage("Please provide the following missing information:");
+                          setShowBulkRequestInfoModal(true);
+                        }}
+                        className="rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-50"
+                      >
+                        📝 Request Info
+                      </button>
+                    )}
+
+                    {/* Bulk Export */}
+                    <button
+                      onClick={handleBulkExport}
+                      className="rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-50"
+                    >
+                      💾 Export
+                    </button>
+
+                    {/* Clear Selection */}
+                    <button
+                      onClick={clearSelection}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Select All Header */}
+              {workQueueItems.length > 0 && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 border-b border-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={isAllVisibleSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = isSomeSelected;
+                    }}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        selectAllVisible();
+                      } else {
+                        clearSelection();
+                      }
+                    }}
+                    className="rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                  />
+                  <span className="text-xs text-slate-600">
+                    {isAllVisibleSelected ? "All selected" : isSomeSelected ? "Some selected" : "Select all"}
+                  </span>
+                </div>
+              )}
 
             <div className="max-h-[520px] overflow-y-auto pr-2 space-y-3 pt-4">
               {isLoading ? (
@@ -769,40 +1691,240 @@ const ConsoleDashboard: React.FC = () => {
                   <div className="text-sm text-slate-500">No items in verification queue</div>
                 </div>
               ) : (
-                workQueueItems.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex-1 space-y-1">
-                      <div className="text-sm font-medium text-slate-900">
-                        {item.facility}
+                workQueueItems.map((item) => {
+                  const demoItem = demoStore.getWorkQueue().find((i) => i.id === item.id);
+                  const allowedTransitions = demoItem ? getAllowedTransitions(demoItem.status as WorkflowStatus, role) : [];
+                  
+                  return (
+                  <div key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-start gap-3 mb-3">
+                      {/* Checkbox */}
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(item.id)}
+                        onChange={() => toggleRowSelection(item.id)}
+                        className="mt-1 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                      />
+                      
+                      <div className="flex-1 flex items-start justify-between gap-4">
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium text-slate-900">
+                              {item.facility}
+                            </span>
+                            {/* Decision Type Badge */}
+                            {(() => {
+                              const typeDisplay = getDecisionTypeDisplay(demoItem?.decisionType);
+                              return (
+                                <span className={`px-2 py-0.5 text-xs font-medium rounded ${typeDisplay.colorClass}`}>
+                                  {typeDisplay.label}
+                                </span>
+                              );
+                            })()}
+                          </div>
+                          <div className="text-xs text-slate-600">
+                          {item.reason}
+                        </div>
+                        
+                        {/* Info Grid: Age, SLA, Priority, Assignee */}
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs pt-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-500">Age:</span>
+                            <span className="font-medium text-slate-700">
+                              {demoItem ? formatAgeShort(getAgeMs(demoItem.createdAt)) : item.age}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-500">SLA:</span>
+                            <span className={demoItem ? getSlaStatusColor(demoItem.dueAt) : "text-slate-700"}>
+                              {demoItem ? formatDue(demoItem.dueAt) : "No SLA"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-500">Priority:</span>
+                            <span className={item.priorityColor}>{item.priority}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-500">Assigned:</span>
+                            {demoItem?.assignedTo ? (
+                              <span className="font-medium text-slate-700">{demoItem.assignedTo.name}</span>
+                            ) : (
+                              <span className="text-slate-400 italic">Unassigned</span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-xs text-slate-600">
-                        {item.reason}
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
-                        <span>{item.age}</span>
-                        <span>•</span>
-                        <span className={item.priorityColor}>{item.priority} priority</span>
+                      <button
+                        onClick={() => setSelectedCaseId(item.id)}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        title="View case details and timeline"
+                      >
+                        View Details
+                      </button>
                       </div>
                     </div>
-                    <button 
-                      className="ml-4 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                      onClick={() => handleViewTrace(item.trace_id)}
-                      disabled={!item.trace_id}
-                      title={item.trace_id ? `Open trace ${item.trace_id}` : "No trace ID available"}
-                    >
-                      Open trace
-                    </button>
+                    
+                    {/* Action Buttons - Verifier/Admin only */}
+                    {(isVerifier || isAdmin) && (
+                      <div className="flex gap-2 pt-3 border-t border-slate-200 ml-9">
+                        {/* Assignment Dropdown */}
+                        <div className="relative">
+                          <button
+                            onClick={() => setAssignMenuOpen(assignMenuOpen === item.id ? null : item.id)}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-1"
+                          >
+                            👤 Assign
+                          </button>
+                          {assignMenuOpen === item.id && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-10"
+                                onClick={() => setAssignMenuOpen(null)}
+                              />
+                              <div className="absolute left-0 top-full mt-1 z-20 w-48 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+                                <button
+                                  onClick={() => handleUnassign(item.id)}
+                                  className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
+                                >
+                                  Unassigned
+                                </button>
+                                {DEMO_VERIFIERS.map((user) => (
+                                  <button
+                                    key={user.id}
+                                    onClick={() => handleAssign(item.id, user)}
+                                    className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
+                                  >
+                                    {user.name}
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                        
+                        {/* Status Transition Buttons */}
+                        {allowedTransitions.length > 0 && (
+                          <>
+                        {allowedTransitions.includes("approved") && (
+                          <button
+                            onClick={() => handleStatusChange(item.id, "approved")}
+                            className="flex-1 rounded-lg bg-green-600 px-3 py-2 text-xs font-medium text-white hover:bg-green-700"
+                          >
+                            ✓ Approve
+                          </button>
+                        )}
+                        {allowedTransitions.includes("needs_review") && (
+                          <button
+                            onClick={() => handleStatusChange(item.id, "needs_review")}
+                            className="flex-1 rounded-lg bg-amber-600 px-3 py-2 text-xs font-medium text-white hover:bg-amber-700"
+                          >
+                            ⚠ Needs Review
+                          </button>
+                        )}
+                        {allowedTransitions.includes("blocked") && (
+                          <button
+                            onClick={() => handleStatusChange(item.id, "blocked")}
+                            className="flex-1 rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white hover:bg-red-700"
+                          >
+                            ✕ Block
+                          </button>
+                        )}
+                        {allowedTransitions.includes("request_info") && (
+                          <button
+                            onClick={() => {
+                              setRequestInfoCaseId(item.id);
+                              setRequestInfoMessage("Please provide the following missing information:");
+                            }}
+                            className="flex-1 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-700"
+                          >
+                            📝 Request Info
+                          </button>
+                        )}
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
         </section>
+        )}
+
+        {/* My Submissions - Submitter only */}
+        {isSubmitter && (
+          <section className="console-section">
+            <div className="console-card">
+              <div className="console-card-header">
+                <div>
+                  <h2 className="console-card-title">My submissions</h2>
+                  <p className="console-card-subtitle">
+                    Track your submitted CSFs and see their current status.
+                  </p>
+                </div>
+                <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
+                  {(demoStore.submissions ?? []).length} total
+                </span>
+              </div>
+
+              <div className="max-h-[520px] overflow-y-auto pr-2 space-y-3 pt-4">
+                {(demoStore.submissions ?? []).length === 0 ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="text-sm text-slate-500">No submissions yet</div>
+                  </div>
+                ) : (
+                  demoStore.submissions.slice(0, 10).map((submission) => (
+                    <div key={submission.submissionId} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-4">
+                      <div className="flex-1 space-y-1">
+                        <div className="text-sm font-medium text-slate-900">
+                          {submission.requestData.submission_type === 'practitioner_csf' 
+                            ? `Dr. ${submission.requestData.practitioner?.lastName || 'Unknown'} - ${submission.requestData.practitioner?.facilityName || 'Unknown Facility'}`
+                            : submission.requestData.submission_type === 'hospital_csf'
+                            ? submission.requestData.hospital?.facilityName || 'Unknown Hospital'
+                            : `Submission ${submission.submissionId}`
+                          }
+                        </div>
+                        <div className="text-xs text-slate-600">
+                          Type: {submission.requestData.submission_type === 'practitioner_csf' ? 'Practitioner CSF' : 'Hospital CSF'}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                          <span>{new Date(submission.submittedAt).toLocaleDateString()}</span>
+                          <span>•</span>
+                          <span className={
+                            submission.outcome === 'approved' ? 'text-green-600 font-medium' :
+                            submission.outcome === 'blocked' ? 'text-red-600 font-medium' :
+                            'text-amber-600 font-medium'
+                          }>
+                            {submission.outcome === 'approved' ? '✓ Approved' :
+                             submission.outcome === 'blocked' ? '✗ Blocked' :
+                             '⏳ Under Review'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <a
+                          href={`/console/rag?mode=connected&submissionId=${submission.submissionId}&autoload=1`}
+                          className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 inline-block text-center"
+                          title="View decision details"
+                        >
+                          View details
+                        </a>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Lower row: table + alerts */}
         <section className="console-lower-row">
-          {/* Recent decisions */}
-          <div className="console-card console-decisions-card">
+          {/* Recent decisions - Verifier/Admin only */}
+          {canViewRecentDecisions(role) && (
+            <div className="console-card console-decisions-card">
             <div className="console-card-header">
               <div>
                 <h2 className="console-card-title">Recent decisions</h2>
@@ -825,6 +1947,7 @@ const ConsoleDashboard: React.FC = () => {
                     <th>Risk</th>
                     <th>CSF Type</th>
                     <th>Trace</th>
+                    <th>Export</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -852,12 +1975,36 @@ const ConsoleDashboard: React.FC = () => {
                       </td>
                       <td>{row.csfType}</td>
                       <td>
-                        <button 
-                          className="console-link-button" 
-                          onClick={() => workQueueItems.length > 0 && handleViewTrace(workQueueItems[0].trace_id)}
-                          disabled={workQueueItems.length === 0}
+                        <a
+                          href={`/console/rag?mode=connected&traceId=${row.traceId}`}
+                          className="console-link-button"
                         >
                           Open trace
+                        </a>
+                      </td>
+                      <td>
+                        <button
+                          onClick={() => {
+                            const packet = buildDecisionPacket({
+                              trace: {
+                                trace_id: row.traceId,
+                                submission_id: row.id,
+                                status: row.status,
+                                risk_level: row.riskLevel,
+                                csf_type: row.csfType,
+                                scenario_name: row.scenario,
+                                tenant: 'demo',
+                                outcome: row.status === 'ok_to_ship' ? 'approved' : row.status === 'blocked' ? 'blocked' : 'needs_review',
+                                fired_rules: [],
+                                source_type: 'recent_decision'
+                              }
+                            });
+                            downloadJson(packet);
+                          }}
+                          className="console-link-button"
+                          title="Download decision packet as JSON"
+                        >
+                          Download
                         </button>
                       </td>
                     </tr>
@@ -866,6 +2013,53 @@ const ConsoleDashboard: React.FC = () => {
               </table>
             </div>
           </div>
+          )}
+
+          {/* Submitter Guidance - Submitter only */}
+          {isSubmitter && (
+            <div className="console-card console-decisions-card">
+              <div className="console-card-header">
+                <div>
+                  <h2 className="console-card-title">📋 Submitter guidance</h2>
+                  <p className="console-card-subtitle">
+                    Tips for successful CSF submissions
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-4">
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                  <div className="text-sm font-semibold text-blue-900 mb-2">✅ What makes a good submission?</div>
+                  <ul className="text-xs text-blue-800 space-y-1 list-disc list-inside">
+                    <li>Complete practitioner information (name, NPI, DEA, licenses)</li>
+                    <li>Valid facility details with address and TDDD</li>
+                    <li>Current license expiration dates (within compliance window)</li>
+                    <li>Accurate controlled substance schedules if applicable</li>
+                  </ul>
+                </div>
+
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <div className="text-sm font-semibold text-amber-900 mb-2">⚠️ Common reasons for review</div>
+                  <ul className="text-xs text-amber-800 space-y-1 list-disc list-inside">
+                    <li>Missing NPI, DEA, or state license numbers</li>
+                    <li>License expiring within 90 days</li>
+                    <li>Schedule II controlled substances without valid DEA</li>
+                    <li>Out-of-state practitioners needing reciprocity check</li>
+                  </ul>
+                </div>
+
+                <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                  <div className="text-sm font-semibold text-green-900 mb-2">💡 Pro tips</div>
+                  <ul className="text-xs text-green-800 space-y-1 list-disc list-inside">
+                    <li>Double-check license numbers before submitting</li>
+                    <li>Verify facility TDDD is current and valid</li>
+                    <li>Review expiration dates to avoid delays</li>
+                    <li>Submit early to allow time for any needed corrections</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Alerts & tasks */}
           <div className="console-card console-alerts-card">
@@ -925,13 +2119,241 @@ const ConsoleDashboard: React.FC = () => {
                 Use the RAG Explorer to validate that explanations still
                 match Ohio TDDD and DEA language.
               </p>
-              <button className="console-ghost-button console-card-button">
+              <a href="/console/rag" className="console-ghost-button console-card-button">
                 Open RAG Explorer
-              </button>
+              </a>
             </div>
           </div>
         </section>
+          </>
+        )}
+
+        {/* Placeholder sections for other nav items */}
+        {activeSection === "csf" && (
+          <div className="console-section">
+            <div className="console-card">
+              <div className="p-8 text-center text-slate-500">
+                <p className="text-lg font-medium">CSF Forms section coming soon</p>
+                <p className="mt-2 text-sm">This will show Practitioner, Hospital, and Researcher CSF form management.</p>
+              </div>
+            </div>
+          </div>
+        )}
+        {activeSection === "licenses" && (
+          <div className="console-section">
+            <div className="console-card">
+              <div className="p-8 text-center text-slate-500">
+                <p className="text-lg font-medium">License Management section coming soon</p>
+                <p className="mt-2 text-sm">This will show DEA, TDDD, and state pharmacy license monitoring.</p>
+              </div>
+            </div>
+          </div>
+        )}
+        {activeSection === "orders" && (
+          <div className="console-section">
+            <div className="console-card">
+              <div className="p-8 text-center text-slate-500">
+                <p className="text-lg font-medium">Orders & Approvals section coming soon</p>
+                <p className="mt-2 text-sm">This will show controlled substance order tracking and approval workflows.</p>
+              </div>
+            </div>
+          </div>
+        )}
+        {activeSection === "settings" && (
+          <div className="console-section">
+            <div className="console-card">
+              <div className="p-8 space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-2">Console Settings</h3>
+                  <p className="text-sm text-slate-600">Configure your AutoComply AI environment and preferences.</p>
+                </div>
+                
+                {/* Admin Reset Panel - Only for Admin Users */}
+                {role === "admin" && (
+                  <div className="border-t border-slate-200 pt-6">
+                    <h4 className="text-md font-semibold text-slate-900 mb-4">Admin Tools</h4>
+                    <AdminResetPanel 
+                      onResetComplete={() => {
+                        // Refresh the page or reload work queue
+                        window.location.reload();
+                      }} 
+                    />
+                  </div>
+                )}
+                
+                {role !== "admin" && (
+                  <div className="text-center text-slate-500 pt-8">
+                    <p className="text-sm">Additional settings coming soon...</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        {activeSection === "about" && (
+          <div className="console-section">
+            <div className="console-card">
+              <div className="p-8 text-center text-slate-500">
+                <p className="text-lg font-medium">About AutoComply section coming soon</p>
+                <p className="mt-2 text-sm">Learn more about AutoComply AI architecture and capabilities.</p>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
+      
+      {/* Request Info Modal */}
+      {requestInfoCaseId && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-40"
+            onClick={() => setRequestInfoCaseId(null)}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">
+                Request Missing Information
+              </h3>
+              <p className="text-sm text-slate-600 mb-4">
+                Provide a message to the submitter explaining what information is needed.
+              </p>
+              <textarea
+                value={requestInfoMessage}
+                onChange={(e) => setRequestInfoMessage(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+                rows={5}
+                placeholder="Example: Please provide the following missing information:&#10;- Valid DEA number&#10;- Current state medical license&#10;- Facility TDDD verification"
+              />
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={handleRequestInfo}
+                  className="flex-1 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+                >
+                  Send Request
+                </button>
+                <button
+                  onClick={() => {
+                    setRequestInfoCaseId(null);
+                    setRequestInfoMessage("");
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Bulk Request Info Modal */}
+      {showBulkRequestInfoModal && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-40"
+            onClick={() => setShowBulkRequestInfoModal(false)}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">
+                Bulk Request Missing Information
+              </h3>
+              <p className="text-sm text-slate-600 mb-2">
+                Send a request for missing information to {selectedIds.size} selected case{selectedIds.size > 1 ? 's' : ''}.
+              </p>
+              <p className="text-xs text-slate-500 mb-4">
+                This message will be sent to all selected cases. Cases that cannot transition to "request_info" will be skipped.
+              </p>
+              <textarea
+                value={bulkRequestInfoMessage}
+                onChange={(e) => setBulkRequestInfoMessage(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+                rows={5}
+                placeholder="Example: Please provide the following missing information:&#10;- Valid DEA number&#10;- Current state medical license&#10;- Facility TDDD verification"
+              />
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={handleBulkRequestInfo}
+                  className="flex-1 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+                >
+                  Send to {selectedIds.size} Case{selectedIds.size > 1 ? 's' : ''}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowBulkRequestInfoModal(false);
+                    setBulkRequestInfoMessage("");
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Step 2.3: Save View Modal */}
+      {showSaveViewModal && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-40"
+            onClick={() => setShowSaveViewModal(false)}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">
+                Save Current View
+              </h3>
+              <p className="text-sm text-slate-600 mb-4">
+                Save your current search, filters, and sort settings as a reusable view.
+              </p>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  View Name
+                </label>
+                <input
+                  type="text"
+                  value={newViewName}
+                  onChange={(e) => setNewViewName(e.target.value)}
+                  placeholder="e.g., Overdue Hospital Cases"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+              </div>
+              <div className="mb-4">
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={setNewViewAsDefault}
+                    onChange={(e) => setSetNewViewAsDefault(e.target.checked)}
+                    className="rounded border-slate-300"
+                  />
+                  Set as default view
+                </label>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleSaveView}
+                  disabled={!newViewName.trim()}
+                  className="flex-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Save View
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSaveViewModal(false);
+                    setNewViewName('');
+                    setSetNewViewAsDefault(false);
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

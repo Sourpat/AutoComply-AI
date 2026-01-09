@@ -1,22 +1,55 @@
 /**
- * Centralized API base URL configuration for all AutoComply API clients.
- * Single source of truth for backend location.
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Centralized API Base URL Configuration
+ * ═══════════════════════════════════════════════════════════════════════════
  * 
- * CRITICAL BUG FIX: Empty string env vars (VITE_API_BASE="") were overriding
- * the localhost fallback, causing "Request timeout" errors in local dev.
- * Now we properly treat empty strings as undefined.
+ * Single source of truth for backend API location. All API clients should
+ * import API_BASE from src/lib/api.ts (which re-exports this module).
+ * 
+ * USAGE PATTERNS:
+ * ---------------
+ * 
+ * DEVELOPMENT (Local):
+ *   • Leave VITE_API_BASE_URL empty in .env → Uses Vite proxy
+ *   • Auto-detects localhost and uses http://127.0.0.1:8001
+ *   • Vite dev server proxies API routes to backend (no CORS issues)
+ *   • Example .env:
+ *       VITE_API_BASE_URL=
+ *       VITE_APP_ENV=dev
+ * 
+ * PRODUCTION (Render/Vercel/Netlify/etc.):
+ *   • MUST set VITE_API_BASE_URL to backend URL at BUILD TIME
+ *   • Set via platform environment variables dashboard
+ *   • Example for Render:
+ *       VITE_API_BASE_URL=https://autocomply-backend-xxxxx.onrender.com
+ *       VITE_APP_ENV=prod
+ *   • Example for custom domain:
+ *       VITE_API_BASE_URL=https://api.autocomply.example.com
+ *       VITE_APP_ENV=prod
+ * 
+ * IMPORTANT:
+ *   ⚠️  Vite environment variables are embedded at BUILD TIME
+ *   ⚠️  Changing VITE_API_BASE_URL requires rebuilding the frontend
+ *   ⚠️  Empty strings ("") are treated as undefined (uses fallback)
+ * 
+ * CRITICAL BUG FIX:
+ *   Empty string env vars (VITE_API_BASE_URL="") were overriding the
+ *   localhost fallback, causing "Request timeout" errors in local dev.
+ *   Now we properly treat empty strings as undefined.
  */
 
 const getApiBase = (): string => {
   const metaEnv = (import.meta as any)?.env ?? {};
   
-  // Check for explicit env vars (but ignore empty strings!)
+  // Production: Use VITE_API_BASE_URL from environment (required for hosted deployments)
+  // Platforms: Render, Vercel, Netlify, Railway, Heroku, etc.
   const envBase = metaEnv.VITE_API_BASE_URL || metaEnv.VITE_API_BASE;
   if (envBase && envBase.trim()) {
     return envBase.trim();
   }
 
-  // Local dev: frontend on 5173, backend on 8001 (Windows workaround)
+  // Development: Auto-detect localhost and use backend on port 8001
+  // Frontend runs on 5173 (Vite), backend on 8001 (uvicorn)
   if (
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" ||
@@ -25,7 +58,8 @@ const getApiBase = (): string => {
     return "http://127.0.0.1:8001";
   }
 
-  // Fallback: same origin (for deployed envs where API is served by UI host)
+  // Fallback: Same-origin (not recommended for production)
+  // Always set VITE_API_BASE_URL explicitly in production builds
   if (typeof window !== "undefined") {
     return `${window.location.protocol}//${window.location.host}`;
   }

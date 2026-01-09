@@ -31,7 +31,9 @@ export function CopyCurlButton({
         document.body.appendChild(textarea);
         textarea.select();
         document.execCommand("copy");
-        document.body.removeChild(textarea);
+        if (textarea.parentNode === document.body) {
+          document.body.removeChild(textarea);
+        }
       }
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);

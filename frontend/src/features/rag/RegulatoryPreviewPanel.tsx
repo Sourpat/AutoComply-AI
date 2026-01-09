@@ -75,6 +75,26 @@ export const RegulatoryPreviewPanel: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [rawResponse, setRawResponse] = useState<RegulatoryPreviewResponse | null>(null);
   const [showRaw, setShowRaw] = useState(false);
+  const [highlightQuery, setHighlightQuery] = useState<string>("");
+  const previewContainerRef = React.useRef<HTMLDivElement>(null);
+
+  // Function to highlight text matches
+  const highlightText = (text: string, query: string) => {
+    if (!query.trim()) return text;
+    
+    try {
+      const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+      const parts = text.split(regex);
+      
+      return parts.map((part, i) => 
+        regex.test(part) 
+          ? <mark key={i} className="bg-yellow-400/30 text-yellow-200">{part}</mark>
+          : part
+      );
+    } catch {
+      return text;
+    }
+  };
 
   const previewSources: RagSource[] | null = useMemo(() => {
     if (!items) return null;
@@ -133,7 +153,7 @@ export const RegulatoryPreviewPanel: React.FC = () => {
         <div>
           <h2 className="text-sm font-semibold text-zinc-50">Regulatory Knowledge Preview</h2>
           <p className="mt-1 text-xs text-zinc-400">
-            Peek into the regulatory documents that CSF and license engines use under the hood.
+            Select a document from the dropdown, then click Preview to view the stored snippet.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -141,6 +161,7 @@ export const RegulatoryPreviewPanel: React.FC = () => {
             className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200"
             value={selectedPreset}
             onChange={(e) => setSelectedPreset(e.target.value as KnownDocKey | "")}
+            disabled={loading}
           >
             <option value="">Select document…</option>
             <optgroup label="License docs">
@@ -164,6 +185,13 @@ export const RegulatoryPreviewPanel: React.FC = () => {
         </div>
       </div>
 
+      {/* Debug Info (dev only) */}
+      {ragDebugEnabled && (
+        <div className="text-[9px] text-zinc-600 font-mono">
+          Debug: preset={selectedPreset} | loading={String(loading)} | items={items?.length ?? 0}
+        </div>
+      )}
+
       {error && (
         <div className="rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-[11px] text-red-200">
           {error}
@@ -171,13 +199,16 @@ export const RegulatoryPreviewPanel: React.FC = () => {
       )}
 
       {!error && items && items.length === 0 && (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-[11px] text-zinc-400">
-          No regulatory entries found for this selection.
+        <div className="flex flex-col items-center justify-center py-12 text-center text-zinc-500">
+          <div className="text-4xl mb-3">📄</div>
+          <div className="text-sm">
+            💡 No preview loaded yet. Select a document and click <strong>Preview</strong>.
+          </div>
         </div>
       )}
 
       {!error && previewSources && previewSources.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-2" ref={previewContainerRef}>
           <div className="flex items-center justify-between text-[11px] text-zinc-400">
             <span>
               Regulatory entries for {" "}
@@ -185,9 +216,18 @@ export const RegulatoryPreviewPanel: React.FC = () => {
             </span>
             <span className="text-[10px] text-zinc-500">Total {previewSources.length}</span>
           </div>
+          {highlightQuery && (
+            <div className="text-[10px] text-yellow-400 bg-yellow-900/20 rounded px-2 py-1">
+              Highlighting: "{highlightQuery}"
+            </div>
+          )}
           <div className="space-y-1.5">
             {previewSources.map((source, idx) => (
-              <RagSourceCard key={source.id ?? idx} source={source} index={idx} />
+              <RagSourceCard 
+                key={source.id ?? idx} 
+                source={source} 
+                index={idx}
+              />
             ))}
           </div>
         </div>

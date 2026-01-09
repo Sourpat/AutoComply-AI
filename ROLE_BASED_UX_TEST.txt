@@ -1,0 +1,111 @@
+========================================
+  AutoComply AI - Role-Based UX Test
+========================================
+
+[OK] Step 1.9 Implementation Complete!
+
+What was built:
+  - 3 user roles: Submitter, Verifier, Admin
+  - Role switcher dropdown in header (top-right)
+  - 15 granular permission checks
+  - Role-based feature gating in Console + RAG Explorer
+  - localStorage persistence across page refreshes
+
+Files created/modified:
+  [NEW] frontend/src/context/RoleContext.tsx
+  [NEW] frontend/src/auth/permissions.ts
+  [MOD] frontend/src/main.jsx
+  [MOD] frontend/src/components/AppHeader.tsx
+  [MOD] frontend/src/pages/ConsoleDashboard.tsx
+  [MOD] frontend/src/features/rag/RegulatoryDecisionExplainPanel.tsx
+
+Build status:
+  [OK] No TypeScript errors in new files
+  [OK] Build successful (1.28s)
+  [OK] Bundle size: 629.66 kB (gzipped: 152.92 kB)
+
+========================================
+  Manual Testing Instructions
+========================================
+
+1. Start the demo servers:
+   Terminal 1 (Backend):
+     cd backend
+     .venv\Scripts\python -m uvicorn src.api.main:app --reload --host 127.0.0.1 --port 8001
+
+   Terminal 2 (Frontend):
+     cd frontend
+     npm run dev
+
+2. Open browser:
+     http://localhost:5173
+
+3. Test role switching:
+   a) Find role dropdown in top-right corner
+   b) Default role: Verifier
+
+   c) Switch to Submitter:
+      Compliance Console:
+        [OK] 'My Submissions' section appears
+        [OK] Work queue is hidden
+        [OK] Recent decisions table is hidden
+        [OK] Submitter guidance panel appears
+      RAG Explorer:
+        [OK] Mode switcher is hidden (Sandbox only)
+        [OK] Rule IDs and citations are hidden
+        [OK] Evidence chips are hidden
+        [OK] Fired rules section is hidden
+        [OK] Counterfactuals are hidden
+        [OK] Export buttons are hidden
+        [OK] Outcome + missing fields are visible
+
+   d) Switch to Verifier:
+      Compliance Console:
+        [OK] Work queue is visible
+        [OK] Recent decisions table is visible
+        [OK] 'My Submissions' is hidden
+      RAG Explorer:
+        [OK] Mode switcher is visible
+        [OK] Full explainability with rule IDs
+        [OK] Evidence chips are clickable
+        [OK] Export JSON/HTML buttons work
+
+   e) Switch to Admin:
+      [OK] All verifier features visible
+      [OK] Admin controls accessible (if applicable)
+      [OK] Debug panels enabled (if DevSupport on)
+
+4. Test persistence:
+   a) Switch to Submitter
+   b) Refresh page (F5)
+   c) Verify role is still Submitter
+
+5. Verify no crashes:
+   - Switch rapidly between all 3 roles
+   - Navigate between Console and RAG Explorer
+   - Run a decision in RAG Explorer
+   - Check browser console for errors
+
+========================================
+  Documentation
+========================================
+
+Full guide:     ROLE_BASED_UX_GUIDE.md
+Summary:        STEP_1_9_COMPLETE.md
+Permission API: frontend/src/auth/permissions.ts
+
+========================================
+  localStorage Schema
+========================================
+
+Key: 'acai.role.v1'
+Value: 'submitter' | 'verifier' | 'admin'
+Default: 'verifier'
+
+To reset:
+  localStorage.removeItem('acai.role.v1')
+  # Then refresh page
+
+========================================
+  Status: READY FOR TESTING
+========================================

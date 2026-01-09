@@ -10,6 +10,7 @@ import {
 } from "../contracts/verificationWorkEvent";
 import { getReviewQueueItems, type ReviewQueueItem } from "../api/reviewQueueClient";
 import { getWorkQueue, type WorkQueueSubmission } from "../api/consoleClient";
+import { Link } from "react-router-dom";
 
 interface VerificationWorkQueueProps {
   className?: string;
@@ -19,6 +20,7 @@ export function VerificationWorkQueue({ className }: VerificationWorkQueueProps)
   const [events, setEvents] = useState<VerificationWorkEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem('admin_unlocked') === 'true');
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -28,48 +30,63 @@ export function VerificationWorkQueue({ className }: VerificationWorkQueueProps)
   const [riskFilter, setRiskFilter] = useState<string>("all");
 
   // Fetch data from all sources
-  useEffect(() => {
-    async function fetchData() {
-      setLoading(true);
-      setError(null);
+  const fetchData = async () => {
+    setLoading(true);
+    setError(null);
 
-      try {
-        // Fetch CHAT review items
-        const chatResp = await getReviewQueueItems(undefined, 100);
-        const chatEvents = chatResp.items.map(fromChatReviewItem);
+    try {
+      // Fetch CHAT review items
+      const chatResp = await getReviewQueueItems(undefined, 100);
+      const chatEvents = chatResp.items.map(fromChatReviewItem);
 
-        // Fetch CSF submissions from unified work queue
-        const workQueueResp = await getWorkQueue(undefined, undefined, 100);
-        const csfEvents = workQueueResp.items.map((sub: WorkQueueSubmission) =>
-          fromCSFArtifact({
-            id: sub.submission_id,
-            form_type: sub.csf_type,
-            status: sub.decision_status || sub.status,
-            created_at: sub.created_at,
-            reason_code: null,
-            jurisdiction: null,
-            scenario: sub.title,
-            tenant: sub.tenant,
-            trace_id: sub.trace_id,
-            summary: sub.subtitle,
-          })
-        );
+      // Fetch CSF submissions from unified work queue
+      const workQueueResp = await getWorkQueue(undefined, undefined, 100);
+      const csfEvents = workQueueResp.items.map((sub: WorkQueueSubmission) =>
+        fromCSFArtifact({
+          id: sub.submission_id,
+          form_type: sub.csf_type,
+          status: sub.decision_status || sub.status,
+          created_at: sub.created_at,
+          reason_code: null,
+          jurisdiction: null,
+          scenario: sub.title,
+          tenant: sub.tenant,
+          trace_id: sub.trace_id,
+          summary: sub.subtitle,
+        })
+      );
 
-        // Combine and sort by created_at descending
-        const allEvents = [...chatEvents, ...csfEvents].sort(
-          (a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
+      // Combine and sort by created_at descending
+      const allEvents = [...chatEvents, ...csfEvents].sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
 
-        setEvents(allEvents);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load verification queue");
-      } finally {
-        setLoading(false);
-      }
+      setEvents(allEvents);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load verification queue");
+    } finally {
+      setLoading(false);
     }
+  };
 
+  useEffect(() => {
     fetchData();
+  }, []);
+
+  // Sync admin state from localStorage
+  useEffect(() => {
+    const checkAdmin = () => {
+      setIsAdmin(localStorage.getItem('admin_unlocked') === 'true');
+    };
+    
+    window.addEventListener('storage', checkAdmin);
+    const interval = setInterval(checkAdmin, 1000);
+    
+    return () => {
+      window.removeEventListener('storage', checkAdmin);
+      clearInterval(interval);
+    };
   }, []);
 
   // Filter events
@@ -188,6 +205,17 @@ export function VerificationWorkQueue({ className }: VerificationWorkQueueProps)
               Unified queue across CHAT, CSF, and LICENSE verification
             </p>
           </div>
+          {isAdmin && (
+            <Link
+              to="/console/review-queue"
+              className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+              Open Review Queue
+            </Link>
+          )}
         </div>
 
         {/* Counters */}

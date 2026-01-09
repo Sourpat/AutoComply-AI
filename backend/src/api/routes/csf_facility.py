@@ -240,6 +240,9 @@ async def submit_facility_csf(
     decision = evaluate_facility_csf(form)
     decision.reason = _facility_success_reason(decision.reason)
     
+    # Set trace_id on decision for payload storage
+    decision.trace_id = trace_id
+    
     # Determine priority based on decision status
     priority = SubmissionPriority.HIGH if decision.status == "blocked" else SubmissionPriority.MEDIUM
     

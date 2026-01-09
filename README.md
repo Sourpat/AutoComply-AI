@@ -3,6 +3,80 @@
 > A regulatory copilot playground for controlled substances and drug distribution flows.  
 > Built with FastAPI + React, RAG, multi-agent architecture, and DevSupport tooling.
 
+## Quick Start
+
+### Development
+
+**Frontend:**
+```bash
+cd frontend
+npm install
+npm run dev          # Start dev server on http://localhost:5173
+```
+
+**Backend:**
+```bash
+cd backend
+py -3.12 -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python -m uvicorn src.api.main:app --reload --host 127.0.0.1 --port 8001
+```
+
+### Production
+
+**Frontend:**
+```bash
+cd frontend
+npm run build        # Build static files to dist/
+npm run preview      # Preview build locally
+npm run preview:host # Preview on network (0.0.0.0)
+```
+
+**Backend:**
+```bash
+cd backend
+# Configure .env with production settings (see docs/DEPLOYMENT.md)
+chmod +x start.sh
+./start.sh           # Production start script (sets APP_ENV=prod)
+```
+
+Or with uvicorn directly:
+```bash
+python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8001 --workers 4
+```
+
+### Hosted Deployment
+
+Deploy to Heroku, Railway, Render, Vercel, or other platforms:
+
+**Backend (Heroku/Railway/Render):**
+- Start Command: `cd backend && ./start.sh`
+- Environment: Set `CORS_ORIGINS`, `AUTOCOMPLY_OPENAI_KEY`, etc.
+- See [`Procfile.example`](Procfile.example) for reference
+
+**Frontend (Vercel/Netlify/Cloudflare Pages):**
+- Build Command: `cd frontend && npm ci && npm run build`
+- Publish Directory: `frontend/dist`
+- Environment: Set `VITE_API_BASE_URL`, `VITE_APP_ENV=prod`
+
+For platform-specific instructions, see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) and [`HOSTED_DEPLOYMENT_ENTRY_POINTS.md`](HOSTED_DEPLOYMENT_ENTRY_POINTS.md).
+
+### Docker (Easiest for Production)
+
+```bash
+docker-compose up -d
+# Backend: http://localhost:8001
+# Frontend: http://localhost:80
+# n8n: http://localhost:5678
+```
+
+For detailed deployment instructions, see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+---
+
+## Overview
+
 AutoComply AI simulates a realistic compliance environment where:
 
 - Deterministic engines (CSF + Ohio TDDD) make **hard regulatory decisions**,

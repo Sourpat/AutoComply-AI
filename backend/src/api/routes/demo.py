@@ -3,6 +3,9 @@
 Demo endpoints for resetting and reseeding the database for demonstrations.
 
 ADMIN ONLY - These endpoints clear and reset data.
+
+RAG DEPENDENCY: Reset endpoint uses KB seeding which requires RAG features.
+Returns 501 if RAG is disabled.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,6 +14,7 @@ from typing import Dict
 import logging
 
 from src.database.connection import get_db
+from src.config import get_settings
 from src.database.models import (
     KBEntry,
     QuestionEvent,
@@ -18,7 +22,6 @@ from src.database.models import (
     Message,
     Conversation
 )
-from src.services.kb_service import KBService
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +31,23 @@ router = APIRouter(
 )
 
 
+def check_rag_enabled():
+    """Raise 501 if RAG features are disabled."""
+    settings = get_settings()
+    if not settings.rag_enabled:
+        raise HTTPException(
+            status_code=501,
+            detail="RAG features are disabled. Demo reset endpoint requires RAG_ENABLED=true and ML dependencies (sentence-transformers)."
+        )
+
+
 @router.post("/reset")
 async def reset_demo(db: Session = Depends(get_db)) -> Dict[str, str]:
     """
     Reset demo database to clean state and reseed KB.
     
     ADMIN ONLY endpoint for portfolio demonstrations.
+    Requires RAG features enabled (RAG_ENABLED=true).
     
     Workflow:
     1. Delete all question events and review queue items
@@ -44,6 +58,11 @@ async def reset_demo(db: Session = Depends(get_db)) -> Dict[str, str]:
     Returns:
         Status message with counts of deleted and created items
     """
+    check_rag_enabled()
+    
+    # Lazy import to avoid import errors when RAG disabled
+    from src.services.kb_service import KBService
+    
     try:
         logger.info("Starting demo reset...")
         
@@ -99,7 +118,7 @@ async def reset_demo(db: Session = Depends(get_db)) -> Dict[str, str]:
         )
 
 
-async def _reseed_kb(kb_service: KBService, db: Session) -> int:
+async def _reseed_kb(kb_service, db: Session) -> int:
     """
     Reseed KB with demo data including state-specific questions.
     

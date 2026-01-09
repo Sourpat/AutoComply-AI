@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { NavLink } from "react-router-dom";
+import { useRole, getRoleDisplayName, getRoleIcon, type UserRole } from "../context/RoleContext";
 
 type AppHeaderProps = {
   onToggleDevSupport?: () => void;
@@ -11,6 +12,8 @@ const baseNavItems = [
   { to: "/csf", label: "CSF Suite" },
   { to: "/license", label: "License Suite" },
   { to: "/console", label: "Compliance Console" },
+  { to: "/coverage", label: "Coverage" },
+  { to: "/analytics", label: "Analytics" },
 ];
 
 const adminNavItems = [
@@ -30,6 +33,8 @@ function isAdminUnlocked(): boolean {
 
 export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
   const [showAdmin, setShowAdmin] = useState(isAdminUnlocked());
+  const { role, setRole } = useRole();
+  const [showRoleDropdown, setShowRoleDropdown] = useState(false);
 
   useEffect(() => {
     const handleStorageChange = () => {
@@ -68,16 +73,65 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
               ))}
             </nav>
 
-            {/* Right side button (doesn't affect centering) */}
-            {onToggleDevSupport && (
-              <button
-                type="button"
-                onClick={onToggleDevSupport}
-                className="ml-auto inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 bg-slate-900 text-slate-200 ring-slate-700 hover:ring-cyan-500/60"
-              >
-                DevSupport
-              </button>
-            )}
+            {/* Right side buttons */}
+            <div className="ml-auto flex items-center gap-2">
+              {/* Role Switcher */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowRoleDropdown(!showRoleDropdown)}
+                  className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 bg-slate-900 text-slate-200 ring-slate-700 hover:ring-cyan-500/60 transition-all"
+                  title="Switch role"
+                >
+                  <span>{getRoleIcon(role)}</span>
+                  <span>{getRoleDisplayName(role)}</span>
+                  <span className="text-[8px]">▼</span>
+                </button>
+                
+                {showRoleDropdown && (
+                  <>
+                    {/* Backdrop to close dropdown */}
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowRoleDropdown(false)}
+                    />
+                    
+                    {/* Dropdown menu */}
+                    <div className="absolute right-0 mt-1 w-36 rounded-lg bg-slate-900 ring-1 ring-slate-700 shadow-lg z-50 py-1">
+                      {(['submitter', 'verifier', 'admin'] as UserRole[]).map((r) => (
+                        <button
+                          key={r}
+                          onClick={() => {
+                            setRole(r);
+                            setShowRoleDropdown(false);
+                          }}
+                          className={`w-full text-left px-3 py-1.5 text-[11px] font-medium flex items-center gap-2 ${
+                            role === r
+                              ? 'bg-cyan-600/20 text-cyan-400'
+                              : 'text-slate-300 hover:bg-slate-800'
+                          }`}
+                        >
+                          <span>{getRoleIcon(r)}</span>
+                          <span>{getRoleDisplayName(r)}</span>
+                          {role === r && <span className="ml-auto text-[10px]">✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+              
+              {/* DevSupport button */}
+              {onToggleDevSupport && (
+                <button
+                  type="button"
+                  onClick={onToggleDevSupport}
+                  className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 bg-slate-900 text-slate-200 ring-slate-700 hover:ring-cyan-500/60"
+                >
+                  DevSupport
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

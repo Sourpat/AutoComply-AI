@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 
 import { CopyCurlButton } from "../../components/CopyCurlButton";
 import { useTraceSelection } from "../../state/traceSelectionContext";
-import { API_BASE } from "../../api/csfHospitalClient";
+import { API_BASE } from "../../lib/api";
 import { buildCurlCommand } from "../../utils/curl";
 import { RagSourceCard } from "../../components/RagSourceCard";
 import type { RagSource } from "../../types/rag";

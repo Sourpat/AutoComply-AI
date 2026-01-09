@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.config import get_settings
 from src.api.routes.compliance_artifacts import router as compliance_router
 from src.api.routes.controlled_substances import router as controlled_substances_router
 from src.api.routes.csf_facility import (
@@ -48,8 +49,27 @@ from src.api.routes import kb_admin
 from src.api.routes import demo
 from src.api.routes import ops
 
+# Workflow Console - Step 2.10
+from app.workflow.router import router as workflow_router
+
+# Submissions persistence
+from app.submissions.router import router as submissions_router
+
+# Analytics - Step 2.11, 2.12
+from app.analytics.router import router as analytics_router
+from app.analytics.views_router import router as analytics_views_router
+
+# Scheduled Exports
+from app.workflow.scheduled_exports_router import router as scheduled_exports_router
+
+# Admin Operations - ⚠️ DANGEROUS ⚠️
+from app.admin.router import router as admin_router
+
 # Database initialization
-from src.database.connection import init_db
+from src.core.db import init_db
+
+# Get settings
+settings = get_settings()
 
 app = FastAPI(
     title="AutoComply AI – Compliance API",
@@ -61,10 +81,22 @@ app = FastAPI(
     ),
 )
 
-# Basic CORS for local dev + Vercel frontend
+# =============================================================================
+# CORS configuration from settings
+# =============================================================================
+# PRODUCTION SECURITY: In production, CORS_ORIGINS must be set to the exact
+# frontend URL (e.g., "https://your-frontend.onrender.com").
+# Never use wildcard "*" in production as it allows any origin to access the API.
+#
+# Development: Can use "*" or "http://localhost:5173" for local development.
+# Production: Must specify exact frontend domain in environment variable CORS_ORIGINS.
+#
+# Example production config:
+#   CORS_ORIGINS=https://your-frontend.onrender.com
+# =============================================================================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # safe for demo; tighten for production
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -72,13 +104,37 @@ app.add_middleware(
 
 
 # ---------------------------------------------------------------------------
-# Startup event - initialize database
+# Startup event - initialize database and scheduler
 # ---------------------------------------------------------------------------
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database on startup."""
+    """Initialize database and start scheduler on startup."""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"Starting AutoComply AI Backend...")
+    logger.info(f"  APP_ENV: {settings.APP_ENV}")
+    logger.info(f"  RAG_ENABLED: {settings.rag_enabled}")
+    logger.info(f"  PORT: {settings.PORT}")
+    
+    # Initialize database (fast - only runs CREATE TABLE IF NOT EXISTS)
+    logger.info("Initializing database schema...")
     init_db()
+    
+    # Start export scheduler
+    logger.info("Starting export scheduler...")
+    from app.workflow.scheduler import start_scheduler
+    start_scheduler()
+    
+    logger.info("✓ Startup complete - ready to accept requests")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Stop scheduler on shutdown."""
+    from app.workflow.scheduler import stop_scheduler
+    stop_scheduler()
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +180,22 @@ app.include_router(metrics.router)
 app.include_router(kb_admin.router)
 app.include_router(demo.router)
 app.include_router(ops.router)
+
+# Workflow Console - Step 2.10
+app.include_router(workflow_router)
+
+# Submissions persistence
+app.include_router(submissions_router)
+
+# Analytics - Step 2.11, 2.12
+app.include_router(analytics_router)
+app.include_router(analytics_views_router)
+
+# Scheduled Exports
+app.include_router(scheduled_exports_router)
+
+# Admin Operations - ⚠️ DANGEROUS - Use with caution ⚠️
+app.include_router(admin_router)
 
 # Compatibility endpoint for older/tests path:
 # Tests expect: POST /api/v1/license/validate-pdf (singular "license")

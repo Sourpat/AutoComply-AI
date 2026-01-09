@@ -9,6 +9,9 @@ Key features:
 - Human-in-loop review queue for unknown questions
 - Decision trace on every response
 - Optional AI draft answer generation for review queue items
+
+RAG DEPENDENCY: Chat endpoint can work without RAG but with reduced functionality.
+When RAG is disabled, all questions go to review queue with helpful message.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,6 +23,7 @@ import logging
 import re
 
 from src.database.connection import get_db
+from src.config import get_settings
 from src.database.models import (
     Conversation,
     Message,
@@ -27,7 +31,6 @@ from src.database.models import (
     QuestionStatus,
     ReasonCode,
 )
-from src.services.kb_service import KBService, SIMILARITY_THRESHOLD
 from src.services.review_queue_service import ReviewQueueService
 
 logger = logging.getLogger(__name__)
@@ -36,6 +39,9 @@ router = APIRouter(
     prefix="/api/v1/chat",
     tags=["chat"],
 )
+
+# Note: SIMILARITY_THRESHOLD imported dynamically when RAG enabled
+SIMILARITY_THRESHOLD = 0.78  # Fallback default
 
 
 # ============================================================================
@@ -459,8 +465,11 @@ async def _ask_question_internal(
 ) -> ChatResponse:
     """
     Internal implementation of ask_question with full error handling.
+    
+    Works with or without RAG enabled. When RAG is disabled, routes
+    all questions to review queue with helpful message.
     """
-    kb_service = KBService(db)
+    settings = get_settings()
     review_service = ReviewQueueService(db)
     
     # Get or create conversation
@@ -486,6 +495,125 @@ async def _ask_question_internal(
     )
     db.add(user_message)
     db.commit()
+    
+    # Check if RAG is enabled
+    if not settings.rag_enabled:
+        # RAG disabled - route to review queue with helpful message
+        logger.info(f"RAG disabled - routing question to review queue: {request.question[:50]}...")
+        
+        question_event = QuestionEvent(
+            conversation_id=conversation.id,
+            question_text=request.question,
+            status=QuestionStatus.NEEDS_REVIEW,
+            reason_code=ReasonCode.RAG_DISABLED
+        )
+        db.add(question_event)
+        db.commit()
+        db.refresh(question_event)
+        
+        # Create review queue item
+        queue_item = review_service.create_review_item(
+            question_event_id=question_event.id,
+            priority="normal",
+            notes="RAG features disabled - manual answer needed"
+        )
+        
+        decision_trace = DecisionTrace(
+            kb_searched=False,
+            top_match_score=None,
+            top_3_matches=[],
+            similarity_threshold=SIMILARITY_THRESHOLD,
+            passed_similarity_gate=False,
+            passed_policy_gate=True,
+            gating_decision="NEEDS_REVIEW",
+            reason_code="rag_disabled",
+            queue_item_id=queue_item.id,
+            model_metadata={
+                'rag_enabled': False,
+                'message': 'RAG features disabled in production'
+            }
+        )
+        
+        answer = (
+            "Thank you for your question. Our knowledge base search is currently unavailable, "
+            "so your question has been submitted for review by our compliance team. "
+            "We'll provide an answer soon and add it to our knowledge base for future reference."
+        )
+        
+        bot_message = Message(
+            conversation_id=conversation.id,
+            role="assistant",
+            content=answer,
+            question_event_id=question_event.id
+        )
+        db.add(bot_message)
+        db.commit()
+        db.refresh(bot_message)
+        
+        return ChatResponse(
+            answer=answer,
+            decision_trace=decision_trace,
+            session_id=session_id,
+            message_id=bot_message.id
+        )
+    
+    # RAG is enabled - proceed with KB search
+    try:
+        from src.services.kb_service import KBService
+        kb_service = KBService(db)
+    except ImportError as e:
+        logger.error(f"KB service import failed even though RAG enabled: {e}")
+        # Fall back to review queue
+        question_event = QuestionEvent(
+            conversation_id=conversation.id,
+            question_text=request.question,
+            status=QuestionStatus.NEEDS_REVIEW,
+            reason_code=ReasonCode.IMPORT_ERROR
+        )
+        db.add(question_event)
+        db.commit()
+        db.refresh(question_event)
+        
+        queue_item = review_service.create_review_item(
+            question_event_id=question_event.id,
+            priority="normal",
+            notes=f"Import error: {str(e)}"
+        )
+        
+        decision_trace = DecisionTrace(
+            kb_searched=False,
+            top_match_score=None,
+            top_3_matches=[],
+            similarity_threshold=SIMILARITY_THRESHOLD,
+            passed_similarity_gate=False,
+            passed_policy_gate=True,
+            gating_decision="NEEDS_REVIEW",
+            reason_code="import_error",
+            queue_item_id=queue_item.id,
+            model_metadata={'error': str(e)}
+        )
+        
+        answer = (
+            "Thank you for your question. There was a technical issue accessing our knowledge base, "
+            "so your question has been submitted for review. We'll provide an answer soon."
+        )
+        
+        bot_message = Message(
+            conversation_id=conversation.id,
+            role="assistant",
+            content=answer,
+            question_event_id=question_event.id
+        )
+        db.add(bot_message)
+        db.commit()
+        db.refresh(bot_message)
+        
+        return ChatResponse(
+            answer=answer,
+            decision_trace=decision_trace,
+            session_id=session_id,
+            message_id=bot_message.id
+        )
     
     # 1. Triage the question (lightweight classification)
     triage = triage_question(request.question)

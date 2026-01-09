@@ -81,6 +81,10 @@ class HospitalCsfDecision(BaseModel):
             "informed this decision."
         ),
     )
+    trace_id: Optional[str] = Field(
+        default=None,
+        description="Trace ID for decision audit and replay",
+    )
 
 
 def evaluate_hospital_csf(form: HospitalCsfForm) -> HospitalCsfDecision:

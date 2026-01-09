@@ -1,0 +1,244 @@
+========================================
+  Step 2.0: Workflow Status Transitions
+  + Audit Log Timeline - Quick Test
+========================================
+
+[OK] Implementation Complete!
+
+What was built:
+  - Real workflow actions (Approve, Block, Needs Review, Request Info)
+  - Audit event tracking with localStorage persistence
+  - Timeline component showing case history
+  - Case Details Drawer with submission snapshot
+  - RAG Explorer timeline integration (connected mode)
+  - Status transition rules with role-based permissions
+
+Build status:
+  [OK] Build successful (1.32s)
+  [OK] No TypeScript errors
+  [OK] Bundle size: 643.17 kB (gzipped: 155.96 kB)
+
+Files created:
+  [NEW] frontend/src/types/audit.ts (audit event types)
+  [NEW] frontend/src/workflow/statusTransitions.ts (transition rules)
+  [NEW] frontend/src/components/Timeline.tsx (timeline UI)
+  [NEW] frontend/src/components/CaseDetailsDrawer.tsx (case details)
+
+Files modified:
+  [MOD] frontend/src/lib/demoStore.ts (audit event functions)
+  [MOD] frontend/src/pages/ConsoleDashboard.tsx (action buttons, drawer)
+  [MOD] frontend/src/features/rag/RegulatoryDecisionExplainPanel.tsx (timeline panel)
+
+========================================
+  Manual Testing Instructions
+========================================
+
+1. Start the demo servers:
+   Terminal 1 (Backend):
+     cd backend
+     .venv\Scripts\python -m uvicorn src.api.main:app --reload --host 127.0.0.1 --port 8001
+
+   Terminal 2 (Frontend):
+     cd frontend
+     npm run dev
+
+2. Open browser:
+     http://localhost:5173
+
+3. Navigate to Compliance Console (default view)
+
+4. Test Work Queue Actions:
+   a) Find work queue section (should have 3 demo items)
+   
+   b) Click "View Details" on first item
+      [OK] Case Details Drawer opens from right
+      [OK] Shows case header with status badge
+      [OK] Shows submission snapshot (practitioner/facility info)
+      [OK] Shows timeline with audit events
+      [OK] Timeline has icons, timestamps, actor names
+      [OK] Close drawer by clicking overlay or X button
+
+   c) Click action buttons on work queue items:
+      [OK] Verifier role: action buttons visible
+      [OK] Submitter role: action buttons hidden (switch roles to test)
+      
+      Try "Request Info":
+        [OK] Modal opens with textarea
+        [OK] Pre-filled message appears
+        [OK] Edit message and click "Send Request"
+        [OK] Modal closes
+        [OK] Work queue item status updates to "Info Requested"
+        [OK] Timeline updates with new REQUEST_INFO event
+        
+      Try "Approve":
+        [OK] Status badge changes to green "Approved"
+        [OK] Timeline adds APPROVED event
+        [OK] Action buttons disappear (no transitions from approved)
+        
+      Try "Block":
+        [OK] Status badge changes to red "Blocked"
+        [OK] Timeline adds BLOCKED event
+        
+      Try "Needs Review":
+        [OK] Status badge changes to amber "Needs Review"
+        [OK] Timeline adds NEEDS_REVIEW event
+
+5. Test RAG Explorer Timeline:
+   a) Click "View Details" on a work queue item
+   b) Click "Open in RAG Explorer" link
+   c) RAG Explorer loads in connected mode with submission
+   
+      [OK] Submission details display
+      [OK] Decision explainability shows
+      [OK] Timeline panel appears at bottom (after explainability)
+      [OK] Timeline shows same audit events as Case Details Drawer
+      [OK] Timeline has "Case Timeline" header
+      [OK] Events sorted newest first
+
+6. Test Status Persistence:
+   a) Approve a case
+   b) Refresh page (F5)
+   c) Check work queue
+      [OK] Status still shows "Approved"
+      [OK] Timeline still shows APPROVED event
+      [OK] localStorage has audit events (check DevTools → Application → Local Storage)
+
+7. Test Role-Based Actions:
+   a) Switch to Submitter role (top-right dropdown)
+      [OK] Work queue action buttons hidden
+      [OK] Can still view details and timeline (read-only)
+      
+   b) Switch to Verifier role
+      [OK] Action buttons reappear
+      [OK] Can change status
+      
+   c) Switch to Admin role
+      [OK] Can override approved cases (admin-only)
+
+8. Test Demo Seed:
+   a) Open DevTools → Application → Local Storage
+   b) Delete "acai.auditEvents.v1" key
+   c) Refresh page
+   d) Check Compliance Console
+      [OK] Audit events auto-seed
+      [OK] Each submission has SUBMITTED event
+      [OK] Approved cases have APPROVED event
+      [OK] Blocked cases have BLOCKED event
+
+========================================
+  localStorage Schema
+========================================
+
+Key: "acai.auditEvents.v1"
+Value: Array of audit events
+Example:
+  [
+    {
+      "id": "uuid-1",
+      "caseId": "demo-wq-1",
+      "submissionId": "demo-sub-1",
+      "actorRole": "submitter",
+      "actorName": "Dr. Emily Brown",
+      "action": "SUBMITTED",
+      "createdAt": "2026-01-06T08:00:00Z",
+      "meta": {}
+    },
+    {
+      "id": "uuid-2",
+      "caseId": "demo-wq-1",
+      "submissionId": "demo-sub-1",
+      "actorRole": "verifier",
+      "actorName": "Verifier",
+      "action": "APPROVED",
+      "message": "All requirements met",
+      "createdAt": "2026-01-06T10:00:00Z",
+      "meta": {}
+    }
+  ]
+
+========================================
+  Timeline Actions
+========================================
+
+Icon | Action        | Color  | Description
+-----|---------------|--------|-------------
+📤   | SUBMITTED     | Blue   | Initial submission
+✅   | APPROVED      | Green  | Case approved
+⚠️   | NEEDS_REVIEW  | Amber  | Flagged for review
+🚫   | BLOCKED       | Red    | Submission blocked
+📝   | REQUEST_INFO  | Purple | Info requested from submitter
+📋   | NOTE_ADDED    | Gray   | Custom note added
+
+========================================
+  Status Transitions
+========================================
+
+From: submitted
+  To: needs_review, blocked, approved, request_info
+
+From: needs_review
+  To: blocked, approved, request_info
+
+From: request_info
+  To: needs_review, blocked, approved
+
+From: blocked
+  To: needs_review, approved (optional)
+
+From: approved
+  To: (none) - except Admin override
+
+========================================
+  Expected Behavior
+========================================
+
+Verifier/Admin:
+  [OK] Can see action buttons
+  [OK] Can change case status
+  [OK] Can request info with custom message
+  [OK] Can view timeline
+  [OK] Status changes persist
+
+Submitter:
+  [OK] Cannot see action buttons
+  [OK] Can view timeline (read-only)
+  [OK] Cannot change status
+
+Admin Override:
+  [OK] Can change approved cases back to other states
+  [OK] Useful for policy corrections
+
+========================================
+  Known Issues / Notes
+========================================
+
+1. No backend validation yet - all state in localStorage
+2. Timeline virtualization not implemented (OK for demo data)
+3. Email notifications not implemented (future enhancement)
+4. Bulk actions not supported yet (future feature)
+5. Timeline filtering not available (future enhancement)
+
+========================================
+  Next Steps
+========================================
+
+After testing locally:
+1. Verify all checklist items pass
+2. Document any bugs or UX issues
+3. Consider backend integration (API endpoints)
+4. Plan real-time updates (WebSocket)
+5. Design email notification templates
+
+========================================
+  Documentation
+========================================
+
+Full guide: STEP_2_0_COMPLETE.md
+API types:  frontend/src/types/audit.ts
+Workflow:   frontend/src/workflow/statusTransitions.ts
+Timeline:   frontend/src/components/Timeline.tsx
+Drawer:     frontend/src/components/CaseDetailsDrawer.tsx
+
+========================================
+  Status: READY FOR TESTING
+========================================

@@ -7,7 +7,7 @@ real-time verification work queue, statistics, and trace data.
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.autocomply.domain.submissions_store import (
@@ -29,6 +29,20 @@ class WorkQueueResponse(BaseModel):
         ..., description="Submission statistics (counts by status/priority)"
     )
     total: int = Field(..., description="Total number of items")
+
+
+class UpdateSubmissionRequest(BaseModel):
+    """Request to update submission status and/or notes."""
+
+    status: Optional[SubmissionStatus] = Field(
+        None, description="New submission status"
+    )
+    reviewer_notes: Optional[str] = Field(
+        None, description="Reviewer notes to add/update"
+    )
+    reviewed_by: Optional[str] = Field(
+        "admin", description="Username/email of reviewer (defaults to 'admin')"
+    )
 
 
 @router.get("/work-queue", response_model=WorkQueueResponse)
@@ -83,12 +97,88 @@ async def get_submission(submission_id: str) -> Submission:
 
     Returns full submission details including payload and trace_id.
     """
+    return await _get_submission_impl(submission_id)
+
+
+@router.get("/work-queue/{submission_id}", response_model=Submission)
+async def get_work_queue_submission(submission_id: str) -> Submission:
+    """
+    Get a specific work queue submission by ID (alias endpoint for compatibility).
+
+    Returns full submission details including payload, trace_id, and reviewer fields.
+    """
+    return await _get_submission_impl(submission_id)
+
+
+async def _get_submission_impl(submission_id: str) -> Submission:
+    """
+    Shared implementation for getting a submission by ID.
+
+    Returns full submission details including:
+    - Basic info (title, type, tenant, created_at, etc.)
+    - Engine decision (decision_status, risk_level, summary)
+    - Reviewer workflow (status, reviewer_notes, reviewed_by, reviewed_at)
+    - Trace data (trace_id, payload)
+    """
     store = get_submission_store()
     submission = store.get_submission(submission_id)
 
     if not submission:
-        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=404, detail=f"Submission {submission_id} not found"
+        )
 
+    return submission
+
+
+@router.patch("/work-queue/{submission_id}", response_model=Submission)
+async def update_submission(
+    submission_id: str, request: UpdateSubmissionRequest
+) -> Submission:
+    """Update submission status and/or reviewer notes."""
+    return await _update_submission_impl(submission_id, request)
+
+
+@router.patch("/work-queue/{submission_id}/status", response_model=Submission)
+async def update_submission_status(
+    submission_id: str, request: UpdateSubmissionRequest
+) -> Submission:
+    """Update submission status (alias endpoint for compatibility)."""
+    return await _update_submission_impl(submission_id, request)
+
+
+async def _update_submission_impl(
+    submission_id: str, request: UpdateSubmissionRequest
+) -> Submission:
+    """
+    Update submission status and/or reviewer notes.
+
+    Allows compliance reviewers to:
+    - Change status (submitted → in_review → approved/rejected)
+    - Add/update reviewer notes for audit trail
+
+    Example:
+        PATCH /console/work-queue/{id}
+        { "status": "in_review", "reviewer_notes": "Checking DEA number..." }
+    """
+    store = get_submission_store()
+
+    # Validate at least one field is being updated
+    if request.status is None and request.reviewer_notes is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Must provide at least one of: status, reviewer_notes",
+        )
+
+    # Update submission
+    submission = store.update_submission(
+        submission_id=submission_id,
+        status=request.status,
+        reviewer_notes=request.reviewer_notes,
+        reviewed_by=request.reviewed_by,
+    )
+
+    if not submission:
         raise HTTPException(
             status_code=404, detail=f"Submission {submission_id} not found"
         )

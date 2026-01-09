@@ -2,27 +2,49 @@
 // Centralized API base URL and fetch wrapper with timeout + error handling
 
 /**
- * Resolves the API base URL for backend communication.
+ * ═══════════════════════════════════════════════════════════════════════════
+ * API Base URL Configuration
+ * ═══════════════════════════════════════════════════════════════════════════
  * 
- * CRITICAL: Empty string env vars (VITE_API_BASE="") should NOT override
- * the localhost fallback. This was causing "Request timeout" errors in local dev
- * because requests went to "" instead of "http://127.0.0.1:8000".
+ * Single source of truth for backend API location. All API clients import
+ * API_BASE from this module to ensure consistent configuration.
+ * 
+ * USAGE:
+ * ------
+ * Development (with Vite proxy):
+ *   - Leave VITE_API_BASE_URL empty in .env
+ *   - Vite dev server proxies API requests to http://127.0.0.1:8001
+ *   - This file auto-detects localhost and uses http://127.0.0.1:8001
+ * 
+ * Development (without proxy):
+ *   - Set VITE_API_BASE_URL=http://127.0.0.1:8001 in .env
+ *   - Direct API calls to backend (no proxy)
+ * 
+ * Production (hosted deployment):
+ *   - Set VITE_API_BASE_URL=https://your-backend-url.onrender.com in .env.production
+ *   - Or set via platform environment variables (Render, Vercel, Netlify, etc.)
+ *   - REQUIRED: Must be set at build time for production deployments
+ * 
+ * CRITICAL: Empty string env vars (VITE_API_BASE_URL="") should NOT override
+ * the localhost fallback. This was causing "Request timeout" errors in local dev.
  * 
  * Resolution order:
- * 1. Non-empty VITE_API_BASE_URL or VITE_API_BASE env var
- * 2. http://127.0.0.1:8000 for localhost/127.0.0.1 hostnames
- * 3. Same-origin (window.location) for deployed environments
+ * 1. Non-empty VITE_API_BASE_URL or VITE_API_BASE env var (production)
+ * 2. http://127.0.0.1:8001 for localhost/127.0.0.1 hostnames (development)
+ * 3. Same-origin (window.location) for deployed environments without env var
  */
 function getApiBase(): string {
   const metaEnv = (import.meta as any)?.env ?? {};
   
-  // Check for explicit env vars (but ignore empty strings)
+  // Production: Use VITE_API_BASE_URL from environment (set at build time)
+  // Example: VITE_API_BASE_URL=https://autocomply-backend-xxxxx.onrender.com
   const envBase = metaEnv.VITE_API_BASE_URL || metaEnv.VITE_API_BASE;
   if (envBase && envBase.trim()) {
     return envBase.trim();
   }
   
-  // Local development: frontend on 5173, backend on 8001 (Windows workaround for port 8000 permission)
+  // Development: Auto-detect localhost and use backend on port 8001
+  // Works with or without Vite proxy configuration
   if (
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" ||
@@ -31,7 +53,8 @@ function getApiBase(): string {
     return "http://127.0.0.1:8001";
   }
   
-  // Deployed environment: same origin
+  // Fallback: Same-origin (for deployed environments without VITE_API_BASE_URL)
+  // Not recommended - always set VITE_API_BASE_URL in production
   if (typeof window !== "undefined") {
     return `${window.location.protocol}//${window.location.host}`;
   }
