@@ -1,12 +1,47 @@
 fastapi==0.110.0
-uvicorn==0.29.0
-pydantic==2.12.5
-pydantic-settings==2.12.0
-python-dotenv==1.0.1
 python-multipart==0.0.9
-python-json-logger==2.0.7
+uvicorn==0.29.0
+
+# Bumped to be compatible with langchain-openai
+openai>=1.40.0,<3.0.0
+
 httpx==0.27.0
-requests==2.32.5
-sqlalchemy==2.0.45
-tenacity==9.1.2
-PyYAML==6.0.3
+
+python-json-logger==2.0.7
+
+pydantic>=2.3.0,<3.0.0
+pydantic-settings>=2.2.1,<3.0.0
+
+# RAG / LangChain (optional, only needed when AUTOCOMPLY_ENABLE_RAG=1)
+langchain-openai>=0.3.0,<0.5.0
+langchain-community>=0.3.0
+langchain-text-splitters>=0.3.0
+chromadb>=0.5.0
+
+# For loading PDFs / HTML (the regulatory docs under /mnt/data/...)
+pypdf>=4.0.0
+unstructured>=0.15.0
+unstructured[html]>=0.15.0
+
+# OCR/PDF features (not required for HITL feature)
+# Loosened versions for Python 3.14+ compatibility
+pdf2image>=1.16.0
+Pillow>=10.0.0
+
+numpy>=1.26.0
+
+python-dotenv==1.0.1
+
+pytest>=8.0.0,<10.0.0
+pytest-asyncio>=0.23.0,<1.0.0
+
+requests>=2.31.0,<3.0.0
+
+# SQLAlchemy for database persistence (Learn After First Unknown feature)
+sqlalchemy>=2.0.0,<3.0.0
+
+# Sentence transformers for semantic similarity in KB
+sentence-transformers>=2.2.0
+
+# PDF generation for case exports
+reportlab>=4.0.0
