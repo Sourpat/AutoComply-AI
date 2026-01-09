@@ -14,6 +14,7 @@ from src.autocomply.domain.trace import ensure_trace_id, TRACE_HEADER_NAME
 from src.autocomply.audit.decision_log import get_decision_log
 from src.autocomply.domain.decision_risk import compute_risk_for_status
 from src.autocomply.domain.csf_copilot import CsfCopilotResult, run_csf_copilot
+from app.workflow.trace_repo import get_trace_repo
 from src.autocomply.domain.csf_facility import (
     FacilityControlledSubstance,
     FacilityCsfForm,
@@ -128,6 +129,24 @@ async def evaluate_facility_csf_endpoint(
         engine_family="csf",
         decision_type="csf_facility",
         decision=decision_outcome,
+    )
+
+    # Store complete trace for retrieval
+    trace_repo = get_trace_repo()
+    trace_payload = {
+        "trace_id": trace_id,
+        "engine_family": "csf",
+        "decision_type": "csf_facility",
+        "form": form.model_dump(),
+        "decision": decision_outcome.model_dump(),
+        "created_at": decision_outcome.created_at if hasattr(decision_outcome, "created_at") else None,
+    }
+    trace_repo.store_trace(
+        trace_id=trace_id,
+        trace_data=trace_payload,
+        engine_family="csf",
+        decision_type="csf_facility",
+        status=normalized_status.value,
     )
 
     logger.info(

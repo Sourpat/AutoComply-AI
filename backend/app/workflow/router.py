@@ -15,6 +15,7 @@ from io import BytesIO
 from app.core.authz import get_role, require_admin, can_reassign_case, get_actor
 from .exporter import build_case_bundle, generate_pdf
 from .adherence import get_case_adherence
+from .trace_repo import get_trace_repo
 from .models import (
     CaseRecord,
     CaseCreateInput,
@@ -63,6 +64,60 @@ def health_check():
         "env": settings.APP_ENV,
         "version": version
     }
+
+
+# ============================================================================
+# Trace Endpoints
+# ============================================================================
+
+class TraceResponse(BaseModel):
+    """Response model for trace retrieval."""
+    trace_id: str
+    trace: dict
+
+
+@router.get("/traces/{trace_id}", response_model=TraceResponse)
+def get_trace(trace_id: str):
+    """
+    Retrieve a decision trace by ID.
+    
+    Path Parameters:
+        trace_id: Trace identifier (UUID or custom ID)
+    
+    Returns:
+        TraceResponse with trace_id and complete trace payload
+        
+    Raises:
+        404: Trace not found
+        
+    Example:
+        GET /workflow/traces/trace-abc-123
+        
+        Response 200:
+        {
+            "trace_id": "trace-abc-123",
+            "trace": {
+                "trace_id": "trace-abc-123",
+                "engine_family": "csf",
+                "decision_type": "csf_facility",
+                "form": {...},
+                "decision": {...}
+            }
+        }
+    """
+    trace_repo = get_trace_repo()
+    trace_data = trace_repo.get_trace(trace_id)
+    
+    if not trace_data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Trace not found: {trace_id}"
+        )
+    
+    return TraceResponse(
+        trace_id=trace_id,
+        trace=trace_data
+    )
 
 
 # ============================================================================
