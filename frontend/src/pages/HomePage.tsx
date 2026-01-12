@@ -11,7 +11,7 @@ export function HomePage() {
 
   return (
     <div className="ac-console">
-      <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-12">
         {/* Hero Section */}
         <HomeHero />
 
@@ -23,10 +23,10 @@ export function HomePage() {
 
         {/* Trace Preview CTA */}
         <div className="ac-console__card text-center">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+          <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-3">
             See how decisions are explained
           </h3>
-          <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+          <p className="text-base text-slate-700 dark:text-gray-300 mb-6">
             Every decision creates an audit trail showing the complete reasoning chain.
           </p>
           <button

@@ -10,7 +10,7 @@ export default function Layout({ children }) {
     <div className="flex min-h-screen flex-col bg-slate-950 text-[11px] text-slate-50">
       <AppHeader onToggleDevSupport={() => setIsDevSupportOpen((v) => !v)} />
 
-      <main className="flex-1 pt-28">
+      <main className="flex-1 pt-16">
         <div className="mx-auto w-full px-6 pb-12">
           {children}
         </div>

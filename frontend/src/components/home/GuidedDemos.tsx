@@ -56,23 +56,23 @@ export function GuidedDemos() {
 
   return (
     <section id="guided-demos" className="ac-console__card">
-      <div className="ac-console__section-header mb-6">
-        <h3>Guided Demos</h3>
-        <span className="ac-console__section-pill">Interactive</span>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Guided Demos</h2>
+        <span className="px-4 py-2 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 text-sm font-semibold">Interactive</span>
       </div>
 
-      <p className="text-gray-600 dark:text-gray-300 mb-6">
+      <p className="text-lg text-slate-700 dark:text-gray-300 mb-8 leading-relaxed">
         Explore pre-configured scenarios that demonstrate different compliance workflows. Each scenario shows the complete decision flow with expected outcomes.
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {demoScenarios.map((scenario, index) => (
           <div
             key={index}
-            className="border border-gray-200 dark:border-gray-700 rounded-lg p-5 hover:shadow-md transition-shadow"
+            className="border-2 border-slate-200 dark:border-slate-700 rounded-xl p-6 hover:shadow-xl hover:border-cyan-300 dark:hover:border-cyan-700 transition-all bg-white dark:bg-slate-800"
           >
-            <div className="flex items-start justify-between mb-3">
-              <h4 className="font-semibold text-gray-900 dark:text-white">
+            <div className="flex items-start justify-between mb-4">
+              <h4 className="text-lg font-bold text-slate-900 dark:text-white">
                 {scenario.title}
               </h4>
               <div className="flex items-center space-x-2">
@@ -90,12 +90,12 @@ export function GuidedDemos() {
                 </span>
               </div>
             </div>
-            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+            <p className="text-base text-slate-700 dark:text-gray-300 mb-5 leading-relaxed">
               {scenario.description}
             </p>
             <Link
               to={scenario.route}
-              className="inline-block text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+              className="inline-flex items-center text-sm font-semibold text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition-colors"
             >
               {scenario.outcome === "learning" ? "Try chatbot →" : "Run scenario →"}
             </Link>

@@ -13,13 +13,13 @@ export function HomeHero() {
 
   return (
     <section className="ac-console__card ac-console__hero">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
         {/* Left: Headline + CTAs */}
         <div className="flex flex-col justify-center">
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
+          <h1 className="text-5xl font-bold text-slate-900 dark:text-white mb-6 leading-tight">
             Automated Compliance Decisions for Controlled Substances
           </h1>
-          <p className="text-lg text-gray-600 dark:text-gray-300 mb-8">
+          <p className="text-xl text-slate-700 dark:text-gray-300 mb-8 leading-relaxed">
             Evaluate CSFs, licenses, and orders with explainable decisions and audit-ready traces.
           </p>
           <div className="flex flex-wrap gap-4">
@@ -37,47 +37,47 @@ export function HomeHero() {
 
         {/* Right: How AutoComply decides */}
         <div className="flex flex-col justify-center">
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
+          <h3 className="text-2xl font-semibold text-slate-900 dark:text-white mb-8">
             How AutoComply decides
           </h3>
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-300 font-semibold">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-cyan-100 dark:bg-cyan-900 flex items-center justify-center text-cyan-700 dark:text-cyan-300 font-bold text-lg">
                 1
               </div>
               <div>
-                <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
+                <h4 className="font-semibold text-slate-900 dark:text-white mb-2 text-lg">
                   Input
                 </h4>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
+                <p className="text-base text-slate-700 dark:text-gray-300 leading-relaxed">
                   Submit CSF forms, license data, or order details through APIs or UI
                 </p>
               </div>
             </div>
 
             <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-300 font-semibold">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-cyan-100 dark:bg-cyan-900 flex items-center justify-center text-cyan-700 dark:text-cyan-300 font-bold text-lg">
                 2
               </div>
               <div>
-                <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
+                <h4 className="font-semibold text-slate-900 dark:text-white mb-2 text-lg">
                   Decision Engine
                 </h4>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
+                <p className="text-base text-slate-700 dark:text-gray-300 leading-relaxed">
                   Rules evaluate compliance requirements and return ok_to_ship, needs_review, or blocked
                 </p>
               </div>
             </div>
 
             <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-300 font-semibold">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-cyan-100 dark:bg-cyan-900 flex items-center justify-center text-cyan-700 dark:text-cyan-300 font-bold text-lg">
                 3
               </div>
               <div>
-                <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
+                <h4 className="font-semibold text-slate-900 dark:text-white mb-2 text-lg">
                   Explainable Trace
                 </h4>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
+                <p className="text-base text-slate-700 dark:text-gray-300 leading-relaxed">
                   Every decision creates an audit trail showing why each step passed or failed
                 </p>
               </div>
