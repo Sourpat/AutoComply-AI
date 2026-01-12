@@ -29,13 +29,13 @@ export function MetricsStrip({ backendStatus = "online" }: MetricsStripProps) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {metrics.map((metric, index) => (
           <div key={index} className="text-center">
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+            <p className="text-sm font-medium text-slate-600 dark:text-gray-400 mb-1 uppercase tracking-wide">
               {metric.label}
             </p>
             <p className={`text-2xl font-bold ${getValueColor(metric)} mb-1`}>
               {metric.value}
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-slate-600 dark:text-gray-400">
               {metric.caption}
             </p>
           </div>

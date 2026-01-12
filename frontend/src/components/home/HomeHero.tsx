@@ -16,10 +16,10 @@ export function HomeHero() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
         {/* Left: Headline + CTAs */}
         <div className="flex flex-col justify-center">
-          <h1 className="text-5xl font-bold text-slate-900 dark:text-white mb-6 leading-tight">
+          <h1 className="text-3xl lg:text-5xl font-semibold text-slate-900 dark:text-white mb-6 leading-tight tracking-tight">
             Automated Compliance Decisions for Controlled Substances
           </h1>
-          <p className="text-xl text-slate-700 dark:text-gray-300 mb-8 leading-relaxed">
+          <p className="text-lg lg:text-xl text-slate-700 dark:text-gray-300 mb-8 leading-relaxed">
             Evaluate CSFs, licenses, and orders with explainable decisions and audit-ready traces.
           </p>
           <div className="flex flex-wrap gap-4">
@@ -64,7 +64,7 @@ export function HomeHero() {
                   Decision Engine
                 </h4>
                 <p className="text-base text-slate-700 dark:text-gray-300 leading-relaxed">
-                  Rules evaluate compliance requirements and return ok_to_ship, needs_review, or blocked
+                  Rules evaluate compliance requirements and return <span className="font-medium text-slate-900 dark:text-white">ok_to_ship</span>, <span className="font-medium text-slate-900 dark:text-white">needs_review</span>, or <span className="font-medium text-slate-900 dark:text-white">blocked</span>
                 </p>
               </div>
             </div>

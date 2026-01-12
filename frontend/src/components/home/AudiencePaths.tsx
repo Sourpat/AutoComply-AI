@@ -40,20 +40,20 @@ const audienceCards: AudienceCard[] = [
 export function AudiencePaths() {
   return (
     <section className="ac-console__card">
-      <div className="ac-console__section-header mb-6">
-        <h3>Who is this for?</h3>
+      <div className="mb-6">
+        <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Who is this for?</h2>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {audienceCards.map((card, index) => (
           <div
             key={index}
-            className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 flex flex-col"
+            className="border-2 border-slate-200 dark:border-gray-700 rounded-xl p-6 flex flex-col hover:border-cyan-300 dark:hover:border-cyan-700 transition-all"
           >
-            <h4 className="font-semibold text-gray-900 dark:text-white mb-2">
+            <h4 className="text-lg font-bold text-slate-900 dark:text-white mb-3">
               {card.title}
             </h4>
-            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4 flex-1">
+            <p className="text-base text-slate-700 dark:text-gray-300 mb-4 flex-1 leading-relaxed">
               {card.description}
             </p>
             {card.isExternal ? (
@@ -61,14 +61,14 @@ export function AudiencePaths() {
                 href={card.linkTo}
                 target="_blank"
                 rel="noreferrer"
-                className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-sm font-semibold text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition-colors"
               >
                 {card.linkText} →
               </a>
             ) : (
               <Link
                 to={card.linkTo}
-                className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-sm font-semibold text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition-colors"
               >
                 {card.linkText} →
               </Link>
