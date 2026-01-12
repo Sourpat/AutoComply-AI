@@ -18,10 +18,10 @@ export function MetricsStrip({ backendStatus = "online" }: MetricsStripProps) {
   ];
 
   const getValueColor = (metric: typeof metrics[0]) => {
-    if (!metric.highlight) return "text-gray-900 dark:text-white";
+    if (!metric.highlight) return "text-slate-900";
     return backendStatus === "online"
-      ? "text-green-600 dark:text-green-400"
-      : "text-red-600 dark:text-red-400";
+      ? "text-green-600"
+      : "text-red-600";
   };
 
   return (
@@ -29,13 +29,13 @@ export function MetricsStrip({ backendStatus = "online" }: MetricsStripProps) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {metrics.map((metric, index) => (
           <div key={index} className="text-center">
-            <p className="text-sm font-medium text-slate-600 dark:text-gray-400 mb-1 uppercase tracking-wide">
+            <p className="text-sm font-medium text-slate-600 mb-1 uppercase tracking-wide">
               {metric.label}
             </p>
             <p className={`text-2xl font-bold ${getValueColor(metric)} mb-1`}>
               {metric.value}
             </p>
-            <p className="text-xs text-slate-600 dark:text-gray-400">
+            <p className="text-xs text-slate-600">
               {metric.caption}
             </p>
           </div>

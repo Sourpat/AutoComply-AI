@@ -7,7 +7,7 @@ export default function Layout({ children }) {
   const [isDevSupportOpen, setIsDevSupportOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-950 text-[11px] text-slate-50">
+    <div className="flex min-h-screen flex-col bg-slate-950">
       <AppHeader onToggleDevSupport={() => setIsDevSupportOpen((v) => !v)} />
 
       <main className="flex-1 pt-16">

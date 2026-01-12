@@ -23,10 +23,10 @@ export function HomePage() {
 
         {/* Trace Preview CTA */}
         <div className="ac-console__card text-center">
-          <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-3">
+          <h3 className="text-xl font-semibold text-slate-900 mb-3">
             See how decisions are explained
           </h3>
-          <p className="text-base text-slate-700 dark:text-gray-300 mb-6">
+          <p className="text-base text-slate-700 mb-6">
             Every decision creates an audit trail showing the complete reasoning chain.
           </p>
           <button
