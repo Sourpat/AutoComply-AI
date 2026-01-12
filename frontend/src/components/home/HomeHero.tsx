@@ -16,11 +16,11 @@ export function HomeHero() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
         {/* Left: Headline + CTAs */}
         <div className="flex flex-col justify-center">
-          <h1 className="text-3xl lg:text-5xl font-semibold text-slate-900 dark:text-white mb-6 leading-tight tracking-tight">
-            Automated Compliance Decisions for Controlled Substances
+          <h1 className="text-4xl lg:text-6xl font-bold text-slate-900 mb-6 leading-tight tracking-tight">
+            Compliance Automation for Regulated Commerce
           </h1>
-          <p className="text-lg lg:text-xl text-slate-700 dark:text-gray-300 mb-8 leading-relaxed">
-            Evaluate CSFs, licenses, and orders with explainable decisions and audit-ready traces.
+          <p className="text-xl lg:text-2xl text-slate-700 mb-8 leading-relaxed">
+            Instant decisions on controlled substance forms with explainable AI and audit-ready traces.
           </p>
           <div className="flex flex-wrap gap-4">
             <button
@@ -37,48 +37,48 @@ export function HomeHero() {
 
         {/* Right: How AutoComply decides */}
         <div className="flex flex-col justify-center">
-          <h3 className="text-2xl font-semibold text-slate-900 dark:text-white mb-8">
-            How AutoComply decides
+          <h3 className="text-2xl font-semibold text-slate-900 mb-8">
+            How it works
           </h3>
           <div className="space-y-6">
             <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-cyan-100 dark:bg-cyan-900 flex items-center justify-center text-cyan-700 dark:text-cyan-300 font-bold text-lg">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-cyan-100 flex items-center justify-center text-cyan-700 font-bold text-lg">
                 1
               </div>
               <div>
-                <h4 className="font-semibold text-slate-900 dark:text-white mb-2 text-lg">
-                  Input
+                <h4 className="font-semibold text-slate-900 mb-2 text-lg">
+                  Submit
                 </h4>
-                <p className="text-base text-slate-700 dark:text-gray-300 leading-relaxed">
-                  Submit CSF forms, license data, or order details through APIs or UI
+                <p className="text-base text-slate-700 leading-relaxed">
+                  Send CSF forms, license data, or orders via API or UI
                 </p>
               </div>
             </div>
 
             <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-cyan-100 dark:bg-cyan-900 flex items-center justify-center text-cyan-700 dark:text-cyan-300 font-bold text-lg">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-cyan-100 flex items-center justify-center text-cyan-700 font-bold text-lg">
                 2
               </div>
               <div>
-                <h4 className="font-semibold text-slate-900 dark:text-white mb-2 text-lg">
-                  Decision Engine
+                <h4 className="font-semibold text-slate-900 mb-2 text-lg">
+                  Evaluate
                 </h4>
-                <p className="text-base text-slate-700 dark:text-gray-300 leading-relaxed">
-                  Rules evaluate compliance requirements and return <span className="font-medium text-slate-900 dark:text-white">ok_to_ship</span>, <span className="font-medium text-slate-900 dark:text-white">needs_review</span>, or <span className="font-medium text-slate-900 dark:text-white">blocked</span>
+                <p className="text-base text-slate-700 leading-relaxed">
+                  AI engines check compliance and return <span className="font-semibold text-slate-900">ok_to_ship</span>, <span className="font-semibold text-slate-900">needs_review</span>, or <span className="font-semibold text-slate-900">blocked</span>
                 </p>
               </div>
             </div>
 
             <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-cyan-100 dark:bg-cyan-900 flex items-center justify-center text-cyan-700 dark:text-cyan-300 font-bold text-lg">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-cyan-100 flex items-center justify-center text-cyan-700 font-bold text-lg">
                 3
               </div>
               <div>
-                <h4 className="font-semibold text-slate-900 dark:text-white mb-2 text-lg">
-                  Explainable Trace
+                <h4 className="font-semibold text-slate-900 mb-2 text-lg">
+                  Audit
                 </h4>
-                <p className="text-base text-slate-700 dark:text-gray-300 leading-relaxed">
-                  Every decision creates an audit trail showing why each step passed or failed
+                <p className="text-base text-slate-700 leading-relaxed">
+                  Every decision generates an explainable trace showing exactly why it passed or failed
                 </p>
               </div>
             </div>
