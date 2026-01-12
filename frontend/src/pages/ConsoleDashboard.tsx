@@ -74,6 +74,32 @@ if (!demoStore.hasData()) {
   demoStore.seedDemoDataIfEmpty();
 }
 
+// Fetch backend submissions into demoStore
+async function fetchBackendSubmissions() {
+  try {
+    const response = await fetch('http://localhost:8001/console/work-queue?limit=100');
+    if (response.ok) {
+      const data = await response.json();
+      // Merge backend submissions into demoStore format
+      if (data.items && data.items.length > 0) {
+        const mappedSubmissions = data.items.map((item: BackendSubmission) => ({
+          submissionId: item.submission_id,
+          submittedAt: item.created_at,
+          outcome: item.decision_status === 'ok_to_ship' ? 'approved' : item.decision_status === 'blocked' ? 'blocked' : 'pending',
+          requestData: item.payload,
+          traceId: item.trace_id,
+          tenantId: item.tenant,
+        }));
+        // Update demoStore (append to existing)
+        demoStore.submissions = [...mappedSubmissions, ...(demoStore.submissions || [])];
+        console.log('[ConsoleDashboard] Fetched backend submissions:', mappedSubmissions.length);
+      }
+    }
+  } catch (err) {
+    console.log('[ConsoleDashboard] Backend submissions not available, using local only');
+  }
+}
+
 const MOCK_DECISIONS: RecentDecisionRow[] = [
   {
     id: "AUTO-2025-00124",
@@ -433,6 +459,20 @@ const ConsoleDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedTenant, setSelectedTenant] = useState("ohio");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Fetch backend submissions on mount and refresh events
+  useEffect(() => {
+    fetchBackendSubmissions();
+
+    const handleRefresh = () => {
+      setIsRefreshing(true);
+      fetchBackendSubmissions().finally(() => setIsRefreshing(false));
+    };
+
+    window.addEventListener('console-refresh-submissions', handleRefresh);
+    return () => window.removeEventListener('console-refresh-submissions', handleRefresh);
+  }, []);
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [requestInfoCaseId, setRequestInfoCaseId] = useState<string | null>(null);
   const [requestInfoMessage, setRequestInfoMessage] = useState("");
@@ -1168,26 +1208,9 @@ const ConsoleDashboard: React.FC = () => {
           </div>
 
           <div className="console-header-right">
-            <div className="console-tenant-switcher">
-              <span className="console-tenant-label">Tenant</span>
-              <select className="console-tenant-select" defaultValue="ohio">
-                <option value="ohio">Ohio Hospital</option>
-                <option value="ny-pharmacy">NY Pharmacy</option>
-                <option value="practitioner-sandbox">
-                  Practitioner Sandbox
-                </option>
-              </select>
-            </div>
-
-            <div className="console-header-actions">
-              <button 
-                className="console-ghost-button" 
-                onClick={() => workQueueItems.length > 0 && handleViewTrace(workQueueItems[0].trace_id)}
-                disabled={workQueueItems.length === 0}
-              >
-                View trace replay
-              </button>
-            </div>
+            {isRefreshing && (
+              <span className="text-xs text-slate-500">Refreshing...</span>
+            )}
           </div>
         </header>
 
@@ -1871,8 +1894,9 @@ const ConsoleDashboard: React.FC = () => {
 
               <div className="max-h-[520px] overflow-y-auto pr-2 space-y-3 pt-4">
                 {(demoStore.submissions ?? []).length === 0 ? (
-                  <div className="flex items-center justify-center py-12">
+                  <div className="flex flex-col items-center justify-center py-12 space-y-2">
                     <div className="text-sm text-slate-500">No submissions yet</div>
+                    <div className="text-xs text-slate-400">Submit a CSF form to see it here</div>
                   </div>
                 ) : (
                   demoStore.submissions.slice(0, 10).map((submission) => (

@@ -130,12 +130,13 @@ export function useCsfActions(csfType: CsfType) {
         trace_id: lastEvaluatedTraceId || undefined,
       };
       
-      // 1. Try backend submission first (for connected mode)
+      // 1. Try backend submission first via canonical /console/work-queue endpoint
       let backendSubmissionId: string | undefined;
       let backendTraceId: string | undefined;
       let backendDecision: any = null;
       
       try {
+        // Call backend to create submission in work queue (same endpoint Console uses)
         const data = await apiFetch<SubmitResponse>(`/csf/${csfType}/submit`, {
           method: "POST",
           body: JSON.stringify(submitPayload),
@@ -146,6 +147,9 @@ export function useCsfActions(csfType: CsfType) {
           status: data.decision_status || data.status,
           riskLevel: decision?.decision?.risk_level,
         };
+        
+        // Trigger console refresh event
+        window.dispatchEvent(new CustomEvent('console-refresh-submissions'));
       } catch (backendError) {
         // Backend unavailable - continue with local-only mode
         console.warn('[useCsfActions] Backend unavailable, using local-only submission');
