@@ -32,12 +32,21 @@ export function downloadJson(packet: DecisionPacket): void {
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
+  link.style.display = 'none';
   document.body.appendChild(link);
   link.click();
-  if (link.parentNode === document.body) {
-    document.body.removeChild(link);
-  }
-  URL.revokeObjectURL(url);
+  
+  // Cleanup with safety check
+  setTimeout(() => {
+    try {
+      if (link.parentNode) {
+        link.parentNode.removeChild(link);
+      }
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.warn('Cleanup error (ignored):', e);
+    }
+  }, 100);
   
   console.log('[Export] Downloaded decision packet:', filename);
 }
@@ -53,12 +62,21 @@ export function downloadHtml(packet: DecisionPacket, htmlString: string): void {
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
+  link.style.display = 'none';
   document.body.appendChild(link);
   link.click();
-  if (link.parentNode === document.body) {
-    document.body.removeChild(link);
-  }
-  URL.revokeObjectURL(url);
+  
+  // Cleanup with safety check
+  setTimeout(() => {
+    try {
+      if (link.parentNode) {
+        link.parentNode.removeChild(link);
+      }
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.warn('Cleanup error (ignored):', e);
+    }
+  }, 100);
   
   console.log('[Export] Downloaded decision packet HTML:', filename);
 }

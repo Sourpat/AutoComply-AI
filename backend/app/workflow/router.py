@@ -11,11 +11,14 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from io import BytesIO
+import logging
 
 from app.core.authz import get_role, require_admin, can_reassign_case, get_actor
 from .exporter import build_case_bundle, generate_pdf
 from .adherence import get_case_adherence
 from .trace_repo import get_trace_repo
+
+logger = logging.getLogger(__name__)
 from .models import (
     CaseRecord,
     CaseCreateInput,
@@ -26,6 +29,12 @@ from .models import (
     AuditEventCreateInput,
     AuditEventType,
     EvidenceItem,
+    # Phase 2 models
+    CaseNote,
+    CaseNoteCreateInput,
+    CaseDecision,
+    CaseDecisionCreateInput,
+    TimelineItem,
 )
 from .repo import (
     create_case,
@@ -35,10 +44,88 @@ from .repo import (
     add_audit_event,
     list_audit_events,
     upsert_evidence,
+    # Phase 2 functions
+    validate_status_transition,
+    create_case_note,
+    list_case_notes,
+    get_case_timeline,
+    create_case_decision,
+    get_case_decision_by_case,
+    create_case_event,
 )
 
 
 router = APIRouter(prefix="/workflow", tags=["workflow"])
+
+
+# ============================================================================
+# Debug Endpoint (TEMPORARY - for Phase 1 verification)
+# ============================================================================
+
+@router.get("/dev/db-info")
+def get_db_info():
+    """
+    Debug endpoint to verify database path and data.
+    
+    Returns:
+        Database path, working directory, and record counts
+    """
+    from src.config import get_settings
+    from src.core.db import execute_sql
+    import os
+    
+    settings = get_settings()
+    db_path = settings.DB_PATH
+    cwd = os.getcwd()
+    
+    # Get record counts
+    try:
+        cases_result = execute_sql("SELECT COUNT(*) as count FROM cases", {})
+        cases_count = cases_result[0]["count"] if cases_result else 0
+        
+        submissions_result = execute_sql("SELECT COUNT(*) as count FROM submissions", {})
+        submissions_count = submissions_result[0]["count"] if submissions_result else 0
+    except Exception as e:
+        cases_count = f"Error: {e}"
+        submissions_count = f"Error: {e}"
+    
+    return {
+        "db_path": db_path,
+        "db_exists": os.path.exists(db_path) if isinstance(db_path, str) else False,
+        "cwd": cwd,
+        "cases_count": cases_count,
+        "submissions_count": submissions_count,
+    }
+
+
+@router.get("/dev/cases-ids")
+def get_cases_ids():
+    """
+    Debug endpoint to list first 50 case IDs and their submission IDs.
+    
+    Returns:
+        List of {case_id, submission_id, title, created_at}
+    """
+    from src.core.db import execute_sql
+    
+    try:
+        result = execute_sql("""
+            SELECT id, submission_id, title, created_at
+            FROM cases
+            ORDER BY created_at DESC
+            LIMIT 50
+        """, {})
+        
+        return {
+            "count": len(result),
+            "cases": result,
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "count": 0,
+            "cases": [],
+        }
 
 
 # ============================================================================
@@ -140,7 +227,7 @@ def get_workflow_cases(
     q: Optional[str] = Query(None, description="Search in title/summary"),
     overdue: Optional[bool] = Query(None, description="Show only overdue cases"),
     unassigned: Optional[bool] = Query(None, description="Show only unassigned cases"),
-    limit: int = Query(25, ge=1, le=100, description="Number of items per page (max 100)"),
+    limit: int = Query(100, ge=1, le=1000, description="Number of items per page (default 100, max 1000)"),
     offset: int = Query(0, ge=0, description="Number of items to skip"),
     sortBy: str = Query("createdAt", description="Sort field: createdAt, dueAt, or updatedAt"),
     sortDir: str = Query("desc", description="Sort direction: asc or desc"),
@@ -155,7 +242,7 @@ def get_workflow_cases(
     - q: Text search in title/summary
     - overdue: Only show overdue cases
     - unassigned: Only show unassigned cases
-    - limit: Number of items per page (default 25, max 100)
+    - limit: Number of items per page (default 100, max 1000)
     - offset: Number of items to skip (default 0)
     - sortBy: Sort field - createdAt, dueAt, or updatedAt (default createdAt)
     - sortDir: Sort direction - asc or desc (default desc)
@@ -205,6 +292,11 @@ def get_workflow_cases(
         sort_by=sortBy,
         sort_dir=sortDir.lower()
     )
+    
+    # Log for debugging
+    from src.config import get_settings
+    db_path = get_settings().DB_PATH
+    logger.info(f"✓ GET /workflow/cases: Retrieved {len(items)}/{total} cases from DB: {db_path}")
     
     return PaginatedCasesResponse(
         items=items,
@@ -263,6 +355,38 @@ def get_workflow_case(case_id: str):
     if not case:
         raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
     return case
+
+
+@router.get("/cases/{case_id}/submission")
+def get_case_submission(case_id: str):
+    """
+    Get the submission linked to a case.
+    
+    Path Parameters:
+        case_id: Case UUID
+    
+    Returns:
+        SubmissionRecord
+    
+    Raises:
+        404: Case not found or no linked submission
+    """
+    from app.submissions.repo import get_submission
+    
+    # Get case to find submission_id
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
+    
+    if not case.submissionId:
+        raise HTTPException(status_code=404, detail=f"No submission linked to case: {case_id}")
+    
+    # Get submission
+    submission = get_submission(case.submissionId)
+    if not submission:
+        raise HTTPException(status_code=404, detail=f"Submission not found: {case.submissionId}")
+    
+    return submission
 
 
 @router.patch("/cases/{case_id}", response_model=CaseRecord)
@@ -911,3 +1035,234 @@ def reset_workflow_store(request: Request):
         "deletedEvents": before_stats["total_events"],
         "warning": "All workflow data has been permanently deleted",
     }
+
+
+# ============================================================================
+# Phase 2: Case Lifecycle Endpoints
+# ============================================================================
+
+@router.patch("/cases/{case_id}")
+def update_case_status(
+    case_id: str,
+    update_input: CaseUpdateInput,
+    request: Request,
+):
+    """
+    Update case fields (status, assignee, etc.).
+    
+    Validates status transitions and creates audit events.
+    
+    Args:
+        case_id: Case UUID
+        update_input: Update fields
+        request: HTTP request (for actor context)
+        
+    Returns:
+        Updated case record
+        
+    Raises:
+        404: Case not found
+        400: Invalid status transition
+    """
+    # Get current case
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
+    
+    # Extract actor from request
+    actor = get_actor(request)
+    role = get_role(request)
+    
+    # Validate status transition if status is being updated
+    if update_input.status and update_input.status != case.status:
+        if not validate_status_transition(case.status, update_input.status):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status transition from {case.status.value} to {update_input.status.value}"
+            )
+        
+        # Create status change event
+        create_case_event(
+            case_id=case_id,
+            event_type="status_changed",
+            event_payload={
+                "old_status": case.status.value,
+                "new_status": update_input.status.value,
+            },
+            actor_role=role,
+            actor_name=actor,
+        )
+    
+    # Validate assignment change if needed
+    if update_input.assignedTo is not None and update_input.assignedTo != case.assignedTo:
+        if not can_reassign_case(request):
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to reassign cases"
+            )
+        
+        # Create assignment event
+        create_case_event(
+            case_id=case_id,
+            event_type="assigned" if update_input.assignedTo else "unassigned",
+            event_payload={
+                "old_assignee": case.assignedTo,
+                "new_assignee": update_input.assignedTo,
+            },
+            actor_role=role,
+            actor_name=actor,
+        )
+    
+    # Update case
+    updated_case = update_case(case_id, update_input)
+    
+    return updated_case
+
+
+@router.post("/cases/{case_id}/notes", response_model=CaseNote)
+def add_case_note(
+    case_id: str,
+    note_input: CaseNoteCreateInput,
+    request: Request,
+):
+    """
+    Add a note to a case.
+    
+    Creates a note and corresponding audit event.
+    
+    Args:
+        case_id: Case UUID
+        note_input: Note creation input
+        request: HTTP request (for actor context)
+        
+    Returns:
+        Created case note
+        
+    Raises:
+        404: Case not found
+    """
+    # Extract actor from request if not provided
+    if not note_input.authorName:
+        note_input.authorName = get_actor(request)
+    
+    if not note_input.authorRole:
+        note_input.authorRole = get_role(request)
+    
+    # Create note (also creates event)
+    note = create_case_note(case_id, note_input)
+    
+    return note
+
+
+@router.get("/cases/{case_id}/notes", response_model=List[CaseNote])
+def get_case_notes(case_id: str):
+    """
+    Get all notes for a case.
+    
+    Returns notes ordered by creation time (descending).
+    
+    Args:
+        case_id: Case UUID
+        
+    Returns:
+        List of case notes
+        
+    Raises:
+        404: Case not found
+    """
+    # Verify case exists
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
+    
+    notes = list_case_notes(case_id)
+    return notes
+
+
+@router.get("/cases/{case_id}/timeline", response_model=List[TimelineItem])
+def get_case_timeline_endpoint(case_id: str):
+    """
+    Get combined timeline of notes and events for a case.
+    
+    Returns notes + events sorted by creation time (descending).
+    
+    Args:
+        case_id: Case UUID
+        
+    Returns:
+        List of timeline items
+        
+    Raises:
+        404: Case not found
+    """
+    # Verify case exists
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
+    
+    timeline = get_case_timeline(case_id)
+    return timeline
+
+
+@router.post("/cases/{case_id}/decision", response_model=CaseDecision)
+def make_case_decision(
+    case_id: str,
+    decision_input: CaseDecisionCreateInput,
+    request: Request,
+):
+    """
+    Make an approval or rejection decision on a case.
+    
+    Updates case status based on decision:
+    - APPROVED -> status = approved
+    - REJECTED -> status = blocked
+    
+    Args:
+        case_id: Case UUID
+        decision_input: Decision creation input
+        request: HTTP request (for actor context)
+        
+    Returns:
+        Created case decision
+        
+    Raises:
+        404: Case not found
+    """
+    # Extract actor from request if not provided
+    if not decision_input.decidedByName:
+        decision_input.decidedByName = get_actor(request)
+    
+    if not decision_input.decidedByRole:
+        decision_input.decidedByRole = get_role(request)
+    
+    # Create decision (also updates status and creates event)
+    decision = create_case_decision(case_id, decision_input)
+    
+    return decision
+
+
+@router.get("/cases/{case_id}/decision", response_model=CaseDecision)
+def get_case_decision_endpoint(case_id: str):
+    """
+    Get the most recent decision for a case.
+    
+    Args:
+        case_id: Case UUID
+        
+    Returns:
+        Most recent case decision
+        
+    Raises:
+        404: Case not found or no decision exists
+    """
+    # Verify case exists
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
+    
+    decision = get_case_decision_by_case(case_id)
+    if not decision:
+        raise HTTPException(status_code=404, detail=f"No decision found for case: {case_id}")
+    
+    return decision
+

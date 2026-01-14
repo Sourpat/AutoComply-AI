@@ -34,7 +34,7 @@ class AnalyticsRepository:
     def get_summary(self, decision_type: str | None = None) -> AnalyticsSummary:
         """Get overall summary metrics, optionally filtered by decision type."""
         # Build WHERE clause for decision type filter
-        dt_filter = "" if not decision_type else " AND decisionType = :decision_type"
+        dt_filter = "" if not decision_type else " AND decision_type = :decision_type"
         params = {"decision_type": decision_type} if decision_type else {}
         
         # Total cases
@@ -58,20 +58,20 @@ class AnalyticsRepository:
         )
         closed_count = closed_result[0]["count"] if closed_result else 0
         
-        # Overdue cases (dueAt < NOW)
-        now = datetime.utcnow().isoformat()
-        overdue_params = {**params, "now": now}
+        # Overdue cases (due_at < NOW)
+        now_iso = datetime.now().isoformat()
+        overdue_params = {**params, "now": now_iso}
         overdue_result = execute_sql(
-            f"SELECT COUNT(*) as count FROM cases WHERE dueAt < :now AND status NOT IN ('approved', 'blocked', 'closed'){dt_filter}",
+            f"SELECT COUNT(*) as count FROM cases WHERE due_at < :now AND status NOT IN ('approved', 'blocked', 'closed'){dt_filter}",
             overdue_params
         )
         overdue_count = overdue_result[0]["count"] if overdue_result else 0
         
         # Due soon (within 24 hours)
         due_soon_threshold = (datetime.utcnow() + timedelta(hours=24)).isoformat()
-        due_soon_params = {**params, "threshold": due_soon_threshold, "now": now}
+        due_soon_params = {**params, "threshold": due_soon_threshold, "now": now_iso}
         due_soon_result = execute_sql(
-            f"SELECT COUNT(*) as count FROM cases WHERE dueAt <= :threshold AND dueAt >= :now AND status NOT IN ('approved', 'blocked', 'closed'){dt_filter}",
+            f"SELECT COUNT(*) as count FROM cases WHERE due_at <= :threshold AND due_at >= :now AND status NOT IN ('approved', 'blocked', 'closed'){dt_filter}",
             due_soon_params
         )
         due_soon_count = due_soon_result[0]["count"] if due_soon_result else 0
@@ -86,7 +86,7 @@ class AnalyticsRepository:
     
     def get_status_breakdown(self, decision_type: str | None = None) -> List[StatusBreakdownItem]:
         """Get distribution of cases by status, optionally filtered by decision type."""
-        dt_filter = "" if not decision_type else " WHERE decisionType = :decision_type"
+        dt_filter = "" if not decision_type else " WHERE decision_type = :decision_type"
         params = {"decision_type": decision_type} if decision_type else {}
         
         rows = execute_sql(
@@ -98,23 +98,23 @@ class AnalyticsRepository:
     def get_decision_type_breakdown(self) -> List[DecisionTypeBreakdownItem]:
         """Get distribution of cases by decision type."""
         rows = execute_sql(
-            "SELECT decisionType, COUNT(*) as count FROM cases GROUP BY decisionType ORDER BY count DESC"
+            "SELECT decision_type, COUNT(*) as count FROM cases GROUP BY decision_type ORDER BY count DESC"
         )
         return [
-            DecisionTypeBreakdownItem(decisionType=row["decisionType"], count=row["count"])
+            DecisionTypeBreakdownItem(decisionType=row["decision_type"], count=row["count"])
             for row in rows
         ]
     
     def get_cases_created_time_series(self, days: int = 14, decision_type: str | None = None) -> List[TimeSeriesPoint]:
         """Get cases created per day for the last N days, optionally filtered by decision type."""
         cutoff_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
-        dt_filter = "" if not decision_type else " AND decisionType = :decision_type"
+        dt_filter = "" if not decision_type else " AND decision_type = :decision_type"
         params = {"cutoff": cutoff_date}
         if decision_type:
             params["decision_type"] = decision_type
         
         rows = execute_sql(
-            f"SELECT DATE(createdAt) as date, COUNT(*) as count FROM cases WHERE createdAt >= :cutoff{dt_filter} GROUP BY DATE(createdAt) ORDER BY date ASC",
+            f"SELECT DATE(created_at) as date, COUNT(*) as count FROM cases WHERE created_at >= :cutoff{dt_filter} GROUP BY DATE(created_at) ORDER BY date ASC",
             params
         )
         return [TimeSeriesPoint(date=row["date"], count=row["count"]) for row in rows]
@@ -122,16 +122,16 @@ class AnalyticsRepository:
     def get_cases_closed_time_series(self, days: int = 14, decision_type: str | None = None) -> List[TimeSeriesPoint]:
         """
         Get cases closed per day for the last N days, optionally filtered by decision type.
-        Uses updatedAt when status changed to closed/approved/blocked.
+        Uses updated_at when status changed to closed/approved/blocked.
         """
         cutoff_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
-        dt_filter = "" if not decision_type else " AND decisionType = :decision_type"
+        dt_filter = "" if not decision_type else " AND decision_type = :decision_type"
         params = {"cutoff": cutoff_date}
         if decision_type:
             params["decision_type"] = decision_type
         
         rows = execute_sql(
-            f"SELECT DATE(updatedAt) as date, COUNT(*) as count FROM cases WHERE status IN ('approved', 'blocked', 'closed') AND updatedAt >= :cutoff{dt_filter} GROUP BY DATE(updatedAt) ORDER BY date ASC",
+            f"SELECT DATE(updated_at) as date, COUNT(*) as count FROM cases WHERE status IN ('approved', 'blocked', 'closed') AND updated_at >= :cutoff{dt_filter} GROUP BY DATE(updated_at) ORDER BY date ASC",
             params
         )
         return [TimeSeriesPoint(date=row["date"], count=row["count"]) for row in rows]
@@ -140,55 +140,28 @@ class AnalyticsRepository:
         """Get most frequent audit event types in the last N days."""
         cutoff_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
         rows = execute_sql(
-            "SELECT eventType, COUNT(*) as count FROM audit_events WHERE createdAt >= :cutoff GROUP BY eventType ORDER BY count DESC LIMIT :limit",
+            "SELECT event_type, COUNT(*) as count FROM audit_events WHERE created_at >= :cutoff GROUP BY event_type ORDER BY count DESC LIMIT :limit",
             {"cutoff": cutoff_date, "limit": limit}
         )
-        return [TopEventTypeItem(eventType=row["eventType"], count=row["count"]) for row in rows]
+        return [TopEventTypeItem(eventType=row["event_type"], count=row["count"]) for row in rows]
     
     def get_verifier_activity(self, days: int = 30, limit: int = 10) -> List[VerifierActivityItem]:
         """Get verifier activity by actor in the last N days."""
         cutoff_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
         rows = execute_sql(
-            "SELECT actor, COUNT(*) as count FROM audit_events WHERE createdAt >= :cutoff AND actor != 'system' GROUP BY actor ORDER BY count DESC LIMIT :limit",
+            "SELECT actor_name, COUNT(*) as count FROM audit_events WHERE created_at >= :cutoff AND actor_name != 'system' GROUP BY actor_name ORDER BY count DESC LIMIT :limit",
             {"cutoff": cutoff_date, "limit": limit}
         )
-        return [VerifierActivityItem(actor=row["actor"], count=row["count"]) for row in rows]
+        return [VerifierActivityItem(actor=row["actor_name"] or "Unknown", count=row["count"]) for row in rows]
     
     def get_evidence_tags(self, limit: int = 20, decision_type: str | None = None) -> List[EvidenceTagItem]:
         """
         Get most common evidence tags across cases, optionally filtered by decision type.
-        Parses tags from JSON evidence arrays.
+        Returns empty list if evidence column doesn't exist in schema.
         """
-        dt_filter = "" if not decision_type else " AND decisionType = :decision_type"
-        params = {"decision_type": decision_type} if decision_type else {}
-        
-        rows = execute_sql(
-            f"SELECT evidence FROM cases WHERE evidence IS NOT NULL AND evidence != '[]'{dt_filter}",
-            params
-        )
-        
-        tag_counter: Counter = Counter()
-        
-        for row in rows:
-            evidence_json = row["evidence"]
-            try:
-                evidence_items = json.loads(evidence_json)
-                if isinstance(evidence_items, list):
-                    for item in evidence_items:
-                        if isinstance(item, dict) and 'tags' in item:
-                            tags = item['tags']
-                            if isinstance(tags, list):
-                                for tag in tags:
-                                    if isinstance(tag, str) and tag:
-                                        tag_counter[tag] += 1
-            except (json.JSONDecodeError, TypeError):
-                # Skip malformed JSON
-                continue
-        
-        # Get top N tags
-        top_tags = tag_counter.most_common(limit)
-        
-        return [EvidenceTagItem(tag=tag, count=count) for tag, count in top_tags]
+        # Evidence tags feature not yet implemented in schema
+        # Return empty list for now
+        return []
     
     def get_request_info_reasons(self, days: int = 30, limit: int = 10) -> List[RequestInfoBreakdownItem]:
         """
@@ -197,7 +170,7 @@ class AnalyticsRepository:
         """
         cutoff_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
         rows = execute_sql(
-            "SELECT meta FROM audit_events WHERE eventType = 'requested_info' AND createdAt >= :cutoff AND meta IS NOT NULL",
+            "SELECT meta FROM audit_events WHERE event_type = 'requested_info' AND created_at >= :cutoff AND meta IS NOT NULL",
             {"cutoff": cutoff_date}
         )
         
@@ -339,18 +312,27 @@ class AnalyticsRepository:
             "inclusionRate": round(inclusion_rate, 2),
         }
     
-    def get_analytics(self) -> AnalyticsResponse:
-        """Get complete analytics response with all metrics."""
+    def get_analytics(
+        self,
+        days: int = 30,
+        decision_type: str | None = None
+    ) -> AnalyticsResponse:
+        """Get complete analytics response with all metrics.
+        
+        Args:
+            days: Number of days for time series and event metrics
+            decision_type: Optional filter by decision type
+        """
         return AnalyticsResponse(
-            summary=self.get_summary(),
-            statusBreakdown=self.get_status_breakdown(),
+            summary=self.get_summary(decision_type=decision_type),
+            statusBreakdown=self.get_status_breakdown(decision_type=decision_type),
             decisionTypeBreakdown=self.get_decision_type_breakdown(),
-            casesCreatedTimeSeries=self.get_cases_created_time_series(days=14),
-            casesClosedTimeSeries=self.get_cases_closed_time_series(days=14),
-            topEventTypes=self.get_top_event_types(days=30, limit=10),
-            verifierActivity=self.get_verifier_activity(days=30, limit=10),
+            casesCreatedTimeSeries=self.get_cases_created_time_series(days=days),
+            casesClosedTimeSeries=self.get_cases_closed_time_series(days=days),
+            topEventTypes=self.get_top_event_types(days=days, limit=10),
+            verifierActivity=self.get_verifier_activity(days=days, limit=10),
             evidenceTags=self.get_evidence_tags(limit=20),
-            requestInfoReasons=self.get_request_info_reasons(days=30, limit=10),
+            requestInfoReasons=self.get_request_info_reasons(days=days, limit=10),
         )
 
 

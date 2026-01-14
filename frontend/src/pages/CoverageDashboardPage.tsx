@@ -202,13 +202,28 @@ const CoverageCard: React.FC<{ result: CoverageResult }> = ({ result }) => {
       {/* Actions */}
       <div className="flex gap-2">
         <Link
-          to={`/rag?mode=connected&decisionType=${result.decisionType}`}
+          to={`/console/rag?mode=sandbox&decisionType=${result.decisionType}`}
           className="flex-1 px-3 py-2 text-xs font-medium text-center bg-sky-600 text-white rounded-lg hover:bg-sky-700 transition-colors"
         >
           Open in RAG Explorer
         </Link>
         <button
-          onClick={() => alert(`Create coverage item for: ${result.label}\n\nThis would open a form to add:\n- New rules\n- Evidence sources\n- Playbook steps\n- Test scenarios`)}
+          onClick={() => {
+            const overrides = JSON.parse(localStorage.getItem('coverage_overrides_v1') || '{}');
+            const newItem = {
+              id: `override-${Date.now()}`,
+              decisionType: result.decisionType,
+              category: 'rule',
+              description: prompt(`Add coverage item for ${result.label}:\n\nEnter description (e.g., "Added missing rule for license verification"):`) || 'Manual override',
+              timestamp: new Date().toISOString()
+            };
+            if (newItem.description !== 'Manual override') {
+              if (!overrides[result.decisionType]) overrides[result.decisionType] = [];
+              overrides[result.decisionType].push(newItem);
+              localStorage.setItem('coverage_overrides_v1', JSON.stringify(overrides));
+              alert(`Added coverage item!\n\nRefresh the page to see updated metrics.`);
+            }
+          }}
           className="px-3 py-2 text-xs font-medium bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
         >
           + Add
@@ -244,7 +259,7 @@ export default function CoverageDashboardPage() {
                 Open Console
               </Link>
               <Link
-                to="/rag"
+                to="/console/rag"
                 className="px-4 py-2 text-sm font-medium bg-sky-600 text-white rounded-lg hover:bg-sky-700 transition-colors"
               >
                 RAG Explorer

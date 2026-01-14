@@ -4,6 +4,10 @@ import "./ConsoleDashboard.css";
 import { TraceReplayDrawer, TraceData, TraceStep } from "../components/TraceReplayDrawer";
 import { apiFetch } from "../lib/api";
 import { demoStore } from "../lib/demoStore";
+import * as submissionSelector from "../submissions/submissionStoreSelector";
+import type { SubmissionRecord } from "../submissions/submissionTypes";
+import { deleteSubmission, updateSubmission } from "../api/submissionsApi";
+import { listCases } from "../api/workflowApi";
 import type { WorkQueueItem as DemoWorkQueueItem } from "../types/workQueue";
 import { buildDecisionPacket } from "../utils/buildDecisionPacket";
 import { downloadJson } from "../utils/exportPacket";
@@ -20,6 +24,55 @@ import { AdminResetPanel } from "../features/admin/AdminResetPanel";
 
 type DecisionStatus = "ok_to_ship" | "blocked" | "needs_review";
 type ActiveSection = "dashboard" | "csf" | "licenses" | "orders" | "settings" | "about";
+
+// ============================================================================
+// localStorage Cache Helpers
+// ============================================================================
+const SUBMISSIONS_CACHE_KEY = "acai.submissions.cache.v1";
+const WORK_QUEUE_CACHE_KEY = "acai.workQueue.cache.v1";
+
+function getCachedSubmissions(): SubmissionRecord[] {
+  try {
+    const cached = localStorage.getItem(SUBMISSIONS_CACHE_KEY);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.warn('[Cache] Failed to load cached submissions:', err);
+  }
+  return [];
+}
+
+function setCachedSubmissions(submissions: SubmissionRecord[]): void {
+  try {
+    // Don't cache empty list unless it's a valid backend response
+    if (submissions.length === 0) return;
+    localStorage.setItem(SUBMISSIONS_CACHE_KEY, JSON.stringify(submissions));
+  } catch (err) {
+    console.warn('[Cache] Failed to cache submissions:', err);
+  }
+}
+
+function getCachedWorkQueue(): any[] {
+  try {
+    const cached = localStorage.getItem(WORK_QUEUE_CACHE_KEY);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.warn('[Cache] Failed to load cached work queue:', err);
+  }
+  return [];
+}
+
+function setCachedWorkQueue(items: any[]): void {
+  try {
+    if (items.length === 0) return;
+    localStorage.setItem(WORK_QUEUE_CACHE_KEY, JSON.stringify(items));
+  } catch (err) {
+    console.warn('[Cache] Failed to cache work queue:', err);
+  }
+}
 
 // Backend submission interface
 interface BackendSubmission {
@@ -66,38 +119,18 @@ interface WorkQueueItem {
   age: string;
   priority: "High" | "Medium" | "Low";
   priorityColor: string;
+  // Fields from API CaseRecord - no need to look up demoStore
+  status: 'new' | 'in_review' | 'needs_info' | 'approved' | 'blocked' | 'closed';
+  assignedTo: string | null;
+  decisionType: string;
+  dueAt: string;
+  createdAt: string;
 }
 
 // Seed demo data on first load
 if (!demoStore.hasData()) {
   console.log('[ConsoleDashboard] First load - seeding demo data');
   demoStore.seedDemoDataIfEmpty();
-}
-
-// Fetch backend submissions into demoStore
-async function fetchBackendSubmissions() {
-  try {
-    const response = await fetch('http://localhost:8001/console/work-queue?limit=100');
-    if (response.ok) {
-      const data = await response.json();
-      // Merge backend submissions into demoStore format
-      if (data.items && data.items.length > 0) {
-        const mappedSubmissions = data.items.map((item: BackendSubmission) => ({
-          submissionId: item.submission_id,
-          submittedAt: item.created_at,
-          outcome: item.decision_status === 'ok_to_ship' ? 'approved' : item.decision_status === 'blocked' ? 'blocked' : 'pending',
-          requestData: item.payload,
-          traceId: item.trace_id,
-          tenantId: item.tenant,
-        }));
-        // Update demoStore (append to existing)
-        demoStore.submissions = [...mappedSubmissions, ...(demoStore.submissions || [])];
-        console.log('[ConsoleDashboard] Fetched backend submissions:', mappedSubmissions.length);
-      }
-    }
-  } catch (err) {
-    console.log('[ConsoleDashboard] Backend submissions not available, using local only');
-  }
 }
 
 const MOCK_DECISIONS: RecentDecisionRow[] = [
@@ -455,24 +488,122 @@ const ConsoleDashboard: React.FC = () => {
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [selectedTrace, setSelectedTrace] = useState<TraceData | null>(null);
   const [isLoadingTrace, setIsLoadingTrace] = useState(false);
-  const [workQueueItems, setWorkQueueItems] = useState<WorkQueueItem[]>([]);
+  const [workQueueItems, setWorkQueueItems] = useState<WorkQueueItem[]>(() => {
+    // Load from cache immediately to prevent flash
+    return getCachedWorkQueue();
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedTenant, setSelectedTenant] = useState("ohio");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Submission state - loaded from submissionStoreSelector
+  const [submissions, setSubmissions] = useState<SubmissionRecord[]>(() => {
+    // Load from cache immediately to prevent flash
+    return getCachedSubmissions();
+  });
+  const [isLoadingSubmissions, setIsLoadingSubmissions] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Fetch backend submissions on mount and refresh events
+  // Refresh submissions function
+  const refreshSubmissions = async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setIsLoadingSubmissions(true);
+    }
+    try {
+      const list = await submissionSelector.listSubmissions();
+      setSubmissions(list);
+      setCachedSubmissions(list); // Cache successful response
+      console.log('[ConsoleDashboard] Loaded submissions:', list.length);
+    } catch (err) {
+      console.error('[ConsoleDashboard] Failed to load submissions:', err);
+      // Keep cached data on error
+    } finally {
+      if (!options?.silent) {
+        setIsLoadingSubmissions(false);
+      }
+    }
+  };
+
+  // Load submissions on mount and refresh events
   useEffect(() => {
-    fetchBackendSubmissions();
+    // Refresh from API (cache already loaded in useState initializer)
+    refreshSubmissions();
 
+    // Listen for explicit refresh events
     const handleRefresh = () => {
       setIsRefreshing(true);
-      fetchBackendSubmissions().finally(() => setIsRefreshing(false));
+      refreshSubmissions().finally(() => setIsRefreshing(false));
+    };
+
+    // Listen for data change events from other parts of the app
+    const handleDataChanged = (e: CustomEvent) => {
+      if (e.detail?.type === 'submission') {
+        console.log('[ConsoleDashboard] Data changed, refreshing submissions...');
+        refreshSubmissions({ silent: true });
+      }
+    };
+
+    // Refresh on window focus (user returning to tab)
+    const handleFocus = () => {
+      console.log('[ConsoleDashboard] Window focused, refreshing submissions...');
+      refreshSubmissions({ silent: true });
     };
 
     window.addEventListener('console-refresh-submissions', handleRefresh);
-    return () => window.removeEventListener('console-refresh-submissions', handleRefresh);
+    window.addEventListener('acai:data-changed', handleDataChanged as EventListener);
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('console-refresh-submissions', handleRefresh);
+      window.removeEventListener('acai:data-changed', handleDataChanged as EventListener);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
+
+  // Handle submission deletion
+  const handleDeleteSubmission = async (submissionId: string) => {
+    setDeletingId(submissionId);
+    try {
+      await deleteSubmission(submissionId);
+      
+      // Remove from local state immediately (optimistic update)
+      const updatedSubmissions = submissions.filter(s => s.id !== submissionId);
+      setSubmissions(updatedSubmissions);
+      setCachedSubmissions(updatedSubmissions);
+      
+      // Refresh work queue to remove cancelled case
+      await refreshWorkQueue();
+      
+      // Dispatch data changed event for other components
+      window.dispatchEvent(new CustomEvent('acai:data-changed', {
+        detail: { type: 'submission', action: 'delete', id: submissionId }
+      }));
+      
+      console.log('[ConsoleDashboard] Submission deleted and queue refreshed:', submissionId);
+    } catch (err) {
+      console.error('[ConsoleDashboard] Failed to delete submission:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete submission');
+      // Revert optimistic update on error
+      await refreshSubmissions();
+    } finally {
+      setDeletingId(null);
+      setDeleteConfirmId(null);
+    }
+  };
+
+  // Handle edit button click - navigate to form or open edit modal
+  const handleEditSubmission = (submission: SubmissionRecord) => {
+    // For now, show a simple alert - you can implement a modal or navigation
+    // Navigation approach:
+    if (submission.decisionType === 'csf_facility') {
+      navigate(`/submit/csf-facility?submissionId=${submission.id}`);
+    } else {
+      // Generic approach: show alert for forms we haven't implemented edit for yet
+      alert(`Edit functionality for ${submission.decisionType} coming soon.\nSubmission ID: ${submission.id}`);
+    }
+  };
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [requestInfoCaseId, setRequestInfoCaseId] = useState<string | null>(null);
   const [requestInfoMessage, setRequestInfoMessage] = useState("");
@@ -500,28 +631,73 @@ const ConsoleDashboard: React.FC = () => {
   // Get current user based on role
   const currentUser = getCurrentDemoUser(role);
   
-  // Load work queue from demoStore on mount
+  // Load work queue from API on mount
   useEffect(() => {
-    console.log('[ConsoleDashboard] Loading work queue from demoStore');
-    const items = demoStore.getWorkQueue();
+    // Refresh from API (cache already loaded in useState initializer)
+    loadWorkQueue();
+
+    // Listen for data change events
+    const handleDataChanged = (e: CustomEvent) => {
+      if (e.detail?.type === 'submission') {
+        console.log('[ConsoleDashboard] Submission changed, refreshing work queue...');
+        loadWorkQueue();
+      }
+    };
+
+    // Refresh on window focus
+    const handleFocus = () => {
+      console.log('[ConsoleDashboard] Window focused, refreshing work queue...');
+      loadWorkQueue();
+    };
+
+    window.addEventListener('acai:data-changed', handleDataChanged as EventListener);
+    window.addEventListener('focus', handleFocus);
     
-    // Map to display format
-    const displayItems: WorkQueueItem[] = items.map(item => ({
-      id: item.id,
-      trace_id: item.traceId || '',
-      facility: item.title,
-      reason: item.reason || item.subtitle || '',
-      age: item.age || 'Recently',
-      priority: item.priority === 'high' ? 'High' : item.priority === 'medium' ? 'Medium' : 'Low',
-      priorityColor: item.priorityColor || (
-        item.priority === 'high' ? 'text-amber-700' : 'text-slate-600'
-      )
-    }));
-    
-    setWorkQueueItems(displayItems);
-    setIsLoading(false);
-    console.log(`[ConsoleDashboard] Loaded ${displayItems.length} work queue items`);
+    return () => {
+      window.removeEventListener('acai:data-changed', handleDataChanged as EventListener);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
+
+  const loadWorkQueue = async () => {
+    setIsLoading(true);
+    try {
+      // Fetch from API (excludes cancelled by default, ordered by created_at DESC)
+      const response = await listCases({ limit: 1000 });
+      
+      // Map CaseRecord[] to WorkQueueItem[] display format - includes all fields, no need for demoStore lookup
+      const displayItems: WorkQueueItem[] = response.items.map(caseRecord => ({
+        id: caseRecord.id, // STABLE KEY - use case.id not index
+        trace_id: caseRecord.submissionId || '',
+        facility: caseRecord.title,
+        reason: caseRecord.summary || '',
+        age: formatAgeShort(new Date(caseRecord.createdAt)),
+        priority: 'Medium', // Cases don't have priority field yet
+        priorityColor: 'text-slate-600',
+        // API fields - prevents need to look up demoStore
+        status: caseRecord.status,
+        assignedTo: caseRecord.assignedTo,
+        decisionType: caseRecord.decisionType,
+        dueAt: caseRecord.dueAt,
+        createdAt: caseRecord.createdAt
+      }));
+      
+      // Ensure no duplicates by using Map with id as key
+      const deduped = Array.from(
+        new Map(displayItems.map(item => [item.id, item])).values()
+      );
+      
+      setWorkQueueItems(deduped);
+      setCachedWorkQueue(deduped); // Cache successful response
+      console.log(`[ConsoleDashboard] Loaded ${deduped.length} work queue items from API`);
+    } catch (err) {
+      console.error('[ConsoleDashboard] Failed to load work queue:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load work queue');
+      // Keep cached data on error
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleViewTrace = async (traceId: string) => {
     if (!traceId) {
@@ -786,10 +962,10 @@ const ConsoleDashboard: React.FC = () => {
     setWorkQueueItems(filteredAndSortedItems);
   }, [filteredAndSortedItems]);
 
-  // Helper to refresh work queue display (now just triggers re-render)
-  const refreshWorkQueue = () => {
-    // Force re-render by updating a dependency
-    setWorkQueueItems([...filteredAndSortedItems]);
+  // Helper to refresh work queue display from API
+  const refreshWorkQueue = async () => {
+    console.log('[ConsoleDashboard] Refreshing work queue from API...');
+    await loadWorkQueue();
   };
 
   // Assignment handlers
@@ -1715,8 +1891,8 @@ const ConsoleDashboard: React.FC = () => {
                 </div>
               ) : (
                 workQueueItems.map((item) => {
-                  const demoItem = demoStore.getWorkQueue().find((i) => i.id === item.id);
-                  const allowedTransitions = demoItem ? getAllowedTransitions(demoItem.status as WorkflowStatus, role) : [];
+                  // Use item fields directly from API - no demoStore lookup needed
+                  const allowedTransitions = getAllowedTransitions(item.status as WorkflowStatus, role);
                   
                   return (
                   <div key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -1735,9 +1911,9 @@ const ConsoleDashboard: React.FC = () => {
                             <span className="text-sm font-medium text-slate-900">
                               {item.facility}
                             </span>
-                            {/* Decision Type Badge */}
+                            {/* Decision Type Badge - from API */}
                             {(() => {
-                              const typeDisplay = getDecisionTypeDisplay(demoItem?.decisionType);
+                              const typeDisplay = getDecisionTypeDisplay(item.decisionType);
                               return (
                                 <span className={`px-2 py-0.5 text-xs font-medium rounded ${typeDisplay.colorClass}`}>
                                   {typeDisplay.label}
@@ -1754,13 +1930,13 @@ const ConsoleDashboard: React.FC = () => {
                           <div className="flex items-center gap-1.5">
                             <span className="text-slate-500">Age:</span>
                             <span className="font-medium text-slate-700">
-                              {demoItem ? formatAgeShort(getAgeMs(demoItem.createdAt)) : item.age}
+                              {item.age}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5">
                             <span className="text-slate-500">SLA:</span>
-                            <span className={demoItem ? getSlaStatusColor(demoItem.dueAt) : "text-slate-700"}>
-                              {demoItem ? formatDue(demoItem.dueAt) : "No SLA"}
+                            <span className={getSlaStatusColor(item.dueAt)}>
+                              {formatDue(item.dueAt)}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5">
@@ -1769,8 +1945,8 @@ const ConsoleDashboard: React.FC = () => {
                           </div>
                           <div className="flex items-center gap-1.5">
                             <span className="text-slate-500">Assigned:</span>
-                            {demoItem?.assignedTo ? (
-                              <span className="font-medium text-slate-700">{demoItem.assignedTo.name}</span>
+                            {item.assignedTo ? (
+                              <span className="font-medium text-slate-700">{item.assignedTo}</span>
                             ) : (
                               <span className="text-slate-400 italic">Unassigned</span>
                             )}
@@ -1888,48 +2064,68 @@ const ConsoleDashboard: React.FC = () => {
                   </p>
                 </div>
                 <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
-                  {(demoStore.submissions ?? []).length} total
+                  {submissions.length} total
                 </span>
               </div>
 
               <div className="max-h-[520px] overflow-y-auto pr-2 space-y-3 pt-4">
-                {(demoStore.submissions ?? []).length === 0 ? (
+                {isLoadingSubmissions ? (
+                  <div className="flex flex-col items-center justify-center py-12 space-y-2">
+                    <div className="text-sm text-slate-500">Loading submissions...</div>
+                  </div>
+                ) : submissions.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 space-y-2">
                     <div className="text-sm text-slate-500">No submissions yet</div>
                     <div className="text-xs text-slate-400">Submit a CSF form to see it here</div>
                   </div>
                 ) : (
-                  demoStore.submissions.slice(0, 10).map((submission) => (
-                    <div key={submission.submissionId} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  submissions.slice(0, 10).map((submission) => (
+                    <div key={submission.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-4">
                       <div className="flex-1 space-y-1">
                         <div className="text-sm font-medium text-slate-900">
-                          {submission.requestData.submission_type === 'practitioner_csf' 
-                            ? `Dr. ${submission.requestData.practitioner?.lastName || 'Unknown'} - ${submission.requestData.practitioner?.facilityName || 'Unknown Facility'}`
-                            : submission.requestData.submission_type === 'hospital_csf'
-                            ? submission.requestData.hospital?.facilityName || 'Unknown Hospital'
-                            : `Submission ${submission.submissionId}`
+                          {submission.decisionType === 'practitioner_csf' 
+                            ? `Dr. ${submission.formData?.practitioner?.lastName || 'Unknown'} - ${submission.formData?.practitioner?.facilityName || 'Unknown Facility'}`
+                            : submission.decisionType === 'hospital_csf'
+                            ? submission.formData?.hospital?.facilityName || 'Unknown Hospital'
+                            : `Submission ${submission.id}`
                           }
                         </div>
                         <div className="text-xs text-slate-600">
-                          Type: {submission.requestData.submission_type === 'practitioner_csf' ? 'Practitioner CSF' : 'Hospital CSF'}
+                          Type: {submission.decisionType === 'practitioner_csf' ? 'Practitioner CSF' : 'Hospital CSF'}
                         </div>
                         <div className="flex items-center gap-2 text-xs text-slate-500">
-                          <span>{new Date(submission.submittedAt).toLocaleDateString()}</span>
+                          <span>{new Date(submission.createdAt).toLocaleDateString()}</span>
                           <span>•</span>
                           <span className={
-                            submission.outcome === 'approved' ? 'text-green-600 font-medium' :
-                            submission.outcome === 'blocked' ? 'text-red-600 font-medium' :
+                            submission.evaluatorOutput?.decision === 'ok_to_ship' ? 'text-green-600 font-medium' :
+                            submission.evaluatorOutput?.decision === 'blocked' ? 'text-red-600 font-medium' :
                             'text-amber-600 font-medium'
                           }>
-                            {submission.outcome === 'approved' ? '✓ Approved' :
-                             submission.outcome === 'blocked' ? '✗ Blocked' :
+                            {submission.evaluatorOutput?.decision === 'ok_to_ship' ? '✓ Approved' :
+                             submission.evaluatorOutput?.decision === 'blocked' ? '✗ Blocked' :
                              '⏳ Under Review'}
                           </span>
                         </div>
                       </div>
                       <div className="flex gap-2">
+                        <button
+                          onClick={() => handleEditSubmission(submission)}
+                          className="rounded-lg bg-slate-600 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700"
+                          title="Edit submission"
+                          disabled={submission.isDeleted}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirmId(submission.id)}
+                          className="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Delete submission"
+                          disabled={deletingId === submission.id || submission.isDeleted}
+                        >
+                          {deletingId === submission.id ? 'Deleting...' : 'Delete'}
+                        </button>
                         <a
-                          href={`/console/rag?mode=connected&submissionId=${submission.submissionId}&autoload=1`}
+                          href={`/console/rag?mode=connected&submissionId=${submission.id}&autoload=1`}
                           className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 inline-block text-center"
                           title="View decision details"
                         >
@@ -2372,6 +2568,45 @@ const ConsoleDashboard: React.FC = () => {
                   className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900"
                 >
                   Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-40"
+            onClick={() => setDeleteConfirmId(null)}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Delete Submission?</h3>
+              <p className="text-sm text-slate-600 mb-4">
+                This will permanently delete the submission and cancel the linked case. This action cannot be undone.
+              </p>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                <p className="text-xs text-amber-800">
+                  <strong>Note:</strong> You can only delete submissions that haven't been assigned to a reviewer yet.
+                </p>
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setDeleteConfirmId(null)}
+                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg"
+                  disabled={deletingId !== null}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleDeleteSubmission(deleteConfirmId)}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg disabled:opacity-50"
+                  disabled={deletingId !== null}
+                >
+                  {deletingId ? 'Deleting...' : 'Delete'}
                 </button>
               </div>
             </div>

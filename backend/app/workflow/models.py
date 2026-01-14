@@ -37,6 +37,9 @@ class CaseStatus(str, Enum):
     
     Workflow progression:
     NEW -> IN_REVIEW -> NEEDS_INFO (optional loop) -> APPROVED/BLOCKED -> CLOSED
+    
+    Special status:
+    CANCELLED -> Submission was deleted by submitter
     """
     NEW = "new"
     IN_REVIEW = "in_review"
@@ -44,6 +47,7 @@ class CaseStatus(str, Enum):
     APPROVED = "approved"
     BLOCKED = "blocked"
     CLOSED = "closed"
+    CANCELLED = "cancelled"
 
 
 class AuditEventType(str, Enum):
@@ -273,3 +277,157 @@ class AuditEventCreateInput(BaseModel):
     source: Optional[str] = Field("system", description="Event source")
     message: Optional[str] = Field(None, description="Human-readable message")
     meta: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+
+
+# ============================================================================
+# Phase 2: Case Lifecycle Models
+# ============================================================================
+
+class CaseNote(BaseModel):
+    """
+    Case note for internal communication.
+    
+    Fields:
+    - id: Note UUID
+    - caseId: Parent case ID
+    - createdAt: Creation timestamp
+    - authorRole: Author role (admin, reviewer, system)
+    - authorName: Author name (nullable for system notes)
+    - noteText: Note content
+    - metadata: Additional context
+    """
+    id: str = Field(..., description="Note UUID")
+    caseId: str = Field(..., description="Parent case ID")
+    createdAt: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    authorRole: str = Field(..., description="Author role")
+    authorName: Optional[str] = Field(None, description="Author name")
+    noteText: str = Field(..., description="Note content")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional context")
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class CaseNoteCreateInput(BaseModel):
+    """
+    Input model for creating case notes.
+    
+    Required:
+    - noteText: Note content
+    
+    Optional:
+    - authorRole: Default "reviewer"
+    - authorName: Extracted from request context
+    - metadata: Additional context
+    """
+    noteText: str = Field(..., description="Note content", min_length=1)
+    authorRole: Optional[str] = Field("reviewer", description="Author role")
+    authorName: Optional[str] = Field(None, description="Author name")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional context")
+
+
+class CaseEvent(BaseModel):
+    """
+    Case event for lifecycle tracking.
+    
+    Fields:
+    - id: Event UUID
+    - caseId: Parent case ID
+    - createdAt: Event timestamp
+    - eventType: Type of event
+    - eventPayload: Structured event data
+    - actorRole: Actor role
+    - actorName: Actor name
+    """
+    id: str = Field(..., description="Event UUID")
+    caseId: str = Field(..., description="Parent case ID")
+    createdAt: datetime = Field(default_factory=datetime.utcnow, description="Event timestamp")
+    eventType: str = Field(..., description="Event type")
+    eventPayload: Dict[str, Any] = Field(default_factory=dict, description="Event payload")
+    actorRole: Optional[str] = Field(None, description="Actor role")
+    actorName: Optional[str] = Field(None, description="Actor name")
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class CaseDecision(BaseModel):
+    """
+    Case decision for approval/rejection tracking.
+    
+    Fields:
+    - id: Decision UUID
+    - caseId: Parent case ID
+    - createdAt: Decision timestamp
+    - decision: APPROVED or REJECTED
+    - reason: Brief reason/summary
+    - details: Structured details
+    - decidedByRole: Decider role
+    - decidedByName: Decider name
+    """
+    id: str = Field(..., description="Decision UUID")
+    caseId: str = Field(..., description="Parent case ID")
+    createdAt: datetime = Field(default_factory=datetime.utcnow, description="Decision timestamp")
+    decision: str = Field(..., description="APPROVED or REJECTED")
+    reason: Optional[str] = Field(None, description="Brief reason")
+    details: Dict[str, Any] = Field(default_factory=dict, description="Structured details")
+    decidedByRole: Optional[str] = Field(None, description="Decider role")
+    decidedByName: Optional[str] = Field(None, description="Decider name")
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class CaseDecisionCreateInput(BaseModel):
+    """
+    Input model for creating case decisions.
+    
+    Required:
+    - decision: APPROVED or REJECTED
+    
+    Optional:
+    - reason: Brief reason
+    - details: Structured details
+    - decidedByRole: Default "reviewer"
+    - decidedByName: Extracted from request context
+    """
+    decision: str = Field(..., description="APPROVED or REJECTED", pattern="^(APPROVED|REJECTED)$")
+    reason: Optional[str] = Field(None, description="Brief reason")
+    details: Dict[str, Any] = Field(default_factory=dict, description="Structured details")
+    decidedByRole: Optional[str] = Field("reviewer", description="Decider role")
+    decidedByName: Optional[str] = Field(None, description="Decider name")
+
+
+class TimelineItem(BaseModel):
+    """
+    Combined timeline item (note or event).
+    
+    Fields:
+    - id: Item UUID
+    - caseId: Parent case ID
+    - createdAt: Timestamp
+    - itemType: "note" or "event"
+    - authorRole: Author/actor role
+    - authorName: Author/actor name
+    - content: Note text or event message
+    - metadata: Additional context
+    """
+    id: str = Field(..., description="Item UUID")
+    caseId: str = Field(..., description="Parent case ID")
+    createdAt: datetime = Field(..., description="Timestamp")
+    itemType: str = Field(..., description="note or event")
+    authorRole: Optional[str] = Field(None, description="Author/actor role")
+    authorName: Optional[str] = Field(None, description="Author/actor name")
+    content: str = Field(..., description="Note text or event message")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional context")
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }

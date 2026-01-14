@@ -1,0 +1,28 @@
+{
+  "name": "autocomply-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AutoComply AI - Intelligent Compliance Decision System",
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && .venv\\Scripts\\python -m uvicorn src.api.main:app --reload --host 127.0.0.1 --port 8001",
+    "dev": "echo Run 'npm run dev:backend' in one terminal and 'npm run dev:frontend' in another",
+    "typecheck:frontend": "cd frontend && npm run typecheck",
+    "ports:check": "netstat -ano | findstr \":5173 :8001\"",
+    "ports:kill": "powershell -Command \"Stop-Process -Name python,node -Force -ErrorAction SilentlyContinue; Write-Host 'Ports cleared'\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sourabpramanik/AutoComply-AI-fresh.git"
+  },
+  "keywords": [
+    "compliance",
+    "ai",
+    "decision-system",
+    "fastapi",
+    "react",
+    "vite"
+  ],
+  "author": "Sourabh Pramanik",
+  "license": "MIT"
+}

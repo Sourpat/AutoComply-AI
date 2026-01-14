@@ -13,9 +13,18 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     textarea.focus();
     textarea.select();
     const ok = document.execCommand("copy");
-    if (textarea.parentNode === document.body) {
-      document.body.removeChild(textarea);
-    }
+    
+    // Cleanup with safety check
+    setTimeout(() => {
+      try {
+        if (textarea.parentNode) {
+          textarea.parentNode.removeChild(textarea);
+        }
+      } catch (e) {
+        console.warn('Cleanup error (ignored):', e);
+      }
+    }, 10);
+    
     return ok;
   } catch {
     return false;

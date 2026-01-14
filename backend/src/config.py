@@ -5,6 +5,11 @@ from pathlib import Path
 from pydantic import AnyHttpUrl, BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Get absolute path to backend root directory (where src/ lives)
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+_DEFAULT_DB_PATH = _BACKEND_ROOT / "app" / "data" / "autocomply.db"
+_DEFAULT_EXPORT_DIR = _BACKEND_ROOT / "app" / "data" / "exports"
+
 
 class Settings(BaseSettings):
     """
@@ -40,25 +45,25 @@ class Settings(BaseSettings):
     # - Never use "*" in production - it allows requests from any origin
     # =============================================================================
     CORS_ORIGINS: str = Field(
-        default="*",
+        default="http://localhost:5173,http://127.0.0.1:5173,*",
         description="Comma-separated list of allowed CORS origins (use exact URLs in production)"
     )
     
-    # Database
+    # Database (ABSOLUTE PATH - always points to same DB regardless of cwd)
     DB_PATH: str = Field(
-        default="app/data/autocomply.db",
-        description="SQLite database file path (relative to backend root)"
+        default=str(_DEFAULT_DB_PATH),
+        description="SQLite database file path (absolute)"
     )
     
     DATABASE_URL: str = Field(
-        default="sqlite:///./app/data/autocomply.db",
-        description="SQLite database file path (legacy format)"
+        default=f"sqlite:///{_DEFAULT_DB_PATH}",
+        description="SQLite database URL (absolute path)"
     )
     
-    # Export directory
+    # Export directory (ABSOLUTE PATH)
     EXPORT_DIR: str = Field(
-        default="app/data/exports",
-        description="Directory for case export files (relative to backend root)"
+        default=str(_DEFAULT_EXPORT_DIR),
+        description="Directory for case export files (absolute)"
     )
 
     # LLM / embeddings

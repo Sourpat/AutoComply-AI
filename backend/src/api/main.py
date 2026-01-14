@@ -59,6 +59,9 @@ from app.submissions.router import router as submissions_router
 from app.analytics.router import router as analytics_router
 from app.analytics.views_router import router as analytics_views_router
 
+# Development debugging endpoints
+from app.dev import router as dev_router
+
 # Scheduled Exports
 from app.workflow.scheduled_exports_router import router as scheduled_exports_router
 
@@ -117,6 +120,13 @@ async def startup_event():
     logger.info(f"  APP_ENV: {settings.APP_ENV}")
     logger.info(f"  RAG_ENABLED: {settings.rag_enabled}")
     logger.info(f"  PORT: {settings.PORT}")
+    logger.info(f"  CORS_ORIGINS: {settings.CORS_ORIGINS}")
+    logger.info(f"  DB_PATH: {settings.DB_PATH}")
+    logger.info(f"")
+    logger.info(f"  🚀 API will be available at: http://127.0.0.1:{settings.PORT}")
+    logger.info(f"  🏥 Health check: http://127.0.0.1:{settings.PORT}/health")
+    logger.info(f"  📊 Workflow API: http://127.0.0.1:{settings.PORT}/workflow")
+    logger.info(f"")
     
     # Initialize database (fast - only runs CREATE TABLE IF NOT EXISTS)
     logger.info("Initializing database schema...")
@@ -135,6 +145,15 @@ async def shutdown_event():
     """Stop scheduler on shutdown."""
     from app.workflow.scheduler import stop_scheduler
     stop_scheduler()
+
+
+# ---------------------------------------------------------------------------
+# Root health endpoint (for easy frontend access)
+# ---------------------------------------------------------------------------
+@app.get("/health")
+async def root_health():
+    """Root health endpoint for frontend connectivity checks."""
+    return {"ok": True, "status": "healthy"}
 
 
 # ---------------------------------------------------------------------------
@@ -193,6 +212,9 @@ app.include_router(analytics_views_router)
 
 # Scheduled Exports
 app.include_router(scheduled_exports_router)
+
+# Development debugging endpoints (temporary - for diagnosing consistency issues)
+app.include_router(dev_router)
 
 # Admin Operations - ⚠️ DANGEROUS - Use with caution ⚠️
 app.include_router(admin_router)

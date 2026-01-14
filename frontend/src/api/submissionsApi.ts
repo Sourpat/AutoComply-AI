@@ -89,13 +89,14 @@ export async function getSubmission(id: string): Promise<SubmissionRecord | unde
 /**
  * List submissions with optional filters
  */
-export async function listSubmissions(filters?: SubmissionFilters): Promise<SubmissionRecord[]> {
+export async function listSubmissions(filters?: SubmissionFilters & { includeDeleted?: boolean }): Promise<SubmissionRecord[]> {
   const params = new URLSearchParams();
   
   if (filters?.decisionType) params.set('decisionType', filters.decisionType);
   if (filters?.submittedBy) params.set('submittedBy', filters.submittedBy);
   if (filters?.accountId) params.set('accountId', filters.accountId);
   if (filters?.locationId) params.set('locationId', filters.locationId);
+  if (filters?.includeDeleted) params.set('includeDeleted', 'true');
   
   const url = params.toString() 
     ? `${SUBMISSIONS_BASE}?${params}` 
@@ -109,6 +110,7 @@ export async function listSubmissions(filters?: SubmissionFilters): Promise<Subm
   return data.map((item: any) => ({
     id: item.id,
     createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
     decisionType: item.decisionType,
     submittedBy: item.submittedBy ? { email: item.submittedBy } : undefined,
     accountId: item.accountId,
@@ -116,5 +118,74 @@ export async function listSubmissions(filters?: SubmissionFilters): Promise<Subm
     formData: item.formData,
     rawPayload: item.rawPayload,
     evaluatorOutput: item.evaluatorOutput,
+    isDeleted: item.isDeleted,
+    deletedAt: item.deletedAt,
   })) as SubmissionRecord[];
+}
+
+/**
+ * Update an existing submission (PATCH)
+ */
+export async function updateSubmission(
+  id: string, 
+  data: Partial<Pick<CreateSubmissionInput, 'formData' | 'decisionType' | 'submittedBy'>>
+): Promise<SubmissionRecord> {
+  const payload: Record<string, any> = {};
+  
+  if (data.formData !== undefined) payload.formData = data.formData;
+  if (data.decisionType !== undefined) payload.decisionType = data.decisionType;
+  if (data.submittedBy !== undefined) {
+    payload.submittedBy = data.submittedBy?.email || data.submittedBy?.name;
+  }
+  
+  const response = await fetch(`${SUBMISSIONS_BASE}/${id}`, {
+    method: 'PATCH',
+    headers: getJsonHeaders(),
+    body: JSON.stringify(payload),
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    if (response.status === 403) {
+      throw new Error('Cannot edit: Review has already started or case is in a non-editable state');
+    } else if (response.status === 410) {
+      throw new Error('Submission has been deleted');
+    }
+    throw new Error(`Failed to update submission: ${response.status} - ${errorText}`);
+  }
+  
+  const result = await response.json();
+  
+  return {
+    id: result.id,
+    createdAt: result.createdAt,
+    updatedAt: result.updatedAt,
+    decisionType: result.decisionType,
+    submittedBy: result.submittedBy ? { email: result.submittedBy } : undefined,
+    accountId: result.accountId,
+    locationId: result.locationId,
+    formData: result.formData,
+    rawPayload: result.rawPayload,
+    evaluatorOutput: result.evaluatorOutput,
+    isDeleted: result.isDeleted,
+    deletedAt: result.deletedAt,
+  } as SubmissionRecord;
+}
+
+/**
+ * Delete a submission (soft delete)
+ */
+export async function deleteSubmission(id: string): Promise<void> {
+  const response = await fetch(`${SUBMISSIONS_BASE}/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    if (response.status === 403) {
+      throw new Error('Cannot delete: Submission is assigned to a reviewer or case has progressed beyond "new" status');
+    }
+    throw new Error(`Failed to delete submission: ${response.status} - ${errorText}`);
+  }
 }

@@ -37,13 +37,13 @@ const getStateIcon = (state: string) => {
 const getStateColor = (state: string) => {
   switch (state) {
     case 'blocked':
-      return 'text-red-400 border-red-500/40 bg-red-950/30';
+      return 'text-red-700 border-red-300 bg-red-50';
     case 'attention':
-      return 'text-yellow-400 border-yellow-500/40 bg-yellow-950/30';
+      return 'text-yellow-700 border-yellow-300 bg-yellow-50';
     case 'satisfied':
-      return 'text-green-400 border-green-500/40 bg-green-950/30';
+      return 'text-green-700 border-green-300 bg-green-50';
     default:
-      return 'text-gray-400 border-gray-500/40 bg-gray-950/30';
+      return 'text-slate-700 border-slate-300 bg-slate-50';
   }
 };
 
@@ -209,21 +209,21 @@ export const PlaybookPanel: React.FC<PlaybookPanelProps> = ({
             >
               <button
                 onClick={() => toggleStep(step.id)}
-                className="w-full px-3 py-2 flex items-center justify-between hover:bg-white/5 transition-colors"
+                className="w-full px-3 py-2 flex items-center justify-between hover:bg-slate-100 transition-colors"
               >
                 <div className="flex items-center gap-2 flex-1 text-left">
                   <span className="text-lg">{getStateIcon(step.state)}</span>
-                  <span className="text-sm font-medium">
+                  <span className="text-sm font-medium text-slate-900">
                     {step.label}
                   </span>
                   {step.required && (
-                    <span className="text-[9px] px-1.5 py-0.5 bg-red-500/20 border border-red-500/40 text-red-300 rounded">
+                    <span className="text-[9px] px-1.5 py-0.5 bg-red-100 border border-red-300 text-red-700 rounded font-semibold">
                       REQUIRED
                     </span>
                   )}
                 </div>
                 <svg
-                  className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                  className={`h-4 w-4 transition-transform text-slate-600 ${isExpanded ? 'rotate-180' : ''}`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -233,23 +233,23 @@ export const PlaybookPanel: React.FC<PlaybookPanelProps> = ({
               </button>
               
               {isExpanded && (
-                <div className="px-3 py-3 border-t border-white/10 bg-black/20 space-y-2">
+                <div className="px-3 py-3 border-t border-slate-200 bg-white space-y-2">
                   {step.detail && (
-                    <p className="text-xs text-gray-300 leading-relaxed">
+                    <p className="text-xs text-slate-700 leading-relaxed">
                       {step.detail}
                     </p>
                   )}
                   
                   {step.linkedRules && step.linkedRules.length > 0 && (
                     <div>
-                      <div className="text-[10px] font-semibold text-gray-400 mb-1">
+                      <div className="text-[10px] font-semibold text-slate-600 uppercase mb-1">
                         Linked Rules:
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {step.linkedRules.map((ruleId, idx) => (
                           <span
                             key={idx}
-                            className="px-2 py-0.5 bg-blue-600/20 border border-blue-500/40 text-blue-300 rounded text-[10px] font-mono"
+                            className="px-2 py-0.5 bg-blue-100 border border-blue-300 text-blue-700 rounded text-[10px] font-mono"
                           >
                             {ruleId}
                           </span>
@@ -260,14 +260,14 @@ export const PlaybookPanel: React.FC<PlaybookPanelProps> = ({
                   
                   {step.evidenceTags && step.evidenceTags.length > 0 && (
                     <div>
-                      <div className="text-[10px] font-semibold text-gray-400 mb-1">
+                      <div className="text-[10px] font-semibold text-slate-600 uppercase mb-1">
                         Evidence Tags:
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {step.evidenceTags.map((tag, idx) => (
                           <span
                             key={idx}
-                            className="px-2 py-0.5 bg-gray-600/20 border border-gray-500/40 text-gray-300 rounded text-[10px]"
+                            className="px-2 py-0.5 bg-slate-100 border border-slate-300 text-slate-700 rounded text-[10px]"
                           >
                             {tag}
                           </span>

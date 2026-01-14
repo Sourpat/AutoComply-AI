@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS submissions (
     
     -- Timestamps
     created_at TEXT NOT NULL,  -- ISO 8601 format
+    updated_at TEXT DEFAULT NULL,  -- Last modification timestamp
     
     -- Classification
     decision_type TEXT NOT NULL,  -- e.g., "csf_practitioner", "ohio_tddd"
@@ -44,17 +45,23 @@ CREATE TABLE IF NOT EXISTS submissions (
     -- Status tracking
     status TEXT DEFAULT 'pending',  -- pending, processed, failed
     
+    -- Soft delete support
+    is_deleted INTEGER DEFAULT 0 NOT NULL,  -- 0 = active, 1 = deleted
+    deleted_at TEXT DEFAULT NULL,  -- Deletion timestamp
+    
     -- Error handling
     error_message TEXT           -- Error details if processing failed
 );
 
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_submissions_created_at ON submissions(created_at);
+CREATE INDEX IF NOT EXISTS idx_submissions_updated_at ON submissions(updated_at);
 CREATE INDEX IF NOT EXISTS idx_submissions_decision_type ON submissions(decision_type);
 CREATE INDEX IF NOT EXISTS idx_submissions_submitted_by ON submissions(submitted_by);
 CREATE INDEX IF NOT EXISTS idx_submissions_account_id ON submissions(account_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_location_id ON submissions(location_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions(status);
+CREATE INDEX IF NOT EXISTS idx_submissions_is_deleted ON submissions(is_deleted);
 
 -- ============================================================================
 -- Schema Version Tracking

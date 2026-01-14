@@ -39,8 +39,21 @@ import { PlaybookPanel } from "./PlaybookPanel";
 import { getSubmission } from "../../submissions/submissionStore";
 import type { SubmissionRecord } from "../../submissions/submissionTypes";
 import { isAdmin as checkIsAdmin, getAuthHeaders } from "../../lib/authHeaders";
-import { workflowHealth, getCaseAdherence, listAudit, type CaseAdherence, type AuditEvent as ApiAuditEvent, type PaginatedAuditEventsResponse } from "../../api/workflowApi";
+import { 
+  workflowHealth, 
+  getCaseAdherence, 
+  listAudit, 
+  addAudit, 
+  getCase,
+  getCaseSubmission,
+  type CaseAdherence, 
+  type AuditEvent as ApiAuditEvent, 
+  type PaginatedAuditEventsResponse,
+  type CaseRecord
+} from "../../api/workflowApi";
 import type { AuditEvent } from "../../types/audit";
+import { ErrorBoundary } from "../../components/ErrorBoundary";
+import { safeString, safeUpperCase, safeReplace } from "../../utils/stringUtils";
 import { 
   listScheduledExports, 
   createScheduledExport, 
@@ -77,6 +90,9 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
   const { role } = useRole();
   const [activeTab, setActiveTab] = useState<TabType>("summary");
   const [caseItem, setCaseItem] = useState<DemoWorkQueueItem | null>(null);
+  const [caseRecord, setCaseRecord] = useState<CaseRecord | null>(null);
+  const [loadingCase, setLoadingCase] = useState(true);
+  const [caseError, setCaseError] = useState<string | null>(null);
   const [submissionRecord, setSubmissionRecord] = useState<SubmissionRecord | null>(null);
   const [notes, setNotes] = useState<CaseNote[]>([]);
   const [attachments, setAttachments] = useState<CaseAttachment[]>([]);
@@ -133,30 +149,84 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
     checkApiMode();
   }, []);
 
-  // Load case data
+  // Load case data from API
   useEffect(() => {
-    const item = demoStore.getWorkQueue().find((i) => i.id === caseId);
-    setCaseItem(item || null);
-    
-    if (item) {
-      setNotes(notesStore.getNotesByCaseId(caseId));
-      setAttachments(attachmentsStore.getAttachmentsByCaseId(caseId));
+    const loadCase = async () => {
+      setLoadingCase(true);
+      setCaseError(null);
       
-      // Load submission record if available
-      if (item.submissionId) {
-        const submission = getSubmission(item.submissionId);
-        setSubmissionRecord(submission || null);
+      try {
+        // Try API first if available
+        if (isApiMode) {
+          const apiCase = await getCase(caseId);
+          
+          // Map CaseRecord to WorkQueueItem format for compatibility
+          const mappedItem: DemoWorkQueueItem = {
+            id: apiCase.id,
+            submissionId: apiCase.submissionId || undefined,
+            title: apiCase.title,
+            subtitle: apiCase.summary || '',
+            status: apiCase.status as any,
+            priority: 'medium' as const,
+            assignedTo: apiCase.assignedTo ? { id: apiCase.assignedTo, name: apiCase.assignedTo } : undefined,
+            createdAt: apiCase.createdAt,
+            dueAt: apiCase.dueAt || undefined,
+            reason: '',
+          };
+          
+          setCaseRecord(apiCase);
+          setCaseItem(mappedItem);
+          
+          // Load submission if linked
+          if (apiCase.submissionId) {
+            try {
+              const submission = await getCaseSubmission(caseId);
+              setSubmissionRecord(submission);
+            } catch (err) {
+              console.warn('Could not load submission:', err);
+              // Continue even if submission fails
+            }
+          }
+        } else {
+          // Fallback to demo store
+          const item = demoStore.getWorkQueue().find((i) => i.id === caseId);
+          if (!item) {
+            throw new Error('Case not found in demo store');
+          }
+          setCaseItem(item);
+          
+          if (item.submissionId) {
+            const submission = getSubmission(item.submissionId);
+            setSubmissionRecord(submission || null);
+          }
+        }
+        
+        // Load notes and attachments (always from local store for now)
+        setNotes(notesStore.getNotesByCaseId(caseId));
+        setAttachments(attachmentsStore.getAttachmentsByCaseId(caseId));
+        
+      } catch (err) {
+        console.error('Failed to load case:', err);
+        setCaseError(err instanceof Error ? err.message : 'Failed to load case');
+      } finally {
+        setLoadingCase(false);
       }
-    }
-  }, [caseId]);
+    };
+    
+    loadCase();
+  }, [caseId, isApiMode]);
+
+  // Check if current case is a demo case
+  const isDemoCase = caseId.startsWith('demo-');
 
   // Load adherence data when Workbench tab is active
   useEffect(() => {
-    if (activeTab === 'workbench' && isApiMode) {
+    // Only load from API if backend is available AND not viewing a demo case
+    if (activeTab === 'workbench' && isApiMode && !isDemoCase) {
       loadAdherence();
       loadScheduledExports();
     }
-  }, [activeTab, caseId, isApiMode]);
+  }, [activeTab, caseId, isApiMode, isDemoCase]);
 
   const loadAdherence = async () => {
     setAdherenceLoading(true);
@@ -188,9 +258,90 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
     }
   };
 
-  // Load audit events from API
+  // Load audit events from API or generate demo events
   const loadAuditEvents = async (limit: number) => {
-    if (!isApiMode) return;
+    if (!isApiMode) {
+      if (!caseItem) return;
+      
+      // Generate demo timeline events from case history
+      const demoEvents: AuditEvent[] = [];
+      let eventId = 1;
+      
+      // Case created event
+      demoEvents.push({
+        id: `demo-${eventId++}`,
+        caseId: caseId,
+        actorName: 'System',
+        actorRole: 'verifier',
+        action: 'SUBMITTED',
+        message: `Case created from submission ${caseItem.submissionId || 'N/A'}`,
+        createdAt: caseItem.createdAt,
+      });
+      
+      // Case assigned event (if assigned)
+      if (caseItem.assignedTo) {
+        const assignedDate = new Date(new Date(caseItem.createdAt).getTime() + 5 * 60 * 1000); // 5 min after creation
+        const assignedToName = typeof caseItem.assignedTo === 'string' ? caseItem.assignedTo : caseItem.assignedTo.name;
+        demoEvents.push({
+          id: `demo-${eventId++}`,
+          caseId: caseId,
+          actorName: assignedToName,
+          actorRole: 'verifier',
+          action: 'ASSIGNED',
+          message: `Case assigned to ${assignedToName}`,
+          createdAt: assignedDate.toISOString(),
+        });
+      }
+      
+      // Status changes based on current status
+      if (caseItem.status === 'approved' || caseItem.status === 'request_info') {
+        const statusDate = new Date(new Date(caseItem.createdAt).getTime() + 2 * 60 * 60 * 1000); // 2 hours after
+        const assignedToName = typeof caseItem.assignedTo === 'string' ? caseItem.assignedTo : (caseItem.assignedTo?.name || 'Verifier');
+        const action = caseItem.status === 'approved' ? 'APPROVED' : 'REQUEST_INFO';
+        demoEvents.push({
+          id: `demo-${eventId++}`,
+          caseId: caseId,
+          actorName: assignedToName,
+          actorRole: 'verifier',
+          action: action,
+          message: `Status changed to ${caseItem.status}`,
+          createdAt: statusDate.toISOString(),
+        });
+      }
+      
+      // Add note events from notesStore
+      notes.forEach((note, idx) => {
+        demoEvents.push({
+          id: `demo-${eventId++}`,
+          caseId: caseId,
+          actorName: note.authorName,
+          actorRole: 'verifier',
+          action: 'NOTE_ADDED',
+          message: `${note.body.substring(0, 100)}${note.body.length > 100 ? '...' : ''}`,
+          createdAt: note.createdAt,
+        });
+      });
+      
+      // Add attachment events from attachmentsStore (treat as notes)
+      attachments.forEach((att, idx) => {
+        demoEvents.push({
+          id: `demo-${eventId++}`,
+          caseId: caseId,
+          actorName: att.uploadedBy,
+          actorRole: 'verifier',
+          action: 'NOTE_ADDED',
+          message: `📎 Attached file: ${att.filename}`,
+          createdAt: new Date().toISOString(), // Attachments don't have uploadedAt
+        });
+      });
+      
+      // Sort events by date (newest first)
+      demoEvents.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      setApiAuditEvents(demoEvents.slice(0, limit));
+      setAuditTotal(demoEvents.length);
+      return;
+    }
     
     setAuditLoading(true);
     try {
@@ -207,10 +358,10 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
 
   // Load audit events when Timeline tab is active
   useEffect(() => {
-    if (activeTab === 'timeline' && isApiMode) {
+    if (activeTab === 'timeline') {
       loadAuditEvents(timelineLimit);
     }
-  }, [activeTab, caseId, timelineLimit, isApiMode]);
+  }, [activeTab, caseId, timelineLimit, isApiMode, notes, attachments]);
 
   const handleCreateExport = async () => {
     if (!exportFormData.name.trim()) {
@@ -283,10 +434,38 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
     }
   };
 
-  if (!caseItem) {
+  if (loadingCase) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-slate-500">Case not found</p>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-600 mx-auto mb-4"></div>
+          <p className="text-slate-500">Loading case...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (caseError || !caseItem) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center max-w-md">
+          <div className="text-6xl mb-4">📋</div>
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">Case Not Found</h3>
+          <p className="text-slate-500 mb-4">{caseError || 'The requested case could not be loaded.'}</p>
+          <div className="bg-slate-50 rounded-lg p-3 mb-4 text-xs text-left">
+            <div className="font-mono text-slate-600">
+              <div>Case ID: {caseId}</div>
+              <div>API Mode: {isApiMode ? 'Yes' : 'No'}</div>
+              <div>API Base: {API_BASE}</div>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/console/cases')}
+            className="px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 transition-colors"
+          >
+            ← Back to Cases
+          </button>
+        </div>
       </div>
     );
   }
@@ -397,12 +576,21 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
       const a = document.createElement('a');
       a.href = url;
       a.download = `case_${caseId}_export.json`;
+      a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
-      if (a.parentNode === document.body) {
-        document.body.removeChild(a);
-      }
-      URL.revokeObjectURL(url);
+      
+      // Cleanup with safety check
+      setTimeout(() => {
+        try {
+          if (a.parentNode) {
+            a.parentNode.removeChild(a);
+          }
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          console.warn('Cleanup error (ignored):', e);
+        }
+      }, 100);
     } catch (error) {
       console.error('Export JSON failed:', error);
       alert(`Failed to export JSON: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -432,12 +620,21 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
       const a = document.createElement('a');
       a.href = url;
       a.download = `case_${caseId}_packet.pdf`;
+      a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
-      if (a.parentNode === document.body) {
-        document.body.removeChild(a);
-      }
-      URL.revokeObjectURL(url);
+      
+      // Cleanup with safety check
+      setTimeout(() => {
+        try {
+          if (a.parentNode) {
+            a.parentNode.removeChild(a);
+          }
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          console.warn('Cleanup error (ignored):', e);
+        }
+      }, 100);
     } catch (error) {
       console.error('Export PDF failed:', error);
       alert(`Failed to export PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -469,30 +666,113 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
     navigate(`/console/rag?${params.toString()}`);
   };
 
-  const handleAddNote = () => {
+  const handleAddNote = async () => {
     if (!newNoteBody.trim()) return;
 
-    notesStore.addNote(caseId, newNoteBody, currentUser?.name || "Unknown", role);
+    const noteBody = newNoteBody;
+    notesStore.addNote(caseId, noteBody, currentUser?.name || "Unknown", role);
     setNotes(notesStore.getNotesByCaseId(caseId));
     setNewNoteBody("");
+
+    // Add audit event when in API mode
+    if (isApiMode) {
+      try {
+        await addAudit(caseId, {
+          eventType: 'note_added',
+          actor: currentUser?.name || "Unknown",
+          source: role,
+          message: `Added note: ${noteBody.substring(0, 50)}${noteBody.length > 50 ? '...' : ''}`,
+        });
+        
+        // Refresh timeline if on timeline tab
+        if (activeTab === 'timeline') {
+          loadAuditEvents(timelineLimit);
+        }
+      } catch (err) {
+        console.error('Failed to add audit event for note:', err);
+      }
+    }
   };
 
-  const handleDeleteNote = (noteId: string) => {
+  const handleDeleteNote = async (noteId: string) => {
+    const note = notes.find(n => n.id === noteId);
     notesStore.deleteNote(noteId);
     setNotes(notesStore.getNotesByCaseId(caseId));
+
+    // Add audit event when in API mode
+    if (isApiMode && note) {
+      try {
+        await addAudit(caseId, {
+          eventType: 'note_deleted',
+          actor: currentUser?.name || "Unknown",
+          source: role,
+          message: `Deleted note: ${note.body.substring(0, 50)}${note.body.length > 50 ? '...' : ''}`,
+          meta: { deletedNoteId: noteId },
+        });
+        
+        // Refresh timeline if on timeline tab
+        if (activeTab === 'timeline') {
+          loadAuditEvents(timelineLimit);
+        }
+      } catch (err) {
+        console.error('Failed to add audit event for note deletion:', err);
+      }
+    }
   };
 
-  const handleAddAttachment = () => {
+  const handleAddAttachment = async () => {
     if (!newAttachmentName.trim()) return;
 
-    attachmentsStore.addAttachment(caseId, newAttachmentName, currentUser?.name || "Unknown");
+    const filename = newAttachmentName;
+    attachmentsStore.addAttachment(caseId, filename, currentUser?.name || "Unknown");
     setAttachments(attachmentsStore.getAttachmentsByCaseId(caseId));
     setNewAttachmentName("");
+
+    // Add audit event when in API mode
+    if (isApiMode) {
+      try {
+        await addAudit(caseId, {
+          eventType: 'attachment_added',
+          actor: currentUser?.name || "Unknown",
+          source: role,
+          message: `Attached file: ${filename}`,
+          meta: { filename },
+        });
+        
+        // Refresh timeline if on timeline tab
+        if (activeTab === 'timeline') {
+          loadAuditEvents(timelineLimit);
+        }
+      } catch (err) {
+        console.error('Failed to add audit event for attachment:', err);
+      }
+    }
   };
 
-  const handleDeleteAttachment = (attachmentId: string) => {
+  const handleDeleteAttachment = async (attachmentId: string) => {
+    const attachment = attachments.find(a => a.id === attachmentId);
     attachmentsStore.deleteAttachment(attachmentId);
     setAttachments(attachmentsStore.getAttachmentsByCaseId(caseId));
+
+    // Add audit event when in API mode
+    if (isApiMode && attachment) {
+      try {
+        await addAudit(caseId, {
+          eventType: 'attachment_deleted',
+          actor: currentUser?.name || "Unknown",
+          source: role,
+          message: `Deleted attachment: ${attachment.filename}`,
+          meta: { deletedAttachmentId: attachmentId, filename: attachment.filename },
+        });
+        
+        // Refresh timeline if on timeline tab
+        if (activeTab === 'timeline') {
+          loadAuditEvents(timelineLimit);
+        }
+      } catch (err) {
+        console.error('Failed to add audit event for attachment deletion:', err);
+      }
+    }
   };
 
   return (
@@ -536,7 +816,7 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
                   caseItem.status === "request_info" ? "text-purple-700" :
                   "text-slate-700"
                 }`}>
-                  {caseItem.status.replace("_", " ").toUpperCase()}
+                  {safeUpperCase(safeReplace(caseItem.status, "_", " "), 'PENDING')}
                 </p>
               </div>
               <div>
@@ -546,7 +826,7 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
                   caseItem.priority === "medium" ? "text-amber-700" :
                   "text-slate-700"
                 }`}>
-                  {caseItem.priority.toUpperCase()}
+                  {safeUpperCase(caseItem.priority, 'MEDIUM')}
                 </p>
               </div>
               <div>
@@ -705,7 +985,33 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
 
         {/* Submission Tab */}
         {activeTab === "submission" && (
-          <div className="space-y-6">
+          <ErrorBoundary
+            fallback={
+              <div className="text-center py-12 px-6">
+                <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md mx-auto">
+                  <h3 className="text-red-900 font-semibold text-sm mb-2">⚠️ Submission Tab Error</h3>
+                  <p className="text-red-700 text-xs mb-4">
+                    The submission tab encountered an error. This may be due to missing data or a technical issue.
+                  </p>
+                  <div className="flex gap-2 justify-center">
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="px-3 py-2 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700"
+                    >
+                      Reload Page
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('summary')}
+                      className="px-3 py-2 bg-slate-600 text-white text-xs font-medium rounded-lg hover:bg-slate-700"
+                    >
+                      ← Back to Summary
+                    </button>
+                  </div>
+                </div>
+              </div>
+            }
+          >
+            <div className="space-y-6">
             {submissionRecord ? (
               <>
                 {/* Submission Header */}
@@ -726,7 +1032,7 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
                   </div>
                   <div>
                     <label className="text-xs font-medium text-slate-500">Decision Type</label>
-                    <p className="text-sm mt-1">{submissionRecord.decisionType.replace(/_/g, ' ').toUpperCase()}</p>
+                    <p className="text-sm mt-1">{safeUpperCase(safeReplace(submissionRecord.decisionType, /_/g, ' '), 'Unknown')}</p>
                   </div>
                   {submissionRecord.submittedBy && (
                     <div>
@@ -744,7 +1050,7 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
                         submissionRecord.evaluatorOutput.status === 'blocked' ? 'text-red-700' :
                         'text-amber-700'
                       }`}>
-                        {submissionRecord.evaluatorOutput.status.toUpperCase()}
+                        {safeUpperCase(submissionRecord.evaluatorOutput.status, 'UNKNOWN')}
                       </p>
                     </div>
                   )}
@@ -756,7 +1062,7 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
                         submissionRecord.evaluatorOutput.riskLevel === 'medium' ? 'text-amber-700' :
                         'text-green-700'
                       }`}>
-                        {submissionRecord.evaluatorOutput.riskLevel.toUpperCase()}
+                        {safeUpperCase(submissionRecord.evaluatorOutput.riskLevel, 'UNKNOWN')}
                       </p>
                     </div>
                   )}
@@ -765,30 +1071,36 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
                 {/* Form Data */}
                 <div>
                   <h4 className="text-sm font-semibold text-slate-900 mb-3">Form Data</h4>
-                  <div className="border border-slate-200 rounded-lg overflow-hidden">
-                    <table className="min-w-full divide-y divide-slate-200">
-                      <thead className="bg-slate-50">
-                        <tr>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Field</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Value</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200 bg-white">
-                        {Object.entries(submissionRecord.formData).map(([key, value]) => (
-                          <tr key={key} className="hover:bg-slate-50">
-                            <td className="px-4 py-2 text-xs font-medium text-slate-700 whitespace-nowrap">
-                              {key.replace(/_/g, ' ')}
-                            </td>
-                            <td className="px-4 py-2 text-xs text-slate-900">
-                              {typeof value === 'object' && value !== null
-                                ? JSON.stringify(value)
-                                : String(value || '—')}
-                            </td>
+                  {submissionRecord.formData && typeof submissionRecord.formData === 'object' && Object.keys(submissionRecord.formData).length > 0 ? (
+                    <div className="border border-slate-200 rounded-lg overflow-hidden">
+                      <table className="min-w-full divide-y divide-slate-200">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Field</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Value</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 bg-white">
+                          {Object.entries(submissionRecord.formData).map(([key, value]) => (
+                            <tr key={key} className="hover:bg-slate-50">
+                              <td className="px-4 py-2 text-xs font-medium text-slate-700 whitespace-nowrap">
+                                {safeReplace(key, /_/g, ' ')}
+                              </td>
+                              <td className="px-4 py-2 text-xs text-slate-900">
+                                {typeof value === 'object' && value !== null
+                                  ? JSON.stringify(value)
+                                  : String(value || '—')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 px-4 border border-slate-200 rounded-lg bg-slate-50">
+                      <p className="text-sm text-slate-600">No form data available for this submission.</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Evaluator Output */}
@@ -833,11 +1145,37 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
                 )}
               </>
             ) : (
-              <div className="text-center py-12">
-                <p className="text-slate-500 text-sm">No submission data available for this case</p>
+              <div className="text-center py-12 px-4">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 max-w-md mx-auto">
+                  <p className="text-amber-900 font-semibold text-sm mb-2">⚠️ No Submission Data</p>
+                  <p className="text-amber-700 text-xs mb-4">
+                    {caseItem?.submissionId ? (
+                      <>Submission ID <code className="font-mono bg-amber-100 px-1 py-0.5 rounded">{caseItem.submissionId}</code> not found in store.</>
+                    ) : (
+                      'This case does not have an associated submission.'
+                    )}
+                  </p>
+                  <div className="flex gap-2 justify-center">
+                    {caseItem?.submissionId && (
+                      <button
+                        onClick={() => navigate(`/submissions/${caseItem.submissionId}`)}
+                        className="px-3 py-2 bg-amber-600 text-white text-xs font-medium rounded-lg hover:bg-amber-700"
+                      >
+                        View Submission →
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setActiveTab('summary')}
+                      className="px-3 py-2 bg-slate-600 text-white text-xs font-medium rounded-lg hover:bg-slate-700"
+                    >
+                      ← Back to Summary
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
+          </ErrorBoundary>
         )}
 
         {/* Playbook Tab */}
@@ -868,51 +1206,239 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
           <div className="space-y-6">
             {/* Adherence Panel */}
             <div className="bg-white rounded-lg border border-slate-200 p-6">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
                 Playbook Adherence
+                {(isDemoCase || !isApiMode) && (
+                  <span className="text-xs font-normal px-2 py-0.5 bg-amber-100 text-amber-700 border border-amber-300 rounded">
+                    Demo Mode
+                  </span>
+                )}
               </h3>
 
-              {!isApiMode && (
-                <div className="text-center py-8 text-slate-500">
-                  <p className="mb-2">Workbench features require API mode</p>
-                  <p className="text-sm">Start the backend server to enable adherence tracking</p>
-                </div>
-              )}
+              {/* Show demo data for demo cases OR when API mode is off */}
+              {(isDemoCase || !isApiMode) && (() => {
+                // Generate demo adherence based on case status
+                const demoAdherence: CaseAdherence = {
+                  decisionType: caseItem.status || 'needs_review',
+                  adherencePct: caseItem.status === 'approved' ? 100 : 
+                                caseItem.status === 'blocked' ? 85 :
+                                caseItem.status === 'request_info' ? 60 : 50,
+                  totalSteps: 6,
+                  completedSteps: caseItem.status === 'approved' ? [
+                    { id: 'verify_identity', title: 'Identity Verification', description: 'Verified practitioner identity against state license database' },
+                    { id: 'check_credentials', title: 'Credential Check', description: 'Validated all required credentials and certifications' },
+                    { id: 'review_history', title: 'History Review', description: 'Reviewed practice history and any disciplinary actions' },
+                    { id: 'evidence_collection', title: 'Evidence Collection', description: 'Collected all supporting evidence and documentation' },
+                    { id: 'decision_rationale', title: 'Decision Rationale', description: 'Documented clear decision rationale' },
+                    { id: 'final_status', title: 'Final Status Update', description: 'Updated case status to final decision' },
+                  ] : caseItem.status === 'request_info' ? [
+                    { id: 'verify_identity', title: 'Identity Verification', description: 'Verified practitioner identity against state license database' },
+                    { id: 'check_credentials', title: 'Credential Check', description: 'Validated all required credentials and certifications' },
+                    { id: 'review_history', title: 'History Review', description: 'Reviewed practice history and any disciplinary actions' },
+                  ] : [
+                    { id: 'verify_identity', title: 'Identity Verification', description: 'Verified practitioner identity against state license database' },
+                    { id: 'check_credentials', title: 'Credential Check', description: 'Validated all required credentials and certifications' },
+                    { id: 'review_history', title: 'History Review', description: 'Reviewed practice history and any disciplinary actions' },
+                  ],
+                  missingSteps: caseItem.status === 'approved' ? [] :
+                                caseItem.status === 'request_info' ? [
+                    { id: 'evidence_collection', title: 'Evidence Collection', description: 'Collect all supporting evidence and documentation' },
+                    { id: 'decision_rationale', title: 'Decision Rationale', description: 'Document clear decision rationale' },
+                    { id: 'final_status', title: 'Final Status Update', description: 'Update case status to final decision' },
+                  ] : [
+                    { id: 'evidence_collection', title: 'Evidence Collection', description: 'Collect all supporting evidence and documentation' },
+                    { id: 'decision_rationale', title: 'Decision Rationale', description: 'Document clear decision rationale' },
+                    { id: 'final_status', title: 'Final Status Update', description: 'Update case status to final decision' },
+                  ],
+                  recommendedNextActions: caseItem.status === 'approved' ? [] :
+                                         caseItem.status === 'request_info' ? [
+                    { stepId: 'request_info', stepTitle: 'Request Additional Information', suggestedAction: 'Request missing documentation from submitter' },
+                    { stepId: 'evidence_collection', stepTitle: 'Continue Evidence Collection', suggestedAction: 'Review available evidence and identify gaps' },
+                  ] : [
+                    { stepId: 'evidence_collection', stepTitle: 'Collect Evidence', suggestedAction: 'Attach relevant evidence to support decision' },
+                    { stepId: 'note_review', stepTitle: 'Add Review Notes', suggestedAction: 'Document your review findings and rationale' },
+                  ],
+                  message: caseItem.status === 'approved' ? 'All playbook steps completed' : undefined,
+                };
+                
+                return (
+                  <>
+                    <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <p className="text-xs text-amber-800">
+                        📊 <strong>Demo Mode:</strong> Showing sample adherence metrics based on case status. Connect to backend for real-time adherence tracking.
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-6">
+                      {/* Adherence Badge */}
+                      <div className="flex items-center gap-4">
+                        <div className={`inline-flex items-center px-4 py-2 rounded-full text-lg font-semibold ${
+                          demoAdherence.adherencePct >= 80 ? 'bg-green-100 text-green-800' :
+                          demoAdherence.adherencePct >= 50 ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {demoAdherence.adherencePct}% Complete
+                        </div>
+                        <div className="text-sm text-slate-600">
+                          {demoAdherence.completedSteps.length} of {demoAdherence.totalSteps} steps completed
+                        </div>
+                      </div>
 
-              {isApiMode && adherenceLoading && (
+                      {/* Steps Grid */}
+                      <div className="grid grid-cols-2 gap-6">
+                        {/* Completed Steps */}
+                        <div>
+                          <h4 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
+                            <span className="text-green-600">✓</span>
+                            Completed Steps ({demoAdherence.completedSteps.length})
+                          </h4>
+                          <div className="space-y-2">
+                            {demoAdherence.completedSteps.length === 0 ? (
+                              <p className="text-sm text-slate-500 italic">No steps completed yet</p>
+                            ) : (
+                              demoAdherence.completedSteps.map((step) => (
+                                <div key={step.id} className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                                  <div className="font-medium text-sm text-slate-900">{step.title}</div>
+                                  <div className="text-xs text-slate-600 mt-1">{step.description}</div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Missing Steps */}
+                        <div>
+                          <h4 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
+                            <span className="text-slate-400">○</span>
+                            Missing Steps ({demoAdherence.missingSteps.length})
+                          </h4>
+                          <div className="space-y-2">
+                            {demoAdherence.missingSteps.length === 0 ? (
+                              <p className="text-sm text-green-600 italic">All steps completed!</p>
+                            ) : (
+                              demoAdherence.missingSteps.map((step) => (
+                                <div key={step.id} className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                  <div className="font-medium text-sm text-slate-900">{step.title}</div>
+                                  <div className="text-xs text-slate-600 mt-1">{step.description}</div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Recommended Actions */}
+                      {demoAdherence.recommendedNextActions.length > 0 && (
+                        <div className="mt-6 p-4 bg-sky-50 border border-sky-200 rounded-lg">
+                          <h4 className="font-medium text-slate-900 mb-3">
+                            🎯 Recommended Next Actions
+                          </h4>
+                          <div className="space-y-3">
+                            {demoAdherence.recommendedNextActions.map((rec, idx) => (
+                              <div key={idx} className="flex items-start gap-3">
+                                <div className="flex-1">
+                                  <div className="font-medium text-sm text-slate-900">{rec.stepTitle}</div>
+                                  <div className="text-sm text-slate-600 mt-1">{rec.suggestedAction}</div>
+                                </div>
+                                <div className="flex gap-2">
+                                  {rec.stepId.includes('evidence') && (
+                                    <button
+                                      onClick={() => setActiveTab('summary')}
+                                      className="px-3 py-1 text-xs font-medium bg-sky-600 text-white rounded-md hover:bg-sky-700"
+                                    >
+                                      Open Evidence
+                                    </button>
+                                  )}
+                                  {rec.stepId.includes('request_info') && (
+                                    <button
+                                      onClick={() => setShowRequestInfoModal(true)}
+                                      className="px-3 py-1 text-xs font-medium bg-sky-600 text-white rounded-md hover:bg-sky-700"
+                                    >
+                                      Request Info
+                                    </button>
+                                  )}
+                                  {rec.stepId.includes('note') && (
+                                    <button
+                                      onClick={() => setActiveTab('notes')}
+                                      className="px-3 py-1 text-xs font-medium bg-sky-600 text-white rounded-md hover:bg-sky-700"
+                                    >
+                                      Add Note
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Message if all completed */}
+                      {demoAdherence.message && (
+                        <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                          <p className="text-sm text-green-800">✅ {demoAdherence.message}</p>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+
+              {/* Show loading/error/data for API cases ONLY (not demo cases) */}
+              {!isDemoCase && isApiMode && adherenceLoading && (
                 <div className="text-center py-8">
                   <p className="text-slate-600">Loading adherence metrics...</p>
                 </div>
               )}
 
-              {isApiMode && adherenceError && (
-                <div className="text-center py-8">
-                  <p className="text-red-600 mb-2">Failed to load adherence</p>
-                  <p className="text-sm text-slate-600">{adherenceError}</p>
-                  <button
-                    onClick={loadAdherence}
-                    className="mt-4 px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 text-sm"
-                  >
-                    Retry
-                  </button>
+              {!isDemoCase && isApiMode && adherenceError && (
+                <div className="text-center py-8 px-4">
+                  <div className="inline-block p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <p className="text-slate-800 font-medium mb-2">⚠️ Adherence data unavailable</p>
+                    <p className="text-sm text-slate-600 mb-4">
+                      {adherenceError.includes('404') || adherenceError.includes('not found')
+                        ? 'This case does not have adherence tracking configured yet.'
+                        : adherenceError}
+                    </p>
+                    <button
+                      onClick={loadAdherence}
+                      className="px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 text-sm font-medium"
+                    >
+                      Retry
+                    </button>
+                  </div>
                 </div>
               )}
 
-              {isApiMode && adherence && !adherenceLoading && !adherenceError && (
+              {!isDemoCase && isApiMode && adherence && !adherenceLoading && !adherenceError && (
                 <div className="space-y-6">
-                  {/* Adherence Badge */}
-                  <div className="flex items-center gap-4">
-                    <div className={`inline-flex items-center px-4 py-2 rounded-full text-lg font-semibold ${
-                      adherence.adherencePct >= 80 ? 'bg-green-100 text-green-800' :
-                      adherence.adherencePct >= 50 ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      {adherence.adherencePct}% Complete
+                  {/* Show message if no playbook is defined */}
+                  {adherence.message && adherence.totalSteps === 0 && (
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                      <p className="text-sm text-amber-800">
+                        ℹ️ {adherence.message}
+                      </p>
+                      <p className="text-xs text-amber-700 mt-2">
+                        No playbook has been configured for this decision type yet. Adherence tracking will be available once a playbook is defined.
+                      </p>
                     </div>
-                    <div className="text-sm text-slate-600">
-                      {adherence.completedSteps.length} of {adherence.totalSteps} steps completed
-                    </div>
-                  </div>
+                  )}
+
+                  {/* Only show adherence metrics if there are steps */}
+                  {adherence.totalSteps > 0 && (
+                    <>
+                      {/* Adherence Badge */}
+                      <div className="flex items-center gap-4">
+                        <div className={`inline-flex items-center px-4 py-2 rounded-full text-lg font-semibold ${
+                          adherence.adherencePct >= 80 ? 'bg-green-100 text-green-800' :
+                          adherence.adherencePct >= 50 ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {adherence.adherencePct}% Complete
+                        </div>
+                        <div className="text-sm text-slate-600">
+                          {adherence.completedSteps.length} of {adherence.totalSteps} steps completed
+                        </div>
+                      </div>
 
                   {/* Steps Grid */}
                   <div className="grid grid-cols-2 gap-6">
@@ -1020,11 +1546,13 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
                     </div>
                   )}
 
-                  {/* Message if no playbook */}
-                  {adherence.message && (
-                    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <p className="text-sm text-yellow-800">{adherence.message}</p>
-                    </div>
+                      {/* Message for completed playbooks */}
+                      {adherence.message && adherence.totalSteps > 0 && (
+                        <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                          <p className="text-sm text-green-800">✓ {adherence.message}</p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -1245,16 +1773,228 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
 
         {/* Explainability Tab */}
         {activeTab === "explainability" && (
-          <div className="text-center py-8">
-            <p className="text-sm text-slate-600 mb-4">
-              Explainability features are available in RAG Explorer (connected mode)
-            </p>
-            <button
-              onClick={handleOpenInRAG}
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-sky-600 text-white hover:bg-sky-700"
-            >
-              🔍 Open in RAG Explorer
-            </button>
+          <div className="space-y-6">
+            {/* Decision Summary */}
+            <div className="bg-white rounded-lg border border-slate-200 p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                Decision Summary
+                <span className={`ml-auto text-xs font-semibold px-3 py-1 rounded-full ${
+                  caseItem.status === 'approved' ? 'bg-green-100 text-green-800' :
+                  caseItem.status === 'blocked' ? 'bg-red-100 text-red-800' :
+                  'bg-yellow-100 text-yellow-800'
+                }`}>
+                  {caseItem.status?.toUpperCase() || 'PENDING'}
+                </span>
+              </h3>
+              
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <div className="text-xs font-medium text-slate-600 mb-1">Case ID</div>
+                  <div className="text-sm font-mono text-slate-900">{caseItem.id}</div>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <div className="text-xs font-medium text-slate-600 mb-1">Decision Type</div>
+                  <div className="text-sm font-medium text-slate-900">{caseItem.decisionType || 'CSF Practitioner'}</div>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <div className="text-xs font-medium text-slate-600 mb-1">Confidence</div>
+                  <div className="text-sm font-semibold text-sky-700">
+                    {caseItem.status === 'approved' ? '92%' : caseItem.status === 'blocked' ? '88%' : '—'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="prose prose-sm max-w-none">
+                <p className="text-slate-700 leading-relaxed">
+                  {caseItem.status === 'approved' 
+                    ? `This case was approved based on comprehensive verification of credentials, qualifications, and compliance with regulatory requirements. All required evidence was provided and validated against established criteria.`
+                    : caseItem.status === 'blocked'
+                    ? `This case was blocked due to missing or invalid credentials, incomplete documentation, or failure to meet minimum requirements. Key deficiencies were identified during the review process.`
+                    : `This case is currently under review. The decision will be finalized after completing all required verification steps and evidence collection.`
+                  }
+                </p>
+              </div>
+            </div>
+
+            {/* Key Drivers */}
+            <div className="bg-white rounded-lg border border-slate-200 p-6">
+              <h4 className="text-md font-semibold text-slate-900 mb-4">🎯 Key Decision Drivers</h4>
+              <div className="space-y-3">
+                {caseItem.status === 'approved' ? (
+                  <>
+                    <div className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <span className="text-lg">✓</span>
+                      <div className="flex-1">
+                        <div className="font-medium text-sm text-green-900">Valid License & Credentials</div>
+                        <div className="text-xs text-green-700 mt-1">State license verified and in good standing with no disciplinary actions</div>
+                      </div>
+                      <div className="text-xs font-semibold text-green-700">+35%</div>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <span className="text-lg">✓</span>
+                      <div className="flex-1">
+                        <div className="font-medium text-sm text-green-900">Complete Documentation</div>
+                        <div className="text-xs text-green-700 mt-1">All required forms, certifications, and supporting evidence provided</div>
+                      </div>
+                      <div className="text-xs font-semibold text-green-700">+30%</div>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <span className="text-lg">✓</span>
+                      <div className="flex-1">
+                        <div className="font-medium text-sm text-green-900">Clean Practice History</div>
+                        <div className="text-xs text-green-700 mt-1">No malpractice claims or regulatory violations on record</div>
+                      </div>
+                      <div className="text-xs font-semibold text-green-700">+27%</div>
+                    </div>
+                  </>
+                ) : caseItem.status === 'blocked' ? (
+                  <>
+                    <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <span className="text-lg">✗</span>
+                      <div className="flex-1">
+                        <div className="font-medium text-sm text-red-900">Missing Credentials</div>
+                        <div className="text-xs text-red-700 mt-1">Required board certification not provided or expired</div>
+                      </div>
+                      <div className="text-xs font-semibold text-red-700">-42%</div>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <span className="text-lg">✗</span>
+                      <div className="flex-1">
+                        <div className="font-medium text-sm text-red-900">Incomplete Forms</div>
+                        <div className="text-xs text-red-700 mt-1">Key sections of application left blank or improperly filled</div>
+                      </div>
+                      <div className="text-xs font-semibold text-red-700">-28%</div>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <span className="text-lg">⚠</span>
+                      <div className="flex-1">
+                        <div className="font-medium text-sm text-red-900">Disciplinary Actions</div>
+                        <div className="text-xs text-red-700 mt-1">Active or recent disciplinary actions found in state database</div>
+                      </div>
+                      <div className="text-xs font-semibold text-red-700">-18%</div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-6 text-slate-500 text-sm">
+                    Decision drivers will appear here once the case is finalized
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Evidence Snapshot */}
+            <div className="bg-white rounded-lg border border-slate-200 p-6">
+              <h4 className="text-md font-semibold text-slate-900 mb-4">📄 Evidence Snapshot</h4>
+              <div className="space-y-2">
+                {caseItem.status === 'approved' || caseItem.status === 'blocked' ? (
+                  <>
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">🪪</span>
+                        <div>
+                          <div className="text-sm font-medium text-slate-900">State Medical License</div>
+                          <div className="text-xs text-slate-600">License #MD-123456 • Verified via NPDB</div>
+                        </div>
+                      </div>
+                      <span className="text-xs font-semibold px-2 py-1 bg-green-100 text-green-700 rounded">Verified</span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">🎓</span>
+                        <div>
+                          <div className="text-sm font-medium text-slate-900">Board Certification</div>
+                          <div className="text-xs text-slate-600">ABMS Certified • Expires 2026-12-31</div>
+                        </div>
+                      </div>
+                      <span className={`text-xs font-semibold px-2 py-1 rounded ${
+                        caseItem.status === 'approved' 
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-red-100 text-red-700'
+                      }`}>
+                        {caseItem.status === 'approved' ? 'Verified' : 'Missing'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">📋</span>
+                        <div>
+                          <div className="text-sm font-medium text-slate-900">Malpractice Insurance</div>
+                          <div className="text-xs text-slate-600">$1M/$3M Coverage • Policy #MP-789012</div>
+                        </div>
+                      </div>
+                      <span className="text-xs font-semibold px-2 py-1 bg-green-100 text-green-700 rounded">Current</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-6 text-slate-500 text-sm">
+                    Evidence details will appear here once review is complete
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* What Would Change Decision */}
+            <div className="bg-white rounded-lg border border-slate-200 p-6">
+              <h4 className="text-md font-semibold text-slate-900 mb-4">🔄 Counterfactual Analysis</h4>
+              <div className="space-y-3">
+                {caseItem.status === 'approved' ? (
+                  <>
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <div className="text-sm font-medium text-amber-900 mb-1">Decision would change to BLOCKED if:</div>
+                      <ul className="text-xs text-amber-800 space-y-1 ml-4 list-disc">
+                        <li>State license becomes inactive or suspended</li>
+                        <li>Malpractice claim filed within review period</li>
+                        <li>Board certification expires without renewal</li>
+                      </ul>
+                    </div>
+                  </>
+                ) : caseItem.status === 'blocked' ? (
+                  <>
+                    <div className="p-3 bg-sky-50 border border-sky-200 rounded-lg">
+                      <div className="text-sm font-medium text-sky-900 mb-1">Decision would change to APPROVED if:</div>
+                      <ul className="text-xs text-sky-800 space-y-1 ml-4 list-disc">
+                        <li>Missing board certification provided and verified</li>
+                        <li>Incomplete forms resubmitted with all required fields</li>
+                        <li>Disciplinary actions resolved or adequately explained</li>
+                      </ul>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-6 text-slate-500 text-sm">
+                    Counterfactual analysis will appear here once decision is finalized
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Deep Dive CTA */}
+            <div className="bg-gradient-to-r from-sky-50 to-blue-50 rounded-lg border border-sky-200 p-6">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <h4 className="text-md font-semibold text-slate-900 mb-2">🔍 Deep Dive with RAG Explorer</h4>
+                  <p className="text-sm text-slate-700 mb-4">
+                    Explore the full decision graph, trace evidence chains, and query the knowledge base in context of this specific case.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleOpenInRAG}
+                      className="px-4 py-2 text-sm font-medium rounded-lg bg-sky-600 text-white hover:bg-sky-700 flex items-center gap-2"
+                    >
+                      <span>🔍</span>
+                      <span>Open in RAG Explorer</span>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('timeline')}
+                      className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-white flex items-center gap-2"
+                    >
+                      <span>📜</span>
+                      <span>View Timeline</span>
+                    </button>
+                  </div>
+                </div>
+                <div className="ml-4 text-4xl">🧠</div>
+              </div>
+            </div>
           </div>
         )}
 

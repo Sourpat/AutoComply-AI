@@ -14,6 +14,7 @@ from src.core.db import execute_sql, execute_insert, execute_update, execute_del
 from .models import (
     SubmissionRecord,
     SubmissionCreateInput,
+    SubmissionUpdateInput,
     SubmissionListFilters,
 )
 
@@ -27,6 +28,7 @@ def _row_to_submission(row: Dict) -> SubmissionRecord:
     return SubmissionRecord(
         id=row["id"],
         createdAt=datetime.fromisoformat(row["created_at"]),
+        updatedAt=datetime.fromisoformat(row["updated_at"]) if row.get("updated_at") else None,
         decisionType=row["decision_type"],
         submittedBy=row["submitted_by"],
         accountId=row["account_id"],
@@ -34,7 +36,8 @@ def _row_to_submission(row: Dict) -> SubmissionRecord:
         formData=json.loads(row["form_data"]) if row["form_data"] else {},
         rawPayload=json.loads(row["raw_payload"]) if row["raw_payload"] else {},
         evaluatorOutput=json.loads(row["evaluator_output"]) if row["evaluator_output"] else None,
-        status=row.get("status"),
+        isDeleted=bool(row.get("is_deleted", 0)),
+        deletedAt=datetime.fromisoformat(row["deleted_at"]) if row.get("deleted_at") else None,
     )
 
 
@@ -136,7 +139,7 @@ def list_submissions(filters: Optional[SubmissionListFilters] = None) -> List[Su
         ... )
     """
     # Build dynamic WHERE clause
-    where_clauses = []
+    where_clauses = ["is_deleted = 0"]  # Exclude deleted by default
     params = {}
     
     if filters:
@@ -155,6 +158,10 @@ def list_submissions(filters: Optional[SubmissionListFilters] = None) -> List[Su
         if filters.locationId:
             where_clauses.append("location_id = :location_id")
             params["location_id"] = filters.locationId
+        
+        # Include deleted submissions if requested
+        if filters.includeDeleted:
+            where_clauses.remove("is_deleted = 0")
     
     # Build SQL
     sql = "SELECT * FROM submissions"
@@ -166,9 +173,97 @@ def list_submissions(filters: Optional[SubmissionListFilters] = None) -> List[Su
     return [_row_to_submission(row) for row in rows]
 
 
+def update_submission(submission_id: str, input_data: SubmissionUpdateInput) -> Optional[SubmissionRecord]:
+    """
+    Update a submission.
+    
+    Args:
+        submission_id: Submission UUID
+        input_data: Fields to update (only non-None fields are updated)
+        
+    Returns:
+        Updated SubmissionRecord if found, None otherwise
+        
+    Example:
+        >>> updated = update_submission(
+        ...     "550e8400-e29b-41d4-a716-446655440000",
+        ...     SubmissionUpdateInput(formData={"name": "Dr. Updated"})
+        ... )
+    """
+    # Check if submission exists and is not deleted
+    existing = get_submission(submission_id)
+    if not existing or existing.isDeleted:
+        return None
+    
+    # Build dynamic UPDATE clause
+    set_clauses = ["updated_at = :updated_at"]
+    params = {
+        "id": submission_id,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    
+    if input_data.decisionType is not None:
+        set_clauses.append("decision_type = :decision_type")
+        params["decision_type"] = input_data.decisionType
+    
+    if input_data.submittedBy is not None:
+        set_clauses.append("submitted_by = :submitted_by")
+        params["submitted_by"] = input_data.submittedBy
+    
+    if input_data.formData is not None:
+        set_clauses.append("form_data = :form_data")
+        params["form_data"] = json.dumps(input_data.formData)
+    
+    if input_data.rawPayload is not None:
+        set_clauses.append("raw_payload = :raw_payload")
+        params["raw_payload"] = json.dumps(input_data.rawPayload)
+    
+    if input_data.evaluatorOutput is not None:
+        set_clauses.append("evaluator_output = :evaluator_output")
+        params["evaluator_output"] = json.dumps(input_data.evaluatorOutput)
+    
+    # Execute update
+    sql = f"UPDATE submissions SET {', '.join(set_clauses)} WHERE id = :id"
+    execute_update(sql, params)
+    
+    return get_submission(submission_id)
+
+
+def soft_delete_submission(submission_id: str) -> bool:
+    """
+    Soft delete a submission (set is_deleted=1, deleted_at=now).
+    
+    Args:
+        submission_id: Submission UUID
+        
+    Returns:
+        True if deleted, False if not found or already deleted
+        
+    Example:
+        >>> deleted = soft_delete_submission("550e8400-e29b-41d4-a716-446655440000")
+    """
+    # Check if submission exists and is not already deleted
+    existing = get_submission(submission_id)
+    if not existing or existing.isDeleted:
+        return False
+    
+    now = datetime.utcnow().isoformat()
+    count = execute_update("""
+        UPDATE submissions 
+        SET is_deleted = 1, deleted_at = :deleted_at, updated_at = :updated_at
+        WHERE id = :id
+    """, {
+        "id": submission_id,
+        "deleted_at": now,
+        "updated_at": now,
+    })
+    
+    return count > 0
+
+
 def delete_submission(submission_id: str) -> bool:
     """
-    Delete a submission.
+    Hard delete a submission (permanently remove from database).
     
     Args:
         submission_id: Submission UUID

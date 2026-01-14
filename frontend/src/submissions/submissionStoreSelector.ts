@@ -65,7 +65,12 @@ export async function getSubmission(id: string): Promise<SubmissionRecord | unde
   
   if (isHealthy) {
     try {
-      return await submissionStoreApi.getSubmission(id);
+      const submission = await submissionStoreApi.getSubmission(id);
+      // Persist to localStorage for offline access
+      if (submission) {
+        await createSubmissionLocal(submission);
+      }
+      return submission;
     } catch (error) {
       console.warn('[SubmissionStore] API failed, falling back to localStorage:', error);
       healthCheckCache = { isHealthy: false, timestamp: Date.now() };
@@ -87,7 +92,12 @@ export async function listSubmissions(options?: {
   
   if (isHealthy) {
     try {
-      return await submissionStoreApi.listSubmissions(options);
+      const submissions = await submissionStoreApi.listSubmissions(options);
+      // Persist to localStorage for offline access (merge with existing)
+      for (const submission of submissions) {
+        await createSubmissionLocal(submission);
+      }
+      return submissions;
     } catch (error) {
       console.warn('[SubmissionStore] API failed, falling back to localStorage:', error);
       healthCheckCache = { isHealthy: false, timestamp: Date.now() };

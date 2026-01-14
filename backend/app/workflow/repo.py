@@ -33,6 +33,13 @@ from .models import (
     AuditEvent,
     AuditEventCreateInput,
     EvidenceItem,
+    # Phase 2 models
+    CaseNote,
+    CaseNoteCreateInput,
+    CaseEvent,
+    CaseDecision,
+    CaseDecisionCreateInput,
+    TimelineItem,
 )
 
 
@@ -361,6 +368,29 @@ def get_case(case_id: str) -> Optional[CaseRecord]:
     return case
 
 
+def get_case_by_submission_id(submission_id: str) -> Optional[CaseRecord]:
+    """
+    Retrieve a case by its linked submission ID.
+    
+    Args:
+        submission_id: Submission UUID
+        
+    Returns:
+        CaseRecord if found, None otherwise
+        
+    Example:
+        >>> case = get_case_by_submission_id("550e8400-e29b-41d4-a716-446655440000")
+    """
+    rows = execute_sql(
+        "SELECT * FROM cases WHERE submission_id = :submission_id LIMIT 1",
+        {"submission_id": submission_id}
+    )
+    if not rows:
+        return None
+    
+    return _row_to_case(rows[0])
+
+
 def list_cases(
     filters: Optional[CaseListFilters] = None,
     limit: int = 25,
@@ -393,13 +423,16 @@ def list_cases(
         ... )
     """
     # Build query dynamically based on filters
-    where_clauses = []
+    where_clauses = ["status != 'cancelled'"]  # Exclude cancelled cases by default
     params = {}
     
     if filters:
         if filters.status:
             where_clauses.append("status = :status")
             params["status"] = filters.status.value
+            # If explicitly filtering by cancelled, remove the exclusion
+            if filters.status.value == 'cancelled':
+                where_clauses.remove("status != 'cancelled'")
         
         if filters.assignedTo:
             where_clauses.append("assigned_to = :assigned_to")
@@ -418,7 +451,7 @@ def list_cases(
             params["search"] = f"%{normalized_search}%"
         
         if filters.overdue:
-            where_clauses.append("due_at < :now AND status NOT IN ('approved', 'blocked', 'closed')")
+            where_clauses.append("due_at < :now AND status NOT IN ('approved', 'blocked', 'closed', 'cancelled')")
             params["now"] = datetime.utcnow().isoformat()
         
         if filters.unassigned:
@@ -857,3 +890,417 @@ def get_store_stats() -> Dict[str, Any]:
         "total_events": event_count,
         "cases_by_status": status_counts,
     }
+
+
+# ============================================================================
+# Phase 2: Case Lifecycle Functions
+# ============================================================================
+
+# Allowed status transitions map
+ALLOWED_STATUS_TRANSITIONS = {
+    CaseStatus.NEW: [CaseStatus.IN_REVIEW, CaseStatus.BLOCKED, CaseStatus.CLOSED],
+    CaseStatus.IN_REVIEW: [CaseStatus.NEEDS_INFO, CaseStatus.APPROVED, CaseStatus.BLOCKED, CaseStatus.CLOSED],
+    CaseStatus.NEEDS_INFO: [CaseStatus.IN_REVIEW, CaseStatus.BLOCKED, CaseStatus.CLOSED],
+    CaseStatus.APPROVED: [CaseStatus.CLOSED],
+    CaseStatus.BLOCKED: [CaseStatus.IN_REVIEW, CaseStatus.CLOSED],
+    CaseStatus.CLOSED: [],  # Terminal state
+}
+
+
+def validate_status_transition(current_status: CaseStatus, new_status: CaseStatus) -> bool:
+    """
+    Validate if a status transition is allowed.
+    
+    Args:
+        current_status: Current case status
+        new_status: Desired new status
+        
+    Returns:
+        True if transition is allowed, False otherwise
+        
+    Example:
+        >>> validate_status_transition(CaseStatus.NEW, CaseStatus.IN_REVIEW)
+        True
+        >>> validate_status_transition(CaseStatus.CLOSED, CaseStatus.NEW)
+        False
+    """
+    if current_status == new_status:
+        return True
+    
+    allowed = ALLOWED_STATUS_TRANSITIONS.get(current_status, [])
+    return new_status in allowed
+
+
+def create_case_note(case_id: str, input_data: CaseNoteCreateInput) -> CaseNote:
+    """
+    Create a new case note.
+    
+    Args:
+        case_id: Parent case ID
+        input_data: Note creation input
+        
+    Returns:
+        Created case note
+        
+    Raises:
+        ValueError: If case not found
+    """
+    # Verify case exists
+    case = get_case(case_id)
+    if not case:
+        raise ValueError(f"Case not found: {case_id}")
+    
+    now = datetime.utcnow()
+    note_id = str(uuid.uuid4())
+    
+    # Insert note
+    execute_insert("""
+        INSERT INTO case_notes (id, case_id, created_at, author_role, author_name, note_text, metadata)
+        VALUES (:id, :case_id, :created_at, :author_role, :author_name, :note_text, :metadata)
+    """, {
+        "id": note_id,
+        "case_id": case_id,
+        "created_at": now.isoformat(),
+        "author_role": input_data.authorRole or "reviewer",
+        "author_name": input_data.authorName,
+        "note_text": input_data.noteText,
+        "metadata": json.dumps(input_data.metadata),
+    })
+    
+    # Create corresponding case event
+    create_case_event(
+        case_id=case_id,
+        event_type="note_added",
+        event_payload={"note_id": note_id, "preview": input_data.noteText[:100]},
+        actor_role=input_data.authorRole or "reviewer",
+        actor_name=input_data.authorName,
+    )
+    
+    # Return created note
+    return get_case_note(note_id)
+
+
+def get_case_note(note_id: str) -> Optional[CaseNote]:
+    """
+    Get a case note by ID.
+    
+    Args:
+        note_id: Note UUID
+        
+    Returns:
+        Case note or None if not found
+    """
+    rows = execute_sql("""
+        SELECT id, case_id, created_at, author_role, author_name, note_text, metadata
+        FROM case_notes
+        WHERE id = :id
+    """, {"id": note_id})
+    
+    if not rows:
+        return None
+    
+    row = rows[0]
+    return CaseNote(
+        id=row["id"],
+        caseId=row["case_id"],
+        createdAt=datetime.fromisoformat(row["created_at"]),
+        authorRole=row["author_role"],
+        authorName=row["author_name"],
+        noteText=row["note_text"],
+        metadata=json.loads(row["metadata"] or "{}"),
+    )
+
+
+def list_case_notes(case_id: str) -> List[CaseNote]:
+    """
+    List all notes for a case, ordered by creation time (descending).
+    
+    Args:
+        case_id: Parent case ID
+        
+    Returns:
+        List of case notes
+    """
+    rows = execute_sql("""
+        SELECT id, case_id, created_at, author_role, author_name, note_text, metadata
+        FROM case_notes
+        WHERE case_id = :case_id
+        ORDER BY created_at DESC
+    """, {"case_id": case_id})
+    
+    return [
+        CaseNote(
+            id=row["id"],
+            caseId=row["case_id"],
+            createdAt=datetime.fromisoformat(row["created_at"]),
+            authorRole=row["author_role"],
+            authorName=row["author_name"],
+            noteText=row["note_text"],
+            metadata=json.loads(row["metadata"] or "{}"),
+        )
+        for row in rows
+    ]
+
+
+def create_case_event(
+    case_id: str,
+    event_type: str,
+    event_payload: Dict[str, Any],
+    actor_role: Optional[str] = None,
+    actor_name: Optional[str] = None,
+) -> CaseEvent:
+    """
+    Create a new case event.
+    
+    Args:
+        case_id: Parent case ID
+        event_type: Event type (status_changed, note_added, etc.)
+        event_payload: Structured event data
+        actor_role: Actor role (optional)
+        actor_name: Actor name (optional)
+        
+    Returns:
+        Created case event
+    """
+    now = datetime.utcnow()
+    event_id = str(uuid.uuid4())
+    
+    execute_insert("""
+        INSERT INTO case_events (id, case_id, created_at, event_type, event_payload_json, actor_role, actor_name)
+        VALUES (:id, :case_id, :created_at, :event_type, :event_payload_json, :actor_role, :actor_name)
+    """, {
+        "id": event_id,
+        "case_id": case_id,
+        "created_at": now.isoformat(),
+        "event_type": event_type,
+        "event_payload_json": json.dumps(event_payload),
+        "actor_role": actor_role,
+        "actor_name": actor_name,
+    })
+    
+    return CaseEvent(
+        id=event_id,
+        caseId=case_id,
+        createdAt=now,
+        eventType=event_type,
+        eventPayload=event_payload,
+        actorRole=actor_role,
+        actorName=actor_name,
+    )
+
+
+def list_case_events(case_id: str) -> List[CaseEvent]:
+    """
+    List all events for a case, ordered by creation time (descending).
+    
+    Args:
+        case_id: Parent case ID
+        
+    Returns:
+        List of case events
+    """
+    rows = execute_sql("""
+        SELECT id, case_id, created_at, event_type, event_payload_json, actor_role, actor_name
+        FROM case_events
+        WHERE case_id = :case_id
+        ORDER BY created_at DESC
+    """, {"case_id": case_id})
+    
+    return [
+        CaseEvent(
+            id=row["id"],
+            caseId=row["case_id"],
+            createdAt=datetime.fromisoformat(row["created_at"]),
+            eventType=row["event_type"],
+            eventPayload=json.loads(row["event_payload_json"] or "{}"),
+            actorRole=row["actor_role"],
+            actorName=row["actor_name"],
+        )
+        for row in rows
+    ]
+
+
+def get_case_timeline(case_id: str) -> List[TimelineItem]:
+    """
+    Get combined timeline of notes and events for a case.
+    
+    Merges notes and events, sorted by creation time (descending).
+    
+    Args:
+        case_id: Parent case ID
+        
+    Returns:
+        List of timeline items (notes + events)
+    """
+    timeline = []
+    
+    # Get notes
+    notes = list_case_notes(case_id)
+    for note in notes:
+        timeline.append(TimelineItem(
+            id=note.id,
+            caseId=note.caseId,
+            createdAt=note.createdAt,
+            itemType="note",
+            authorRole=note.authorRole,
+            authorName=note.authorName,
+            content=note.noteText,
+            metadata=note.metadata,
+        ))
+    
+    # Get events
+    events = list_case_events(case_id)
+    for event in events:
+        # Create human-readable content from event
+        content = f"{event.eventType.replace('_', ' ').title()}"
+        if event.eventPayload:
+            # Add payload details to content
+            if "old_status" in event.eventPayload and "new_status" in event.eventPayload:
+                content = f"Status changed from {event.eventPayload['old_status']} to {event.eventPayload['new_status']}"
+            elif "decision" in event.eventPayload:
+                content = f"Decision: {event.eventPayload['decision']}"
+        
+        timeline.append(TimelineItem(
+            id=event.id,
+            caseId=event.caseId,
+            createdAt=event.createdAt,
+            itemType="event",
+            authorRole=event.actorRole,
+            authorName=event.actorName,
+            content=content,
+            metadata=event.eventPayload,
+        ))
+    
+    # Sort by creation time (descending)
+    timeline.sort(key=lambda x: x.createdAt, reverse=True)
+    
+    return timeline
+
+
+def create_case_decision(case_id: str, input_data: CaseDecisionCreateInput) -> CaseDecision:
+    """
+    Create a case decision (approval or rejection).
+    
+    Updates case status based on decision:
+    - APPROVED -> status = approved
+    - REJECTED -> status = blocked
+    
+    Args:
+        case_id: Parent case ID
+        input_data: Decision creation input
+        
+    Returns:
+        Created case decision
+        
+    Raises:
+        ValueError: If case not found
+    """
+    # Verify case exists
+    case = get_case(case_id)
+    if not case:
+        raise ValueError(f"Case not found: {case_id}")
+    
+    now = datetime.utcnow()
+    decision_id = str(uuid.uuid4())
+    
+    # Insert decision
+    execute_insert("""
+        INSERT INTO case_decisions (id, case_id, created_at, decision, reason, details_json, decided_by_role, decided_by_name)
+        VALUES (:id, :case_id, :created_at, :decision, :reason, :details_json, :decided_by_role, :decided_by_name)
+    """, {
+        "id": decision_id,
+        "case_id": case_id,
+        "created_at": now.isoformat(),
+        "decision": input_data.decision,
+        "reason": input_data.reason,
+        "details_json": json.dumps(input_data.details),
+        "decided_by_role": input_data.decidedByRole or "reviewer",
+        "decided_by_name": input_data.decidedByName,
+    })
+    
+    # Update case status based on decision
+    new_status = CaseStatus.APPROVED if input_data.decision == "APPROVED" else CaseStatus.BLOCKED
+    update_case(case_id, CaseUpdateInput(status=new_status))
+    
+    # Create corresponding case event
+    create_case_event(
+        case_id=case_id,
+        event_type="decision_made",
+        event_payload={
+            "decision_id": decision_id,
+            "decision": input_data.decision,
+            "reason": input_data.reason,
+            "new_status": new_status.value,
+        },
+        actor_role=input_data.decidedByRole or "reviewer",
+        actor_name=input_data.decidedByName,
+    )
+    
+    return get_case_decision(decision_id)
+
+
+def get_case_decision(decision_id: str) -> Optional[CaseDecision]:
+    """
+    Get a case decision by ID.
+    
+    Args:
+        decision_id: Decision UUID
+        
+    Returns:
+        Case decision or None if not found
+    """
+    rows = execute_sql("""
+        SELECT id, case_id, created_at, decision, reason, details_json, decided_by_role, decided_by_name
+        FROM case_decisions
+        WHERE id = :id
+    """, {"id": decision_id})
+    
+    if not rows:
+        return None
+    
+    row = rows[0]
+    return CaseDecision(
+        id=row["id"],
+        caseId=row["case_id"],
+        createdAt=datetime.fromisoformat(row["created_at"]),
+        decision=row["decision"],
+        reason=row["reason"],
+        details=json.loads(row["details_json"] or "{}"),
+        decidedByRole=row["decided_by_role"],
+        decidedByName=row["decided_by_name"],
+    )
+
+
+def get_case_decision_by_case(case_id: str) -> Optional[CaseDecision]:
+    """
+    Get the most recent decision for a case.
+    
+    Args:
+        case_id: Parent case ID
+        
+    Returns:
+        Most recent case decision or None if no decisions exist
+    """
+    rows = execute_sql("""
+        SELECT id, case_id, created_at, decision, reason, details_json, decided_by_role, decided_by_name
+        FROM case_decisions
+        WHERE case_id = :case_id
+        ORDER BY created_at DESC
+        LIMIT 1
+    """, {"case_id": case_id})
+    
+    if not rows:
+        return None
+    
+    row = rows[0]
+    return CaseDecision(
+        id=row["id"],
+        caseId=row["case_id"],
+        createdAt=datetime.fromisoformat(row["created_at"]),
+        decision=row["decision"],
+        reason=row["reason"],
+        details=json.loads(row["details_json"] or "{}"),
+        decidedByRole=row["decided_by_role"],
+        decidedByName=row["decided_by_name"],
+    )
+

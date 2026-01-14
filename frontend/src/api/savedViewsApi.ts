@@ -50,18 +50,27 @@ export interface UpdateViewPayload {
  * @returns List of saved views
  */
 export async function listViews(scope?: string): Promise<SavedView[]> {
-  const params = new URLSearchParams();
-  if (scope) {
-    params.set('scope', scope);
+  try {
+    const params = new URLSearchParams();
+    if (scope) {
+      params.set('scope', scope);
+    }
+    
+    const url = params.toString() 
+      ? `${VIEWS_BASE}?${params}` 
+      : VIEWS_BASE;
+    
+    return await cachedFetchJson<SavedView[]>(url, {
+      headers: getAuthHeaders(),
+    });
+  } catch (err) {
+    // Fallback to localStorage if backend is unavailable
+    console.warn('[SavedViewsAPI] Backend unavailable, using localStorage fallback');
+    const stored = localStorage.getItem('ac_saved_views');
+    if (!stored) return [];
+    const allViews: SavedView[] = JSON.parse(stored);
+    return scope ? allViews.filter(v => v.scope === scope) : allViews;
   }
-  
-  const url = params.toString() 
-    ? `${VIEWS_BASE}?${params}` 
-    : VIEWS_BASE;
-  
-  return cachedFetchJson<SavedView[]>(url, {
-    headers: getAuthHeaders(),
-  });
 }
 
 /**
@@ -71,18 +80,39 @@ export async function listViews(scope?: string): Promise<SavedView[]> {
  * @returns Created view
  */
 export async function createView(payload: CreateViewPayload): Promise<SavedView> {
-  const response = await fetch(VIEWS_BASE, {
-    method: 'POST',
-    headers: getJsonHeaders(),
-    body: JSON.stringify(payload),
-  });
-  
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to create view: ${response.status} - ${error}`);
+  try {
+    const response = await fetch(VIEWS_BASE, {
+      method: 'POST',
+      headers: getJsonHeaders(),
+      body: JSON.stringify(payload),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (err) {
+    // Fallback to localStorage
+    console.warn('[SavedViewsAPI] Backend unavailable, saving to localStorage');
+    const stored = localStorage.getItem('ac_saved_views');
+    const allViews: SavedView[] = stored ? JSON.parse(stored) : [];
+    
+    const newView: SavedView = {
+      id: `view-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      name: payload.name,
+      scope: payload.scope,
+      view_json: payload.view_json,
+      owner: 'local',
+      is_shared: payload.is_shared ?? false,
+    };
+    
+    allViews.push(newView);
+    localStorage.setItem('ac_saved_views', JSON.stringify(allViews));
+    return newView;
   }
-  
-  return response.json();
 }
 
 /**
@@ -92,9 +122,23 @@ export async function createView(payload: CreateViewPayload): Promise<SavedView>
  * @returns Saved view
  */
 export async function getView(viewId: string): Promise<SavedView> {
-  return cachedFetchJson<SavedView>(`${VIEWS_BASE}/${viewId}`, {
-    headers: getAuthHeaders(),
-  });
+  try {
+    return await cachedFetchJson<SavedView>(`${VIEWS_BASE}/${viewId}`, {
+      headers: getAuthHeaders(),
+    });
+  } catch (err) {
+    // Fallback to localStorage
+    console.warn('[SavedViewsAPI] Backend unavailable, reading from localStorage');
+    const stored = localStorage.getItem('ac_saved_views');
+    const allViews: SavedView[] = stored ? JSON.parse(stored) : [];
+    
+    const view = allViews.find(v => v.id === viewId);
+    if (!view) {
+      throw new Error(`View ${viewId} not found in localStorage`);
+    }
+    
+    return view;
+  }
 }
 
 /**
@@ -105,18 +149,39 @@ export async function getView(viewId: string): Promise<SavedView> {
  * @returns Updated view
  */
 export async function updateView(viewId: string, payload: UpdateViewPayload): Promise<SavedView> {
-  const response = await fetch(`${VIEWS_BASE}/${viewId}`, {
-    method: 'PATCH',
-    headers: getJsonHeaders(),
-    body: JSON.stringify(payload),
-  });
-  
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to update view: ${response.status} - ${error}`);
+  try {
+    const response = await fetch(`${VIEWS_BASE}/${viewId}`, {
+      method: 'PATCH',
+      headers: getJsonHeaders(),
+      body: JSON.stringify(payload),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (err) {
+    // Fallback to localStorage
+    console.warn('[SavedViewsAPI] Backend unavailable, updating in localStorage');
+    const stored = localStorage.getItem('ac_saved_views');
+    const allViews: SavedView[] = stored ? JSON.parse(stored) : [];
+    
+    const index = allViews.findIndex(v => v.id === viewId);
+    if (index === -1) {
+      throw new Error(`View ${viewId} not found`);
+    }
+    
+    const updated: SavedView = {
+      ...allViews[index],
+      ...payload,
+      updated_at: new Date().toISOString(),
+    };
+    
+    allViews[index] = updated;
+    localStorage.setItem('ac_saved_views', JSON.stringify(allViews));
+    return updated;
   }
-  
-  return response.json();
 }
 
 /**
@@ -126,15 +191,26 @@ export async function updateView(viewId: string, payload: UpdateViewPayload): Pr
  * @returns Delete confirmation
  */
 export async function deleteView(viewId: string): Promise<{ ok: boolean; deleted_id: string }> {
-  const response = await fetch(`${VIEWS_BASE}/${viewId}`, {
-    method: 'DELETE',
-    headers: getAuthHeaders(),
-  });
-  
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to delete view: ${response.status} - ${error}`);
+  try {
+    const response = await fetch(`${VIEWS_BASE}/${viewId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (err) {
+    // Fallback to localStorage
+    console.warn('[SavedViewsAPI] Backend unavailable, deleting from localStorage');
+    const stored = localStorage.getItem('ac_saved_views');
+    const allViews: SavedView[] = stored ? JSON.parse(stored) : [];
+    
+    const filtered = allViews.filter(v => v.id !== viewId);
+    localStorage.setItem('ac_saved_views', JSON.stringify(filtered));
+    
+    return { ok: true, deleted_id: viewId };
   }
-  
-  return response.json();
 }

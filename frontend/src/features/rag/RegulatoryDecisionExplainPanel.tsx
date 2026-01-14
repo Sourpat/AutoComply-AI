@@ -4,6 +4,7 @@ import { ragExplain, type DecisionExplainResponse } from "../../api/ragClient";
 import { get_mock_scenarios } from "../../api/mockScenarios";
 import { useRagDebug } from "../../devsupport/RagDebugContext";
 import { demoStore } from "../../lib/demoStore";
+import * as submissionSelector from "../../submissions/submissionStoreSelector";
 import type { Submission } from "../../types/workQueue";
 import { normalizeTrace, type NormalizedTrace } from "../../lib/traceNormalizer";
 import { buildDecisionPacket } from "../../utils/buildDecisionPacket";
@@ -125,11 +126,22 @@ export function RegulatoryDecisionExplainPanel({
   // Load scenarios on mount
   useEffect(() => {
     const mockScenarios = get_mock_scenarios();
-    setScenarios(mockScenarios);
-    if (mockScenarios.length > 0) {
-      setSelectedScenario(mockScenarios[0].id);
+    const decisionTypeParam = searchParams.get("decisionType");
+    
+    // Filter scenarios by decisionType if provided
+    const filteredScenarios = decisionTypeParam 
+      ? mockScenarios.filter(s => s.decision_type === decisionTypeParam)
+      : mockScenarios;
+    
+    setScenarios(filteredScenarios);
+    if (filteredScenarios.length > 0) {
+      setSelectedScenario(filteredScenarios[0].id);
     }
-  }, []);
+    
+    if (decisionTypeParam && filteredScenarios.length > 0) {
+      console.log(`[RAG Explorer] Filtered to ${filteredScenarios.length} scenarios for ${decisionTypeParam}`);
+    }
+  }, [searchParams]);
 
   // Load recent submissions when switching to connected mode
   useEffect(() => {
@@ -162,6 +174,14 @@ export function RegulatoryDecisionExplainPanel({
     const caseId = searchParams.get("caseId"); // Step 2.4: Support caseId from CaseWorkspace
     const traceId = searchParams.get("traceId");
     const autoload = searchParams.get("autoload");
+    const decisionType = searchParams.get("decisionType"); // Coverage deep-linking
+    
+    // If decisionType is provided, pre-filter scenarios and switch to sandbox mode
+    if (decisionType && mode === "sandbox") {
+      setDecisionSource("sandbox");
+      // The scenario dropdown will automatically filter by decision_type
+      console.log(`[RAG Explorer] Filtering scenarios for decisionType: ${decisionType}`);
+    }
     
     if (mode === "connected") {
       setDecisionSource("connected");
@@ -174,10 +194,11 @@ export function RegulatoryDecisionExplainPanel({
           setSelectedSubmission(queueItem.submissionId);
           if (autoload === "1") {
             // Auto-trigger explain - navigate to connected mode
-            const submission = demoStore.getSubmissions().find(s => s.id === queueItem.submissionId);
-            if (submission) {
-              window.location.href = `/console/rag?mode=connected&submissionId=${submission.id}`;
-            }
+            submissionSelector.getSubmission(queueItem.submissionId).then(submissionRecord => {
+              if (submissionRecord) {
+                window.location.href = `/console/rag?mode=connected&submissionId=${submissionRecord.id}`;
+              }
+            });
           }
         }
       } else if (submissionId) {
@@ -223,17 +244,31 @@ export function RegulatoryDecisionExplainPanel({
     }
   };
 
-  const loadTraceById = (submissionId: string) => {
+  const loadTraceById = async (submissionId: string) => {
     setState("loading");
     setError(null);
     setLoadedTrace(null);
 
     try {
-      // Load from demoStore by ID
-      const submission = demoStore.getSubmission(submissionId);
-      if (!submission) {
+      // Load from submission store by ID
+      const submissionRecord = await submissionSelector.getSubmission(submissionId);
+      if (!submissionRecord) {
         throw new Error(`Submission ${submissionId} not found in store`);
       }
+      
+      // Convert SubmissionRecord to Submission format expected by UI
+      const submission: Submission = {
+        id: submissionRecord.id,
+        submittedAt: submissionRecord.createdAt,
+        kind: submissionRecord.decisionType as any,
+        displayName: (submissionRecord.formData as any)?.practitioner?.facilityName || 
+                     (submissionRecord.formData as any)?.hospital?.facilityName ||
+                     `Submission ${submissionRecord.id}`,
+        payload: submissionRecord.formData || {},
+        traceId: (submissionRecord.rawPayload as any)?.trace_id || submissionRecord.id,
+        decisionTrace: submissionRecord.evaluatorOutput || {},
+      };
+      
       setLoadedTrace(submission);
       setSelectedSubmission(submissionId);
       
@@ -257,17 +292,35 @@ export function RegulatoryDecisionExplainPanel({
     }
   };
 
-  const loadTraceByTraceId = (traceId: string) => {
+  const loadTraceByTraceId = async (traceId: string) => {
     setState("loading");
     setError(null);
     setLoadedTrace(null);
 
     try {
-      // Load from demoStore by traceId (for deep linking)
-      const submission = demoStore.getSubmissionByTraceId(traceId);
-      if (!submission) {
+      // Load all submissions and find by traceId
+      const allSubmissions = await submissionSelector.listSubmissions();
+      const submissionRecord = allSubmissions.find(
+        (s) => s.rawPayload?.trace_id === traceId || s.id === traceId
+      );
+      
+      if (!submissionRecord) {
         throw new Error(`Submission with trace ID ${traceId} not found. Please refresh the Compliance Console.`);
       }
+      
+      // Convert SubmissionRecord to Submission format
+      const submission: Submission = {
+        id: submissionRecord.id,
+        submittedAt: submissionRecord.createdAt,
+        kind: submissionRecord.decisionType as any,
+        displayName: (submissionRecord.formData as any)?.practitioner?.facilityName || 
+                     (submissionRecord.formData as any)?.hospital?.facilityName ||
+                     `Submission ${submissionRecord.id}`,
+        payload: submissionRecord.formData || {},
+        traceId: (submissionRecord.rawPayload as any)?.trace_id || submissionRecord.id,
+        decisionTrace: submissionRecord.evaluatorOutput || {},
+      };
+      
       setLoadedTrace(submission);
       setSelectedSubmission(submission.id);
       
@@ -593,22 +646,32 @@ export function RegulatoryDecisionExplainPanel({
 
       {/* Scenario Selector (only for sandbox mode) */}
       {decisionSource === "sandbox" && (
-        <div className="flex items-center gap-2">
-          <label htmlFor="scenario" className="text-[11px] text-zinc-400 shrink-0">
-            Scenario:
-          </label>
-          <select
-            id="scenario"
-            value={selectedScenario}
-            onChange={(e) => setSelectedScenario(e.target.value)}
-            className="flex-1 px-3 py-1.5 text-[11px] bg-zinc-900 border border-zinc-700 rounded-md text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            {scenarios.map((scenario) => (
-              <option key={scenario.id} value={scenario.id}>
-                {scenario.name}
-              </option>
-            ))}
-          </select>
+        <div className="space-y-2">
+          {/* Decision Type Filter Badge */}
+          {searchParams.get("decisionType") && (
+            <div className="flex items-center gap-2 text-[10px] text-blue-400 bg-blue-950 border border-blue-800 rounded-md px-2 py-1">
+              <span>🎯 Filtered to: <strong>{searchParams.get("decisionType")}</strong></span>
+              <span className="text-zinc-500">({scenarios.length} scenario{scenarios.length !== 1 ? 's' : ''})</span>
+            </div>
+          )}
+          
+          <div className="flex items-center gap-2">
+            <label htmlFor="scenario" className="text-[11px] text-zinc-400 shrink-0">
+              Scenario:
+            </label>
+            <select
+              id="scenario"
+              value={selectedScenario}
+              onChange={(e) => setSelectedScenario(e.target.value)}
+              className="flex-1 px-3 py-1.5 text-[11px] bg-zinc-900 border border-zinc-700 rounded-md text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              {scenarios.map((scenario) => (
+                <option key={scenario.id} value={scenario.id}>
+                  {scenario.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
 

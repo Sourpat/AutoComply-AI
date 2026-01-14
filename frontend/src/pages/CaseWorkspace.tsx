@@ -10,7 +10,6 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
-import { demoStore } from "../lib/demoStore";
 import { viewStore } from "../lib/viewStore";
 import type { QueueView, SortField, SortDirection } from "../types/views";
 import type { WorkQueueItem as DemoWorkQueueItem } from "../types/workQueue";
@@ -19,6 +18,7 @@ import { CaseDetailsPanel } from "../features/cases/CaseDetailsPanel";
 import { useRole } from "../context/RoleContext";
 import { getCurrentDemoUser } from "../demo/users";
 import { isOverdue } from "../workflow/sla";
+import { useWorkQueue } from "../workflow/useWorkflowStore";
 
 export const CaseWorkspace: React.FC = () => {
   const { role } = useRole();
@@ -34,10 +34,13 @@ export const CaseWorkspace: React.FC = () => {
   const [showManageViewsModal, setShowManageViewsModal] = useState(false);
   const [newViewName, setNewViewName] = useState('');
   const [setNewViewAsDefault, setSetNewViewAsDefault] = useState(false);
-  const [displayLimit, setDisplayLimit] = useState(50);
+  const [displayLimit, setDisplayLimit] = useState(500);
 
   const currentUser = getCurrentDemoUser(role);
   const selectedCaseId = searchParams.get('caseId');
+  
+  // Load work queue from API instead of demo store
+  const { items: workQueueItems, isLoading: isLoadingQueue, error: queueError, reload: reloadQueue } = useWorkQueue(true);
 
   // Load saved views on mount
   useEffect(() => {
@@ -58,7 +61,7 @@ export const CaseWorkspace: React.FC = () => {
 
   // Filter, search, and sort work queue items
   const filteredAndSortedItems = useMemo(() => {
-    let items = demoStore.getWorkQueue();
+    let items = workQueueItems || [];
     
     // Apply queue filter
     if (queueFilter === "mine" && currentUser) {
@@ -129,7 +132,7 @@ export const CaseWorkspace: React.FC = () => {
     });
 
     return items;
-  }, [queueFilter, searchQuery, sortField, sortDirection, currentUser]);
+  }, [queueFilter, searchQuery, sortField, sortDirection, currentUser, workQueueItems]);
 
   // Paginated items for display
   const displayedItems = filteredAndSortedItems.slice(0, displayLimit);
@@ -193,6 +196,25 @@ export const CaseWorkspace: React.FC = () => {
 
   return (
     <div className="h-screen flex flex-col bg-slate-50">
+      {/* Backend Error Banner */}
+      {queueError && (
+        <div className="bg-red-50 border-b border-red-200 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+            <div>
+              <div className="text-sm font-semibold text-red-900">Backend Not Reachable</div>
+              <div className="text-xs text-red-700">Cannot load cases from http://127.0.0.1:8001</div>
+            </div>
+          </div>
+          <button
+            onClick={() => reloadQueue()}
+            className="px-3 py-1.5 text-xs font-medium bg-red-100 hover:bg-red-200 text-red-900 rounded transition-colors"
+          >
+            Retry Connection
+          </button>
+        </div>
+      )}
+      
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-6 py-4">
         <h1 className="text-xl font-bold text-slate-900">Case Workspace</h1>

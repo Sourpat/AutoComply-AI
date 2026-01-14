@@ -152,12 +152,14 @@ export async function listCases(filters?: CaseFilters): Promise<PaginatedCasesRe
   if (filters?.q) params.set('q', filters.q);
   if (filters?.overdue !== undefined) params.set('overdue', String(filters.overdue));
   if (filters?.unassigned !== undefined) params.set('unassigned', String(filters.unassigned));
+  // Default to high limit to show all cases (matches backend default of 100)
   if (filters?.limit !== undefined) params.set('limit', String(filters.limit));
+  else params.set('limit', '1000');
   if (filters?.offset !== undefined) params.set('offset', String(filters.offset));
   
   const url = params.toString() 
     ? `${WORKFLOW_BASE}/cases?${params}` 
-    : `${WORKFLOW_BASE}/cases`;
+    : `${WORKFLOW_BASE}/cases?limit=1000`;
   
   return cachedFetchJson<PaginatedCasesResponse>(url, {
     headers: getAuthHeaders(),
@@ -171,6 +173,23 @@ export async function getCase(caseId: string): Promise<CaseRecord> {
   return cachedFetchJson<CaseRecord>(`${WORKFLOW_BASE}/cases/${caseId}`, {
     headers: getAuthHeaders(),
   });
+}
+
+/**
+ * Get the submission linked to a case
+ */
+export async function getCaseSubmission(caseId: string): Promise<any> {
+  const response = await fetch(`${WORKFLOW_BASE}/cases/${caseId}/submission`, {
+    headers: getAuthHeaders(),
+  });
+  
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error('Submission not found');
+    }
+    throw new Error(`Failed to get case submission: ${response.status}`);
+  }
+  return response.json();
 }
 
 /**
@@ -302,4 +321,161 @@ export async function updateEvidencePacket(
     throw new Error(`Failed to update evidence packet: ${response.status}`);
   }
   return response.json();
+}
+
+
+// ============================================================================
+// Phase 2: Case Lifecycle API Functions
+// ============================================================================
+
+export interface CaseNote {
+  id: string;
+  caseId: string;
+  createdAt: string;
+  authorRole: string;
+  authorName: string | null;
+  noteText: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface CaseNoteCreateInput {
+  noteText: string;
+  authorRole?: string;
+  authorName?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CaseDecision {
+  id: string;
+  caseId: string;
+  createdAt: string;
+  decision: 'APPROVED' | 'REJECTED';
+  reason: string | null;
+  details: Record<string, unknown>;
+  decidedByRole: string | null;
+  decidedByName: string | null;
+}
+
+export interface CaseDecisionCreateInput {
+  decision: 'APPROVED' | 'REJECTED';
+  reason?: string;
+  details?: Record<string, unknown>;
+  decidedByRole?: string;
+  decidedByName?: string;
+}
+
+export interface TimelineItem {
+  id: string;
+  caseId: string;
+  createdAt: string;
+  itemType: 'note' | 'event';
+  authorRole: string | null;
+  authorName: string | null;
+  content: string;
+  metadata: Record<string, unknown>;
+}
+
+/**
+ * Update case status, assignee, or other fields
+ */
+export async function updateCaseStatus(
+  caseId: string,
+  updates: CasePatchInput
+): Promise<CaseRecord> {
+  const response = await fetch(`${WORKFLOW_BASE}/cases/${caseId}`, {
+    method: 'PATCH',
+    headers: getJsonHeaders(),
+    body: JSON.stringify(updates),
+  });
+  
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(`Case not found: ${caseId}`);
+    }
+    if (response.status === 400) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Invalid status transition');
+    }
+    throw new Error(`Failed to update case: ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * Add a note to a case
+ */
+export async function addCaseNote(
+  caseId: string,
+  noteInput: CaseNoteCreateInput
+): Promise<CaseNote> {
+  const response = await fetch(`${WORKFLOW_BASE}/cases/${caseId}/notes`, {
+    method: 'POST',
+    headers: getJsonHeaders(),
+    body: JSON.stringify(noteInput),
+  });
+  
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(`Case not found: ${caseId}`);
+    }
+    throw new Error(`Failed to add note: ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * Get all notes for a case
+ */
+export async function getCaseNotes(caseId: string): Promise<CaseNote[]> {
+  return cachedFetchJson<CaseNote[]>(`${WORKFLOW_BASE}/cases/${caseId}/notes`, {
+    headers: getAuthHeaders(),
+  });
+}
+
+/**
+ * Get combined timeline (notes + events) for a case
+ */
+export async function getCaseTimeline(caseId: string): Promise<TimelineItem[]> {
+  return cachedFetchJson<TimelineItem[]>(`${WORKFLOW_BASE}/cases/${caseId}/timeline`, {
+    headers: getAuthHeaders(),
+  });
+}
+
+/**
+ * Make a decision on a case (approve or reject)
+ */
+export async function makeCaseDecision(
+  caseId: string,
+  decisionInput: CaseDecisionCreateInput
+): Promise<CaseDecision> {
+  const response = await fetch(`${WORKFLOW_BASE}/cases/${caseId}/decision`, {
+    method: 'POST',
+    headers: getJsonHeaders(),
+    body: JSON.stringify(decisionInput),
+  });
+  
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(`Case not found: ${caseId}`);
+    }
+    throw new Error(`Failed to make decision: ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * Get the most recent decision for a case
+ */
+export async function getCaseDecision(caseId: string): Promise<CaseDecision | null> {
+  try {
+    return await cachedFetchJson<CaseDecision>(`${WORKFLOW_BASE}/cases/${caseId}/decision`, {
+      headers: getAuthHeaders(),
+    });
+  } catch (error) {
+    // Return null if no decision exists (404)
+    if (error instanceof Error && error.message.includes('404')) {
+      return null;
+    }
+    throw error;
+  }
 }

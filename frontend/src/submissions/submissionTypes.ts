@@ -39,6 +39,9 @@ export interface SubmissionRecord {
   /** ISO 8601 timestamp when submission was created */
   createdAt: string;
   
+  /** ISO 8601 timestamp when submission was last updated (optional) */
+  updatedAt?: string;
+  
   /** Decision type / CSF form type */
   decisionType: 'csf_practitioner' | 'csf_facility' | 'csf_researcher' | 'ohio_tddd' | 'ny_pharmacy_license' | string;
   
@@ -96,12 +99,18 @@ export interface SubmissionRecord {
     /** Trace ID for debugging/replay */
     traceId?: string;
   };
+  
+  /** Soft delete flag */
+  isDeleted?: boolean;
+  
+  /** ISO 8601 timestamp when submission was deleted (optional) */
+  deletedAt?: string;
 }
 
 /**
  * Input type for creating new submissions (omits auto-generated fields)
  */
-export type CreateSubmissionInput = Omit<SubmissionRecord, 'id' | 'createdAt'>;
+export type CreateSubmissionInput = Omit<SubmissionRecord, 'id' | 'createdAt' | 'updatedAt' | 'isDeleted' | 'deletedAt'>;
 
 /**
  * Submission list item (for display in lists/tables)

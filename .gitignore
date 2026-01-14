@@ -1,3 +1,4 @@
+# Python
 .venv/
 venv/
 backend/.venv/
@@ -6,13 +7,36 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
+
+# Environment
 .env
-.DS_Store
-frontend/package-lock.json
-.vscode/
-backend/data/*.db
+
+# Local databases + backups
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.db.backup
 backend/data/*.sqlite
 backend/data/*.sqlite3
+
+# Node
+node_modules/
+frontend/package-lock.json
+
+# Local data folders
+data/
+backend/app/data/
+backend/data/
+
+# Generated files
+openapi.json
+
+# Editor/OS
+.DS_Store
+.vscode/
+
+# Virtual envs
 backend/.venv*/
 backend/.venv311/
 

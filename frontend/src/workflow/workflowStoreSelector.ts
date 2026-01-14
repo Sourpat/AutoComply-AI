@@ -87,10 +87,21 @@ const demoStoreAdapter = new DemoStoreAdapter();
 
 /**
  * Get the appropriate workflow store based on backend health
+ * 
+ * CRITICAL: No longer falls back to demo store when backend is unreachable.
+ * This ensures UI shows proper error states instead of stale demo data.
  */
 export async function getWorkflowStore(): Promise<WorkflowStore> {
   const isHealthy = await checkBackendHealth();
-  return isHealthy ? workflowStoreApi : demoStoreAdapter;
+  
+  if (!isHealthy) {
+    throw new Error(
+      'Backend not reachable. Please ensure backend is running on http://127.0.0.1:8001\n' +
+      'Start with: uvicorn src.api.main:app --reload --host 127.0.0.1 --port 8001'
+    );
+  }
+  
+  return workflowStoreApi;
 }
 
 /**

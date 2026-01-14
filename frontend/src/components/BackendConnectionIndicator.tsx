@@ -10,16 +10,25 @@ export function BackendConnectionIndicator() {
     const checkBackend = async () => {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
 
         const response = await fetch(`${API_BASE}/health`, {
+          method: 'GET',
           signal: controller.signal,
+          headers: {
+            'Accept': 'application/json',
+          },
         });
 
         clearTimeout(timeoutId);
 
         if (response.ok) {
-          setStatus("connected");
+          const data = await response.json();
+          if (data.ok === true || data.status === 'healthy') {
+            setStatus("connected");
+          } else {
+            setStatus("disconnected");
+          }
         } else {
           setStatus("disconnected");
         }
@@ -33,8 +42,8 @@ export function BackendConnectionIndicator() {
     // Check immediately
     checkBackend();
 
-    // Then check every 30 seconds
-    const interval = setInterval(checkBackend, 30000);
+    // Then check every 15 seconds (more frequent for better UX)
+    const interval = setInterval(checkBackend, 15000);
 
     return () => clearInterval(interval);
   }, []);
