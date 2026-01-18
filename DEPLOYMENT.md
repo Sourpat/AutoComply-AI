@@ -15,11 +15,16 @@
    - **Output Directory**: `dist`
    - **Install Command**: `npm install`
 
-3. **Environment Variables**:
+3. **Environment Variables** (CRITICAL):
    ```
-   VITE_API_BASE_URL=http://127.0.0.1:8001
+   VITE_API_BASE_URL=https://autocomply-ai.onrender.com
    ```
-   *(Set to your backend URL once hosted. For demo/preview, use localhost.)*
+   
+   **⚠️ IMPORTANT**: 
+   - **DO NOT** use `http://127.0.0.1:8001` for Vercel deployment
+   - Localhost URLs will NOT work from deployed Vercel frontend
+   - Use your Render backend URL (or other public host)
+   - TODO: Replace with actual Render backend URL once deployed
 
 4. **Deploy**:
    - Click "Deploy"
@@ -91,15 +96,25 @@ After deploying to Vercel:
 
 ### Issue: "Backend not reachable" banner
 
-**Cause**: `VITE_API_BASE_URL` points to `localhost:8001`, which isn't accessible from deployed frontend.
+**Cause**: Either:
+1. `VITE_API_BASE_URL` points to `localhost:8001` (won't work from Vercel)
+2. Render backend is not deployed yet
+3. Render backend URL is incorrect
 
-**Solution**: Deploy backend to a public host (Render, Railway, AWS, etc.) and update `VITE_API_BASE_URL`:
+**Solution**: 
 
-```
-VITE_API_BASE_URL=https://autocomply-backend-xyz.onrender.com
-```
+1. Deploy backend to Render (or Railway, AWS, etc.)
+2. Get the public Render URL (e.g., `https://autocomply-ai.onrender.com`)
+3. Update Vercel environment variable:
+   ```
+   VITE_API_BASE_URL=https://autocomply-ai.onrender.com
+   ```
+4. Redeploy frontend on Vercel
 
-Then redeploy frontend on Vercel.
+**Verification**:
+- Open browser console on deployed site
+- Check: `[AutoComply API] Backend URL: <url>`
+- Try: `fetch('<backend-url>/workflow/health')`
 
 ---
 

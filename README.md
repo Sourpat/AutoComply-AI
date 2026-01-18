@@ -3,8 +3,11 @@
 > A regulatory copilot playground for controlled substances and drug distribution flows.  
 > Built with FastAPI + React, RAG, multi-agent architecture, and DevSupport tooling.
 
-**🚀 Live Demo**: [autocomply-ai.vercel.app](https://autocomply-ai.vercel.app) *(Frontend preview - backend runs locally)*  
-**📘 Deployment Guide**: See [DEPLOYMENT.md](./DEPLOYMENT.md)
+**🚀 Live Demo**: [autocomply-ai.vercel.app](https://autocomply-ai.vercel.app)  
+**📘 Deployment Guide**: See [DEPLOYMENT.md](./DEPLOYMENT.md)  
+**⚙️ Backend**: Hosted on Render at `https://autocomply-ai.onrender.com` (TODO: Update once deployed)
+
+> **Note**: Frontend on Vercel connects to public Render backend. Localhost URLs will NOT work for deployed frontends.
 
 ## Quick Start
 

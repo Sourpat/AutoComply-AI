@@ -37,7 +37,7 @@ function getApiBase(): string {
   const metaEnv = (import.meta as any)?.env ?? {};
   
   // Production: Use VITE_API_BASE_URL from environment (set at build time)
-  // Example: VITE_API_BASE_URL=https://autocomply-backend-xxxxx.onrender.com
+  // Example: VITE_API_BASE_URL=https://autocomply-ai.onrender.com
   const envBase = metaEnv.VITE_API_BASE_URL || metaEnv.VITE_API_BASE;
   if (envBase && envBase.trim()) {
     return envBase.trim();
@@ -53,14 +53,14 @@ function getApiBase(): string {
     return "http://127.0.0.1:8001";
   }
   
-  // Fallback: Same-origin (for deployed environments without VITE_API_BASE_URL)
-  // Not recommended - always set VITE_API_BASE_URL in production
+  // Production fallback: Use Render backend if no env var set
+  // TODO: Replace with actual Render backend URL once deployed
   if (typeof window !== "undefined") {
-    return `${window.location.protocol}//${window.location.host}`;
+    return "https://autocomply-ai.onrender.com";
   }
   
   // SSR fallback
-  return "http://localhost:8001";
+  return "https://autocomply-ai.onrender.com";
 }
 
 export const API_BASE = getApiBase();

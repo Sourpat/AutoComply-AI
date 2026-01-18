@@ -22,6 +22,7 @@ import { getAgeMs, formatAgeShort, isOverdue, formatDue, getSlaStatusColor } fro
 import { viewStore } from "../lib/viewStore";
 import type { QueueView, SortField, SortDirection } from "../types/views";
 import { AdminResetPanel } from "../features/admin/AdminResetPanel";
+import { BackendHealthBanner } from "../components/BackendHealthBanner";
 
 type DecisionStatus = "ok_to_ship" | "blocked" | "needs_review";
 type ActiveSection = "dashboard" | "csf" | "licenses" | "orders" | "settings" | "about";
@@ -1422,8 +1423,11 @@ const ConsoleDashboard: React.FC = () => {
 
   return (
     <div className="console-shell">
+      {/* Backend Health Banner */}
+      <BackendHealthBanner className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-2xl" />
+      
       {successMessage && (
-        <div className="fixed top-6 right-6 z-50 rounded-lg bg-green-600 px-4 py-3 text-sm font-medium text-white shadow-lg">
+        <div className="fixed top-16 right-6 z-50 rounded-lg bg-green-600 px-4 py-3 text-sm font-medium text-white shadow-lg">
           {successMessage}
         </div>
       )}
