@@ -95,6 +95,19 @@ class Settings(BaseSettings):
         description="Enable automatic Decision Intelligence recomputation on case changes"
     )
 
+    # Demo data seeding (for Render deployment)
+    # =============================================================================
+    # DEMO_SEED controls whether demo workflow cases are auto-seeded on startup.
+    # - Defaults to False (0) for all environments
+    # - Set DEMO_SEED=1 on Render to auto-populate demo cases
+    # - Only seeds if workflow cases table is empty (idempotent)
+    # - Creates realistic cases for csf_practitioner, csf_facility, ohio_tddd, license, csa
+    # =============================================================================
+    DEMO_SEED: bool = Field(
+        default=False,
+        description="Auto-seed demo workflow cases on startup if DB is empty"
+    )
+
     # Runtime (legacy)
     ENV: str = "development"
 

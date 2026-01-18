@@ -125,6 +125,7 @@ async def startup_event():
     logger.info(f"  PORT: {settings.PORT}")
     logger.info(f"  CORS_ORIGINS: {settings.CORS_ORIGINS}")
     logger.info(f"  DB_PATH: {settings.DB_PATH}")
+    logger.info(f"  DEMO_SEED: {settings.DEMO_SEED}")
     logger.info(f"")
     logger.info(f"  🚀 API will be available at: http://127.0.0.1:{settings.PORT}")
     logger.info(f"  🏥 Health check: http://127.0.0.1:{settings.PORT}/health")
@@ -134,6 +135,12 @@ async def startup_event():
     # Initialize database (fast - only runs CREATE TABLE IF NOT EXISTS)
     logger.info("Initializing database schema...")
     init_db()
+    
+    # Auto-seed demo data if enabled
+    if settings.DEMO_SEED:
+        logger.info("DEMO_SEED=1 - checking if demo data needed...")
+        from app.dev.seed_demo import seed_demo_on_startup
+        seed_demo_on_startup()
     
     # Start export scheduler
     logger.info("Starting export scheduler...")

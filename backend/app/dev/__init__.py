@@ -5,7 +5,7 @@ TEMPORARY endpoints for diagnosing data consistency issues.
 Should be removed in production or protected by dev-mode flag.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional
 import logging
@@ -167,3 +167,77 @@ def get_consistency_report():
         recent_cases=recent_cases,
     )
 
+
+# ============================================================================
+# Demo Data Seeding
+# ============================================================================
+
+class SeedDemoResponse(BaseModel):
+    """Response from /dev/seed endpoint."""
+    ok: bool
+    cases_created: int
+    message: str
+
+
+@router.post("/seed", response_model=SeedDemoResponse)
+def seed_demo_endpoint(
+    admin_unlocked: bool = Query(False, description="Admin unlock flag (set to 1 for access)"),
+    x_user_role: Optional[str] = Query(None, alias="x-user-role", description="User role header")
+):
+    """
+    Manually trigger demo data seeding.
+    
+    **Authorization**: Requires admin_unlocked=1 OR x-user-role=devsupport
+    
+    Creates a small set of realistic demo workflow cases if the cases table is empty.
+    Idempotent - safe to call multiple times (returns 0 cases created if already seeded).
+    
+    **Demo Cases Created**:
+    - csf_practitioner: Dr. Sarah Chen - DEA Registration Application
+    - csf_facility: Bright Hope Pharmacy - Facility License Renewal
+    - ohio_tddd: MedSupply Corp - Ohio TDDD Application
+    - license: Apex Healthcare - Expired License Alert
+    - csa: Schedule Reclassification - Hydrocodone Combination Products
+    
+    **Query Parameters**:
+    - admin_unlocked: Set to 1 to bypass auth check
+    - x-user-role: Set to "devsupport" for access
+    
+    **Example**:
+    ```
+    POST /dev/seed?admin_unlocked=1
+    POST /dev/seed?x-user-role=devsupport
+    ```
+    
+    Returns:
+        SeedDemoResponse with number of cases created
+    """
+    # Authorization check
+    if not admin_unlocked and x_user_role != "devsupport":
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Requires admin_unlocked=1 or x-user-role=devsupport"
+        )
+    
+    # Import seed function
+    from app.dev.seed_demo import seed_demo_data
+    
+    try:
+        cases_created = seed_demo_data()
+        
+        if cases_created > 0:
+            message = f"Successfully seeded {cases_created} demo cases"
+        else:
+            message = "Demo data already exists - no new cases created"
+        
+        return SeedDemoResponse(
+            ok=True,
+            cases_created=cases_created,
+            message=message
+        )
+    except Exception as e:
+        logger.error(f"Failed to seed demo data: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to seed demo data: {str(e)}"
+        )
