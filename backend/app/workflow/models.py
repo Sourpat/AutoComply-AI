@@ -69,6 +69,8 @@ class AuditEventType(str, Enum):
     ASSIGNED = "assigned"
     UNASSIGNED = "unassigned"
     EVIDENCE_ATTACHED = "evidence_attached"
+    EVIDENCE_REMOVED = "evidence_removed"
+    EVIDENCE_REDACTED = "evidence_redacted"
     NOTE_ADDED = "note_added"
     PACKET_UPDATED = "packet_updated"
     REQUESTED_INFO = "requested_info"
@@ -105,6 +107,50 @@ class EvidenceItem(BaseModel):
     includedInPacket: bool = Field(default=True, description="Include in export packet")
 
 
+class EvidenceUploadItem(BaseModel):
+    """
+    Evidence upload metadata for submitter attachments.
+    """
+    id: str = Field(..., description="Evidence UUID")
+    caseId: str = Field(..., alias="case_id", description="Parent case ID")
+    submissionId: str = Field(..., alias="submission_id", description="Parent submission ID")
+    filename: str = Field(..., description="Original filename")
+    contentType: str = Field(..., alias="content_type", description="MIME content type")
+    sizeBytes: int = Field(..., alias="size_bytes", description="File size in bytes")
+    storagePath: str = Field(..., alias="storage_path", description="Relative storage path")
+    sha256: str | None = Field(None, description="SHA256 hash")
+    uploadedBy: str | None = Field(None, alias="uploaded_by", description="Uploader identity")
+    createdAt: str = Field(..., alias="created_at", description="Created timestamp (ISO UTC)")
+
+    class Config:
+        populate_by_name = True
+
+
+class AttachmentItem(BaseModel):
+    id: str
+    caseId: str = Field(..., alias="case_id")
+    submissionId: str | None = Field(None, alias="submission_id")
+    filename: str
+    contentType: str = Field(..., alias="content_type")
+    sizeBytes: int = Field(..., alias="size_bytes")
+    storagePath: str = Field(..., alias="storage_path")
+    uploadedBy: str | None = Field(None, alias="uploaded_by")
+    description: str | None = None
+    isDeleted: int = Field(0, alias="is_deleted")
+    deletedAt: str | None = Field(None, alias="deleted_at")
+    deletedBy: str | None = Field(None, alias="deleted_by")
+    deleteReason: str | None = Field(None, alias="delete_reason")
+    isRedacted: int = Field(0, alias="is_redacted")
+    redactedAt: str | None = Field(None, alias="redacted_at")
+    redactedBy: str | None = Field(None, alias="redacted_by")
+    redactReason: str | None = Field(None, alias="redact_reason")
+    originalSha256: str | None = Field(None, alias="original_sha256")
+    createdAt: str = Field(..., alias="created_at")
+
+    class Config:
+        populate_by_name = True
+
+
 # ============================================================================
 # Case Models
 # ============================================================================
@@ -124,6 +170,7 @@ class CaseRecord(BaseModel):
     - assignedTo: Assigned user (name or ID)
     - dueAt: SLA deadline (ISO timestamp)
     - submissionId: Link to submission record
+    - resolvedAt: Resolution timestamp (ISO, when approved/rejected)
     
     Evidence & Metadata:
     - evidence: List of attached RAG evidence items
@@ -144,6 +191,7 @@ class CaseRecord(BaseModel):
     # Workflow status
     status: CaseStatus = Field(default=CaseStatus.NEW, description="Current status")
     assignedTo: Optional[str] = Field(None, description="Assigned user name or ID")
+    resolvedAt: Optional[datetime] = Field(None, description="Resolution timestamp")
     
     # SLA tracking
     dueAt: Optional[datetime] = Field(None, description="SLA deadline")
@@ -200,6 +248,7 @@ class CaseUpdateInput(BaseModel):
     status: Optional[CaseStatus] = Field(None, description="Update status")
     assignedTo: Optional[str] = Field(None, description="Update assignee")
     dueAt: Optional[datetime] = Field(None, description="Update SLA deadline")
+    resolvedAt: Optional[datetime] = Field(None, description="Update resolution timestamp")
     notesCount: Optional[int] = Field(None, description="Update notes count")
     attachmentsCount: Optional[int] = Field(None, description="Update attachments count")
 
@@ -330,29 +379,53 @@ class CaseNoteCreateInput(BaseModel):
 
 class CaseEvent(BaseModel):
     """
-    Case event for lifecycle tracking.
+    Case event for lifecycle tracking (Phase 3.1: Verifier Actions Timeline).
     
     Fields:
     - id: Event UUID
-    - caseId: Parent case ID
-    - createdAt: Event timestamp
-    - eventType: Type of event
-    - eventPayload: Structured event data
-    - actorRole: Actor role
-    - actorName: Actor name
+    - case_id: Parent case ID
+    - created_at: Event timestamp (ISO UTC)
+    - event_type: Type of event (case_created, assigned, status_changed, etc.)
+    - actor_role: Actor role (verifier, submitter, system)
+    - actor_id: Actor ID or email (null for system events)
+    - message: Human-readable description (optional)
+    - payload_json: Structured event data as JSON string
+    
+    Event Types:
+    - case_created: Case was created from submission
+    - assigned: Case assigned to verifier
+    - unassigned: Case unassigned
+    - status_changed: Status transition (new -> in_review, etc.)
+    - submission_updated: Submitter edited their submission
+    - submission_cancelled: Submitter deleted submission
+    - note_added: Note added to case
+    - evidence_attached: Evidence item added
     """
     id: str = Field(..., description="Event UUID")
-    caseId: str = Field(..., description="Parent case ID")
-    createdAt: datetime = Field(default_factory=datetime.utcnow, description="Event timestamp")
-    eventType: str = Field(..., description="Event type")
-    eventPayload: Dict[str, Any] = Field(default_factory=dict, description="Event payload")
-    actorRole: Optional[str] = Field(None, description="Actor role")
-    actorName: Optional[str] = Field(None, description="Actor name")
+    case_id: str = Field(..., alias="caseId", description="Parent case ID")
+    created_at: str = Field(..., alias="createdAt", description="Event timestamp (ISO UTC)")
+    event_type: str = Field(..., alias="eventType", description="Event type")
+    actor_role: str = Field(..., alias="actorRole", description="Actor role (verifier|submitter|system)")
+    actor_id: Optional[str] = Field(None, alias="actorId", description="Actor ID or email")
+    message: Optional[str] = Field(None, alias="eventDetail", description="Human-readable description")
+    payload_json: Optional[str] = Field(None, alias="payloadJson", description="Event payload as JSON string")
     
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        populate_by_name = True
+    
+    # Properties for backward compatibility with tests using camelCase
+    @property
+    def eventType(self) -> str:
+        return self.event_type
+    
+    @property
+    def eventDetail(self) -> Optional[str]:
+        return self.message
+    
+    @property
+    def actor(self) -> Optional[str]:
+        """Alias for actor_id for backward compatibility."""
+        return self.actor_id
 
 
 class CaseDecision(BaseModel):
@@ -431,3 +504,46 @@ class TimelineItem(BaseModel):
         json_encoders = {
             datetime: lambda v: v.isoformat()
         }
+
+
+class CaseRequest(BaseModel):
+    """
+    Case request for info from verifier to submitter.
+    
+    Fields:
+    - id: Request UUID
+    - caseId: Parent case ID
+    - createdAt: Request creation timestamp (ISO 8601)
+    - resolvedAt: Request resolution timestamp (ISO 8601), null if open
+    - status: 'open' or 'resolved'
+    - requestedBy: Verifier email/ID who requested info
+    - message: Request message to submitter
+    - requiredFields: List of field names that must be provided (optional)
+    """
+    id: str = Field(..., description="Request UUID")
+    caseId: str = Field(..., alias="case_id", description="Parent case ID")
+    createdAt: str = Field(..., alias="created_at", description="Request creation timestamp (ISO 8601)")
+    resolvedAt: Optional[str] = Field(None, alias="resolved_at", description="Request resolution timestamp (ISO 8601)")
+    status: str = Field(..., description="open or resolved")
+    requestedBy: Optional[str] = Field(None, alias="requested_by", description="Verifier email/ID")
+    message: str = Field(..., description="Request message")
+    requiredFields: Optional[List[str]] = Field(None, description="Required field names")
+    
+    class Config:
+        populate_by_name = True
+
+
+class CaseRequestCreateInput(BaseModel):
+    """
+    Input model for creating case requests.
+    
+    Required:
+    - message: Request message to submitter
+    
+    Optional:
+    - requestedBy: Verifier email/ID (extracted from request context)
+    - requiredFields: List of field names that must be provided
+    """
+    message: str = Field(..., description="Request message", min_length=1)
+    requestedBy: Optional[str] = Field(None, description="Verifier email/ID")
+    requiredFields: Optional[List[str]] = Field(None, description="Required field names")

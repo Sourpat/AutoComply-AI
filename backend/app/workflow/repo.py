@@ -33,6 +33,8 @@ from .models import (
     AuditEvent,
     AuditEventCreateInput,
     EvidenceItem,
+    EvidenceUploadItem,
+    AttachmentItem,
     # Phase 2 models
     CaseNote,
     CaseNoteCreateInput,
@@ -168,6 +170,7 @@ def _row_to_case(row: Dict[str, Any]) -> CaseRecord:
         priority=row.get("priority", "normal"),
         assignedTo=row.get("assigned_to"),
         assignedAt=datetime.fromisoformat(row["assigned_at"]) if row.get("assigned_at") else None,
+        resolvedAt=datetime.fromisoformat(row["resolved_at"]) if row.get("resolved_at") else None,
         dueAt=datetime.fromisoformat(row["due_at"]) if row.get("due_at") else None,
         submissionId=row.get("submission_id"),
         evidence=[],  # Loaded separately if needed
@@ -200,10 +203,10 @@ def _row_to_evidence(row: Dict[str, Any]) -> EvidenceItem:
     
     return EvidenceItem(
         id=row["id"],
-        title=row["title"],
-        snippet=row["snippet"],
-        citation=row.get("citation", ""),
-        sourceId=row.get("source_id", ""),
+        title=row.get("title") or "",
+        snippet=row.get("snippet") or "",
+        citation=row.get("citation") or "",
+        sourceId=row.get("source_id") or "",
         tags=tags,
         metadata=metadata,
         includedInPacket=bool(row.get("included_in_packet", 1)),
@@ -539,6 +542,8 @@ def update_case(case_id: str, updates: CaseUpdateInput) -> Optional[CaseRecord]:
             db_field = "assigned_at"
         elif field == "dueAt":
             db_field = "due_at"
+        elif field == "resolvedAt":
+            db_field = "resolved_at"
         elif field == "submissionId":
             db_field = "submission_id"
         elif field == "packetEvidenceIds":
@@ -641,6 +646,8 @@ def add_audit_event(input_data: AuditEventCreateInput) -> AuditEvent:
     event_id = str(uuid.uuid4())
     now = datetime.utcnow()
     
+    message = input_data.message or f"{input_data.eventType.value} event"
+
     execute_insert("""
         INSERT INTO audit_events (
             id, case_id, created_at, event_type, actor_role, actor_name,
@@ -656,7 +663,7 @@ def add_audit_event(input_data: AuditEventCreateInput) -> AuditEvent:
         "event_type": input_data.eventType.value,
         "actor_role": input_data.source or "system",
         "actor_name": input_data.actor or "System",
-        "message": input_data.message,
+        "message": message,
         "submission_id": None,
         "meta": json.dumps(input_data.meta or {}),
     })
@@ -706,6 +713,236 @@ def list_audit_events(
     events = [_row_to_audit_event(row) for row in rows]
     
     return events, total
+
+
+def _row_to_evidence_upload(row: Dict[str, Any]) -> EvidenceUploadItem:
+    return EvidenceUploadItem(
+        id=row["id"],
+        case_id=row["case_id"],
+        submission_id=row.get("submission_id"),
+        filename=row.get("filename") or row.get("title") or "",
+        content_type=row.get("content_type") or "application/octet-stream",
+        size_bytes=row.get("size_bytes") or 0,
+        storage_path=row.get("storage_path") or "",
+        sha256=row.get("sha256"),
+        uploaded_by=row.get("uploaded_by"),
+        created_at=row.get("created_at"),
+    )
+
+
+def create_evidence_upload(
+    case_id: str,
+    submission_id: str,
+    filename: str,
+    content_type: str,
+    size_bytes: int,
+    storage_path: str,
+    sha256: Optional[str] = None,
+    uploaded_by: Optional[str] = None,
+) -> EvidenceUploadItem:
+    now = datetime.utcnow().isoformat()
+    evidence_id = str(uuid.uuid4())
+
+    execute_insert(
+        """
+        INSERT INTO evidence_items (
+            id, case_id, submission_id, created_at, title, snippet, citation,
+            source_id, tags, metadata, included_in_packet,
+            filename, content_type, size_bytes, storage_path, sha256, uploaded_by
+        ) VALUES (
+            :id, :case_id, :submission_id, :created_at, :title, :snippet, :citation,
+            :source_id, :tags, :metadata, :included_in_packet,
+            :filename, :content_type, :size_bytes, :storage_path, :sha256, :uploaded_by
+        )
+        """,
+        {
+            "id": evidence_id,
+            "case_id": case_id,
+            "submission_id": submission_id,
+            "created_at": now,
+            "title": filename,
+            "snippet": "Uploaded file",
+            "citation": None,
+            "source_id": None,
+            "tags": json.dumps([]),
+            "metadata": json.dumps({}),
+            "included_in_packet": 0,
+            "filename": filename,
+            "content_type": content_type,
+            "size_bytes": size_bytes,
+            "storage_path": storage_path,
+            "sha256": sha256,
+            "uploaded_by": uploaded_by,
+        },
+    )
+
+    row = execute_sql("SELECT * FROM evidence_items WHERE id = :id", {"id": evidence_id})
+    return _row_to_evidence_upload(row[0])
+
+
+def list_evidence_uploads(case_id: str) -> List[EvidenceUploadItem]:
+    rows = execute_sql(
+        """
+        SELECT * FROM evidence_items
+        WHERE case_id = :case_id AND storage_path IS NOT NULL
+        ORDER BY created_at DESC
+        """,
+        {"case_id": case_id},
+    )
+    return [_row_to_evidence_upload(row) for row in rows]
+
+
+def get_evidence_upload_by_id(evidence_id: str) -> Optional[EvidenceUploadItem]:
+    rows = execute_sql("SELECT * FROM evidence_items WHERE id = :id", {"id": evidence_id})
+    if not rows:
+        return None
+    return _row_to_evidence_upload(rows[0])
+
+
+def _row_to_attachment(row: Dict[str, Any]) -> AttachmentItem:
+    return AttachmentItem(
+        id=row["id"],
+        case_id=row["case_id"],
+        submission_id=row.get("submission_id"),
+        filename=row["filename"],
+        content_type=row["content_type"],
+        size_bytes=row["size_bytes"],
+        storage_path=row["storage_path"],
+        uploaded_by=row.get("uploaded_by"),
+        description=row.get("description"),
+        is_deleted=row.get("is_deleted", 0),
+        deleted_at=row.get("deleted_at"),
+        deleted_by=row.get("deleted_by"),
+        delete_reason=row.get("delete_reason"),
+        is_redacted=row.get("is_redacted", 0),
+        redacted_at=row.get("redacted_at"),
+        redacted_by=row.get("redacted_by"),
+        redact_reason=row.get("redact_reason"),
+        original_sha256=row.get("original_sha256"),
+        created_at=row["created_at"],
+    )
+
+
+def create_attachment(
+    case_id: str,
+    submission_id: Optional[str],
+    filename: str,
+    content_type: str,
+    size_bytes: int,
+    storage_path: str,
+    uploaded_by: Optional[str] = None,
+    description: Optional[str] = None,
+    original_sha256: Optional[str] = None,
+) -> AttachmentItem:
+    now = datetime.utcnow().isoformat()
+    attachment_id = str(uuid.uuid4())
+
+    execute_insert(
+        """
+        INSERT INTO attachments (
+            id, case_id, submission_id, filename, content_type, size_bytes,
+            storage_path, uploaded_by, description, original_sha256, created_at
+        ) VALUES (
+            :id, :case_id, :submission_id, :filename, :content_type, :size_bytes,
+            :storage_path, :uploaded_by, :description, :original_sha256, :created_at
+        )
+        """,
+        {
+            "id": attachment_id,
+            "case_id": case_id,
+            "submission_id": submission_id,
+            "filename": filename,
+            "content_type": content_type,
+            "size_bytes": size_bytes,
+            "storage_path": storage_path,
+            "uploaded_by": uploaded_by,
+            "description": description,
+            "original_sha256": original_sha256,
+            "created_at": now,
+        },
+    )
+
+    rows = execute_sql("SELECT * FROM attachments WHERE id = :id", {"id": attachment_id})
+    return _row_to_attachment(rows[0])
+
+
+def list_attachments(
+    case_id: str,
+    include_deleted: bool = False,
+    include_redacted: bool = True,
+) -> List[AttachmentItem]:
+    where_clauses = ["case_id = :case_id"]
+    params: Dict[str, Any] = {"case_id": case_id}
+    if not include_deleted:
+        where_clauses.append("is_deleted = 0")
+    if not include_redacted:
+        where_clauses.append("is_redacted = 0")
+
+    where_sql = " AND ".join(where_clauses)
+    rows = execute_sql(
+        f"""
+        SELECT * FROM attachments
+        WHERE {where_sql}
+        ORDER BY created_at DESC
+        """,
+        params,
+    )
+    return [_row_to_attachment(row) for row in rows]
+
+
+def get_attachment_by_id(attachment_id: str) -> Optional[AttachmentItem]:
+    rows = execute_sql("SELECT * FROM attachments WHERE id = :id", {"id": attachment_id})
+    if not rows:
+        return None
+    return _row_to_attachment(rows[0])
+
+
+def soft_delete_attachment(
+    attachment_id: str,
+    deleted_by: Optional[str],
+    reason: str,
+) -> bool:
+    rows_updated = execute_update(
+        """
+        UPDATE attachments
+        SET is_deleted = 1,
+            deleted_at = :deleted_at,
+            deleted_by = :deleted_by,
+            delete_reason = :delete_reason
+        WHERE id = :id AND is_deleted = 0
+        """,
+        {
+            "id": attachment_id,
+            "deleted_at": datetime.utcnow().isoformat(),
+            "deleted_by": deleted_by,
+            "delete_reason": reason,
+        },
+    )
+    return rows_updated > 0
+
+
+def redact_attachment(
+    attachment_id: str,
+    redacted_by: Optional[str],
+    reason: str,
+) -> bool:
+    rows_updated = execute_update(
+        """
+        UPDATE attachments
+        SET is_redacted = 1,
+            redacted_at = :redacted_at,
+            redacted_by = :redacted_by,
+            redact_reason = :redact_reason
+        WHERE id = :id AND is_redacted = 0 AND is_deleted = 0
+        """,
+        {
+            "id": attachment_id,
+            "redacted_at": datetime.utcnow().isoformat(),
+            "redacted_by": redacted_by,
+            "redact_reason": reason,
+        },
+    )
+    return rows_updated > 0
 
 
 # ============================================================================
@@ -1045,76 +1282,103 @@ def list_case_notes(case_id: str) -> List[CaseNote]:
 def create_case_event(
     case_id: str,
     event_type: str,
-    event_payload: Dict[str, Any],
-    actor_role: Optional[str] = None,
-    actor_name: Optional[str] = None,
+    actor_role: str,
+    actor_id: Optional[str] = None,
+    message: Optional[str] = None,
+    payload_dict: Optional[Dict[str, Any]] = None,
+    payload: Optional[Dict[str, Any]] = None,
+    event_payload: Optional[Dict[str, Any]] = None,
 ) -> CaseEvent:
     """
-    Create a new case event.
+    Create a new case event (Phase 3.1: Verifier Actions Timeline).
     
     Args:
         case_id: Parent case ID
-        event_type: Event type (status_changed, note_added, etc.)
-        event_payload: Structured event data
-        actor_role: Actor role (optional)
-        actor_name: Actor name (optional)
+        event_type: Event type (case_created, assigned, status_changed, etc.)
+        actor_role: Actor role (verifier, submitter, system)
+        actor_id: Actor ID or email (optional, null for system events)
+        message: Human-readable description (optional)
+        payload_dict: Structured event data (optional)
         
     Returns:
         Created case event
+        
+    Example:
+        >>> create_case_event(
+        ...     case_id="case-123",
+        ...     event_type="status_changed",
+        ...     actor_role="verifier",
+        ...     actor_id="admin@example.com",
+        ...     message="Status changed from new to in_review",
+        ...     payload_dict={"from": "new", "to": "in_review"}
+        ... )
     """
     now = datetime.utcnow()
     event_id = str(uuid.uuid4())
     
+    resolved_payload = payload_dict
+    if resolved_payload is None:
+        resolved_payload = payload
+    if resolved_payload is None:
+        resolved_payload = event_payload
+
+    payload_json = json.dumps(resolved_payload) if resolved_payload else None
+    
     execute_insert("""
-        INSERT INTO case_events (id, case_id, created_at, event_type, event_payload_json, actor_role, actor_name)
-        VALUES (:id, :case_id, :created_at, :event_type, :event_payload_json, :actor_role, :actor_name)
+        INSERT INTO case_events (id, case_id, created_at, event_type, actor_role, actor_id, message, payload_json)
+        VALUES (:id, :case_id, :created_at, :event_type, :actor_role, :actor_id, :message, :payload_json)
     """, {
         "id": event_id,
         "case_id": case_id,
         "created_at": now.isoformat(),
         "event_type": event_type,
-        "event_payload_json": json.dumps(event_payload),
         "actor_role": actor_role,
-        "actor_name": actor_name,
+        "actor_id": actor_id,
+        "message": message,
+        "payload_json": payload_json,
     })
     
     return CaseEvent(
         id=event_id,
-        caseId=case_id,
-        createdAt=now,
-        eventType=event_type,
-        eventPayload=event_payload,
-        actorRole=actor_role,
-        actorName=actor_name,
+        case_id=case_id,
+        created_at=now.isoformat(),
+        event_type=event_type,
+        actor_role=actor_role,
+        actor_id=actor_id,
+        message=message,
+        payload_json=payload_json,
     )
 
 
-def list_case_events(case_id: str) -> List[CaseEvent]:
+def list_case_events(case_id: str, limit: int = 200) -> List[CaseEvent]:
     """
-    List all events for a case, ordered by creation time (descending).
+    List all events for a case, ordered by creation time (newest first).
     
     Args:
         case_id: Parent case ID
+        limit: Maximum number of events to return (default 200)
         
     Returns:
-        List of case events
+        List of case events (newest first)
     """
     rows = execute_sql("""
-        SELECT id, case_id, created_at, event_type, event_payload_json, actor_role, actor_name
+        SELECT id, case_id, created_at, event_type, actor_role, actor_id, message, payload_json
         FROM case_events
         WHERE case_id = :case_id
         ORDER BY created_at DESC
-    """, {"case_id": case_id})
+        LIMIT :limit
+    """, {"case_id": case_id, "limit": limit})
     
     return [
         CaseEvent(
             id=row["id"],
-            caseId=row["case_id"],
-            createdAt=datetime.fromisoformat(row["created_at"]),
-            eventType=row["event_type"],
-            eventPayload=json.loads(row["event_payload_json"] or "{}"),
-            actorRole=row["actor_role"],
-            actorName=row["actor_name"],
+            case_id=row["case_id"],
+            created_at=row["created_at"],
+            event_type=row["event_type"],
+            actor_role=row["actor_role"],
+            actor_id=row["actor_id"],
+            message=row["message"],
+            payload_json=row["payload_json"],
         )
         for row in rows
     ]
@@ -1199,10 +1463,16 @@ def create_case_decision(case_id: str, input_data: CaseDecisionCreateInput) -> C
     case = get_case(case_id)
     if not case:
         raise ValueError(f"Case not found: {case_id}")
+
+    if case.status in {CaseStatus.CANCELLED, CaseStatus.APPROVED, CaseStatus.BLOCKED, CaseStatus.CLOSED}:
+        raise ValueError("Case is already resolved or cancelled")
     
     now = datetime.utcnow()
     decision_id = str(uuid.uuid4())
     
+    # Ensure only one active decision per case
+    execute_update("DELETE FROM case_decisions WHERE case_id = :case_id", {"case_id": case_id})
+
     # Insert decision
     execute_insert("""
         INSERT INTO case_decisions (id, case_id, created_at, decision, reason, details_json, decided_by_role, decided_by_name)
@@ -1220,20 +1490,32 @@ def create_case_decision(case_id: str, input_data: CaseDecisionCreateInput) -> C
     
     # Update case status based on decision
     new_status = CaseStatus.APPROVED if input_data.decision == "APPROVED" else CaseStatus.BLOCKED
-    update_case(case_id, CaseUpdateInput(status=new_status))
+    update_case(case_id, CaseUpdateInput(status=new_status, resolvedAt=now))
+    
+    # Create decision event
+    create_case_event(
+        case_id=case_id,
+        event_type="case_decision_created",
+        actor_role=input_data.decidedByRole or "reviewer",
+        actor_id=input_data.decidedByName,
+        message=f"Decision recorded: {input_data.decision}",
+        payload_dict={
+            "decisionType": input_data.decision,
+            "reason": input_data.reason,
+            "decidedBy": input_data.decidedByName,
+        },
+    )
     
     # Create corresponding case event
     create_case_event(
         case_id=case_id,
-        event_type="decision_made",
-        event_payload={
-            "decision_id": decision_id,
-            "decision": input_data.decision,
-            "reason": input_data.reason,
-            "new_status": new_status.value,
-        },
+        event_type="case_status_changed",
         actor_role=input_data.decidedByRole or "reviewer",
-        actor_name=input_data.decidedByName,
+        actor_id=input_data.decidedByName,
+        payload_dict={
+            "from": case.status.value,
+            "to": new_status.value,
+        },
     )
     
     return get_case_decision(decision_id)
@@ -1271,6 +1553,125 @@ def get_case_decision(decision_id: str) -> Optional[CaseDecision]:
     )
 
 
+# ============================================================================
+# Case Requests (Phase 4.1: Request Info Loop)
+# ============================================================================
+
+def create_case_request(
+    case_id: str,
+    message: str,
+    requested_by: Optional[str] = None,
+    required_fields: Optional[List[str]] = None,
+) -> str:
+    """
+    Create a case request for additional information.
+    
+    Business rules:
+    - Only one OPEN request per case allowed
+    - Automatically closes any previous open requests
+    
+    Args:
+        case_id: Parent case ID
+        message: Request message to submitter
+        requested_by: Verifier email/ID (optional)
+        required_fields: List of required field names (optional)
+        
+    Returns:
+        New request ID (UUID)
+    """
+    from .models import CaseRequest
+    
+    # Close any existing open requests for this case
+    execute_update("""
+        UPDATE case_requests
+        SET status = 'resolved',
+            resolved_at = :resolved_at
+        WHERE case_id = :case_id AND status = 'open'
+    """, {
+        "case_id": case_id,
+        "resolved_at": datetime.utcnow().isoformat(),
+    })
+    
+    # Create new request
+    request_id = str(uuid.uuid4())
+    required_fields_json = json.dumps(required_fields) if required_fields else None
+    
+    execute_insert("""
+        INSERT INTO case_requests (
+            id, case_id, created_at, status, requested_by, message, required_fields_json
+        ) VALUES (
+            :id, :case_id, :created_at, :status, :requested_by, :message, :required_fields_json
+        )
+    """, {
+        "id": request_id,
+        "case_id": case_id,
+        "created_at": datetime.utcnow().isoformat(),
+        "status": "open",
+        "requested_by": requested_by,
+        "message": message,
+        "required_fields_json": required_fields_json,
+    })
+    
+    return request_id
+
+
+def get_open_case_request(case_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get the open case request for a case, if any.
+    
+    Args:
+        case_id: Parent case ID
+        
+    Returns:
+        CaseRequest dict or None if no open request exists
+    """
+    rows = execute_sql("""
+        SELECT id, case_id, created_at, resolved_at, status, requested_by, message, required_fields_json
+        FROM case_requests
+        WHERE case_id = :case_id AND status = 'open'
+        ORDER BY created_at DESC
+        LIMIT 1
+    """, {"case_id": case_id})
+    
+    if not rows:
+        return None
+    
+    row = rows[0]
+    required_fields = json.loads(row["required_fields_json"]) if row["required_fields_json"] else None
+    
+    return {
+        "id": row["id"],
+        "caseId": row["case_id"],
+        "createdAt": row["created_at"],
+        "resolvedAt": row["resolved_at"],
+        "status": row["status"],
+        "requestedBy": row["requested_by"],
+        "message": row["message"],
+        "requiredFields": required_fields,
+    }
+
+
+def resolve_case_request(request_id: str) -> bool:
+    """
+    Mark a case request as resolved.
+    
+    Args:
+        request_id: Request UUID
+        
+    Returns:
+        True if request was resolved, False if not found or already resolved
+    """
+    rows_updated = execute_update("""
+        UPDATE case_requests
+        SET status = 'resolved',
+            resolved_at = :resolved_at
+        WHERE id = :id AND status = 'open'
+    """, {
+        "id": request_id,
+        "resolved_at": datetime.utcnow().isoformat(),
+    })
+    
+    return rows_updated > 0
 def get_case_decision_by_case(case_id: str) -> Optional[CaseDecision]:
     """
     Get the most recent decision for a case.

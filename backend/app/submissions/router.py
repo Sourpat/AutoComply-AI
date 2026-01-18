@@ -152,6 +152,30 @@ def create_new_submission(input_data: SubmissionCreateInput):
     
     case = create_case(case_input)
     
+    # Phase 3.1: Create case_created event
+    from app.workflow.repo import create_case_event
+    create_case_event(
+        case_id=case.id,
+        event_type="case_created",
+        actor_role="system",
+        actor_id=None,
+        message=f"Case created from submission by {submitter_name}",
+        payload_dict={
+            "submission_id": submission.id,
+            "decision_type": input_data.decisionType,
+            "initial_status": initial_status
+        }
+    )
+    
+    # Phase 7.4: Trigger auto-recompute of decision intelligence
+    from app.intelligence.lifecycle import request_recompute
+    request_recompute(
+        case_id=case.id,
+        reason="submission_created",
+        event_type="submission_created",
+        decision_type=input_data.decisionType
+    )
+    
     # Log creation for debugging
     from src.config import get_settings
     db_path = get_settings().DB_PATH
@@ -221,9 +245,27 @@ def update_submission_endpoint(submission_id: str, input_data: SubmissionUpdateI
         
         # Update case's updated_at timestamp
         from datetime import datetime
-        from app.workflow.repo import update_case
+        from app.workflow.repo import update_case, create_case_event
         from app.workflow.models import CaseUpdateInput
         update_case(case.id, CaseUpdateInput(updatedAt=datetime.utcnow()))
+        
+        # Phase 3.1: Create submission_updated event
+        create_case_event(
+            case_id=case.id,
+            event_type="submission_updated",
+            actor_role="submitter",
+            actor_id=submission.submittedBy,
+            message="Submission updated by submitter",
+            payload_dict={"submission_id": submission_id}
+        )
+        
+        # Phase 7.4: Trigger auto-recompute of decision intelligence
+        from app.intelligence.lifecycle import request_recompute
+        request_recompute(
+            case_id=case.id,
+            reason="submission_updated",
+            event_type="submission_updated"
+        )
     
     # Update submission
     updated = update_submission(submission_id, input_data)
@@ -293,10 +335,36 @@ def delete_submission_endpoint(submission_id: str):
             )
         
         # Cancel the linked case
+        old_status = case.status
         update_case(case.id, CaseUpdateInput(
             status='cancelled',
             updatedAt=datetime.utcnow()
         ))
+        
+        # Phase 3.1: Create events for cancellation
+        from app.workflow.repo import create_case_event
+        
+        # submission_cancelled event
+        create_case_event(
+            case_id=case.id,
+            event_type="submission_cancelled",
+            actor_role="submitter",
+            actor_id=submission.submittedBy,
+            message="Submission deleted by submitter",
+            payload_dict={"submission_id": submission_id}
+        )
+        
+        # status_changed event (if status actually changed)
+        if old_status != 'cancelled':
+            create_case_event(
+                case_id=case.id,
+                event_type="status_changed",
+                actor_role="system",
+                actor_id=None,
+                message=f"Status changed from {old_status} to cancelled (submission deleted)",
+                payload_dict={"from": old_status, "to": "cancelled"}
+            )
+        
         logger.info(f"✓ Cancelled case {case.id} linked to submission {submission_id}")
     
     # Soft delete submission

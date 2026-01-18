@@ -5,29 +5,51 @@ backend/.venv/
 __pycache__/
 **/__pycache__/
 *.pyc
+*.pyo
 .pytest_cache/
 *.egg-info/
 
-# Environment
+# Environment files (never commit)
 .env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
 
-# Local databases + backups
+# Local databases + backups (never commit)
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
 *.db.backup
+backend/*.db
+backend/**/*.db
 backend/data/*.sqlite
 backend/data/*.sqlite3
 
+# Logs (never commit)
+*.log
+**/*.log
+logs/
+backend/logs/
+frontend/logs/
+
 # Node
 node_modules/
+frontend/node_modules/
 frontend/package-lock.json
+
+# Frontend build output
+frontend/dist/
+frontend/build/
 
 # Local data folders
 data/
+tmp/
 backend/app/data/
 backend/data/
+backend/tmp/
 
 # Generated files
 openapi.json
@@ -35,6 +57,9 @@ openapi.json
 # Editor/OS
 .DS_Store
 .vscode/
+*.swp
+*.swo
+*~
 
 # Virtual envs
 backend/.venv*/

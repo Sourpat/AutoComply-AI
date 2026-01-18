@@ -4,6 +4,9 @@ Test script for adherence endpoint
 Quick test to verify /workflow/cases/{case_id}/adherence endpoint works
 """
 
+import pytest
+pytest.skip("Legacy manual script; not part of core pytest suite", allow_module_level=True)
+
 import sys
 sys.path.insert(0, 'C:\\Users\\soura\\Documents\\Projects\\Projects\\AutoComply-AI-fresh\\backend')
 

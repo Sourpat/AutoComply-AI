@@ -82,6 +82,19 @@ class Settings(BaseSettings):
         description="Enable RAG features (requires ML dependencies). Auto-disabled in prod unless explicitly enabled."
     )
 
+    # Intelligence lifecycle (Phase 7.4)
+    # =============================================================================
+    # AUTO_INTELLIGENCE_ENABLED controls whether Decision Intelligence automatically
+    # recomputes on case state changes (submission updates, evidence attached, etc.)
+    # - Defaults to True for development and production
+    # - Set AUTO_INTELLIGENCE_ENABLED=false to disable auto-recompute
+    # - When disabled, intelligence only recomputes on explicit API calls
+    # =============================================================================
+    AUTO_INTELLIGENCE_ENABLED: bool = Field(
+        default=True,
+        description="Enable automatic Decision Intelligence recomputation on case changes"
+    )
+
     # Runtime (legacy)
     ENV: str = "development"
 

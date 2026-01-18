@@ -186,7 +186,85 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             print("  ✓ Migration complete: searchable_text column added")
         except sqlite3.OperationalError as e:
             print(f"  Note: Index creation skipped ({e})")
+
+    # Migration 1b: Add submission_id column to cases table
+    if 'submission_id' not in columns:
+        print("  Running migration: Adding submission_id column to cases table...")
+        cursor.execute("ALTER TABLE cases ADD COLUMN submission_id TEXT")
+        conn.commit()
+        try:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_cases_submission_id ON cases(submission_id)")
+            conn.commit()
+            print("  ✓ Migration complete: submission_id column added")
+        except sqlite3.OperationalError as e:
+            print(f"  Note: Index creation skipped ({e})")
+
+    # Migration 1c: Add resolved_at column to cases table
+    if 'resolved_at' not in columns:
+        print("  Running migration: Adding resolved_at column to cases table...")
+        cursor.execute("ALTER TABLE cases ADD COLUMN resolved_at TEXT")
+        conn.commit()
+        print("  ✓ Migration complete: resolved_at column added")
     
+    cursor.close()
+
+    # Migration 2: Add evidence upload columns to evidence_items
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(evidence_items)")
+    ev_columns = [row[1] for row in cursor.fetchall()]
+    upload_columns = {
+        "submission_id": "TEXT",
+        "filename": "TEXT",
+        "content_type": "TEXT",
+        "size_bytes": "INTEGER",
+        "storage_path": "TEXT",
+        "sha256": "TEXT",
+        "uploaded_by": "TEXT",
+    }
+    for col, col_type in upload_columns.items():
+        if col not in ev_columns:
+            cursor.execute(f"ALTER TABLE evidence_items ADD COLUMN {col} {col_type}")
+            conn.commit()
+
+    # Create indexes for evidence uploads
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_evidence_case_created ON evidence_items(case_id, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_evidence_submission_created ON evidence_items(submission_id, created_at DESC)")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
+    cursor.close()
+
+    # Migration 3: Add attachments table/columns
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='attachments'")
+    table_exists = cursor.fetchone() is not None
+    if table_exists:
+        cursor.execute("PRAGMA table_info(attachments)")
+        att_columns = [row[1] for row in cursor.fetchall()]
+        new_columns = {
+            "is_deleted": "INTEGER DEFAULT 0",
+            "deleted_at": "TEXT",
+            "deleted_by": "TEXT",
+            "delete_reason": "TEXT",
+            "is_redacted": "INTEGER DEFAULT 0",
+            "redacted_at": "TEXT",
+            "redacted_by": "TEXT",
+            "redact_reason": "TEXT",
+            "original_sha256": "TEXT",
+        }
+        for col, col_type in new_columns.items():
+            if col not in att_columns:
+                cursor.execute(f"ALTER TABLE attachments ADD COLUMN {col} {col_type}")
+                conn.commit()
+
+        try:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_attachments_case_id ON attachments(case_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_attachments_created_at ON attachments(created_at)")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
     cursor.close()
 
 
@@ -231,8 +309,9 @@ def init_db() -> None:
                 try:
                     conn.executescript(workflow_sql)
                 except sqlite3.OperationalError as e:
-                    if "no such column: searchable_text" in str(e):
-                        print("  Detected missing searchable_text column, running migration...")
+                    error_text = str(e)
+                    if "no such column: searchable_text" in error_text or "no such column: submission_id" in error_text:
+                        print("  Detected missing column, running migration...")
                         # Run migration first
                         _run_migrations(conn)
                         # Retry schema execution
@@ -269,7 +348,7 @@ def init_db() -> None:
         else:
             print(f"Warning: Scheduled exports schema not found at {scheduled_exports_schema_path}")
     
-    print("✓ Database initialized successfully")
+    print("Database initialized successfully")
 
 
 # ============================================================================

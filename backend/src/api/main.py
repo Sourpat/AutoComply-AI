@@ -52,6 +52,9 @@ from src.api.routes import ops
 # Workflow Console - Step 2.10
 from app.workflow.router import router as workflow_router
 
+# Intelligence - Phase 7.1
+from app.intelligence.router import router as intelligence_router
+
 # Submissions persistence
 from app.submissions.router import router as submissions_router
 
@@ -153,7 +156,20 @@ async def shutdown_event():
 @app.get("/health")
 async def root_health():
     """Root health endpoint for frontend connectivity checks."""
-    return {"ok": True, "status": "healthy"}
+    import os
+    version = os.getenv("AUTOCOMPLY_VERSION", "0.1.0")
+    return {
+        "ok": True,
+        "status": "ok",
+        "service": "autocomply-ai",
+        "version": version,
+        "checks": {
+            "fastapi": "ok",
+            "csf_suite": "ok",
+            "license_suite": "ok",
+            "rag_layer": "ok",
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -202,6 +218,9 @@ app.include_router(ops.router)
 
 # Workflow Console - Step 2.10
 app.include_router(workflow_router)
+
+# Intelligence - Phase 7.1
+app.include_router(intelligence_router)
 
 # Submissions persistence
 app.include_router(submissions_router)

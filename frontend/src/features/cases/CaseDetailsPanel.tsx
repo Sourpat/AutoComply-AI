@@ -39,6 +39,13 @@ import { PlaybookPanel } from "./PlaybookPanel";
 import { getSubmission } from "../../submissions/submissionStore";
 import type { SubmissionRecord } from "../../submissions/submissionTypes";
 import { isAdmin as checkIsAdmin, getAuthHeaders } from "../../lib/authHeaders";
+import { IntelligencePanel } from "../intelligence/IntelligencePanel";
+import { ConfidenceBadge } from "../intelligence/ConfidenceBadge";
+import { resolveDecisionType } from "../../utils/decisionType";
+import { getCaseIntelligence } from "../../api/intelligenceApi";
+import { getCachedIntelligence } from "../../utils/intelligenceCache";
+import { buildFieldIssueMap, getFieldIssues, getTopFieldIssue } from "../../utils/mapFieldIssues";
+import { FieldIssueBadge } from "../submission/FieldIssueBadge";
 import { 
   workflowHealth, 
   getCaseAdherence, 
@@ -46,11 +53,18 @@ import {
   addAudit, 
   getCase,
   getCaseSubmission,
+  makeCaseDecision,
+  assignCase,
+  unassignCase,
+  setCaseStatus,
+  getCaseEvents,
+  type CaseEvent,
   type CaseAdherence, 
   type AuditEvent as ApiAuditEvent, 
   type PaginatedAuditEventsResponse,
   type CaseRecord
 } from "../../api/workflowApi";
+import { listAttachments, uploadAttachment, deleteAttachment, redactAttachment, getAttachmentDownloadUrl, type AttachmentItem } from "../../api/attachmentsApi";
 import type { AuditEvent } from "../../types/audit";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
 import { safeString, safeUpperCase, safeReplace } from "../../utils/stringUtils";
@@ -63,6 +77,7 @@ import {
   type ScheduledExport 
 } from "../../api/scheduledExportsApi";
 import { API_BASE } from "../../lib/api";
+import { safeFormatDate, safeFormatRelative } from "../../utils/dateUtils";
 
 // Helper to convert API audit events to local format
 function mapApiAuditEvent(apiEvent: ApiAuditEvent): AuditEvent {
@@ -96,10 +111,23 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
   const [submissionRecord, setSubmissionRecord] = useState<SubmissionRecord | null>(null);
   const [notes, setNotes] = useState<CaseNote[]>([]);
   const [attachments, setAttachments] = useState<CaseAttachment[]>([]);
+  const [apiAttachments, setApiAttachments] = useState<AttachmentItem[]>([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [attachmentsUploading, setAttachmentsUploading] = useState(false);
+  const [attachmentDescription, setAttachmentDescription] = useState("");
+  const [attachmentsToast, setAttachmentsToast] = useState<string | null>(null);
+  const [attachmentsError, setAttachmentsError] = useState<string | null>(null);
+  const [attachmentAction, setAttachmentAction] = useState<'delete' | 'redact' | null>(null);
+  const [attachmentActionTarget, setAttachmentActionTarget] = useState<AttachmentItem | null>(null);
+  const [attachmentActionReason, setAttachmentActionReason] = useState('');
   const [newNoteBody, setNewNoteBody] = useState("");
   const [newAttachmentName, setNewAttachmentName] = useState("");
   const [requestInfoMessage, setRequestInfoMessage] = useState("");
   const [showRequestInfoModal, setShowRequestInfoModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [decisionSubmitting, setDecisionSubmitting] = useState(false);
+  const [decisionToast, setDecisionToast] = useState<string | null>(null);
   const [assignMenuOpen, setAssignMenuOpen] = useState(false);
   const [isApiMode, setIsApiMode] = useState(false);
   const [exportingJson, setExportingJson] = useState(false);
@@ -125,6 +153,26 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
   const [apiAuditEvents, setApiAuditEvents] = useState<AuditEvent[]>([]);
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditLoading, setAuditLoading] = useState(false);
+  
+  // Phase 3.1: Case events state
+  const [caseEvents, setCaseEvents] = useState<CaseEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+
+  // Phase 7.3: Intelligence state
+  const [intelligenceData, setIntelligenceData] = useState<{
+    confidence_score: number;
+    confidence_band: 'high' | 'medium' | 'low';
+    explanation_factors: Array<{ factor: string; impact: string }>;
+    field_checks_total?: number;
+    field_checks_passed?: number;
+    field_issues?: Array<{
+      field: string;
+      severity: 'critical' | 'medium' | 'low';
+      check?: string;
+      message: string;
+    }>;
+  } | null>(null);
 
   const currentUser = getCurrentDemoUser(role);
   const isVerifier = role === "verifier";
@@ -148,6 +196,18 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
     };
     checkApiMode();
   }, []);
+
+  useEffect(() => {
+    if (!decisionToast) return;
+    const timeoutId = window.setTimeout(() => setDecisionToast(null), 3000);
+    return () => window.clearTimeout(timeoutId);
+  }, [decisionToast]);
+
+  useEffect(() => {
+    if (!attachmentsToast) return;
+    const timeoutId = window.setTimeout(() => setAttachmentsToast(null), 3000);
+    return () => window.clearTimeout(timeoutId);
+  }, [attachmentsToast]);
 
   // Load case data from API
   useEffect(() => {
@@ -215,6 +275,13 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
     
     loadCase();
   }, [caseId, isApiMode]);
+
+  // Phase 7.3: Load intelligence for header badge
+  useEffect(() => {
+    if (caseRecord && isApiMode && !isDemoCase) {
+      loadIntelligenceHeader();
+    }
+  }, [caseRecord, submissionRecord, isApiMode, caseId]);
 
   // Check if current case is a demo case
   const isDemoCase = caseId.startsWith('demo-');
@@ -356,12 +423,175 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
     }
   };
 
-  // Load audit events when Timeline tab is active
+  // Phase 3.1: Load case events from backend
+  const loadCaseEvents = async () => {
+    setEventsLoading(true);
+    setEventsError(null);
+    
+    try {
+      const events = await getCaseEvents(caseId);
+      setCaseEvents(events);
+      console.log('[CaseDetailsPanel] Loaded case events:', events.length);
+    } catch (err) {
+      console.error('[CaseDetailsPanel] Failed to load case events:', err);
+      setEventsError(err instanceof Error ? err.message : 'Failed to load timeline');
+      setCaseEvents([]);
+    } finally {
+      setEventsLoading(false);
+    }
+  };
+
+  // Phase 7.3: Load intelligence for header badge
+  const loadIntelligenceHeader = async () => {
+    if (!caseRecord) return;
+    
+    try {
+      const decisionType = resolveDecisionType(caseRecord, submissionRecord?.csfType || submissionRecord?.kind);
+      
+      // Check cache first
+      const cached = getCachedIntelligence(caseId, decisionType);
+      if (cached) {
+        setIntelligenceData({
+          confidence_score: cached.confidence_score,
+          confidence_band: cached.confidence_band,
+          explanation_factors: cached.explanation_factors,
+        });
+        return;
+      }
+      
+      // Fetch from API
+      const data = await getCaseIntelligence(caseId, decisionType);
+      setIntelligenceData({
+        confidence_score: data.confidence_score,
+        confidence_band: data.confidence_band,
+        explanation_factors: data.explanation_factors,
+      });
+    } catch (err) {
+      // Silently fail for header badge - full panel will show errors
+      console.log('[CaseDetailsPanel] Intelligence header not available:', err);
+    }
+  };
+
+  const loadAttachments = async () => {
+    setAttachmentsLoading(true);
+    setAttachmentsError(null);
+    try {
+      const items = await listAttachments(caseId);
+      setApiAttachments(items);
+    } catch (err) {
+      console.error('[CaseDetailsPanel] Failed to load attachments:', err);
+      setApiAttachments([]);
+      setAttachmentsError(err instanceof Error ? err.message : 'Failed to load attachments');
+    } finally {
+      setAttachmentsLoading(false);
+    }
+  };
+
+  const handleAttachmentUpload = async (file: File) => {
+    if (!file) return;
+    if (caseRecord?.status === 'cancelled' || isResolved) {
+      setAttachmentsError('Cannot upload attachments for resolved or cancelled cases');
+      return;
+    }
+    setAttachmentsUploading(true);
+    setAttachmentsError(null);
+    try {
+      await uploadAttachment(caseId, file, {
+        submissionId: caseItem?.submissionId || undefined,
+        uploadedBy: currentUser?.name,
+        description: attachmentDescription.trim() || undefined,
+      });
+      setAttachmentDescription("");
+      setAttachmentsToast("Attachment uploaded");
+      await loadAttachments();
+      if (activeTab === 'timeline') {
+        loadCaseEvents();
+      }
+      // Phase 7.5: Refresh intelligence after evidence upload
+      loadIntelligenceHeader();
+    } catch (err) {
+      console.error('[CaseDetailsPanel] Failed to upload attachment:', err);
+      setAttachmentsError(err instanceof Error ? err.message : 'Failed to upload attachment');
+    } finally {
+      setAttachmentsUploading(false);
+    }
+  };
+
+  const handleAttachmentAction = (action: 'delete' | 'redact', attachment: AttachmentItem) => {
+    setAttachmentAction(action);
+    setAttachmentActionTarget(attachment);
+    setAttachmentActionReason('');
+  };
+
+  const submitAttachmentAction = async () => {
+    if (!attachmentAction || !attachmentActionTarget) return;
+    if (!attachmentActionReason.trim()) {
+      setAttachmentsError('Reason is required');
+      return;
+    }
+
+    try {
+      if (attachmentAction === 'delete') {
+        await deleteAttachment(caseId, attachmentActionTarget.id, attachmentActionReason.trim());
+        setApiAttachments((prev) => prev.filter((item) => item.id !== attachmentActionTarget.id));
+        setAttachmentsToast('Attachment removed');
+      } else {
+        await redactAttachment(caseId, attachmentActionTarget.id, attachmentActionReason.trim());
+        setApiAttachments((prev) =>
+          prev.map((item) =>
+            item.id === attachmentActionTarget.id
+              ? {
+                  ...item,
+                  isRedacted: 1,
+                  redactedAt: new Date().toISOString(),
+                  redactedBy: currentUser?.name || null,
+                  redactReason: attachmentActionReason.trim(),
+                }
+              : item
+          )
+        );
+        setAttachmentsToast('Attachment redacted');
+      }
+
+      await loadAttachments();
+      if (activeTab === 'timeline') {
+        loadCaseEvents();
+      }
+    } catch (err) {
+      console.error('[CaseDetailsPanel] Attachment action failed:', err);
+      setAttachmentsError(err instanceof Error ? err.message : 'Attachment action failed');
+    } finally {
+      setAttachmentAction(null);
+      setAttachmentActionTarget(null);
+      setAttachmentActionReason('');
+    }
+  };
+
+  // Load audit events and case events when Timeline tab is active
   useEffect(() => {
     if (activeTab === 'timeline') {
       loadAuditEvents(timelineLimit);
+      loadCaseEvents(); // Phase 3.1: Load real case events
     }
   }, [activeTab, caseId, timelineLimit, isApiMode, notes, attachments]);
+
+  // Phase 7.5: Auto-refresh intelligence when decision_intelligence_updated event detected
+  useEffect(() => {
+    if (!caseEvents || caseEvents.length === 0) return;
+    
+    // Check if latest event is decision_intelligence_updated
+    const latestEvent = caseEvents[0];
+    if (latestEvent?.eventType === 'decision_intelligence_updated') {
+      console.log('[CaseDetailsPanel] Intelligence updated event detected, refreshing header badge');
+      loadIntelligenceHeader();
+    }
+  }, [caseEvents]);
+
+  useEffect(() => {
+    if (activeTab === 'attachments') {
+      loadAttachments();
+    }
+  }, [activeTab, caseId]);
 
   const handleCreateExport = async () => {
     if (!exportFormData.name.trim()) {
@@ -479,79 +709,259 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
   const auditEvents = allAuditEvents;
   const hasMoreAuditEvents = isApiMode ? auditEvents.length < auditTotal : false;
   const submission = caseItem.submissionId ? demoStore.getSubmissions().find(s => s.id === caseItem.submissionId) : null;
+  const isResolved = caseRecord?.status === 'approved' || caseRecord?.status === 'blocked' || caseRecord?.status === 'closed';
 
   // Action handlers
-  const handleStatusChange = (newStatus: WorkflowStatus, auditMeta?: any) => {
-    if (!canTransition(caseItem.status as WorkflowStatus, newStatus, role)) {
-      alert(`Cannot transition from ${caseItem.status} to ${newStatus}`);
+  const handleStatusChange = async (newStatus: WorkflowStatus, auditMeta?: any) => {
+    // Block if cancelled
+    if (caseRecord?.status === 'cancelled') {
+      alert('Cannot change status of cancelled case (submission was deleted)');
       return;
     }
 
-    demoStore.updateWorkQueueItem(caseId, { status: newStatus });
-
-    // Update linked submission
-    if (caseItem.submissionId) {
-      const submissions = demoStore.getSubmissions();
-      const subIndex = submissions.findIndex((s) => s.id === caseItem.submissionId);
-      if (subIndex !== -1) {
-        submissions[subIndex].status = newStatus;
-        demoStore.saveSubmissions(submissions);
-      }
+    if (isResolved) {
+      alert('This case is already resolved');
+      return;
+    }
+    
+    if (!canTransition(caseItem?.status as WorkflowStatus || 'new', newStatus, role)) {
+      alert(`Cannot transition from ${caseItem?.status} to ${newStatus}`);
+      return;
     }
 
-    // Log audit event
-    const actionMap: Record<string, string> = {
-      approved: "APPROVED",
-      blocked: "BLOCKED",
-      needs_review: "NEEDS_REVIEW",
-      request_info: "REQUEST_INFO",
-    };
+    // Phase 3.1: Call real API
+    try {
+      const updated = await setCaseStatus(caseId, newStatus);
+      
+      // Update local state
+      setCaseRecord(updated);
+      if (caseItem) {
+        setCaseItem({ ...caseItem, status: newStatus });
+      }
+      
+      // Also update demo store for backward compatibility
+      demoStore.updateWorkQueueItem(caseId, { status: newStatus });
+      
+      // Update linked submission
+      if (caseItem?.submissionId) {
+        const submissions = demoStore.getSubmissions();
+        const subIndex = submissions.findIndex((s) => s.id === caseItem.submissionId);
+        if (subIndex !== -1) {
+          submissions[subIndex].status = newStatus;
+          demoStore.saveSubmissions(submissions);
+        }
+      }
+      
+      // Phase 7.5: Refresh intelligence after status change
+      loadIntelligenceHeader();
+      
+      // Log audit event (legacy support)
+      const actionMap: Record<string, string> = {
+        approved: "APPROVED",
+        blocked: "BLOCKED",
+        needs_review: "NEEDS_REVIEW",
+        request_info: "REQUEST_INFO",
+      };
 
-    demoStore.addAuditEvent({
-      caseId,
-      action: actionMap[newStatus] as any,
-      actorName: currentUser?.name || "Unknown",
-      actorRole: role as any,
-      meta: auditMeta || {
-        oldStatus: caseItem.status,
-        newStatus,
-      },
-    });
-
-    setCaseItem({ ...caseItem, status: newStatus });
-    onCaseUpdate?.();
+      demoStore.addAuditEvent({
+        caseId,
+        action: actionMap[newStatus] as any,
+        actorName: currentUser?.name || "Unknown",
+        actorRole: role as any,
+        meta: auditMeta || {
+          oldStatus: caseItem?.status,
+          newStatus,
+        },
+      });
+      
+      // Dispatch data-changed event for cross-view sync
+      window.dispatchEvent(new CustomEvent('acai:data-changed', {
+        detail: { type: 'case', action: 'status_change', id: caseId }
+      }));
+      
+      onCaseUpdate?.();
+    } catch (error) {
+      console.error('[CaseDetailsPanel] Failed to change status:', error);
+      alert(error instanceof Error ? error.message : 'Failed to change status');
+    }
   };
 
-  const handleAssign = (userId: string, userName: string) => {
-    demoStore.assignWorkQueueItem(caseId, { id: userId, name: userName }, currentUser?.name || "Admin");
-    const updatedItem = demoStore.getWorkQueue().find((i) => i.id === caseId);
-    setCaseItem(updatedItem || null);
-    setAssignMenuOpen(false);
-    onCaseUpdate?.();
+  const handleDecision = async (decision: 'APPROVED' | 'REJECTED') => {
+    if (caseRecord?.status === 'cancelled') {
+      alert('Cannot decide a cancelled case');
+      return;
+    }
+    if (isResolved) {
+      alert('This case is already resolved');
+      return;
+    }
+    if (decision === 'REJECTED' && !rejectReason.trim()) {
+      alert('Reject reason is required');
+      return;
+    }
+
+    setDecisionSubmitting(true);
+    try {
+      await makeCaseDecision(caseId, {
+        decision,
+        reason: decision === 'REJECTED' ? rejectReason.trim() : undefined,
+        decidedByRole: role,
+        decidedByName: currentUser?.name,
+      });
+
+      const updated = await getCase(caseId);
+      setCaseRecord(updated);
+      if (caseItem) {
+        setCaseItem({ ...caseItem, status: updated.status as any });
+      }
+
+      demoStore.updateWorkQueueItem(caseId, { status: updated.status as any });
+
+      if (caseItem?.submissionId) {
+        const submissions = demoStore.getSubmissions();
+        const subIndex = submissions.findIndex((s) => s.id === caseItem.submissionId);
+        if (subIndex !== -1) {
+          submissions[subIndex].status = updated.status as any;
+          demoStore.saveSubmissions(submissions);
+        }
+      }
+
+      setDecisionToast(decision === 'APPROVED' ? 'Case approved' : 'Case rejected');
+      setShowRejectModal(false);
+      setRejectReason('');
+
+      if (activeTab === 'timeline') {
+        loadCaseEvents();
+      }
+
+      window.dispatchEvent(new CustomEvent('acai:data-changed', {
+        detail: { type: 'case', action: 'decision', id: caseId }
+      }));
+
+      onCaseUpdate?.();
+    } catch (error) {
+      console.error('[CaseDetailsPanel] Failed to make decision:', error);
+      alert(error instanceof Error ? error.message : 'Failed to make decision');
+    } finally {
+      setDecisionSubmitting(false);
+    }
   };
 
-  const handleUnassign = () => {
-    demoStore.unassignWorkQueueItem(caseId, currentUser?.name || "Admin");
-    const updatedItem = demoStore.getWorkQueue().find((i) => i.id === caseId);
-    setCaseItem(updatedItem || null);
-    setAssignMenuOpen(false);
-    onCaseUpdate?.();
+  const handleAssign = async (userId: string, userName: string) => {
+    // Block if cancelled
+    if (caseRecord?.status === 'cancelled') {
+      alert('Cannot assign cancelled case (submission was deleted)');
+      setAssignMenuOpen(false);
+      return;
+    }
+    
+    // Phase 3.1: Call real API
+    try {
+      const updated = await assignCase(caseId, userName);
+      
+      // Update local state
+      setCaseRecord(updated);
+      if (caseItem) {
+        setCaseItem({ ...caseItem, assignedTo: { id: userId, name: userName } });
+      }
+      
+      // Also update demo store for backward compatibility
+      demoStore.assignWorkQueueItem(caseId, { id: userId, name: userName }, currentUser?.name || "Admin");
+      
+      // Dispatch data-changed event
+      window.dispatchEvent(new CustomEvent('acai:data-changed', {
+        detail: { type: 'case', action: 'assign', id: caseId }
+      }));
+      
+      setAssignMenuOpen(false);
+      onCaseUpdate?.();
+    } catch (error) {
+      console.error('[CaseDetailsPanel] Failed to assign case:', error);
+      alert(error instanceof Error ? error.message : 'Failed to assign case');
+      setAssignMenuOpen(false);
+    }
   };
 
-  const handleRequestInfo = () => {
-    if (!requestInfoMessage.trim()) return;
+  const handleUnassign = async () => {
+    // Block if cancelled
+    if (caseRecord?.status === 'cancelled') {
+      alert('Cannot unassign cancelled case (submission was deleted)');
+      setAssignMenuOpen(false);
+      return;
+    }
+    
+    // Phase 3.1: Call real API
+    try {
+      const updated = await unassignCase(caseId);
+      
+      // Update local state
+      setCaseRecord(updated);
+      if (caseItem) {
+        setCaseItem({ ...caseItem, assignedTo: null });
+      }
+      
+      // Also update demo store for backward compatibility
+      demoStore.unassignWorkQueueItem(caseId, currentUser?.name || "Admin");
+      
+      // Dispatch data-changed event
+      window.dispatchEvent(new CustomEvent('acai:data-changed', {
+        detail: { type: 'case', action: 'unassign', id: caseId }
+      }));
+      
+      setAssignMenuOpen(false);
+      onCaseUpdate?.();
+    } catch (error) {
+      console.error('[CaseDetailsPanel] Failed to unassign case:', error);
+      alert(error instanceof Error ? error.message : 'Failed to unassign case');
+      setAssignMenuOpen(false);
+    }
+  };
 
-    handleStatusChange("request_info");
-    demoStore.addAuditEvent({
-      caseId,
-      action: "REQUEST_INFO",
-      actorName: currentUser?.name || "Unknown",
-      actorRole: role as any,
-      message: requestInfoMessage,
-    });
+  const handleRequestInfo = async () => {
+    if (!requestInfoMessage.trim()) {
+      alert('Please enter a message');
+      return;
+    }
 
-    setShowRequestInfoModal(false);
-    setRequestInfoMessage("");
+    // Block if cancelled
+    if (caseRecord?.status === 'cancelled') {
+      alert('Cannot request info on cancelled case');
+      return;
+    }
+
+    // Phase 4.1: Call real API
+    try {
+      const { requestCaseInfo } = await import('../../api/workflowApi');
+      const result = await requestCaseInfo(caseId, {
+        message: requestInfoMessage,
+        requestedBy: currentUser?.name,
+      });
+      
+      // Update local state
+      setCaseRecord(result.case);
+      if (caseItem) {
+        setCaseItem({ ...caseItem, status: 'needs_info' });
+      }
+      
+      // Dispatch data-changed event
+      window.dispatchEvent(new CustomEvent('acai:data-changed', {
+        detail: { type: 'case', action: 'request_info', id: caseId }
+      }));
+
+      if (activeTab === 'timeline') {
+        loadCaseEvents();
+      }
+      
+      // Phase 7.5: Refresh intelligence after request info
+      loadIntelligenceHeader();
+      
+      setShowRequestInfoModal(false);
+      setRequestInfoMessage("");
+      onCaseUpdate?.();
+    } catch (error) {
+      console.error('[CaseDetailsPanel] Failed to request info:', error);
+      alert(error instanceof Error ? error.message : 'Failed to request info');
+    }
   };
 
   const handleExportJson = async () => {
@@ -779,8 +1189,23 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
     <div className="flex flex-col h-full bg-white border-l border-slate-200">
       {/* Header */}
       <div className="border-b border-slate-200 px-6 py-4">
-        <h2 className="text-lg font-semibold text-slate-900">{caseItem.title}</h2>
-        <p className="text-sm text-slate-600 mt-1">{caseItem.subtitle}</p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1">
+            <h2 className="text-lg font-semibold text-slate-900">{caseItem.title}</h2>
+            <p className="text-sm text-slate-600 mt-1">{caseItem.subtitle}</p>
+          </div>
+          {/* Phase 7.3: Confidence badge in header */}
+          {intelligenceData && (
+            <div className="flex-shrink-0">
+              <ConfidenceBadge
+                score={intelligenceData.confidence_score}
+                band={intelligenceData.confidence_band}
+                explanationFactors={intelligenceData.explanation_factors}
+                size="sm"
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -855,25 +1280,79 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
             {/* Actions Strip */}
             <div className="border-t border-slate-200 pt-4">
               <h3 className="text-sm font-semibold text-slate-900 mb-3">Actions</h3>
+              
+              {/* Cancelled case warning */}
+              {caseRecord?.status === 'cancelled' && (
+                <div className="mb-3 p-2 bg-slate-100 border border-slate-300 rounded text-xs text-slate-700">
+                  ⚠️ Case is read-only (submission was deleted)
+                </div>
+              )}
+              
+              {/* Needs info banner - Phase 4.1 */}
+              {caseRecord?.status === 'needs_info' && (
+                <div className="mb-3 p-3 bg-amber-50 border border-amber-300 rounded text-xs">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-base">⏳</span>
+                    <span className="font-semibold text-amber-900">Waiting on Submitter</span>
+                  </div>
+                  <div className="text-amber-800">
+                    Additional information has been requested. The submitter will update and resubmit.
+                  </div>
+                </div>
+              )}
+
+              {decisionToast && (
+                <div className="mb-3 p-2 bg-emerald-50 border border-emerald-200 rounded text-xs text-emerald-800">
+                  {decisionToast}
+                </div>
+              )}
+              
               <div className="flex flex-wrap gap-2">
+                {/* Decision Actions */}
+                {isVerifier && (
+                  <>
+                    <button
+                      onClick={() => handleDecision('APPROVED')}
+                      disabled={caseRecord?.status === 'cancelled' || isResolved || decisionSubmitting}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-lg ${
+                        caseRecord?.status === 'cancelled' || isResolved || decisionSubmitting
+                          ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                          : "bg-green-600 text-white hover:bg-green-700"
+                      }`}
+                    >
+                      ✓ Approve
+                    </button>
+                    <button
+                      onClick={() => setShowRejectModal(true)}
+                      disabled={caseRecord?.status === 'cancelled' || isResolved || decisionSubmitting}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-lg ${
+                        caseRecord?.status === 'cancelled' || isResolved || decisionSubmitting
+                          ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                          : "bg-red-600 text-white hover:bg-red-700"
+                      }`}
+                    >
+                      ✗ Reject
+                    </button>
+                  </>
+                )}
+
                 {/* Status Actions */}
-                {getAllowedTransitions(caseItem.status as WorkflowStatus, role).map((status) => (
+                {getAllowedTransitions(caseItem.status as WorkflowStatus, role)
+                  .filter((status) => status !== "approved" && status !== "blocked")
+                  .map((status) => (
                   <button
                     key={status}
                     onClick={() => handleStatusChange(status)}
+                    disabled={caseRecord?.status === 'cancelled' || isResolved}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg ${
-                      status === "approved"
-                        ? "bg-green-600 text-white hover:bg-green-700"
-                        : status === "blocked"
-                        ? "bg-red-600 text-white hover:bg-red-700"
+                      caseRecord?.status === 'cancelled' || isResolved
+                        ? "bg-slate-200 text-slate-400 cursor-not-allowed"
                         : status === "needs_review"
                         ? "bg-amber-600 text-white hover:bg-amber-700"
                         : "bg-purple-600 text-white hover:bg-purple-700"
                     }`}
                   >
-                    {status === "approved" ? "✓ Approve" :
-                     status === "blocked" ? "⛔ Block" :
-                     status === "needs_review" ? "⚠️ Needs Review" :
+                    {status === "needs_review" ? "⚠️ Needs Review" :
                      "📝 Request Info"}
                   </button>
                 ))}
@@ -882,14 +1361,14 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
                 {(isVerifier || isAdminRole) && (
                   <div className="relative group">
                     <button
-                      onClick={() => hasAdminAccess && setAssignMenuOpen(!assignMenuOpen)}
-                      disabled={!hasAdminAccess}
+                      onClick={() => hasAdminAccess && caseRecord?.status !== 'cancelled' && setAssignMenuOpen(!assignMenuOpen)}
+                      disabled={!hasAdminAccess || caseRecord?.status === 'cancelled' || isResolved}
                       className={`px-3 py-1.5 text-xs font-medium rounded-lg border ${
-                        hasAdminAccess
+                        hasAdminAccess && caseRecord?.status !== 'cancelled' && !isResolved
                           ? 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
                           : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
                       }`}
-                      title={!hasAdminAccess ? "Admin access required" : ""}
+                      title={caseRecord?.status === 'cancelled' ? "Cannot assign cancelled case" : isResolved ? "Cannot assign resolved case" : !hasAdminAccess ? "Admin access required" : ""}
                     >
                       👤 Assign
                     </button>
@@ -923,6 +1402,21 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
                       </>
                     )}
                   </div>
+                )}
+
+                {/* Request Info - Verifier only */}
+                {isVerifier && caseRecord?.status === 'in_review' && (
+                  <button
+                    onClick={() => setShowRequestInfoModal(true)}
+                    disabled={isResolved}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg border ${
+                      isResolved
+                        ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                        : "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                    }`}
+                  >
+                    📝 Request Info
+                  </button>
                 )}
 
                 {/* Export Packet - Admin only */}
@@ -980,11 +1474,39 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
                 </div>
               </div>
             )}
+
+            {/* Decision Intelligence */}
+            {caseRecord && (
+              <div className="border-t border-slate-200 pt-4">
+                <IntelligencePanel
+                  caseId={caseId}
+                  decisionType={resolveDecisionType(caseRecord, submissionRecord?.csfType || submissionRecord?.kind)}
+                  onRecomputeSuccess={() => {
+                    // Optionally trigger case refresh
+                    onCaseUpdate?.();
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
 
         {/* Submission Tab */}
-        {activeTab === "submission" && (
+        {activeTab === "submission" && (() => {
+          // Phase 7.16: Build field issue map from intelligence data
+          const fieldIssueMap = buildFieldIssueMap(intelligenceData?.field_issues);
+          const hasFieldIssues = Object.keys(fieldIssueMap).length > 0;
+          
+          // Count issues by severity
+          const issuesBySeverity = intelligenceData?.field_issues?.reduce(
+            (acc, issue) => {
+              acc[issue.severity] = (acc[issue.severity] || 0) + 1;
+              return acc;
+            },
+            { critical: 0, medium: 0, low: 0 } as Record<'critical' | 'medium' | 'low', number>
+          ) || { critical: 0, medium: 0, low: 0 };
+          
+          return (
           <ErrorBoundary
             fallback={
               <div className="text-center py-12 px-6">
@@ -1012,6 +1534,42 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
             }
           >
             <div className="space-y-6">
+            {/* Phase 7.16: Field Issues Summary Strip */}
+            {hasFieldIssues && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-amber-900 mb-1">⚠ Field Validation Issues</h4>
+                    <p className="text-xs text-amber-700">
+                      {intelligenceData?.field_checks_total ? 
+                        `${intelligenceData.field_checks_passed}/${intelligenceData.field_checks_total} checks passed` :
+                        'Some fields have validation issues'}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    {issuesBySeverity.critical > 0 && (
+                      <div className="flex items-center gap-1 px-2 py-1 rounded bg-red-100 border border-red-300 text-red-700 text-xs font-medium">
+                        <span>⚠</span>
+                        <span>{issuesBySeverity.critical} Critical</span>
+                      </div>
+                    )}
+                    {issuesBySeverity.medium > 0 && (
+                      <div className="flex items-center gap-1 px-2 py-1 rounded bg-amber-100 border border-amber-300 text-amber-700 text-xs font-medium">
+                        <span>⚡</span>
+                        <span>{issuesBySeverity.medium} Medium</span>
+                      </div>
+                    )}
+                    {issuesBySeverity.low > 0 && (
+                      <div className="flex items-center gap-1 px-2 py-1 rounded bg-blue-100 border border-blue-300 text-blue-700 text-xs font-medium">
+                        <span>ℹ</span>
+                        <span>{issuesBySeverity.low} Low</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            
             {submissionRecord ? (
               <>
                 {/* Submission Header */}
@@ -1081,18 +1639,50 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 bg-white">
-                          {Object.entries(submissionRecord.formData).map(([key, value]) => (
-                            <tr key={key} className="hover:bg-slate-50">
+                          {Object.entries(submissionRecord.formData).map(([key, value]) => {
+                            // Phase 7.16: Get field issues for this field
+                            const fieldIssues = getFieldIssues(fieldIssueMap, key);
+                            const topIssue = getTopFieldIssue(fieldIssueMap, key);
+                            const hasIssues = fieldIssues.length > 0;
+                            
+                            return (
+                            <tr key={key} className={`hover:bg-slate-50 ${hasIssues ? 'bg-amber-50/30' : ''}`}>
                               <td className="px-4 py-2 text-xs font-medium text-slate-700 whitespace-nowrap">
-                                {safeReplace(key, /_/g, ' ')}
+                                <div className="flex items-center gap-2">
+                                  <span>{safeReplace(key, /_/g, ' ')}</span>
+                                  {topIssue && (
+                                    <FieldIssueBadge
+                                      severity={topIssue.severity}
+                                      message={topIssue.message}
+                                      check={topIssue.check}
+                                      count={fieldIssues.length}
+                                    />
+                                  )}
+                                </div>
                               </td>
                               <td className="px-4 py-2 text-xs text-slate-900">
-                                {typeof value === 'object' && value !== null
-                                  ? JSON.stringify(value)
-                                  : String(value || '—')}
+                                <div className="space-y-1">
+                                  <div>
+                                    {typeof value === 'object' && value !== null
+                                      ? JSON.stringify(value)
+                                      : String(value || '—')}
+                                  </div>
+                                  {/* Show top issue message as helper text */}
+                                  {topIssue && (
+                                    <div className={`text-[10px] ${
+                                      topIssue.severity === 'critical' ? 'text-red-600' :
+                                      topIssue.severity === 'medium' ? 'text-amber-600' :
+                                      'text-blue-600'
+                                    }`}>
+                                      {topIssue.check && <span className="font-semibold">{topIssue.check}: </span>}
+                                      {topIssue.message}
+                                    </div>
+                                  )}
+                                </div>
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -1176,7 +1766,8 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
             )}
           </div>
           </ErrorBoundary>
-        )}
+          );
+        })()}
 
         {/* Playbook Tab */}
         {activeTab === "playbook" && (
@@ -2001,29 +2592,128 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
         {/* Timeline Tab */}
         {activeTab === "timeline" && (
           <div className="space-y-4">
-            {auditLoading && auditEvents.length === 0 ? (
+            {eventsLoading && caseEvents.length === 0 ? (
               <div className="text-center text-sm text-slate-500 py-8">
                 Loading timeline...
               </div>
+            ) : eventsError ? (
+              <div className="text-center text-sm text-red-600 py-8">
+                {eventsError}
+              </div>
+            ) : caseEvents.length === 0 ? (
+              <div className="text-center text-sm text-slate-500 py-8 italic">
+                No timeline events yet
+              </div>
             ) : (
-              <Timeline events={auditEvents} />
-            )}
-            
-            {/* Load More Button */}
-            {hasMoreAuditEvents && !auditLoading && (
-              <div className="flex justify-center pt-4">
-                <button
-                  onClick={() => setTimelineLimit(prev => prev + 50)}
-                  className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors"
-                >
-                  📜 Load older events ({auditTotal - auditEvents.length} more)
-                </button>
+              <div className="space-y-3">
+                {caseEvents.map((event) => {
+                  const payload = event.payloadJson ? JSON.parse(event.payloadJson) : {};
+                  
+                  // Format event label and icon
+                  let icon = "📝";
+                  let label = event.eventType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                  
+                  if (event.eventType === 'case_created') icon = "🆕";
+                  else if (event.eventType === 'assigned') icon = "👤";
+                  else if (event.eventType === 'unassigned') icon = "🚫";
+                  else if (event.eventType === 'status_changed' || event.eventType === 'case_status_changed') {
+                    icon = "🔄";
+                    if (payload.to === 'approved') icon = "✅";
+                    else if (payload.to === 'blocked') icon = "⛔";
+                    else if (payload.to === 'needs_info') icon = "📋";
+                  }
+                  else if (event.eventType === 'case_decision_created') {
+                    icon = payload.decisionType === 'REJECTED' ? "⛔" : "✅";
+                    label = "Decision Recorded";
+                  }
+                  else if (event.eventType === 'attachment_added') {
+                    icon = "📎";
+                    label = "Attachment Added";
+                  }
+                  else if (event.eventType === 'attachment_downloaded') {
+                    icon = "⬇️";
+                    label = "Attachment Downloaded";
+                  }
+                  else if (event.eventType === 'attachment_removed') {
+                    icon = "🗑️";
+                    label = "Attachment Removed";
+                  }
+                  else if (event.eventType === 'attachment_redacted') {
+                    icon = "🚫";
+                    label = "Attachment Redacted";
+                  }
+                  else if (event.eventType === 'submission_updated') icon = "✏️";
+                  else if (event.eventType === 'submission_cancelled') icon = "🗑️";
+                  
+                  return (
+                    <div
+                      key={event.id}
+                      className="border border-slate-200 rounded-lg p-4 bg-white hover:bg-slate-50 transition-colors"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="text-2xl flex-shrink-0">{icon}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline justify-between gap-2 mb-1">
+                            <h4 className="text-sm font-semibold text-slate-900">{label}</h4>
+                            <span className="text-xs text-slate-500 whitespace-nowrap">
+                              {safeFormatRelative(event.createdAt)}
+                            </span>
+                          </div>
+                          
+                          {event.message && (
+                            <p className="text-sm text-slate-700 mb-2">{event.message}</p>
+                          )}
+                          
+                          <div className="flex items-center gap-3 text-xs text-slate-600">
+                            <span className="flex items-center gap-1">
+                              <span className="font-medium">Actor:</span>
+                              {event.actorId || event.actorRole}
+                              {event.actorRole === 'system' && ' (System)'}
+                            </span>
+                            <span className="text-slate-400">•</span>
+                            <span>{safeFormatDate(event.createdAt)}</span>
+                          </div>
+                          
+                          {/* Show payload details for specific event types */}
+                          {(event.eventType === 'status_changed' || event.eventType === 'case_status_changed') && payload.from && payload.to && (
+                            <div className="mt-2 text-xs text-slate-600 bg-slate-100 rounded px-2 py-1">
+                              <span className="font-mono">{payload.from}</span>
+                              <span className="mx-1">→</span>
+                              <span className="font-mono">{payload.to}</span>
+                              {payload.reason && <span className="ml-2 italic">({payload.reason})</span>}
+                            </div>
+                          )}
+
+                          {event.eventType === 'case_decision_created' && payload.decisionType && (
+                            <div className="mt-2 text-xs text-slate-600 bg-slate-100 rounded px-2 py-1">
+                              <span className="font-medium">Decision:</span> {payload.decisionType}
+                              {payload.reason && <span className="ml-2 italic">({payload.reason})</span>}
+                            </div>
+                          )}
+                          
+                          {event.eventType === 'assigned' && payload.assignee && (
+                            <div className="mt-2 text-xs text-slate-600 bg-slate-100 rounded px-2 py-1">
+                              Assigned to: <span className="font-medium">{payload.assignee}</span>
+                            </div>
+                          )}
+
+                          {event.eventType === 'attachment_added' && payload.filename && (
+                            <div className="mt-2 text-xs text-slate-600 bg-slate-100 rounded px-2 py-1">
+                              <span className="font-medium">File:</span> {payload.filename}
+                              {payload.size && <span className="ml-2">({(payload.size / 1024).toFixed(1)} KB)</span>}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
             
-            {!hasMoreAuditEvents && auditEvents.length > 0 && !auditLoading && (
+            {caseEvents.length > 0 && !eventsLoading && (
               <div className="text-center text-sm text-slate-500 italic pt-4">
-                All {auditEvents.length} events loaded
+                {caseEvents.length} event{caseEvents.length === 1 ? '' : 's'} loaded
               </div>
             )}
           </div>
@@ -2144,56 +2834,119 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
               </div>
             </div>
 
-            {/* Demo Notice */}
-            <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-              <p className="text-sm text-amber-800">
-                📎 <strong>Demo Mode:</strong> Attachments are metadata-only in this build. No actual file uploads.
-              </p>
-            </div>
+            {/* Attachments */}
+            <div className="space-y-3">
+              {attachmentsToast && (
+                <div className="p-2 text-xs rounded border border-emerald-200 bg-emerald-50 text-emerald-800">
+                  {attachmentsToast}
+                </div>
+              )}
+              {attachmentsError && (
+                <div className="p-2 text-xs rounded border border-red-200 bg-red-50 text-red-700">
+                  {attachmentsError}
+                </div>
+              )}
 
-            {/* Add Attachment */}
-            <div className="border border-slate-200 rounded-lg p-4">
-              <label className="text-sm font-medium text-slate-900 block mb-2">Add Attachment (Demo)</label>
-              <div className="flex gap-2">
+              {(caseRecord?.status === 'cancelled' || isResolved) && (
+                <div className="p-2 text-xs rounded border border-slate-200 bg-slate-50 text-slate-600">
+                  Attachments are read-only for resolved or cancelled cases.
+                </div>
+              )}
+
+              <div
+                className={`border border-dashed rounded-lg p-4 text-center text-sm ${
+                  caseRecord?.status === 'cancelled' || isResolved
+                    ? 'border-slate-200 text-slate-400 bg-slate-50'
+                    : 'border-slate-300 text-slate-600'
+                }`}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const file = e.dataTransfer.files?.[0];
+                  if (file && !(caseRecord?.status === 'cancelled' || isResolved)) {
+                    handleAttachmentUpload(file);
+                  }
+                }}
+              >
+                <div className="mb-2 font-medium text-slate-700">Drag & drop a file here</div>
+                <div className="text-xs text-slate-500 mb-3">PDF, PNG, or JPG up to 10 MB</div>
+                <input
+                  type="file"
+                  accept="application/pdf,image/png,image/jpeg"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file && !(caseRecord?.status === 'cancelled' || isResolved)) {
+                      handleAttachmentUpload(file);
+                    }
+                    e.currentTarget.value = '';
+                  }}
+                  className="text-xs"
+                  disabled={caseRecord?.status === 'cancelled' || isResolved}
+                />
                 <input
                   type="text"
-                  value={newAttachmentName}
-                  onChange={(e) => setNewAttachmentName(e.target.value)}
-                  placeholder="Filename (e.g., license-verification.pdf)"
-                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  value={attachmentDescription}
+                  onChange={(e) => setAttachmentDescription(e.target.value)}
+                  placeholder="Optional description"
+                  className="mt-3 w-full px-3 py-2 text-xs border border-slate-300 rounded-lg"
+                  disabled={caseRecord?.status === 'cancelled' || isResolved}
                 />
-                <button
-                  onClick={handleAddAttachment}
-                  disabled={!newAttachmentName.trim()}
-                  className="px-4 py-2 text-sm font-medium rounded-lg bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Add
-                </button>
+                {attachmentsUploading && (
+                  <div className="mt-2 text-xs text-slate-500">Uploading...</div>
+                )}
               </div>
-            </div>
 
-            {/* Attachments List */}
-            <div className="space-y-2">
-              {attachments.length === 0 ? (
-                <p className="text-sm text-slate-500 italic">No attachments</p>
+              {attachmentsLoading ? (
+                <p className="text-sm text-slate-500 italic">Loading attachments...</p>
+              ) : apiAttachments.length === 0 ? (
+                <p className="text-sm text-slate-500 italic">No attachments uploaded yet</p>
               ) : (
-                attachments.map((att) => (
-                  <div key={att.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg">
+                apiAttachments.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg">
                     <div className="flex items-center gap-3">
-                      <span className="text-2xl">📄</span>
+                      <span className="text-2xl">📎</span>
                       <div>
-                        <p className="text-sm font-medium text-slate-900">{att.filename}</p>
+                        <p className="text-sm font-medium text-slate-900">{item.filename}</p>
                         <p className="text-xs text-slate-500">
-                          Uploaded by {att.uploadedBy} • {new Date(att.createdAt).toLocaleString()}
+                          {item.contentType} • {(item.sizeBytes / 1024).toFixed(1)} KB • {new Date(item.createdAt).toLocaleString()}
                         </p>
+                        {item.description && (
+                          <p className="text-xs text-slate-500">{item.description}</p>
+                        )}
+                        {item.isRedacted === 1 && (
+                          <p className="mt-1 text-xs text-amber-700">Redacted: {item.redactReason || 'No reason provided'}</p>
+                        )}
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleDeleteAttachment(att.id)}
-                      className="text-xs text-red-600 hover:text-red-800"
-                    >
-                      🗑️
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={getAttachmentDownloadUrl(caseId, item.id)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`text-xs ${item.isRedacted === 1 || item.isDeleted === 1 ? 'text-slate-400 cursor-not-allowed' : 'text-sky-600 hover:text-sky-700'}`}
+                        onClick={(e) => {
+                          if (item.isRedacted === 1 || item.isDeleted === 1) {
+                            e.preventDefault();
+                          }
+                        }}
+                      >
+                        Download
+                      </a>
+                      <button
+                        onClick={() => handleAttachmentAction('redact', item)}
+                        disabled={item.isRedacted === 1 || item.isDeleted === 1}
+                        className={`text-xs ${item.isRedacted === 1 || item.isDeleted === 1 ? 'text-slate-300' : 'text-amber-700 hover:text-amber-800'}`}
+                      >
+                        Redact
+                      </button>
+                      <button
+                        onClick={() => handleAttachmentAction('delete', item)}
+                        disabled={item.isDeleted === 1}
+                        className={`text-xs ${item.isDeleted === 1 ? 'text-slate-300' : 'text-red-600 hover:text-red-700'}`}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
@@ -2227,6 +2980,92 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
                   onClick={() => {
                     setShowRequestInfoModal(false);
                     setRequestInfoMessage("");
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Reject Modal */}
+      {showRejectModal && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowRejectModal(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">Reject Case</h3>
+              <textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-500"
+                rows={4}
+                placeholder="Provide a reason for rejection..."
+              />
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => handleDecision('REJECTED')}
+                  disabled={decisionSubmitting || !rejectReason.trim()}
+                  className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Reject Case
+                </button>
+                <button
+                  onClick={() => {
+                    setShowRejectModal(false);
+                    setRejectReason("");
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Attachment Action Modal */}
+      {attachmentAction && attachmentActionTarget && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setAttachmentAction(null)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">
+                {attachmentAction === 'delete' ? 'Remove Attachment' : 'Redact Attachment'}
+              </h3>
+              <p className="text-xs text-slate-600 mb-2">
+                {attachmentActionTarget.filename}
+              </p>
+              <textarea
+                value={attachmentActionReason}
+                onChange={(e) => setAttachmentActionReason(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-500"
+                rows={4}
+                placeholder="Provide a reason..."
+              />
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={submitAttachmentAction}
+                  disabled={!attachmentActionReason.trim()}
+                  className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium text-white ${
+                    attachmentActionReason.trim()
+                      ? attachmentAction === 'delete'
+                        ? 'bg-red-600 hover:bg-red-700'
+                        : 'bg-amber-600 hover:bg-amber-700'
+                      : 'bg-slate-300 cursor-not-allowed'
+                  }`}
+                >
+                  {attachmentAction === 'delete' ? 'Remove' : 'Redact'}
+                </button>
+                <button
+                  onClick={() => {
+                    setAttachmentAction(null);
+                    setAttachmentActionTarget(null);
+                    setAttachmentActionReason('');
                   }}
                   className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900"
                 >

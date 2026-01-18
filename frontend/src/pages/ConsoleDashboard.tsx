@@ -7,7 +7,8 @@ import { demoStore } from "../lib/demoStore";
 import * as submissionSelector from "../submissions/submissionStoreSelector";
 import type { SubmissionRecord } from "../submissions/submissionTypes";
 import { deleteSubmission, updateSubmission } from "../api/submissionsApi";
-import { listCases } from "../api/workflowApi";
+import { listCases, getCaseInfoRequest } from "../api/workflowApi";
+import { uploadEvidence, listEvidence, type EvidenceUploadItem, getEvidenceDownloadUrl } from "../api/evidenceApi";
 import type { WorkQueueItem as DemoWorkQueueItem } from "../types/workQueue";
 import { buildDecisionPacket } from "../utils/buildDecisionPacket";
 import { downloadJson } from "../utils/exportPacket";
@@ -505,6 +506,14 @@ const ConsoleDashboard: React.FC = () => {
   const [isLoadingSubmissions, setIsLoadingSubmissions] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  
+  // Case requests for submitter (Phase 4.1)
+  const [caseRequests, setCaseRequests] = useState<Map<string, any>>(new Map());
+  const [caseMap, setCaseMap] = useState<Map<string, string>>(new Map());
+  const [caseStatusMap, setCaseStatusMap] = useState<Map<string, string>>(new Map());
+  const [evidenceMap, setEvidenceMap] = useState<Map<string, EvidenceUploadItem[]>>(new Map());
+  const [uploadingMap, setUploadingMap] = useState<Map<string, boolean>>(new Map());
 
   // Refresh submissions function
   const refreshSubmissions = async (options?: { silent?: boolean }) => {
@@ -516,6 +525,11 @@ const ConsoleDashboard: React.FC = () => {
       setSubmissions(list);
       setCachedSubmissions(list); // Cache successful response
       console.log('[ConsoleDashboard] Loaded submissions:', list.length);
+      
+      // Phase 4.1: Fetch case requests for submitter
+      if (isSubmitter) {
+        await fetchCaseRequestsForSubmissions(list);
+      }
     } catch (err) {
       console.error('[ConsoleDashboard] Failed to load submissions:', err);
       // Keep cached data on error
@@ -523,6 +537,74 @@ const ConsoleDashboard: React.FC = () => {
       if (!options?.silent) {
         setIsLoadingSubmissions(false);
       }
+    }
+  };
+  
+  // Phase 4.1: Fetch case requests for submitter's submissions
+  const fetchCaseRequestsForSubmissions = async (submissionList: SubmissionRecord[]) => {
+    try {
+      // Get all cases for these submissions
+      const allCases = await listCases({ limit: 1000 });
+      const submissionIdSet = new Set(submissionList.map(s => s.id));
+      const relevantCases = allCases.items.filter(c => c.submissionId && submissionIdSet.has(c.submissionId));
+      const nextCaseMap = new Map<string, string>();
+      const nextStatusMap = new Map<string, string>();
+      relevantCases.forEach((c) => {
+        if (c.submissionId) {
+          nextCaseMap.set(c.submissionId, c.id);
+          nextStatusMap.set(c.submissionId, c.status);
+        }
+      });
+      setCaseMap(nextCaseMap);
+      setCaseStatusMap(nextStatusMap);
+      
+      // Fetch open requests for each case
+      const requestsMap = new Map();
+      await Promise.all(
+        relevantCases.map(async (caseItem) => {
+          try {
+            const result = await getCaseInfoRequest(caseItem.id);
+            if (result.request) {
+              requestsMap.set(caseItem.submissionId, {
+                caseId: caseItem.id,
+                request: result.request,
+              });
+            }
+          } catch (err) {
+            // Ignore errors for individual requests
+            console.warn(`[ConsoleDashboard] Failed to fetch request for case ${caseItem.id}:`, err);
+          }
+        })
+      );
+      
+      setCaseRequests(requestsMap);
+      await fetchEvidenceForCases(nextCaseMap);
+      console.log('[ConsoleDashboard] Loaded case requests:', requestsMap.size);
+    } catch (err) {
+      console.error('[ConsoleDashboard] Failed to fetch case requests:', err);
+    }
+  };
+
+  const fetchEvidenceForCases = async (caseIdMap: Map<string, string>) => {
+    try {
+      const evidenceEntries = await Promise.all(
+        Array.from(caseIdMap.entries()).map(async ([submissionId, caseId]) => {
+          try {
+            const items = await listEvidence(caseId);
+            return [submissionId, items] as const;
+          } catch (err) {
+            console.warn(`[ConsoleDashboard] Failed to list evidence for case ${caseId}:`, err);
+            return [submissionId, []] as const;
+          }
+        })
+      );
+      const nextMap = new Map<string, EvidenceUploadItem[]>();
+      evidenceEntries.forEach(([submissionId, items]) => {
+        nextMap.set(submissionId, items);
+      });
+      setEvidenceMap(nextMap);
+    } catch (err) {
+      console.error('[ConsoleDashboard] Failed to fetch evidence lists:', err);
     }
   };
 
@@ -539,7 +621,7 @@ const ConsoleDashboard: React.FC = () => {
 
     // Listen for data change events from other parts of the app
     const handleDataChanged = (e: CustomEvent) => {
-      if (e.detail?.type === 'submission') {
+      if (e.detail?.type === 'submission' || e.detail?.type === 'case') {
         console.log('[ConsoleDashboard] Data changed, refreshing submissions...');
         refreshSubmissions({ silent: true });
       }
@@ -595,6 +677,21 @@ const ConsoleDashboard: React.FC = () => {
 
   // Handle edit button click - navigate to form or open edit modal
   const handleEditSubmission = (submission: SubmissionRecord) => {
+    const caseStatus = caseStatusMap.get(submission.id);
+    if (caseStatus === 'approved' || caseStatus === 'blocked' || caseStatus === 'closed') {
+      alert('This submission is finalized and cannot be edited.');
+      return;
+    }
+
+    // Store case ID for potential resubmit after editing
+    const requestInfo = caseRequests.get(submission.id);
+    if (requestInfo) {
+      sessionStorage.setItem('pendingResubmit', JSON.stringify({
+        submissionId: submission.id,
+        caseId: requestInfo.caseId,
+      }));
+    }
+    
     // For now, show a simple alert - you can implement a modal or navigation
     // Navigation approach:
     if (submission.decisionType === 'csf_facility') {
@@ -604,6 +701,75 @@ const ConsoleDashboard: React.FC = () => {
       alert(`Edit functionality for ${submission.decisionType} coming soon.\nSubmission ID: ${submission.id}`);
     }
   };
+  
+  // Phase 4.1: Handle resubmit after editing
+  const handleResubmit = async (submissionId: string, caseId: string) => {
+    const caseStatus = caseStatusMap.get(submissionId);
+    if (caseStatus === 'approved' || caseStatus === 'blocked' || caseStatus === 'closed') {
+      alert('This submission is finalized and cannot be resubmitted.');
+      return;
+    }
+    try {
+      const { resubmitCase } = await import('../api/workflowApi');
+      await resubmitCase(caseId, {
+        submissionId: submissionId,
+        note: 'Addressed requested information',
+      });
+      
+      // Clear from session storage
+      sessionStorage.removeItem('pendingResubmit');
+      
+      // Refresh data
+      await refreshSubmissions();
+      
+      // Dispatch data-changed event
+      window.dispatchEvent(new CustomEvent('acai:data-changed', {
+        detail: { type: 'case', action: 'resubmit', id: caseId }
+      }));
+      window.dispatchEvent(new CustomEvent('acai:data-changed', {
+        detail: { type: 'submission', action: 'resubmit', id: submissionId }
+      }));
+      
+      showSuccess('Submission resubmitted successfully');
+    } catch (error) {
+      console.error('[ConsoleDashboard] Failed to resubmit:', error);
+      alert(error instanceof Error ? error.message : 'Failed to resubmit');
+    }
+  };
+
+  const handleUploadEvidence = async (submissionId: string, caseId: string, file: File) => {
+    const nextUploading = new Map(uploadingMap);
+    nextUploading.set(submissionId, true);
+    setUploadingMap(nextUploading);
+
+    try {
+      await uploadEvidence(caseId, submissionId, file, currentUser?.name);
+      showSuccess('Attachment uploaded');
+
+      // Refresh evidence list for this submission
+      const items = await listEvidence(caseId);
+      const nextMap = new Map(evidenceMap);
+      nextMap.set(submissionId, items);
+      setEvidenceMap(nextMap);
+
+      window.dispatchEvent(new CustomEvent('acai:data-changed', {
+        detail: { type: 'case', action: 'evidence_uploaded', id: caseId }
+      }));
+    } catch (err) {
+      console.error('[ConsoleDashboard] Failed to upload evidence:', err);
+      alert(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      const doneMap = new Map(uploadingMap);
+      doneMap.set(submissionId, false);
+      setUploadingMap(doneMap);
+    }
+  };
+
+  const showSuccess = (message: string) => {
+    setSuccessMessage(message);
+    setTimeout(() => setSuccessMessage(null), 3000);
+  };
+  
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [requestInfoCaseId, setRequestInfoCaseId] = useState<string | null>(null);
   const [requestInfoMessage, setRequestInfoMessage] = useState("");
@@ -876,6 +1042,8 @@ const ConsoleDashboard: React.FC = () => {
       items = items.filter((i) => !i.assignedTo);
     } else if (queueFilter === "overdue") {
       items = items.filter((i) => isOverdue(i.dueAt));
+    } else if (queueFilter === "all") {
+      items = items.filter((i) => !["approved", "blocked", "closed"].includes(i.status));
     }
     
     // Step 2.15: Apply decision type filter
@@ -1254,6 +1422,11 @@ const ConsoleDashboard: React.FC = () => {
 
   return (
     <div className="console-shell">
+      {successMessage && (
+        <div className="fixed top-6 right-6 z-50 rounded-lg bg-green-600 px-4 py-3 text-sm font-medium text-white shadow-lg">
+          {successMessage}
+        </div>
+      )}
       <TraceReplayDrawer
         isOpen={isTraceOpen}
         onClose={handleCloseTrace}
@@ -2079,8 +2252,60 @@ const ConsoleDashboard: React.FC = () => {
                     <div className="text-xs text-slate-400">Submit a CSF form to see it here</div>
                   </div>
                 ) : (
-                  submissions.slice(0, 10).map((submission) => (
-                    <div key={submission.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  submissions.slice(0, 10).map((submission) => {
+                    const requestInfo = caseRequests.get(submission.id);
+                    const caseId = caseMap.get(submission.id);
+                    const caseStatus = caseStatusMap.get(submission.id);
+                    const isFinalDecision = caseStatus === 'approved' || caseStatus === 'blocked' || caseStatus === 'closed';
+                    const evidenceItems = evidenceMap.get(submission.id) || [];
+                    const isUploading = uploadingMap.get(submission.id) || false;
+                    
+                    return (
+                    <div key={submission.id} className="space-y-2">
+                      {/* Info Request Banner - Phase 4.1 */}
+                      {requestInfo && (
+                        <div className="rounded-lg border-2 border-amber-400 bg-amber-50 p-3">
+                          <div className="flex items-start gap-2">
+                            <span className="text-lg">📝</span>
+                            <div className="flex-1">
+                              <div className="font-semibold text-amber-900 text-sm mb-1">
+                                Action Required: Additional Information Requested
+                              </div>
+                              <div className="text-xs text-amber-800 mb-2">
+                                {requestInfo.request.message}
+                              </div>
+                              {requestInfo.request.requiredFields && requestInfo.request.requiredFields.length > 0 && (
+                                <div className="text-xs text-amber-700 mb-2">
+                                  <span className="font-medium">Required fields:</span> {requestInfo.request.requiredFields.join(', ')}
+                                </div>
+                              )}
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleEditSubmission(submission)}
+                                  disabled={isFinalDecision}
+                                  className={`rounded-lg px-3 py-1.5 text-xs font-medium text-white ${
+                                    isFinalDecision ? 'bg-slate-300 cursor-not-allowed' : 'bg-slate-600 hover:bg-slate-700'
+                                  }`}
+                                >
+                                  1. Edit Submission
+                                </button>
+                                <button
+                                  onClick={() => handleResubmit(submission.id, requestInfo.caseId)}
+                                  disabled={isFinalDecision}
+                                  className={`rounded-lg px-3 py-1.5 text-xs font-medium text-white ${
+                                    isFinalDecision ? 'bg-slate-300 cursor-not-allowed' : 'bg-amber-600 hover:bg-amber-700'
+                                  }`}
+                                >
+                                  2. Resubmit to Verifier
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Submission Card */}
+                      <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-4">
                       <div className="flex-1 space-y-1">
                         <div className="text-sm font-medium text-slate-900">
                           {submission.decisionType === 'practitioner_csf' 
@@ -2097,12 +2322,12 @@ const ConsoleDashboard: React.FC = () => {
                           <span>{new Date(submission.createdAt).toLocaleDateString()}</span>
                           <span>•</span>
                           <span className={
-                            submission.evaluatorOutput?.decision === 'ok_to_ship' ? 'text-green-600 font-medium' :
-                            submission.evaluatorOutput?.decision === 'blocked' ? 'text-red-600 font-medium' :
+                            caseStatus === 'approved' ? 'text-green-600 font-medium' :
+                            caseStatus === 'blocked' ? 'text-red-600 font-medium' :
                             'text-amber-600 font-medium'
                           }>
-                            {submission.evaluatorOutput?.decision === 'ok_to_ship' ? '✓ Approved' :
-                             submission.evaluatorOutput?.decision === 'blocked' ? '✗ Blocked' :
+                            {caseStatus === 'approved' ? '✓ Approved' :
+                             caseStatus === 'blocked' ? '✗ Rejected' :
                              '⏳ Under Review'}
                           </span>
                         </div>
@@ -2110,9 +2335,11 @@ const ConsoleDashboard: React.FC = () => {
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleEditSubmission(submission)}
-                          className="rounded-lg bg-slate-600 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700"
+                          disabled={submission.isDeleted || isFinalDecision}
+                          className={`rounded-lg px-3 py-2 text-sm font-medium text-white ${
+                            submission.isDeleted || isFinalDecision ? 'bg-slate-300 cursor-not-allowed' : 'bg-slate-600 hover:bg-slate-700'
+                          }`}
                           title="Edit submission"
-                          disabled={submission.isDeleted}
                         >
                           Edit
                         </button>
@@ -2133,7 +2360,56 @@ const ConsoleDashboard: React.FC = () => {
                         </a>
                       </div>
                     </div>
-                  ))
+                    
+                    {/* Attachments */}
+                    {caseId && (
+                      <div className="rounded-lg border border-slate-200 bg-white p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-xs font-semibold text-slate-700">Attachments</div>
+                          <div className="text-xs text-slate-500">{evidenceItems.length} files</div>
+                        </div>
+                        {evidenceItems.length === 0 ? (
+                          <div className="text-xs text-slate-500">No attachments yet</div>
+                        ) : (
+                          <div className="space-y-1">
+                            {evidenceItems.map((item) => (
+                              <div key={item.id} className="flex items-center justify-between text-xs text-slate-700">
+                                <span className="truncate">{item.filename}</span>
+                                <a
+                                  href={getEvidenceDownloadUrl(item.id)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-sky-600 hover:text-sky-700"
+                                >
+                                  Download
+                                </a>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-2 flex items-center gap-2">
+                          <input
+                            type="file"
+                            accept="application/pdf,image/jpeg,image/png"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file && caseId) {
+                                handleUploadEvidence(submission.id, caseId, file);
+                              }
+                              e.currentTarget.value = '';
+                            }}
+                            className="text-xs"
+                            disabled={isUploading}
+                          />
+                          {isUploading && (
+                            <span className="text-xs text-slate-500">Uploading...</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    </div>
+                  );
+                  })
                 )}
               </div>
             </div>

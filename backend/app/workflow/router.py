@@ -7,8 +7,8 @@ Exposes REST API for case management, audit tracking, and evidence curation.
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, Query, Request, UploadFile, File, Form
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from io import BytesIO
 import logging
@@ -35,6 +35,8 @@ from .models import (
     CaseDecision,
     CaseDecisionCreateInput,
     TimelineItem,
+    EvidenceUploadItem,
+    AttachmentItem,
 )
 from .repo import (
     create_case,
@@ -52,7 +54,18 @@ from .repo import (
     create_case_decision,
     get_case_decision_by_case,
     create_case_event,
+    create_evidence_upload,
+    list_evidence_uploads,
+    get_evidence_upload_by_id,
+    create_attachment,
+    list_attachments,
+    get_attachment_by_id,
+    soft_delete_attachment,
+    redact_attachment,
 )
+
+from .evidence_storage import save_upload, resolve_storage_path
+from .attachments_storage import save_upload as save_attachment, resolve_storage_path as resolve_attachment_path
 
 
 router = APIRouter(prefix="/workflow", tags=["workflow"])
@@ -333,6 +346,15 @@ def create_workflow_case(input_data: CaseCreateInput, request: Request):
             "submissionId": case.submissionId,
         }
     ))
+    
+    # Phase 7.10: Auto-recompute intelligence on case creation (if from submission)
+    if input_data.submissionId:
+        from app.intelligence.autorecompute import maybe_recompute_case_intelligence
+        maybe_recompute_case_intelligence(
+            case_id=case.id,
+            reason="submission_created",
+            actor=get_actor(request)
+        )
     
     return case
 
@@ -1228,6 +1250,14 @@ def make_case_decision(
     Raises:
         404: Case not found
     """
+    # Verify case exists
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
+
+    if case.status in {CaseStatus.CANCELLED, CaseStatus.APPROVED, CaseStatus.BLOCKED, CaseStatus.CLOSED}:
+        raise HTTPException(status_code=409, detail="Case is already resolved or cancelled")
+
     # Extract actor from request if not provided
     if not decision_input.decidedByName:
         decision_input.decidedByName = get_actor(request)
@@ -1235,8 +1265,19 @@ def make_case_decision(
     if not decision_input.decidedByRole:
         decision_input.decidedByRole = get_role(request)
     
-    # Create decision (also updates status and creates event)
-    decision = create_case_decision(case_id, decision_input)
+    # Create decision (also updates status and creates events)
+    try:
+        decision = create_case_decision(case_id, decision_input)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    
+    # Phase 7.10: Auto-recompute intelligence on decision save
+    from app.intelligence.autorecompute import maybe_recompute_case_intelligence
+    maybe_recompute_case_intelligence(
+        case_id=case_id,
+        reason="decision_saved",
+        actor=decision_input.decidedByName or "system"
+    )
     
     return decision
 
@@ -1266,3 +1307,871 @@ def get_case_decision_endpoint(case_id: str):
     
     return decision
 
+
+# ============================================================================
+# Phase 3.1: Verifier Actions Endpoints
+# ============================================================================
+
+from .models import CaseEvent
+from .repo import list_case_events
+
+
+class AssignCaseInput(BaseModel):
+    """Input for assigning a case to a verifier."""
+    assignee: str  # Email or user ID
+
+
+class SetCaseStatusInput(BaseModel):
+    """Input for changing case status."""
+    status: str  # new, in_review, needs_info, approved, rejected
+    reason: Optional[str] = None  # Optional reason for status change
+
+
+class EvidenceListResponse(BaseModel):
+    items: List[EvidenceUploadItem]
+
+
+class AttachmentListResponse(BaseModel):
+    items: List[AttachmentItem]
+
+
+class AttachmentReasonInput(BaseModel):
+    reason: str
+
+
+@router.get("/cases/{case_id}/events", response_model=List[CaseEvent])
+def get_case_events_endpoint(case_id: str):
+    """
+    Get all events for a case (Phase 3.1: Timeline).
+    
+    Returns events in reverse chronological order (newest first).
+    
+    Args:
+        case_id: Case UUID
+        
+    Returns:
+        List of case events
+        
+    Raises:
+        404: Case not found
+    """
+    # Verify case exists
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
+    
+    events = list_case_events(case_id, limit=200)
+    return events
+
+
+# ============================================================================
+# Evidence Uploads (Phase 4.2)
+# ============================================================================
+
+@router.post("/cases/{case_id}/evidence", response_model=EvidenceUploadItem)
+def upload_case_evidence(
+    case_id: str,
+    file: UploadFile = File(...),
+    submission_id: str = Form(...),
+    uploaded_by: Optional[str] = Form(None),
+    request: Request = None,
+):
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    if case.status == CaseStatus.CANCELLED:
+        raise HTTPException(status_code=409, detail="Cannot upload evidence for cancelled case")
+
+    if case.submissionId and case.submissionId != submission_id:
+        raise HTTPException(status_code=400, detail="submission_id does not match case")
+
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    try:
+        storage_path, sha256 = save_upload(case_id, file.filename or "upload", file.content_type or "application/octet-stream", content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    actor_role = get_role(request) if request else "submitter"
+    actor_id = get_actor(request) if request else uploaded_by
+
+    evidence = create_evidence_upload(
+        case_id=case_id,
+        submission_id=submission_id,
+        filename=file.filename or "upload",
+        content_type=file.content_type or "application/octet-stream",
+        size_bytes=len(content),
+        storage_path=storage_path,
+        sha256=sha256,
+        uploaded_by=uploaded_by,
+    )
+
+    create_case_event(
+        case_id=case_id,
+        event_type="evidence_uploaded",
+        actor_role=actor_role,
+        actor_id=actor_id,
+        message=f"Evidence uploaded: {evidence.filename}",
+        payload_dict={
+            "evidenceId": evidence.id,
+            "filename": evidence.filename,
+            "contentType": evidence.contentType,
+            "sizeBytes": evidence.sizeBytes,
+        },
+    )
+    
+    # Phase 7.4: Trigger auto-recompute of decision intelligence
+    from app.intelligence.lifecycle import request_recompute
+    request_recompute(
+        case_id=case_id,
+        reason="evidence_attached",
+        event_type="evidence_attached"
+    )
+    
+    # Phase 7.10: Auto-recompute with throttle
+    from app.intelligence.autorecompute import maybe_recompute_case_intelligence
+    maybe_recompute_case_intelligence(
+        case_id=case_id,
+        reason="evidence_attached",
+        actor=actor_id or "system"
+    )
+
+    return evidence
+
+
+@router.get("/cases/{case_id}/evidence", response_model=EvidenceListResponse)
+def list_case_evidence(case_id: str):
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    items = list_evidence_uploads(case_id)
+    return EvidenceListResponse(items=items)
+
+
+@router.get("/evidence/{evidence_id}/download")
+def download_evidence(evidence_id: str, request: Request):
+    evidence = get_evidence_upload_by_id(evidence_id)
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+
+    try:
+        file_path = resolve_storage_path(evidence.storagePath)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid storage path")
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    actor_role = get_role(request)
+    actor_id = get_actor(request)
+    create_case_event(
+        case_id=evidence.caseId,
+        event_type="evidence_downloaded",
+        actor_role=actor_role,
+        actor_id=actor_id,
+        message=f"Evidence downloaded: {evidence.filename}",
+        payload_dict={"evidenceId": evidence.id},
+    )
+
+    return FileResponse(
+        path=str(file_path),
+        media_type=evidence.contentType,
+        filename=evidence.filename,
+    )
+
+
+# ============================================================================
+# Attachments (Phase 6.1)
+# ============================================================================
+
+@router.post("/cases/{case_id}/attachments", response_model=AttachmentItem, response_model_by_alias=False)
+def upload_case_attachment(
+    case_id: str,
+    file: UploadFile = File(...),
+    submission_id: Optional[str] = Form(None),
+    uploaded_by: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    request: Request = None,
+):
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    if case.status == CaseStatus.CANCELLED:
+        raise HTTPException(status_code=409, detail="Cannot upload attachments for cancelled case")
+
+    if case.submissionId and submission_id and case.submissionId != submission_id:
+        raise HTTPException(status_code=400, detail="submission_id does not match case")
+
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    try:
+        storage_path, sha256 = save_attachment(
+            case_id,
+            file.filename or "upload",
+            file.content_type or "application/octet-stream",
+            content,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    actor_role = get_role(request) if request else "submitter"
+    actor_id = get_actor(request) if request else uploaded_by
+
+    attachment = create_attachment(
+        case_id=case_id,
+        submission_id=submission_id,
+        filename=file.filename or "upload",
+        content_type=file.content_type or "application/octet-stream",
+        size_bytes=len(content),
+        storage_path=storage_path,
+        uploaded_by=uploaded_by,
+        description=description,
+        original_sha256=sha256,
+    )
+
+    create_case_event(
+        case_id=case_id,
+        event_type="attachment_added",
+        actor_role=actor_role,
+        actor_id=actor_id,
+        message=f"Attachment added: {attachment.filename}",
+        payload_dict={
+            "attachmentId": attachment.id,
+            "filename": attachment.filename,
+            "uploadedBy": attachment.uploadedBy,
+            "size": attachment.sizeBytes,
+        },
+    )
+
+    return attachment
+
+
+@router.get("/cases/{case_id}/attachments", response_model=AttachmentListResponse, response_model_by_alias=False)
+def list_case_attachments(
+    case_id: str,
+    request: Request,
+    includeDeleted: bool = False,
+    includeRedacted: bool = True,
+):
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    if includeDeleted:
+        require_admin(request)
+
+    items = list_attachments(
+        case_id,
+        include_deleted=includeDeleted,
+        include_redacted=includeRedacted,
+    )
+    return AttachmentListResponse(items=items)
+
+
+@router.get("/cases/{case_id}/attachments/{attachment_id}/download")
+def download_attachment(case_id: str, attachment_id: str, request: Request):
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    attachment = get_attachment_by_id(attachment_id)
+    if not attachment or attachment.caseId != case_id:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    if attachment.isDeleted:
+        raise HTTPException(status_code=410, detail="Attachment was removed")
+
+    if attachment.isRedacted:
+        raise HTTPException(status_code=451, detail="Attachment has been redacted")
+
+    try:
+        file_path = resolve_attachment_path(attachment.storagePath)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid storage path")
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    actor_role = get_role(request)
+    actor_id = get_actor(request)
+    create_case_event(
+        case_id=case_id,
+        event_type="attachment_downloaded",
+        actor_role=actor_role,
+        actor_id=actor_id,
+        message=f"Attachment downloaded: {attachment.filename}",
+        payload_dict={"attachmentId": attachment.id},
+    )
+
+    return FileResponse(
+        path=str(file_path),
+        media_type=attachment.contentType,
+        filename=attachment.filename,
+    )
+
+
+@router.delete("/cases/{case_id}/attachments/{attachment_id}")
+def delete_attachment(
+    case_id: str,
+    attachment_id: str,
+    input_data: AttachmentReasonInput,
+    request: Request,
+):
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    if case.status == CaseStatus.CANCELLED:
+        raise HTTPException(status_code=409, detail="Cannot delete attachments for cancelled case")
+
+    attachment = get_attachment_by_id(attachment_id)
+    if not attachment or attachment.caseId != case_id:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    if attachment.isDeleted:
+        raise HTTPException(status_code=410, detail="Attachment already removed")
+
+    if not input_data.reason.strip():
+        raise HTTPException(status_code=400, detail="Reason is required")
+
+    actor_role = get_role(request)
+    actor_id = get_actor(request)
+
+    deleted = soft_delete_attachment(attachment_id, actor_id, input_data.reason.strip())
+    if not deleted:
+        raise HTTPException(status_code=409, detail="Attachment already removed")
+
+    create_case_event(
+        case_id=case_id,
+        event_type="attachment_removed",
+        actor_role=actor_role,
+        actor_id=actor_id,
+        message=f"Attachment removed: {attachment.filename}",
+        payload_dict={
+            "attachmentId": attachment.id,
+            "filename": attachment.filename,
+            "reason": input_data.reason.strip(),
+        },
+    )
+
+    add_audit_event(AuditEventCreateInput(
+        caseId=case_id,
+        eventType=AuditEventType.EVIDENCE_REMOVED,
+        actor=actor_id,
+        source=actor_role,
+        message=f"Attachment removed: {attachment.filename} ({input_data.reason.strip()})",
+        meta={
+            "attachmentId": attachment.id,
+            "filename": attachment.filename,
+            "reason": input_data.reason.strip(),
+        },
+    ))
+
+    return {"ok": True}
+
+
+@router.post("/cases/{case_id}/attachments/{attachment_id}/redact")
+def redact_attachment_endpoint(
+    case_id: str,
+    attachment_id: str,
+    input_data: AttachmentReasonInput,
+    request: Request,
+):
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    if case.status == CaseStatus.CANCELLED:
+        raise HTTPException(status_code=409, detail="Cannot redact attachments for cancelled case")
+
+    attachment = get_attachment_by_id(attachment_id)
+    if not attachment or attachment.caseId != case_id:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    if attachment.isDeleted:
+        raise HTTPException(status_code=410, detail="Attachment already removed")
+
+    if attachment.isRedacted:
+        raise HTTPException(status_code=409, detail="Attachment already redacted")
+
+    if not input_data.reason.strip():
+        raise HTTPException(status_code=400, detail="Reason is required")
+
+    actor_role = get_role(request)
+    actor_id = get_actor(request)
+
+    redacted = redact_attachment(attachment_id, actor_id, input_data.reason.strip())
+    if not redacted:
+        raise HTTPException(status_code=409, detail="Attachment already redacted")
+
+    create_case_event(
+        case_id=case_id,
+        event_type="attachment_redacted",
+        actor_role=actor_role,
+        actor_id=actor_id,
+        message=f"Attachment redacted: {attachment.filename}",
+        payload_dict={
+            "attachmentId": attachment.id,
+            "filename": attachment.filename,
+            "reason": input_data.reason.strip(),
+        },
+    )
+
+    add_audit_event(AuditEventCreateInput(
+        caseId=case_id,
+        eventType=AuditEventType.EVIDENCE_REDACTED,
+        actor=actor_id,
+        source=actor_role,
+        message=f"Attachment redacted: {attachment.filename} ({input_data.reason.strip()})",
+        meta={
+            "attachmentId": attachment.id,
+            "filename": attachment.filename,
+            "reason": input_data.reason.strip(),
+        },
+    ))
+
+    return {"ok": True}
+
+
+@router.post("/cases/{case_id}/assign", response_model=CaseRecord)
+def assign_case_endpoint(case_id: str, input_data: AssignCaseInput, request: Request):
+    """
+    Assign a case to a verifier (Phase 3.1).
+    
+    Creates an 'assigned' event and updates case.assigned_to.
+    
+    Args:
+        case_id: Case UUID
+        input_data: Assignee email/ID
+        request: FastAPI request (for actor extraction)
+        
+    Returns:
+        Updated case record
+        
+    Raises:
+        404: Case not found
+        409: Case is cancelled (read-only)
+    """
+    # Verify case exists
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
+    
+    # Block actions on cancelled cases
+    if case.status == CaseStatus.CANCELLED:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot assign cancelled case. Case is read-only after submission deletion."
+        )
+    
+    # Get actor info
+    actor_role = get_role(request)
+    actor_id = get_actor(request)
+    
+    # Update case assignment
+    updated_case = update_case(case_id, CaseUpdateInput(
+        assignedTo=input_data.assignee,
+        assignedAt=None  # Will be set by update_case
+    ))
+    
+    # Create event
+    create_case_event(
+        case_id=case_id,
+        event_type="assigned",
+        actor_role=actor_role,
+        actor_id=actor_id,
+        message=f"Case assigned to {input_data.assignee}",
+        payload_dict={"assignee": input_data.assignee}
+    )
+    
+    return updated_case
+
+
+@router.post("/cases/{case_id}/unassign", response_model=CaseRecord)
+def unassign_case_endpoint(case_id: str, request: Request):
+    """
+    Unassign a case (Phase 3.1).
+    
+    Creates an 'unassigned' event and clears case.assigned_to.
+    
+    Args:
+        case_id: Case UUID
+        request: FastAPI request (for actor extraction)
+        
+    Returns:
+        Updated case record
+        
+    Raises:
+        404: Case not found
+        409: Case is cancelled (read-only)
+    """
+    # Verify case exists
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
+    
+    # Block actions on cancelled cases
+    if case.status == CaseStatus.CANCELLED:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot unassign cancelled case. Case is read-only after submission deletion."
+        )
+    
+    # Get actor info
+    actor_role = get_role(request)
+    actor_id = get_actor(request)
+    
+    # Update case assignment
+    updated_case = update_case(case_id, CaseUpdateInput(
+        assignedTo=None,
+        assignedAt=None
+    ))
+    
+    # Create event
+    create_case_event(
+        case_id=case_id,
+        event_type="unassigned",
+        actor_role=actor_role,
+        actor_id=actor_id,
+        message="Case unassigned",
+        payload_dict={}
+    )
+    
+    return updated_case
+
+
+@router.post("/cases/{case_id}/status", response_model=CaseRecord)
+def set_case_status_endpoint(case_id: str, input_data: SetCaseStatusInput, request: Request):
+    """
+    Change case status (Phase 3.1).
+    
+    Allowed transitions: new → in_review → needs_info → approved/rejected
+    Creates a 'status_changed' event with from/to payload.
+    
+    Args:
+        case_id: Case UUID
+        input_data: New status + optional reason
+        request: FastAPI request (for actor extraction)
+        
+    Returns:
+        Updated case record
+        
+    Raises:
+        404: Case not found
+        409: Case is cancelled (read-only)
+        400: Invalid status value
+    """
+    # Verify case exists
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
+    
+    # Block actions on cancelled cases
+    if case.status == CaseStatus.CANCELLED:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot change status of cancelled case. Case is read-only after submission deletion."
+        )
+    
+    # Validate new status
+    valid_statuses = ["new", "in_review", "needs_info", "approved", "rejected", "blocked", "closed"]
+    if input_data.status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status: {input_data.status}. Must be one of: {', '.join(valid_statuses)}"
+        )
+    
+    old_status = case.status
+    
+    # Get actor info
+    actor_role = get_role(request)
+    actor_id = get_actor(request)
+    
+    # Update case status
+    updated_case = update_case(case_id, CaseUpdateInput(
+        status=CaseStatus(input_data.status)
+    ))
+    
+    # Create event
+    message = f"Status changed from {old_status} to {input_data.status}"
+    if input_data.reason:
+        message += f": {input_data.reason}"
+    
+    create_case_event(
+        case_id=case_id,
+        event_type="status_changed",
+        actor_role=actor_role,
+        actor_id=actor_id,
+        message=message,
+        payload_dict={
+            "from": old_status,
+            "to": input_data.status,
+            "reason": input_data.reason
+        }
+    )
+    
+    # Phase 7.4: Trigger auto-recompute of decision intelligence
+    from app.intelligence.lifecycle import request_recompute
+    request_recompute(
+        case_id=case_id,
+        reason="status_changed",
+        event_type="status_changed"
+    )
+    
+    return updated_case
+
+# ============================================================================
+# Case Requests (Phase 4.1: Request Info Loop)
+# ============================================================================
+
+class RequestInfoInput(BaseModel):
+    """Input for requesting additional information from submitter."""
+    message: str
+    requiredFields: Optional[List[str]] = None
+    requestedBy: Optional[str] = None
+
+
+class ResubmitInput(BaseModel):
+    """Input for resubmitting after addressing info request."""
+    submissionId: str
+    note: Optional[str] = None
+
+
+@router.post("/cases/{case_id}/request-info")
+def request_case_info(case_id: str, input_data: RequestInfoInput, request: Request):
+    """
+    Request additional information from submitter.
+    
+    Business rules:
+    - Only one open request per case
+    - Case status transitions to needs_info
+    - Cannot request info on cancelled cases (409)
+    - Creates events: status_changed, request_info_created
+    
+    Args:
+        case_id: Case UUID
+        input_data: Request message and optional required fields
+        request: HTTP request (for actor extraction)
+        
+    Returns:
+        Updated case and request record
+        
+    Raises:
+        HTTPException 404: Case not found
+        HTTPException 409: Case is cancelled
+    """
+    from .repo import create_case_request, get_open_case_request
+    
+    # Get case
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    # Block if cancelled
+    if case.status == "cancelled":
+        raise HTTPException(status_code=409, detail="Cannot request info on cancelled case")
+    
+    # Extract actor
+    actor_role = get_role(request)
+    actor_id = get_actor(request)
+    requested_by = input_data.requestedBy or actor_id or actor_role
+    
+    # Store old status for event
+    old_status = case.status
+    
+    # Create request (closes previous open requests)
+    request_id = create_case_request(
+        case_id=case_id,
+        message=input_data.message,
+        requested_by=requested_by,
+        required_fields=input_data.requiredFields,
+    )
+    
+    # Update case status to needs_info
+    update_case(case_id, CaseUpdateInput(status="needs_info"))
+    
+    # Create status_changed event
+    create_case_event(
+        case_id=case_id,
+        event_type="status_changed",
+        actor_role=actor_role,
+        actor_id=actor_id,
+        message=f"Status changed from {old_status} to needs_info (requested additional information)",
+        payload_dict={"from": old_status, "to": "needs_info"}
+    )
+    
+    # Create request_info_created event
+    required_fields_str = ", ".join(input_data.requiredFields) if input_data.requiredFields else ""
+    message = f"Requested additional information: {input_data.message}"
+    if required_fields_str:
+        message += f" (Required fields: {required_fields_str})"
+    
+    create_case_event(
+        case_id=case_id,
+        event_type="request_info_created",
+        actor_role=actor_role,
+        actor_id=actor_id,
+        message=message,
+        payload_dict={
+            "request_id": request_id,
+            "message": input_data.message,
+            "required_fields": input_data.requiredFields,
+        }
+    )
+    
+    # Phase 7.4: Trigger auto-recompute of decision intelligence
+    from app.intelligence.lifecycle import request_recompute
+    request_recompute(
+        case_id=case_id,
+        reason="request_info_created",
+        event_type="request_info_created"
+    )
+    
+    # Phase 7.10: Auto-recompute with throttle
+    from app.intelligence.autorecompute import maybe_recompute_case_intelligence
+    maybe_recompute_case_intelligence(
+        case_id=case_id,
+        reason="request_info_created",
+        actor=actor_id or "system"
+    )
+    
+    # Get updated case and open request
+    updated_case = get_case(case_id)
+    open_request = get_open_case_request(case_id)
+    
+    return {
+        "case": updated_case,
+        "request": open_request,
+    }
+
+
+@router.get("/cases/{case_id}/request-info")
+def get_case_info_request(case_id: str):
+    """
+    Get open info request for a case.
+    
+    Args:
+        case_id: Case UUID
+        
+    Returns:
+        Open request record or None
+        
+    Raises:
+        HTTPException 404: Case not found
+    """
+    from .repo import get_open_case_request
+    
+    # Verify case exists
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    open_request = get_open_case_request(case_id)
+    return {"request": open_request}
+
+
+@router.post("/cases/{case_id}/resubmit")
+def resubmit_case(case_id: str, input_data: ResubmitInput, request: Request):
+    """
+    Resubmit case after addressing info request.
+    
+    Business rules:
+    - Case must be in needs_info status
+    - Resolves open request
+    - Case status transitions to in_review
+    - Creates events: request_info_resubmitted, status_changed
+    
+    Args:
+        case_id: Case UUID
+        input_data: Submission ID and optional note
+        request: HTTP request (for actor extraction)
+        
+    Returns:
+        Updated case record
+        
+    Raises:
+        HTTPException 404: Case not found or no open request
+        HTTPException 409: Case is not in needs_info status
+    """
+    from .repo import get_open_case_request, resolve_case_request
+    
+    # Get case
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    # Verify status
+    if case.status != "needs_info":
+        raise HTTPException(status_code=409, detail="Case is not awaiting resubmission")
+    
+    # Get open request
+    open_request = get_open_case_request(case_id)
+    if not open_request:
+        raise HTTPException(status_code=404, detail="No open info request found")
+    
+    # Resolve request
+    resolved = resolve_case_request(open_request["id"])
+    if not resolved:
+        raise HTTPException(status_code=500, detail="Failed to resolve request")
+    
+    # Extract actor
+    actor_role = get_role(request)
+    actor_id = get_actor(request)
+    
+    # Update case status to in_review
+    update_case(case_id, CaseUpdateInput(status="in_review"))
+    
+    # Create request_info_resubmitted event
+    message = f"Resubmitted with additional information (Submission: {input_data.submissionId})"
+    if input_data.note:
+        message += f": {input_data.note}"
+    
+    create_case_event(
+        case_id=case_id,
+        event_type="request_info_resubmitted",
+        actor_role=actor_role,
+        actor_id=actor_id,
+        message=message,
+        payload_dict={
+            "submission_id": input_data.submissionId,
+            "note": input_data.note,
+            "request_id": open_request["id"],
+        }
+    )
+    
+    # Create status_changed event
+    create_case_event(
+        case_id=case_id,
+        event_type="status_changed",
+        actor_role=actor_role,
+        actor_id=actor_id,
+        message="Status changed from needs_info to in_review (resubmitted)",
+        payload_dict={"from": "needs_info", "to": "in_review"}
+    )
+    
+    # Phase 7.4: Trigger auto-recompute of decision intelligence
+    from app.intelligence.lifecycle import request_recompute
+    request_recompute(
+        case_id=case_id,
+        reason="request_info_resubmitted",
+        event_type="request_info_resubmitted"
+    )
+    
+    # Phase 7.10: Auto-recompute with throttle
+    from app.intelligence.autorecompute import maybe_recompute_case_intelligence
+    maybe_recompute_case_intelligence(
+        case_id=case_id,
+        reason="request_info_resubmitted",
+        actor=actor_id or "system"
+    )
+    
+    # Get updated case
+    updated_case = get_case(case_id)
+    return updated_case
