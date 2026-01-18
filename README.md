@@ -3,6 +3,9 @@
 > A regulatory copilot playground for controlled substances and drug distribution flows.  
 > Built with FastAPI + React, RAG, multi-agent architecture, and DevSupport tooling.
 
+**🚀 Live Demo**: [autocomply-ai.vercel.app](https://autocomply-ai.vercel.app) *(Frontend preview - backend runs locally)*  
+**📘 Deployment Guide**: See [DEPLOYMENT.md](./DEPLOYMENT.md)
+
 ## Quick Start
 
 ### Development
