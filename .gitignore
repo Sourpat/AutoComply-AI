@@ -38,7 +38,12 @@ frontend/logs/
 # Node
 node_modules/
 frontend/node_modules/
-frontend/package-lock.json
+
+# Keep lockfiles (needed for Vercel npm ci)
+!**/package-lock.json
+!**/npm-shrinkwrap.json
+!**/pnpm-lock.yaml
+!**/yarn.lock
 
 # Frontend build output
 frontend/dist/
