@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useRole, getRoleDisplayName, getRoleIcon, type UserRole } from "../context/RoleContext";
+import { API_BASE } from "../lib/api";
 
 type AppHeaderProps = {
   onToggleDevSupport?: () => void;
@@ -20,7 +21,7 @@ const navConfig: NavItem[] = [
   { to: "/chat", label: "Chat", group: "primary" },
   { to: "/console", label: "Console", group: "primary" },
   
-  // Admin items (shown when unlocked)
+  // Admin items (controlled by feature flags)
   { to: "/admin/review", label: "Review Queue", group: "admin" },
   { to: "/admin/ops", label: "Ops", group: "admin" },
   
@@ -33,8 +34,30 @@ const navConfig: NavItem[] = [
   { to: "/analytics", label: "Analytics", group: "more" },
 ];
 
+// Check if admin features are enabled via feature flags OR localStorage
 function isAdminUnlocked(): boolean {
-  return localStorage.getItem("admin_unlocked") === "true";
+  const metaEnv = (import.meta as any)?.env ?? {};
+  
+  // Priority 1: Check feature flag environment variables
+  // VITE_ENABLE_REVIEW_QUEUE and VITE_ENABLE_OPS
+  const enableReviewQueue = metaEnv.VITE_ENABLE_REVIEW_QUEUE;
+  const enableOps = metaEnv.VITE_ENABLE_OPS;
+  
+  // If explicitly disabled via env vars, return false
+  if (enableReviewQueue === 'false' || enableReviewQueue === '0') return false;
+  if (enableOps === 'false' || enableOps === '0') return false;
+  
+  // If explicitly enabled via env vars, return true
+  if (enableReviewQueue === 'true' || enableReviewQueue === '1') return true;
+  if (enableOps === 'true' || enableOps === '1') return true;
+  
+  // Priority 2: Check localStorage (runtime unlock for demos)
+  if (localStorage.getItem("admin_unlocked") === "true") return true;
+  
+  // Default: ENABLED (show admin nav items by default)
+  // This ensures localhost and Vercel production have same behavior
+  // unless explicitly disabled via env vars
+  return true;
 }
 
 // Dropdown component
@@ -249,6 +272,76 @@ function MobileMenu({
   );
 }
 
+// Build stamp component - shows build info in production
+function BuildStamp() {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const metaEnv = (import.meta as any)?.env ?? {};
+  
+  const gitSha = (metaEnv.VITE_GIT_SHA || 'unknown').substring(0, 7);
+  const mode = metaEnv.MODE || 'development';
+  
+  return (
+    <div className="relative hidden sm:block">
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-mono ring-1 bg-slate-900/50 text-slate-400 ring-slate-700/50 hover:ring-cyan-500/40 transition-all"
+        title="Build info"
+        aria-label="Show build information"
+        aria-expanded={isExpanded}
+      >
+        <span className="text-cyan-400">◉</span>
+        <span className="hidden md:inline">{gitSha}</span>
+      </button>
+      
+      {isExpanded && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setIsExpanded(false)}
+          />
+          
+          <div className="absolute right-0 mt-1 w-80 rounded-lg bg-slate-900 ring-1 ring-slate-700 shadow-lg z-50 p-3">
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between items-center border-b border-slate-700 pb-2">
+                <span className="font-semibold text-slate-200">Build Info</span>
+                <button
+                  onClick={() => setIsExpanded(false)}
+                  className="text-slate-500 hover:text-slate-300"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              <div>
+                <div className="text-slate-500 mb-0.5">Git SHA</div>
+                <div className="font-mono text-slate-200 bg-slate-950/50 px-2 py-1 rounded">
+                  {metaEnv.VITE_GIT_SHA || 'unknown'}
+                </div>
+              </div>
+              
+              <div>
+                <div className="text-slate-500 mb-0.5">Mode</div>
+                <div className="font-mono text-slate-200 bg-slate-950/50 px-2 py-1 rounded">
+                  {mode}
+                </div>
+              </div>
+              
+              <div>
+                <div className="text-slate-500 mb-0.5">API Base URL</div>
+                <div className="font-mono text-slate-200 bg-slate-950/50 px-2 py-1 rounded break-all">
+                  {API_BASE}
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
   const [showAdmin, setShowAdmin] = useState(isAdminUnlocked());
   const { role, setRole } = useRole();
@@ -347,8 +440,11 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
             )}
           </nav>
 
-          {/* Right: Role & DevSupport */}
+          {/* Right: Build Info, Role & DevSupport */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Build stamp (production-visible) */}
+            <BuildStamp />
+            
             {/* Role Switcher */}
             <div className="relative">
               <button
