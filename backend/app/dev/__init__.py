@@ -5,12 +5,13 @@ TEMPORARY endpoints for diagnosing data consistency issues.
 Should be removed in production or protected by dev-mode flag.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Header
 from pydantic import BaseModel
 from typing import List, Optional
 import logging
 
 from src.core.db import execute_sql
+from src.config import get_settings
 from app.submissions.repo import list_submissions
 from app.workflow.repo import list_cases
 from app.submissions.models import SubmissionListFilters
@@ -182,12 +183,16 @@ class SeedDemoResponse(BaseModel):
 @router.post("/seed", response_model=SeedDemoResponse)
 def seed_demo_endpoint(
     admin_unlocked: bool = Query(False, description="Admin unlock flag (set to 1 for access)"),
-    x_user_role: Optional[str] = Query(None, alias="x-user-role", description="User role header")
+    x_user_role: Optional[str] = Query(None, alias="x-user-role", description="User role header"),
+    authorization: Optional[str] = Header(None, description="Bearer token for authentication")
 ):
     """
     Manually trigger demo data seeding.
     
-    **Authorization**: Requires admin_unlocked=1 OR x-user-role=devsupport
+    **Authorization** (any of the following):
+    - Authorization: Bearer <DEV_SEED_TOKEN> header (if DEV_SEED_TOKEN is set)
+    - admin_unlocked=1 query parameter
+    - x-user-role=devsupport query parameter
     
     Creates a small set of realistic demo workflow cases if the cases table is empty.
     Idempotent - safe to call multiple times (returns 0 cases created if already seeded).
@@ -203,21 +208,59 @@ def seed_demo_endpoint(
     - admin_unlocked: Set to 1 to bypass auth check
     - x-user-role: Set to "devsupport" for access
     
+    **Headers**:
+    - Authorization: Bearer <token> (if DEV_SEED_TOKEN is configured)
+    
     **Example**:
     ```
     POST /dev/seed?admin_unlocked=1
     POST /dev/seed?x-user-role=devsupport
+    POST /dev/seed -H "Authorization: Bearer <token>"
     ```
     
     Returns:
         SeedDemoResponse with number of cases created
     """
-    # Authorization check
-    if not admin_unlocked and x_user_role != "devsupport":
-        raise HTTPException(
-            status_code=403,
-            detail="Forbidden: Requires admin_unlocked=1 or x-user-role=devsupport"
-        )
+    settings = get_settings()
+    
+    # Authorization check (multi-layered)
+    authorized = False
+    
+    # 1. Check DEV_SEED_TOKEN if configured
+    if settings.DEV_SEED_TOKEN:
+        # If DEV_SEED_TOKEN is set, REQUIRE valid Authorization header
+        if authorization:
+            # Extract bearer token (case-insensitive)
+            token = authorization.strip()
+            # Handle "Bearer " prefix (case-insensitive)
+            if token.lower().startswith("bearer "):
+                token = token[7:].strip()  # Remove "Bearer " (7 chars)
+            
+            if token == settings.DEV_SEED_TOKEN:
+                authorized = True
+                logger.info("Seed endpoint authorized via DEV_SEED_TOKEN")
+        
+        # If DEV_SEED_TOKEN is set but Authorization is missing/wrong, reject
+        # (do NOT fall back to admin_unlocked or x-user-role when token is configured)
+        if not authorized:
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: DEV_SEED_TOKEN is configured, requires valid Authorization: Bearer <token> header"
+            )
+    else:
+        # 2. Fallback to admin_unlocked or devsupport role (only if DEV_SEED_TOKEN not set)
+        if admin_unlocked:
+            authorized = True
+            logger.info("Seed endpoint authorized via admin_unlocked=1")
+        elif x_user_role == "devsupport":
+            authorized = True
+            logger.info("Seed endpoint authorized via x-user-role=devsupport")
+        
+        if not authorized:
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: Requires admin_unlocked=1 or x-user-role=devsupport"
+            )
     
     # Import seed function
     from app.dev.seed_demo import seed_demo_data

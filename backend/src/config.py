@@ -107,6 +107,15 @@ class Settings(BaseSettings):
         default=False,
         description="Auto-seed demo workflow cases on startup if DB is empty"
     )
+    
+    # DEV_SEED_TOKEN: Optional token for protecting manual POST /dev/seed endpoint
+    # - If set, POST /dev/seed requires Authorization: Bearer <token> header
+    # - Falls back to admin_unlocked=1 or x-user-role=devsupport if not set
+    # - Recommended for production deployments to prevent unauthorized seeding
+    DEV_SEED_TOKEN: str | None = Field(
+        default=None,
+        description="Optional bearer token for POST /dev/seed endpoint protection"
+    )
 
     # Runtime (legacy)
     ENV: str = "development"
