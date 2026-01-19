@@ -5,15 +5,17 @@ import './index.css'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { RagDebugProvider } from './devsupport/RagDebugContext'
 import { RoleProvider } from './context/RoleContext'
+import { API_BASE } from './lib/api'
 
-// Dev-only: Log API configuration
+// Boot-time log: Show resolved API base URL (production-safe)
+console.log('[AutoComply] Resolved API base URL:', API_BASE)
+
+// Dev-only: Additional debug info
 if (import.meta.env.DEV) {
-  const apiBase = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || '').trim()
-  const isDev = import.meta.env.VITE_APP_ENV !== 'prod'
   console.log('[AutoComply Dev]', {
-    apiBase: apiBase || '(using Vite proxy or same-origin)',
     env: import.meta.env.VITE_APP_ENV || 'dev',
-    mode: import.meta.env.MODE
+    mode: import.meta.env.MODE,
+    gitSha: import.meta.env.VITE_GIT_SHA || '(not set)'
   })
 }
 

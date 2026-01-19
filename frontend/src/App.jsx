@@ -20,8 +20,10 @@ import { ProtectedAdminRoute } from "./components/ProtectedAdminRoute";
 import { ReviewQueuePage } from "./pages/ReviewQueuePage";
 import CoverageDashboardPage from "./pages/CoverageDashboardPage";
 import { AnalyticsDashboardPage } from "./pages/AnalyticsDashboardPage";
+import { DiagnosticsBanner } from "./components/DiagnosticsBanner";
 // New submission pages
 import { OhioTdddSubmissionPage } from "./pages/OhioTdddSubmissionPage";
+
 import { NyPharmacyLicenseSubmissionPage } from "./pages/NyPharmacyLicenseSubmissionPage";
 import { CsfFacilitySubmissionPage } from "./pages/CsfFacilitySubmissionPage";
 
@@ -81,6 +83,7 @@ export default function App() {
           </Routes>
         </Layout>
         <BackendConnectionIndicator />
+        <DiagnosticsBanner />
       </BrowserRouter>
     </ErrorBoundary>
   );
