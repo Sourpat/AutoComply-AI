@@ -70,3 +70,10 @@ openapi.json
 backend/.venv*/
 backend/.venv311/
 
+
+# Local notes/scripts
+DEMO_SEED_IMPLEMENTATION.md
+DEPLOYMENT_FIXES_SUMMARY.md
+VERCEL_UI_EMPTY_ROOT_CAUSE.md
+verify_deployment_fixes.ps1
+
