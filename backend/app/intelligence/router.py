@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Request, Query
 from pydantic import BaseModel
 
 from app.core.authz import get_role, require_admin
+from app.auth.permissions import require_role, check_permission_or_raise  # Phase 7.27
 from app.intelligence.models import (
     DecisionIntelligenceResponse,
     ComputeIntelligenceRequest,
@@ -396,6 +397,7 @@ def get_executive_summary_endpoint(
     summary="Recompute Decision Intelligence (v2)",
     description="Recompute decision intelligence for a case with gap/bias detection (admin/devsupport only).",
 )
+@require_role("admin", "devsupport")  # Phase 7.27: Enforce RBAC
 def recompute_intelligence_endpoint(
     case_id: str,
     request: Request,
@@ -403,24 +405,20 @@ def recompute_intelligence_endpoint(
     body: Optional[ComputeIntelligenceRequest] = None,
 ):
     """
-    Recompute decision intelligence v2 for a case.
+    Recompute decision intelligence v2 for a case (Phase 7.27: RBAC protected).
     
     This endpoint is restricted to admin and devsupport roles.
     It recomputes all intelligence metrics with gap/bias detection and emits a case event.
     
-    Local dev support:
+    Authorization:
     - Header: x-user-role=admin or x-role=devsupport
-    - Query param: ?admin_unlocked=1
+    - Query param: ?admin_unlocked=1 (dev/testing only)
+    
+    Returns:
+        403: If role not permitted (verifier cannot recompute)
     """
     # Get actor context (role + admin unlock)
     ctx = get_actor_context(request)
-    
-    # Check authorization: admin/devsupport role OR admin_unlocked
-    if ctx["role"] not in ["admin", "devsupport"] and not ctx["admin_unlocked"]:
-        raise HTTPException(
-            status_code=403,
-            detail="Only admin and devsupport can recompute intelligence",
-        )
     
     # Try to get decision_type from case
     try:
@@ -779,4 +777,455 @@ def get_intelligence_history_endpoint(
             break
     
     return history_entries
+
+
+# ============================================================================
+# Phase 7.20: Audit Trail Export
+# ============================================================================
+
+@router.get(
+    "/workflow/cases/{case_id}/audit/export",
+    summary="Export Complete Audit Trail",
+    description="Export full intelligence history with integrity verification and cryptographic signature (Phase 7.26, 7.27: RBAC).",
+)
+@require_role("admin", "verifier", "devsupport")  # Phase 7.27: All authenticated roles
+def export_audit_trail(
+    case_id: str,
+    request: Request,  # Phase 7.27: Added for RBAC
+    include_payload: bool = Query(default=False, description="Include full intelligence payloads (large)"),
+    include_evidence: bool = Query(default=False, description="Include evidence snapshots (Phase 7.24)")
+):
+    """
+    Export complete audit trail for a case with integrity verification and HMAC signature (Phase 7.20, 7.26).
+    
+    Returns full history with:
+    - All history entries with integrity fields
+    - Audit chain verification results
+    - Duplicate detection analysis
+    - Metadata about the export
+    - HMAC-SHA256 signature for tamper detection (Phase 7.26)
+    
+    Args:
+        case_id: Case UUID
+        include_payload: Whether to include full intelligence payload (default: False for size)
+        include_evidence: Whether to include evidence snapshots (Phase 7.24, default: False)
+        
+    Returns:
+        JSON export with:
+        - metadata: Export timestamp, case_id, entry count
+        - integrity_check: Audit chain verification results
+        - duplicate_analysis: Duplicate computation detection
+        - history: List of all history entries
+        - signature: HMAC-SHA256 signature metadata (Phase 7.26)
+        - canonicalization: Signing canonicalization details (Phase 7.26)
+        
+    Example:
+        GET /workflow/cases/abc-123/audit/export?include_payload=false&include_evidence=true
+        
+    Response:
+        {
+            "metadata": {
+                "case_id": "abc-123",
+                "export_timestamp": "2026-01-19T10:00:00Z",
+                "total_entries": 5,
+                "include_payload": false
+            },
+            "integrity_check": {
+                "is_valid": true,
+                "broken_links": [],
+                "orphaned_entries": []
+            },
+            "duplicate_analysis": {
+                "duplicates": [],
+                "total_unique_hashes": 5
+            },
+            "history": [...],
+            "signature": {
+                "alg": "HMAC-SHA256",
+                "key_id": "k1",
+                "value": "a1b2c3d4e5f6...",
+                "signed_at": "2026-01-20T10:00:00Z"
+            },
+            "canonicalization": {
+                "json": "sorted_keys_compact",
+                "exclude_fields": ["signature", "canonicalization"]
+            }
+        }
+    """
+    from datetime import datetime
+    from .repository import get_intelligence_history
+    from .integrity import verify_audit_chain, detect_duplicate_computations
+    from .signing import sign_audit_export  # Phase 7.26
+    from app.workflow.repo import get_case
+    from src.config import get_settings
+    
+    settings = get_settings()
+    
+    # Verify case exists
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
+    
+    # Get full history (no limit for export)
+    history_entries = get_intelligence_history(case_id, limit=1000)
+    
+    # Prepare export data
+    export_timestamp = datetime.utcnow().isoformat() + "Z"
+    
+    # Build history export (optionally exclude large payloads)
+    history_export = []
+    for entry in history_entries:
+        export_entry = {
+            "id": entry["id"],
+            "computed_at": entry["computed_at"],
+            "created_at": entry["created_at"],
+            "actor": entry["actor"],
+            "reason": entry["reason"],
+            "previous_run_id": entry.get("previous_run_id"),
+            "triggered_by": entry.get("triggered_by"),
+            "input_hash": entry.get("input_hash"),
+        }
+        
+        # Include summary confidence metrics
+        payload = entry.get("payload", {})
+        export_entry["confidence_score"] = payload.get("confidence_score")
+        export_entry["confidence_band"] = payload.get("confidence_band")
+        export_entry["rules_passed"] = payload.get("rules_passed")
+        export_entry["rules_total"] = payload.get("rules_total")
+        export_entry["gap_count"] = len(payload.get("gaps", []))
+        export_entry["bias_count"] = len(payload.get("bias_flags", []))
+        
+        # Optionally include full payload
+        if include_payload:
+            export_entry["payload"] = payload
+        
+        # Phase 7.24: Optionally include evidence snapshot
+        if include_evidence:
+            export_entry["evidence_hash"] = entry.get("evidence_hash")
+            export_entry["evidence_version"] = entry.get("evidence_version")
+            export_entry["evidence_snapshot"] = entry.get("evidence_snapshot")
+        
+        history_export.append(export_entry)
+    
+    # Run integrity checks
+    integrity_check = verify_audit_chain(history_entries)
+    
+    # Detect duplicate computations
+    duplicates = detect_duplicate_computations(history_entries)
+    unique_hashes = len(set(e.get("input_hash") for e in history_entries if e.get("input_hash")))
+    
+    duplicate_analysis = {
+        "duplicates": duplicates,
+        "total_unique_hashes": unique_hashes,
+        "total_entries": len(history_entries),
+        "has_duplicates": len(duplicates) > 0
+    }
+    
+    # Build export response (unsigned)
+    export_data = {
+        "metadata": {
+            "case_id": case_id,
+            "export_timestamp": export_timestamp,
+            "total_entries": len(history_entries),
+            "include_payload": include_payload,
+            "include_evidence": include_evidence,  # Phase 7.24
+            "format_version": "1.1"  # Phase 7.26: Bumped for signature support
+        },
+        "integrity_check": integrity_check,
+        "duplicate_analysis": duplicate_analysis,
+        "history": history_export
+    }
+    
+    # Phase 7.26: Sign the export
+    signed_export = sign_audit_export(
+        export_data,
+        secret=settings.AUDIT_SIGNING_SECRET,
+        key_id=settings.AUDIT_SIGNING_KEY_ID
+    )
+    
+    return signed_export
+
+
+# ============================================================================
+# Phase 7.24: Evidence Snapshot Retrieval
+# ============================================================================
+
+@router.get(
+    "/workflow/cases/{case_id}/history/{run_id}/evidence",
+    summary="Get Evidence Snapshot for History Run",
+    description="Retrieve evidence snapshot used for a specific intelligence computation run (Phase 7.24, 7.27: RBAC).",
+)
+@require_role("admin", "verifier", "devsupport")  # Phase 7.27: All authenticated roles
+def get_evidence_snapshot_endpoint(
+    case_id: str,
+    run_id: str,
+    request: Request,  # Phase 7.27: Added for RBAC
+):
+    """
+    Get evidence snapshot for a specific intelligence history run (Phase 7.24).
+    
+    Returns the exact evidence state at computation time, including:
+    - Case metadata (status, timestamps)
+    - Submission fields (sanitized, no PII)
+    - Attachment metadata (count, types, sizes)
+    - Request info response count
+    - Evidence hash for tamper detection
+    
+    Args:
+        case_id: Case UUID
+        run_id: History run ID (e.g., "hist_abc123")
+        
+    Returns:
+        Dict with evidence_snapshot, evidence_hash, evidence_version, computed_at
+        
+    Example:
+        GET /workflow/cases/abc-123/history/hist_xyz/evidence
+        
+    Response:
+        {
+            "run_id": "hist_xyz",
+            "case_id": "abc-123",
+            "computed_at": "2026-01-20T10:00:00Z",
+            "evidence_version": "v1.0",
+            "evidence_hash": "a1b2c3d4...",
+            "evidence_snapshot": {
+                "snapshot_at": "2026-01-20T10:00:00Z",
+                "case": {"status": "pending_verification", ...},
+                "submission": {"fields": {...}, "field_count": 10},
+                "attachments": [{...}],
+                "request_info_responses": 2
+            }
+        }
+        
+    Raises:
+        404: If case or run_id not found
+        404: If evidence snapshot not available for this run
+    """
+    from .repository import get_intelligence_history
+    from src.core.db import execute_sql
+    
+    # Verify case exists
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
+    
+    # Get specific history entry
+    row = execute_sql(
+        """
+        SELECT 
+            id, case_id, computed_at,
+            evidence_snapshot, evidence_hash, evidence_version
+        FROM intelligence_history
+        WHERE id = :run_id AND case_id = :case_id
+        LIMIT 1
+        """,
+        {"run_id": run_id, "case_id": case_id}
+    )
+    
+    if not row:
+        raise HTTPException(status_code=404, detail=f"History run not found: {run_id}")
+    
+    entry = row[0]
+    
+    # Check if evidence snapshot exists
+    if not entry.get("evidence_snapshot"):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Evidence snapshot not available for run {run_id} (run may predate Phase 7.24)"
+        )
+    
+    # Parse evidence snapshot
+    try:
+        evidence_snapshot = json.loads(entry["evidence_snapshot"])
+    except:
+        raise HTTPException(status_code=500, detail="Failed to parse evidence snapshot")
+    
+    # Return evidence data
+    return {
+        "run_id": entry["id"],
+        "case_id": entry["case_id"],
+        "computed_at": entry["computed_at"],
+        "evidence_version": entry.get("evidence_version"),
+        "evidence_hash": entry.get("evidence_hash"),
+        "evidence_snapshot": evidence_snapshot
+    }
+
+
+# ============================================================================
+# Phase 7.26: Audit Signature Verification
+# ============================================================================
+
+@router.post(
+    "/workflow/cases/audit/verify",
+    summary="Verify Audit Export Signature",
+    description="Verify HMAC-SHA256 signature and integrity of an audit export JSON (Phase 7.26, 7.27: RBAC).",
+)
+@require_role("admin", "verifier", "devsupport")  # Phase 7.27: All authenticated roles
+async def verify_audit_export_endpoint(request: Request):
+    """
+    Verify the cryptographic signature and integrity of an audit export.
+    
+    Accepts a signed audit export JSON (from GET /audit/export) and verifies:
+    - HMAC-SHA256 signature validity
+    - Audit chain integrity (recomputes chain verification)
+    
+    Args:
+        request: Request body containing the signed audit export JSON
+        
+    Returns:
+        Verification result with:
+        - signature_valid: bool (signature matches)
+        - integrity_valid: bool (audit chain is valid)
+        - key_id: str (key identifier used)
+        - algorithm: str (signing algorithm)
+        - signed_at: str (signature timestamp)
+        - warnings: list (non-critical issues)
+        - errors: list (critical failures)
+        
+    Example:
+        POST /workflow/cases/audit/verify
+        Body: <signed audit export JSON>
+        
+    Response:
+        {
+            "signature_valid": true,
+            "integrity_valid": true,
+            "key_id": "k1",
+            "algorithm": "HMAC-SHA256",
+            "signed_at": "2026-01-20T10:00:00Z",
+            "warnings": [],
+            "errors": []
+        }
+        
+    Raises:
+        400: If request body is not valid JSON
+        400: If signature metadata is missing
+    """
+    from .signing import verify_audit_export
+    from .integrity import verify_audit_chain
+    from src.config import get_settings
+    import json
+    
+    settings = get_settings()
+    
+    # Parse request body as JSON
+    try:
+        body_bytes = await request.body()
+        signed_export = json.loads(body_bytes)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Request body must be valid JSON")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse request body: {str(e)}")
+    
+    # Verify signature
+    signature_result = verify_audit_export(signed_export, settings.AUDIT_SIGNING_SECRET)
+    
+    # Also verify integrity chain if history is present
+    integrity_valid = True
+    integrity_errors = []
+    
+    if "history" in signed_export:
+        # Reconstruct history entries format expected by verify_audit_chain
+        history_entries = []
+        for h in signed_export["history"]:
+            entry = {
+                "id": h["id"],
+                "previous_run_id": h.get("previous_run_id"),
+                "input_hash": h.get("input_hash"),
+                "computed_at": h.get("computed_at")
+            }
+            history_entries.append(entry)
+        
+        # Verify chain
+        chain_result = verify_audit_chain(history_entries)
+        integrity_valid = chain_result.get("is_valid", False)
+        
+        if not integrity_valid:
+            integrity_errors.append("Audit chain integrity check failed")
+            if chain_result.get("broken_links"):
+                integrity_errors.append(f"{len(chain_result['broken_links'])} broken links detected")
+            if chain_result.get("orphaned_entries"):
+                integrity_errors.append(f"{len(chain_result['orphaned_entries'])} orphaned entries detected")
+    
+    # Combine results
+    all_errors = signature_result.get("errors", []) + integrity_errors
+    
+    return {
+        "signature_valid": signature_result["signature_valid"],
+        "integrity_valid": integrity_valid,
+        "key_id": signature_result.get("key_id", "unknown"),
+        "algorithm": signature_result.get("algorithm", "unknown"),
+        "signed_at": signature_result.get("signed_at", "unknown"),
+        "warnings": [],
+        "errors": all_errors
+    }
+
+
+@router.get(
+    "/workflow/cases/{case_id}/audit/verify",
+    summary="Verify Case Audit Trail (Server-Side)",
+    description="Export and verify audit trail for a case in one operation (Phase 7.26, 7.27: RBAC).",
+)
+@require_role("admin", "verifier", "devsupport")  # Phase 7.27: All authenticated roles
+def verify_case_audit_trail(case_id: str, request: Request):  # Phase 7.27: Added request for RBAC
+    """
+    Server-side convenience endpoint: export audit trail and immediately verify it (Phase 7.27: RBAC protected).
+    
+    Useful for quick verification without downloading/uploading files.
+    
+    Args:
+        case_id: Case UUID
+        request: Request object (for RBAC)
+        
+    Returns:
+        Same verification result as POST /audit/verify
+        
+    Example:
+        GET /workflow/cases/abc-123/audit/verify
+        
+    Response:
+        {
+            "signature_valid": true,
+            "integrity_valid": true,
+            "key_id": "k1",
+            ...
+        }
+    """
+    from .signing import verify_audit_export
+    from .integrity import verify_audit_chain
+    from .repository import get_intelligence_history
+    from src.config import get_settings
+    
+    settings = get_settings()
+    
+    # Re-export (this will sign it) - Phase 7.27: Pass request for RBAC
+    signed_export = export_audit_trail(case_id, request, include_payload=False, include_evidence=False)
+    
+    # Verify signature
+    signature_result = verify_audit_export(signed_export, settings.AUDIT_SIGNING_SECRET)
+    
+    # Verify integrity
+    history_entries = get_intelligence_history(case_id, limit=1000)
+    chain_result = verify_audit_chain(history_entries)
+    integrity_valid = chain_result.get("is_valid", False)
+    
+    integrity_errors = []
+    if not integrity_valid:
+        integrity_errors.append("Audit chain integrity check failed")
+        if chain_result.get("broken_links"):
+            integrity_errors.append(f"{len(chain_result['broken_links'])} broken links detected")
+        if chain_result.get("orphaned_entries"):
+            integrity_errors.append(f"{len(chain_result['orphaned_entries'])} orphaned entries detected")
+    
+    all_errors = signature_result.get("errors", []) + integrity_errors
+    
+    return {
+        "signature_valid": signature_result["signature_valid"],
+        "integrity_valid": integrity_valid,
+        "key_id": signature_result.get("key_id", "unknown"),
+        "algorithm": signature_result.get("algorithm", "unknown"),
+        "signed_at": signature_result.get("signed_at", "unknown"),
+        "warnings": [],
+        "errors": all_errors
+    }
 
