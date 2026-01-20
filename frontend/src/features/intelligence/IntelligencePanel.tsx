@@ -11,6 +11,7 @@ import { FreshnessIndicator } from "./FreshnessIndicator";
 import { RulesPanel } from "./RulesPanel";
 import { FieldIssuesPanel } from "./FieldIssuesPanel";
 import { ConfidenceHistoryPanel } from "./ConfidenceHistoryPanel";
+import { RecomputeModal } from "./RecomputeModal";
 
 interface IntelligencePanelProps {
   caseId: string;
@@ -36,6 +37,9 @@ export const IntelligencePanel: React.FC<IntelligencePanelProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [recomputing, setRecomputing] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
+  const [showRecomputeModal, setShowRecomputeModal] = useState(false);
+  const [lastRecomputeTime, setLastRecomputeTime] = useState<number | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
 
   // Fetch intelligence data
   const fetchIntelligence = async (skipCache = false) => {
@@ -68,14 +72,25 @@ export const IntelligencePanel: React.FC<IntelligencePanelProps> = ({
     }
   };
 
-  // Recompute intelligence
-  const handleRecompute = async () => {
+  // Open recompute modal
+  const handleOpenRecomputeModal = () => {
+    setShowRecomputeModal(true);
+  };
+
+  // Recompute intelligence (called from modal)
+  const handleRecompute = async (reason: string, forceRefresh: boolean) => {
     setRecomputing(true);
     setError(null);
+    setSuccessToast(null);
 
     try {
-      // Phase 7.7: Call recompute endpoint (now includes admin_unlocked=1)
+      console.log('[IntelligencePanel] Recomputing intelligence...', { reason, forceRefresh });
+      
+      // Phase 7.19: Call recompute endpoint with reason
       await recomputeCaseIntelligence(caseId, decisionType);
+
+      // Record recompute time for cooldown
+      setLastRecomputeTime(Date.now());
 
       // Invalidate cache to force fresh fetch
       invalidateCachedIntelligence(caseId, decisionType);
@@ -89,15 +104,22 @@ export const IntelligencePanel: React.FC<IntelligencePanelProps> = ({
       // Cache the new result
       setCachedIntelligence(caseId, decisionType, freshData);
 
-      // Show success message
+      // Show success toast
+      const scoreText = `${freshData.confidence_score.toFixed(1)}% (${freshData.confidence_band})`;
+      setSuccessToast(`Intelligence recomputed successfully • Confidence: ${scoreText}`);
+      
+      // Auto-hide toast after 5 seconds
+      setTimeout(() => setSuccessToast(null), 5000);
+
       console.log('[IntelligencePanel] Recompute successful, confidence:', freshData.confidence_score);
 
-      // Trigger callback if provided
+      // Trigger callback if provided (refreshes confidence history)
       onRecomputeSuccess?.();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to recompute intelligence';
       setError(message);
       console.error('[IntelligencePanel] Recompute error:', err);
+      throw err; // Re-throw to show error in modal
     } finally {
       setRecomputing(false);
     }
@@ -194,9 +216,10 @@ export const IntelligencePanel: React.FC<IntelligencePanelProps> = ({
           {/* Recompute button (verifier/admin only) */}
           {canRecompute && (
             <button
-              onClick={handleRecompute}
+              onClick={handleOpenRecomputeModal}
               disabled={recomputing}
               className="rounded bg-blue-900/50 px-2.5 py-1 text-xs font-medium text-blue-200 hover:bg-blue-900/70 transition-colors border border-blue-700/50 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Recompute decision intelligence"
             >
               {recomputing ? (
                 <span className="flex items-center gap-1.5">
@@ -210,6 +233,20 @@ export const IntelligencePanel: React.FC<IntelligencePanelProps> = ({
           )}
         </div>
       </div>
+
+      {/* Success toast */}
+      {successToast && (
+        <div className="rounded border border-green-700/50 bg-green-950/20 px-3 py-2 flex items-start gap-2">
+          <span className="text-green-400 text-sm">✓</span>
+          <p className="text-xs text-green-300 flex-1">{successToast}</p>
+          <button
+            onClick={() => setSuccessToast(null)}
+            className="text-green-500 hover:text-green-300 text-xs"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Error message (if recompute failed but we have cached data) */}
       {error && intelligence && (
@@ -297,6 +334,15 @@ export const IntelligencePanel: React.FC<IntelligencePanelProps> = ({
           )}
         </div>
       )}
+
+      {/* Phase 7.19: Recompute modal */}
+      <RecomputeModal
+        isOpen={showRecomputeModal}
+        onClose={() => setShowRecomputeModal(false)}
+        onConfirm={handleRecompute}
+        lastRecomputeTime={lastRecomputeTime}
+        cooldownSeconds={30}
+      />
     </div>
   );
 };

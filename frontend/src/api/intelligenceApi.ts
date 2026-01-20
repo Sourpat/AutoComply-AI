@@ -100,6 +100,10 @@ export interface IntelligenceHistoryEntry {
   bias_count: number;
   trigger: 'manual' | 'submission' | 'evidence' | 'request_info' | 'decision' | 'unknown';
   actor_role: string;
+  // Phase 7.25: Policy versioning
+  policy_id?: string;
+  policy_version?: string;
+  policy_hash?: string;
 }
 
 // ============================================================================

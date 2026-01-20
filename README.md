@@ -81,6 +81,114 @@ For detailed deployment instructions, see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT
 
 ---
 
+## Phase 7 Verification (Production E2E Testing)
+
+**Phase 7.18–7.20** introduced confidence history tracking, recompute UX with safety, and audit trail integrity hardening. To verify these features work correctly in production:
+
+### Run Automated E2E Verification
+
+```powershell
+# Set environment variables
+$env:VITE_API_BASE_URL = "https://autocomply-ai.onrender.com"  # Your Render backend
+$env:DEV_SEED_TOKEN = "your-secret-token"  # Optional: for seeding test data
+
+# Run verification script
+.\scripts\phase7_21_verify_prod.ps1
+```
+
+**What it verifies:**
+- ✅ Backend health and connectivity
+- ✅ Phase 7.18: Confidence history retrieval
+- ✅ Phase 7.19: Recompute with reason workflow
+- ✅ Phase 7.20: Audit trail integrity (input_hash, previous_run_id chain)
+- ✅ Phase 7.20: Audit export with integrity verification
+- ✅ Input hash stability and duplicate detection
+
+**Optional flags:**
+```powershell
+# Skip seed endpoint (use existing data)
+.\scripts\phase7_21_verify_prod.ps1 -SkipSeed
+
+# Verbose output with test details
+.\scripts\phase7_21_verify_prod.ps1 -Verbose
+
+# Custom backend URL
+.\scripts\phase7_21_verify_prod.ps1 -BackendUrl "https://your-backend.com"
+```
+
+### Manual Verification Checklist (Frontend UI)
+
+After deploying to Vercel, verify these features manually:
+
+**Phase 7.18 - Confidence History:**
+1. Navigate to `/console` → select any case
+2. Click "History" tab in case details
+3. Verify confidence history table shows past computations
+4. Check timestamps, scores, and confidence bands display correctly
+
+**Phase 7.19 - Recompute Modal:**
+1. Click "↻ Recompute" button on a case
+2. Modal should open with:
+   - Required reason field (textarea)
+   - Optional "Force refresh" checkbox
+   - 30-second cooldown timer (if recently recomputed)
+   - Keyboard shortcuts (Ctrl+Enter to submit, Escape to close)
+3. Submit recomputation with a reason
+4. Verify success toast appears and auto-dismisses
+5. Verify confidence score updates in Intelligence panel
+
+**Phase 7.20 - Audit Export:**
+1. In case details, navigate to History tab
+2. Look for "Export Audit Trail" button/link (if implemented in UI)
+3. Click to download/view audit JSON
+4. Verify JSON contains:
+   - `metadata` (case_id, export_timestamp, total_entries)
+   - `integrity_check` (is_valid: true, verified_entries)
+   - `duplicate_analysis` (has_duplicates, total_unique_hashes)
+   - `history` array with input_hash and previous_run_id fields
+
+**Phase 7.20 - Backend Connected Banner Fix:**
+1. Open site in fresh browser session (or clear sessionStorage)
+2. Banner should show for 3.5 seconds, then auto-dismiss
+3. Navigate to other pages → banner stays hidden
+4. Refresh page → banner stays hidden (same session)
+5. Open new tab → banner shows once, then hides
+
+### Required Environment Variables
+
+**Backend (Render):**
+```bash
+DEMO_SEED=1                    # Auto-seed demo data on startup
+DEV_SEED_TOKEN=your-secret     # Token for protected /dev/seed endpoint
+DATABASE_URL=postgresql://...   # Production database
+CORS_ORIGINS=https://your-frontend.vercel.app
+```
+
+**Frontend (Vercel):**
+```bash
+VITE_API_BASE_URL=https://autocomply-ai.onrender.com  # Your Render backend
+VITE_APP_ENV=prod
+VITE_ENABLE_DEVSUPPORT=false   # Disable DevSupport in production
+```
+
+### Troubleshooting
+
+**Script fails with "No cases found":**
+- Run with `-DevSeedToken` to create test data
+- Or manually create a case via `/console` UI first
+
+**Audit chain integrity fails:**
+- Check backend logs for migration errors
+- Verify `migrate_intelligence_history_integrity.py` ran successfully
+- Re-run migration: `.venv/Scripts/python scripts/migrate_intelligence_history_integrity.py`
+
+**Frontend features not visible:**
+- Clear browser cache and sessionStorage
+- Verify Vercel deployment completed successfully
+- Check browser console for errors
+
+---
+
 ## Overview
 
 AutoComply AI simulates a realistic compliance environment where:

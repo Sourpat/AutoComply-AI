@@ -50,10 +50,53 @@ interface AuditExportResponse {
     input_hash?: string | null;
     payload?: any;
   }>;
+  // Phase 7.26: Signature metadata
+  signature?: {
+    alg: string;
+    key_id: string;
+    value: string;
+    signed_at: string;
+  };
+  canonicalization?: {
+    json: string;
+    exclude_fields: string[];
+  };
+}
+
+// Phase 7.24: Evidence snapshot types
+interface EvidenceSnapshotResponse {
+  run_id: string;
+  case_id: string;
+  computed_at: string;
+  evidence_version?: string;
+  evidence_hash?: string;
+  evidence_snapshot: {
+    snapshot_at: string;
+    case: {
+      status?: string;
+      decision_type?: string;
+      created_at?: string;
+      updated_at?: string;
+    };
+    submission: {
+      fields: Record<string, { present: boolean; type: string; length: number }>;
+      submitted_at?: string;
+      field_count: number;
+    } | null;
+    attachments: Array<{
+      id: string;
+      filename: string;
+      mime_type: string;
+      size_bytes: number;
+      uploaded_at: string;
+      category?: string;
+    }>;
+    request_info_responses: number;
+  };
 }
 
 /**
- * ConfidenceHistoryPanel Component (Phase 7.17, updated 7.22)
+ * ConfidenceHistoryPanel Component (Phase 7.17, updated 7.22, 7.23, 7.24)
  * 
  * Displays a timeline of intelligence computation history for a case.
  * Shows what changed over time and what triggered each recomputation.
@@ -89,6 +132,12 @@ export const ConfidenceHistoryPanel: React.FC<ConfidenceHistoryPanelProps> = ({
     current: IntelligenceHistoryEntry;
     previous: IntelligenceHistoryEntry;
   } | null>(null);
+  
+  // Phase 7.24: Evidence viewing state
+  const [viewingEvidence, setViewingEvidence] = useState<string | null>(null);
+  const [evidenceData, setEvidenceData] = useState<EvidenceSnapshotResponse | null>(null);
+  const [evidenceLoading, setEvidenceLoading] = useState(false);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -197,6 +246,9 @@ export const ConfidenceHistoryPanel: React.FC<ConfidenceHistoryPanelProps> = ({
     const previousBias = previousPayload.bias_flags || [];
     const biasDelta = currentBias.length - previousBias.length;
 
+    // Phase 7.25: Policy version change detection
+    const policyVersionChanged = current.policy_version !== previous.policy_version;
+
     return {
       decisionChanged,
       decision: {
@@ -229,7 +281,78 @@ export const ConfidenceHistoryPanel: React.FC<ConfidenceHistoryPanelProps> = ({
         newPassed: current.rules_passed,
         total: current.rules_total,
       },
+      // Phase 7.25: Policy version tracking
+      policyVersionChanged,
+      policyVersion: {
+        old: previous.policy_version || 'unknown',
+        new: current.policy_version || 'unknown',
+        oldHash: previous.policy_hash,
+        newHash: current.policy_hash,
+      },
     };
+  };
+
+  // Phase 7.24: View evidence snapshot for a run
+  const handleViewEvidence = async (runId: string) => {
+    setEvidenceLoading(true);
+    setEvidenceError(null);
+    setViewingEvidence(runId);
+
+    try {
+      const url = `${API_BASE}/workflow/cases/${caseId}/history/${runId}/evidence`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch evidence: ${response.status} ${response.statusText}`);
+      }
+
+      const data: EvidenceSnapshotResponse = await response.json();
+      setEvidenceData(data);
+
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load evidence';
+      setEvidenceError(message);
+      console.error('[ConfidenceHistoryPanel] Evidence fetch error:', err);
+    } finally {
+      setEvidenceLoading(false);
+    }
+  };
+
+  // Phase 7.24: Close evidence viewer
+  const handleCloseEvidence = () => {
+    setViewingEvidence(null);
+    setEvidenceData(null);
+    setEvidenceError(null);
+  };
+
+  // Phase 7.24: Download evidence JSON
+  const handleDownloadEvidence = () => {
+    if (!evidenceData) return;
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const filename = `autocomply_evidence_${evidenceData.run_id}_${timestamp}.json`;
+
+    const blob = new Blob([JSON.stringify(evidenceData, null, 2)], { type: 'application/json' });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(downloadUrl);
+  };
+
+  // Phase 7.24: Copy evidence hash to clipboard
+  const handleCopyHash = async () => {
+    if (!evidenceData?.evidence_hash) return;
+
+    try {
+      await navigator.clipboard.writeText(evidenceData.evidence_hash);
+      // Could add a toast notification here
+    } catch (err) {
+      console.error('[ConfidenceHistoryPanel] Failed to copy hash:', err);
+    }
   };
 
   // Calculate confidence delta between entries
@@ -441,15 +564,50 @@ export const ConfidenceHistoryPanel: React.FC<ConfidenceHistoryPanelProps> = ({
 
           {/* Success indicator */}
           {lastExport && lastExport.integrity_check.is_valid && (
-            <div className="mt-2 rounded border border-green-700/50 bg-green-950/20 px-2 py-1.5">
-              <p className="text-xs text-green-300">
-                ✓ Audit trail verified: {lastExport.integrity_check.verified_entries}/{lastExport.integrity_check.total_entries} entries validated
-                {lastExport.duplicate_analysis.has_duplicates && (
-                  <span className="ml-2 text-yellow-400">
-                    ({lastExport.duplicate_analysis.duplicates.length} duplicates detected)
-                  </span>
-                )}
-              </p>
+            <div className="mt-2 space-y-2">
+              <div className="rounded border border-green-700/50 bg-green-950/20 px-2 py-1.5">
+                <p className="text-xs text-green-300">
+                  ✓ Audit trail verified: {lastExport.integrity_check.verified_entries}/{lastExport.integrity_check.total_entries} entries validated
+                  {lastExport.duplicate_analysis.has_duplicates && (
+                    <span className="ml-2 text-yellow-400">
+                      ({lastExport.duplicate_analysis.duplicates.length} duplicates detected)
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              {/* Phase 7.26: Signature info */}
+              {lastExport.signature && (
+                <div className="rounded border border-blue-700/50 bg-blue-950/20 px-2 py-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 space-y-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-medium text-blue-300">
+                          🔐 Signed ({lastExport.signature.alg})
+                        </span>
+                        <span className="text-[10px] text-blue-400/70 font-mono">
+                          key: {lastExport.signature.key_id}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-blue-400/80 font-mono break-all">
+                        {lastExport.signature.value.substring(0, 24)}...{lastExport.signature.value.substring(lastExport.signature.value.length - 8)}
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (lastExport?.signature?.value) {
+                          await navigator.clipboard.writeText(lastExport.signature.value);
+                          // Could add toast notification here
+                        }
+                      }}
+                      className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors px-1.5 py-0.5 rounded border border-blue-700/50 bg-blue-900/30"
+                      title="Copy signature"
+                    >
+                      📋 Copy
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -528,14 +686,41 @@ export const ConfidenceHistoryPanel: React.FC<ConfidenceHistoryPanelProps> = ({
                     )}
                   </div>
 
+                  {/* Phase 7.25: Policy version display */}
+                  {entry.policy_version && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-zinc-600">
+                      <span className="text-zinc-700">Policy:</span>
+                      <span className="font-mono">{entry.policy_version}</span>
+                      {entry.policy_hash && (
+                        <>
+                          <span className="text-zinc-700">•</span>
+                          <span 
+                            className="font-mono text-zinc-700 cursor-help" 
+                            title={`Policy hash: ${entry.policy_hash}`}
+                          >
+                            {entry.policy_hash.substring(0, 8)}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
+
                   {/* Phase 7.23: Compare to previous button */}
                   {previous && (
-                    <div className="mt-2 pt-2 border-t border-zinc-800/50">
+                    <div className="mt-2 pt-2 border-t border-zinc-800/50 flex gap-2">
                       <button
                         onClick={() => handleCompare(entry, previous)}
                         className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
                       >
                         <span>⇄</span> Compare to previous
+                      </button>
+                      
+                      {/* Phase 7.24: View evidence button */}
+                      <button
+                        onClick={() => handleViewEvidence(entry.id)}
+                        className="text-[11px] text-green-400 hover:text-green-300 transition-colors flex items-center gap-1"
+                      >
+                        <span>📋</span> View evidence
                       </button>
                     </div>
                   )}
@@ -593,6 +778,31 @@ export const ConfidenceHistoryPanel: React.FC<ConfidenceHistoryPanelProps> = ({
                                 <span className={`font-medium ${getBandColor(diff.band.new)}`}>
                                   {diff.band.new}
                                 </span>
+                              </div>
+                            )}
+
+                            {/* Phase 7.25: Policy version change */}
+                            {diff.policyVersionChanged && (
+                              <div className="text-xs space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-zinc-500">Policy:</span>
+                                  <span className="text-zinc-400 font-mono text-[10px]">{diff.policyVersion.old}</span>
+                                  <span className="text-zinc-600">→</span>
+                                  <span className="text-orange-400 font-mono text-[10px]">{diff.policyVersion.new}</span>
+                                  <span className="ml-1 text-[10px] text-orange-400/80 bg-orange-400/10 px-1.5 py-0.5 rounded border border-orange-400/20">
+                                    ⚠️ Policy changed
+                                  </span>
+                                </div>
+                                {diff.policyVersion.newHash && diff.policyVersion.oldHash && (
+                                  <div className="ml-2 text-[10px] text-zinc-600">
+                                    <div className="font-mono">
+                                      Old hash: {diff.policyVersion.oldHash.substring(0, 12)}...
+                                    </div>
+                                    <div className="font-mono">
+                                      New hash: {diff.policyVersion.newHash.substring(0, 12)}...
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
 
@@ -679,6 +889,153 @@ export const ConfidenceHistoryPanel: React.FC<ConfidenceHistoryPanelProps> = ({
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Phase 7.24: Evidence Viewer Modal */}
+      {viewingEvidence && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-2xl max-h-[80vh] bg-zinc-900 rounded-lg border border-zinc-700 shadow-2xl overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+              <div>
+                <h3 className="text-sm font-medium text-zinc-200">Evidence Snapshot</h3>
+                <p className="text-xs text-zinc-500">Run: {viewingEvidence}</p>
+              </div>
+              <button
+                onClick={handleCloseEvidence}
+                className="text-zinc-400 hover:text-zinc-300 transition-colors text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {evidenceLoading && (
+                <div className="flex items-center justify-center py-8">
+                  <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+                </div>
+              )}
+
+              {evidenceError && (
+                <div className="rounded border border-red-700/50 bg-red-950/20 px-3 py-2">
+                  <p className="text-xs text-red-300">{evidenceError}</p>
+                </div>
+              )}
+
+              {evidenceData && (
+                <>
+                  {/* Evidence Hash */}
+                  <div className="rounded border border-zinc-800 bg-zinc-950/50 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-zinc-400">Evidence Hash</span>
+                      <button
+                        onClick={handleCopyHash}
+                        className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+                      >
+                        📋 Copy
+                      </button>
+                    </div>
+                    <code className="block text-[10px] text-zinc-300 font-mono break-all">
+                      {evidenceData.evidence_hash}
+                    </code>
+                    <div className="mt-1 text-[10px] text-zinc-600">
+                      Version: {evidenceData.evidence_version || 'unknown'}
+                    </div>
+                  </div>
+
+                  {/* Case State */}
+                  <div className="rounded border border-zinc-800 bg-zinc-950/50 p-3">
+                    <div className="text-xs font-medium text-zinc-400 mb-2">Case State</div>
+                    <div className="space-y-1 text-[11px]">
+                      <div className="flex justify-between">
+                        <span className="text-zinc-500">Status:</span>
+                        <span className="text-zinc-300">{evidenceData.evidence_snapshot.case.status}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-zinc-500">Type:</span>
+                        <span className="text-zinc-300">{evidenceData.evidence_snapshot.case.decision_type}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-zinc-500">Snapshot at:</span>
+                        <span className="text-zinc-300">
+                          {new Date(evidenceData.evidence_snapshot.snapshot_at).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Submission Fields */}
+                  {evidenceData.evidence_snapshot.submission && (
+                    <div className="rounded border border-zinc-800 bg-zinc-950/50 p-3">
+                      <div className="text-xs font-medium text-zinc-400 mb-2">
+                        Submission Fields ({evidenceData.evidence_snapshot.submission.field_count})
+                      </div>
+                      <div className="space-y-1 max-h-40 overflow-y-auto">
+                        {Object.entries(evidenceData.evidence_snapshot.submission.fields).map(([key, value]) => (
+                          <div key={key} className="flex justify-between text-[11px]">
+                            <span className="text-zinc-500">{key}:</span>
+                            <span className={value.present ? 'text-green-400' : 'text-red-400'}>
+                              {value.present ? `✓ ${value.type} (${value.length} chars)` : '✗ missing'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Attachments */}
+                  {evidenceData.evidence_snapshot.attachments.length > 0 && (
+                    <div className="rounded border border-zinc-800 bg-zinc-950/50 p-3">
+                      <div className="text-xs font-medium text-zinc-400 mb-2">
+                        Attachments ({evidenceData.evidence_snapshot.attachments.length})
+                      </div>
+                      <div className="space-y-1.5">
+                        {evidenceData.evidence_snapshot.attachments.map((att) => (
+                          <div key={att.id} className="text-[11px] text-zinc-300">
+                            <div className="font-medium">{att.filename}</div>
+                            <div className="text-zinc-500">
+                              {att.mime_type} • {(att.size_bytes / 1024).toFixed(1)} KB
+                              {att.category && ` • ${att.category}`}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Request Info Responses */}
+                  {evidenceData.evidence_snapshot.request_info_responses > 0 && (
+                    <div className="rounded border border-zinc-800 bg-zinc-950/50 p-3">
+                      <div className="text-xs font-medium text-zinc-400">Request Info Responses</div>
+                      <div className="text-[11px] text-zinc-300 mt-1">
+                        {evidenceData.evidence_snapshot.request_info_responses} response(s) on file
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            {evidenceData && (
+              <div className="border-t border-zinc-800 px-4 py-3 flex justify-end gap-2">
+                <button
+                  onClick={handleDownloadEvidence}
+                  className="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700"
+                >
+                  📥 Download JSON
+                </button>
+                <button
+                  onClick={handleCloseEvidence}
+                  className="rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

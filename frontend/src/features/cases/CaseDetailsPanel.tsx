@@ -41,6 +41,7 @@ import type { SubmissionRecord } from "../../submissions/submissionTypes";
 import { isAdmin as checkIsAdmin, getAuthHeaders } from "../../lib/authHeaders";
 import { IntelligencePanel } from "../intelligence/IntelligencePanel";
 import { ConfidenceBadge } from "../intelligence/ConfidenceBadge";
+import { ConfidenceHistoryPanel } from "../intelligence/ConfidenceHistoryPanel";
 import { resolveDecisionType } from "../../utils/decisionType";
 import { getCaseIntelligence } from "../../api/intelligenceApi";
 import { getCachedIntelligence } from "../../utils/intelligenceCache";
@@ -93,7 +94,7 @@ function mapApiAuditEvent(apiEvent: ApiAuditEvent): AuditEvent {
   };
 }
 
-type TabType = "summary" | "submission" | "playbook" | "workbench" | "explainability" | "timeline" | "notes" | "attachments";
+type TabType = "summary" | "submission" | "playbook" | "workbench" | "explainability" | "timeline" | "notes" | "attachments" | "history";
 
 interface CaseDetailsPanelProps {
   caseId: string;
@@ -1210,7 +1211,7 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
 
       {/* Tabs */}
       <div className="flex gap-1 px-6 border-b border-slate-200">
-        {(["summary", "submission", "playbook", "workbench", "explainability", "timeline", "notes", "attachments"] as TabType[]).map((tab) => (
+        {(["summary", "submission", "playbook", "workbench", "explainability", "timeline", "notes", "attachments", "history"] as TabType[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -2952,6 +2953,11 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
               )}
             </div>
           </div>
+        )}
+
+        {/* History Tab */}
+        {activeTab === "history" && (
+          <ConfidenceHistoryPanel caseId={caseId} limit={50} role={role} />
         )}
       </div>
 
