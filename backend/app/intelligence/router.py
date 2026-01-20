@@ -793,81 +793,73 @@ def get_intelligence_history_endpoint(
 
 @router.get(
     "/workflow/cases/{case_id}/audit/export",
-    summary="Export Complete Audit Trail",
-    description="Export full intelligence history with integrity verification and cryptographic signature (Phase 7.26, 7.27: RBAC).",
+    summary="Export Complete Audit Trail (Safe-by-default)",
+    description="Export intelligence history with redaction, retention, and HMAC signature (Phase 7.26, 7.27: RBAC, 7.28: Retention).",
 )
 @require_role("admin", "verifier", "devsupport")  # Phase 7.27: All authenticated roles
 def export_audit_trail(
     case_id: str,
     request: Request = None,  # Phase 7.27: Added for RBAC (optional for testing)
-    include_payload: bool = Query(default=False, description="Include full intelligence payloads (large)"),
-    include_evidence: bool = Query(default=False, description="Include evidence snapshots (Phase 7.24)")
+    include_payload: bool = Query(default=False, description="Include full intelligence payloads (admin only)"),
+    include_evidence: bool = Query(default=False, description="Include evidence snapshots (admin only)"),
+    safe_mode: Optional[bool] = Query(default=None, description="Safe redaction mode (verifier=forced, admin=optional)")
 ):
     """
-    Export complete audit trail for a case with integrity verification and HMAC signature (Phase 7.20, 7.26).
+    Export complete audit trail with safe-by-default redaction and retention (Phase 7.28).
     
-    Returns full history with:
-    - All history entries with integrity fields
-    - Audit chain verification results
-    - Duplicate detection analysis
-    - Metadata about the export
-    - HMAC-SHA256 signature for tamper detection (Phase 7.26)
+    Phase 7.28 Features:
+    - Safe mode redaction (removes PII, keeps metadata/hashes)
+    - Role-based permissions (verifier=safe only, admin=full access)
+    - Retention policy (auto-expire evidence/payload after N days)
+    - Signature computed on FINAL redacted payload
+    
+    Permission Matrix:
+    - verifier: Forced safe mode, no payload/evidence
+    - admin/devsupport: Can choose safe/full, can include payload/evidence
+    
+    Retention Policy:
+    - evidence_snapshot: Expires after EVIDENCE_RETENTION_DAYS (default 30)
+    - intelligence_payload: Expires after PAYLOAD_RETENTION_DAYS (default 90)
+    - Hashes (input_hash, evidence_hash) never expire
     
     Args:
         case_id: Case UUID
-        include_payload: Whether to include full intelligence payload (default: False for size)
-        include_evidence: Whether to include evidence snapshots (Phase 7.24, default: False)
+        include_payload: Include full payloads (admin only, subject to retention)
+        include_evidence: Include evidence snapshots (admin only, subject to retention)
+        safe_mode: If None, auto-determined by role (verifier=True, admin=False)
         
     Returns:
-        JSON export with:
-        - metadata: Export timestamp, case_id, entry count
-        - integrity_check: Audit chain verification results
-        - duplicate_analysis: Duplicate computation detection
-        - history: List of all history entries
-        - signature: HMAC-SHA256 signature metadata (Phase 7.26)
-        - canonicalization: Signing canonicalization details (Phase 7.26)
-        
-    Example:
-        GET /workflow/cases/abc-123/audit/export?include_payload=false&include_evidence=true
-        
-    Response:
+        JSON export with redaction metadata and signature:
         {
-            "metadata": {
-                "case_id": "abc-123",
-                "export_timestamp": "2026-01-19T10:00:00Z",
-                "total_entries": 5,
-                "include_payload": false
+            "metadata": {...},
+            "export_metadata": {
+                "redaction_mode": "safe|full",
+                "redacted_fields_count": 42,
+                "retention_policy": {...},
+                "permissions": {...}
             },
-            "integrity_check": {
-                "is_valid": true,
-                "broken_links": [],
-                "orphaned_entries": []
-            },
-            "duplicate_analysis": {
-                "duplicates": [],
-                "total_unique_hashes": 5
-            },
+            "integrity_check": {...},
             "history": [...],
-            "signature": {
-                "alg": "HMAC-SHA256",
-                "key_id": "k1",
-                "value": "a1b2c3d4e5f6...",
-                "signed_at": "2026-01-20T10:00:00Z"
-            },
-            "canonicalization": {
-                "json": "sorted_keys_compact",
-                "exclude_fields": ["signature", "canonicalization"]
-            }
+            "signature": {...}
         }
     """
     from datetime import datetime
     from .repository import get_intelligence_history
     from .integrity import verify_audit_chain, detect_duplicate_computations
     from .signing import sign_audit_export  # Phase 7.26
+    from .redaction import redact_export  # Phase 7.28
     from app.workflow.repo import get_case
+    from app.auth.permissions import get_actor_context
     from src.config import get_settings
     
     settings = get_settings()
+    
+    # Get user role for permission enforcement
+    ctx = get_actor_context(request)
+    role = ctx["role"]
+    # Get user role for permission enforcement
+    ctx = get_actor_context(request)
+    role = ctx["role"]
     
     # Verify case exists
     case = get_case(case_id)
@@ -880,7 +872,7 @@ def export_audit_trail(
     # Prepare export data
     export_timestamp = datetime.utcnow().isoformat() + "Z"
     
-    # Build history export (optionally exclude large payloads)
+    # Build history export (include all fields before redaction)
     history_export = []
     for entry in history_entries:
         export_entry = {
@@ -892,6 +884,8 @@ def export_audit_trail(
             "previous_run_id": entry.get("previous_run_id"),
             "triggered_by": entry.get("triggered_by"),
             "input_hash": entry.get("input_hash"),
+            "evidence_hash": entry.get("evidence_hash"),
+            "evidence_version": entry.get("evidence_version"),
         }
         
         # Include summary confidence metrics
@@ -903,15 +897,11 @@ def export_audit_trail(
         export_entry["gap_count"] = len(payload.get("gaps", []))
         export_entry["bias_count"] = len(payload.get("bias_flags", []))
         
-        # Optionally include full payload
-        if include_payload:
-            export_entry["payload"] = payload
+        # Include full payload (will be redacted if not permitted)
+        export_entry["intelligence_payload"] = payload
         
-        # Phase 7.24: Optionally include evidence snapshot
-        if include_evidence:
-            export_entry["evidence_hash"] = entry.get("evidence_hash")
-            export_entry["evidence_version"] = entry.get("evidence_version")
-            export_entry["evidence_snapshot"] = entry.get("evidence_snapshot")
+        # Phase 7.24: Include evidence snapshot (will be redacted if not permitted)
+        export_entry["evidence_snapshot"] = entry.get("evidence_snapshot")
         
         history_export.append(export_entry)
     
@@ -929,22 +919,29 @@ def export_audit_trail(
         "has_duplicates": len(duplicates) > 0
     }
     
-    # Build export response (unsigned)
+    # Build export response (unsigned, before redaction)
     export_data = {
         "metadata": {
             "case_id": case_id,
             "export_timestamp": export_timestamp,
             "total_entries": len(history_entries),
-            "include_payload": include_payload,
-            "include_evidence": include_evidence,  # Phase 7.24
-            "format_version": "1.1"  # Phase 7.26: Bumped for signature support
+            "format_version": "1.2"  # Phase 7.28: Bumped for redaction/retention
         },
         "integrity_check": integrity_check,
         "duplicate_analysis": duplicate_analysis,
         "history": history_export
     }
     
-    # Phase 7.26: Sign the export
+    # Phase 7.28: Apply redaction and retention BEFORE signing
+    export_data = redact_export(
+        export_data,
+        role=role,
+        safe_mode=safe_mode,
+        include_payload=include_payload,
+        include_evidence=include_evidence
+    )
+    
+    # Phase 7.26: Sign the FINAL redacted export
     signed_export = sign_audit_export(
         export_data,
         secret=settings.AUDIT_SIGNING_SECRET,
