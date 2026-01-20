@@ -66,6 +66,7 @@ from .repo import (
 
 from .evidence_storage import save_upload, resolve_storage_path
 from .attachments_storage import save_upload as save_attachment, resolve_storage_path as resolve_attachment_path
+from .sla import add_sla_fields
 
 
 router = APIRouter(prefix="/workflow", tags=["workflow"])
@@ -240,9 +241,10 @@ def get_workflow_cases(
     q: Optional[str] = Query(None, description="Search in title/summary"),
     overdue: Optional[bool] = Query(None, description="Show only overdue cases"),
     unassigned: Optional[bool] = Query(None, description="Show only unassigned cases"),
+    sla_status: Optional[str] = Query(None, description="Filter by SLA status: ok, warning, breach"),
     limit: int = Query(100, ge=1, le=1000, description="Number of items per page (default 100, max 1000)"),
     offset: int = Query(0, ge=0, description="Number of items to skip"),
-    sortBy: str = Query("createdAt", description="Sort field: createdAt, dueAt, or updatedAt"),
+    sortBy: str = Query("createdAt", description="Sort field: createdAt, dueAt, updatedAt, or age"),
     sortDir: str = Query("desc", description="Sort direction: asc or desc"),
 ):
     """
@@ -255,16 +257,19 @@ def get_workflow_cases(
     - q: Text search in title/summary
     - overdue: Only show overdue cases
     - unassigned: Only show unassigned cases
+    - sla_status: Filter by SLA status (ok, warning, breach)
     - limit: Number of items per page (default 100, max 1000)
     - offset: Number of items to skip (default 0)
-    - sortBy: Sort field - createdAt, dueAt, or updatedAt (default createdAt)
+    - sortBy: Sort field - createdAt, dueAt, updatedAt, or age (default createdAt)
     - sortDir: Sort direction - asc or desc (default desc)
     
     Returns:
         PaginatedCasesResponse with items, total count, limit, and offset
+        
+    Phase 7.29: Added age_hours and sla_status computed fields to each case
     """
     # Validate sortBy field
-    valid_sort_fields = ["createdAt", "dueAt", "updatedAt"]
+    valid_sort_fields = ["createdAt", "dueAt", "updatedAt", "age"]
     if sortBy not in valid_sort_fields:
         raise HTTPException(
             status_code=400,
@@ -277,6 +282,14 @@ def get_workflow_cases(
             status_code=400,
             detail=f"Invalid sortDir: {sortDir}. Valid values: asc, desc"
         )
+    
+    # Validate sla_status if provided
+    if sla_status and sla_status not in ["ok", "warning", "breach"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid sla_status: {sla_status}. Valid values: ok, warning, breach"
+        )
+    
     # Convert status string to enum if provided
     status_enum = None
     if status:
@@ -306,13 +319,32 @@ def get_workflow_cases(
         sort_dir=sortDir.lower()
     )
     
+    # Phase 7.29: Add SLA fields (age_hours, sla_status) to each case
+    enriched_items = []
+    for item in items:
+        # Convert to dict for manipulation
+        item_dict = item.dict()
+        # Add SLA fields
+        enriched = add_sla_fields(item_dict)
+        enriched_items.append(enriched)
+    
+    # Phase 7.29: Apply sla_status filter if provided (post-query filter)
+    if sla_status:
+        enriched_items = [item for item in enriched_items if item.get("sla_status") == sla_status]
+        total = len(enriched_items)  # Update total after filtering
+    
+    # Phase 7.29: Apply age sorting if requested (post-query sort)
+    if sortBy == "age":
+        reverse = (sortDir.lower() == "desc")
+        enriched_items.sort(key=lambda x: x.get("age_hours", 0), reverse=reverse)
+    
     # Log for debugging
     from src.config import get_settings
     db_path = get_settings().DB_PATH
-    logger.info(f"✓ GET /workflow/cases: Retrieved {len(items)}/{total} cases from DB: {db_path}")
+    logger.info(f"✓ GET /workflow/cases: Retrieved {len(enriched_items)}/{total} cases from DB: {db_path}")
     
     return PaginatedCasesResponse(
-        items=items,
+        items=enriched_items,
         total=total,
         limit=limit,
         offset=offset
