@@ -127,6 +127,8 @@ interface WorkQueueItem {
   decisionType: string;
   dueAt: string;
   createdAt: string;
+  age_hours?: number;
+  sla_status?: 'ok' | 'warning' | 'breach';
 }
 
 // Seed demo data on first load
@@ -775,6 +777,7 @@ const ConsoleDashboard: React.FC = () => {
   const [requestInfoCaseId, setRequestInfoCaseId] = useState<string | null>(null);
   const [requestInfoMessage, setRequestInfoMessage] = useState("");
   const [queueFilter, setQueueFilter] = useState<"all" | "mine" | "unassigned" | "overdue">("all");
+  const [slaFilter, setSlaFilter] = useState<"all" | "aging" | "breach">("all");
   const [assignMenuOpen, setAssignMenuOpen] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkActionOpen, setBulkActionOpen] = useState<string | null>(null);
@@ -846,7 +849,9 @@ const ConsoleDashboard: React.FC = () => {
         assignedTo: caseRecord.assignedTo,
         decisionType: caseRecord.decisionType,
         dueAt: caseRecord.dueAt,
-        createdAt: caseRecord.createdAt
+        createdAt: caseRecord.createdAt,
+        age_hours: caseRecord.age_hours,
+        sla_status: caseRecord.sla_status
       }));
       
       // Ensure no duplicates by using Map with id as key
@@ -1034,17 +1039,24 @@ const ConsoleDashboard: React.FC = () => {
 
   // Step 2.3: Filter, search, and sort work queue items
   const filteredAndSortedItems = useMemo(() => {
-    let items = demoStore.getWorkQueue();
+    let items = [...workQueueItems];
     
     // Apply queue filter (all, mine, unassigned, overdue)
     if (queueFilter === "mine" && currentUser) {
-      items = items.filter((i) => i.assignedTo?.id === currentUser.id);
+      items = items.filter((i) => i.assignedTo === currentUser.id);
     } else if (queueFilter === "unassigned") {
       items = items.filter((i) => !i.assignedTo);
     } else if (queueFilter === "overdue") {
       items = items.filter((i) => isOverdue(i.dueAt));
     } else if (queueFilter === "all") {
       items = items.filter((i) => !["approved", "blocked", "closed"].includes(i.status));
+    }
+    
+    // Apply SLA filter
+    if (slaFilter === "aging") {
+      items = items.filter((i) => i.sla_status === "warning" || i.sla_status === "breach");
+    } else if (slaFilter === "breach") {
+      items = items.filter((i) => i.sla_status === "breach");
     }
     
     // Step 2.15: Apply decision type filter
@@ -1058,13 +1070,12 @@ const ConsoleDashboard: React.FC = () => {
       items = items.filter((item) => {
         const searchableText = [
           item.id,
-          item.title,
-          item.subtitle,
+          item.facility,
           item.reason,
           item.status,
           item.priority,
-          item.assignedTo?.name || '',
-          item.submissionId || '',
+          item.assignedTo || '',
+          item.trace_id || '',
         ].join(' ').toLowerCase();
         
         // All tokens must match
@@ -1083,30 +1094,28 @@ const ConsoleDashboard: React.FC = () => {
           if (aOverdue && !bOverdue) compareResult = -1;
           else if (!aOverdue && bOverdue) compareResult = 1;
           else {
-            // Secondary: priority
-            const priorityOrder = { high: 0, medium: 1, low: 2 };
-            const aPri = priorityOrder[a.priority];
-            const bPri = priorityOrder[b.priority];
-            if (aPri !== bPri) compareResult = aPri - bPri;
-            else {
-              // Tertiary: age
-              compareResult = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-            }
+            // Secondary: age
+            compareResult = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
           }
           break;
         case 'priority':
-          const priorityOrder = { high: 0, medium: 1, low: 2 };
+          const priorityOrder: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
           compareResult = priorityOrder[a.priority] - priorityOrder[b.priority];
           break;
         case 'age':
-          compareResult = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          // Use age_hours if available, otherwise use createdAt
+          if (a.age_hours !== undefined && b.age_hours !== undefined) {
+            compareResult = a.age_hours - b.age_hours;
+          } else {
+            compareResult = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          }
           break;
         case 'status':
           compareResult = a.status.localeCompare(b.status);
           break;
         case 'assignee':
-          const aAssignee = a.assignedTo?.name || '';
-          const bAssignee = b.assignedTo?.name || '';
+          const aAssignee = a.assignedTo || '';
+          const bAssignee = b.assignedTo || '';
           compareResult = aAssignee.localeCompare(bAssignee);
           break;
       }
@@ -1114,22 +1123,8 @@ const ConsoleDashboard: React.FC = () => {
       return sortDirection === 'asc' ? compareResult : -compareResult;
     });
 
-    // Map to display format
-    return items.map((i) => ({
-      id: i.id,
-      trace_id: i.traceId || "",
-      facility: i.title,
-      reason: i.reason || i.subtitle || "",
-      age: i.age || "Recently",
-      priority: i.priority === "high" ? "High" : i.priority === "medium" ? "Medium" : "Low",
-      priorityColor: i.priorityColor || (i.priority === "high" ? "text-amber-700" : "text-slate-600"),
-    }));
-  }, [queueFilter, decisionTypeFilter, searchQuery, sortField, sortDirection, currentUser]); // Step 2.15: Added decisionTypeFilter
-
-  // Update workQueueItems when filtered/sorted items change
-  useEffect(() => {
-    setWorkQueueItems(filteredAndSortedItems);
-  }, [filteredAndSortedItems]);
+    return items;
+  }, [workQueueItems, queueFilter, slaFilter, decisionTypeFilter, searchQuery, sortField, sortDirection, currentUser]);
 
   // Helper to refresh work queue display from API
   const refreshWorkQueue = async () => {
@@ -1901,6 +1896,41 @@ const ConsoleDashboard: React.FC = () => {
                   CSF Facility
                 </button>
               </div>
+              
+              {/* SLA Filters */}
+              <div className="flex gap-2 pt-2 pb-2 border-b border-slate-200">
+                <span className="text-xs font-medium text-slate-600 flex items-center pr-2">SLA Status:</span>
+                <button
+                  onClick={() => setSlaFilter("all")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    slaFilter === "all"
+                      ? "bg-sky-600 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setSlaFilter("aging")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    slaFilter === "aging"
+                      ? "bg-amber-600 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  Aging (Warning/Breach)
+                </button>
+                <button
+                  onClick={() => setSlaFilter("breach")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    slaFilter === "breach"
+                      ? "bg-red-600 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  Breach Only
+                </button>
+              </div>
 
               {/* Bulk Action Bar */}
               {selectedIds.size > 0 && (
@@ -2097,6 +2127,18 @@ const ConsoleDashboard: React.FC = () => {
                                 </span>
                               );
                             })()}
+                            {/* SLA Status Badge */}
+                            {item.sla_status && item.sla_status !== 'ok' && (
+                              <span className={`px-2 py-0.5 text-xs font-medium rounded ${
+                                item.sla_status === 'breach' ? 'bg-red-100 text-red-800' :
+                                item.sla_status === 'warning' ? 'bg-amber-100 text-amber-800' :
+                                'bg-green-100 text-green-800'
+                              }`}>
+                                {item.sla_status === 'breach' ? '🔴 Breach' :
+                                 item.sla_status === 'warning' ? '⚠️ Aging' :
+                                 '✓ OK'}
+                              </span>
+                            )}
                           </div>
                           <div className="text-xs text-slate-600">
                           {item.reason}
@@ -2107,7 +2149,9 @@ const ConsoleDashboard: React.FC = () => {
                           <div className="flex items-center gap-1.5">
                             <span className="text-slate-500">Age:</span>
                             <span className="font-medium text-slate-700">
-                              {item.age}
+                              {item.age_hours !== undefined 
+                                ? `${Math.floor(item.age_hours)}h` 
+                                : item.age}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5">

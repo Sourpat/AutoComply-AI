@@ -31,6 +31,8 @@ export interface CaseRecord {
   packetEvidenceIds: string[];
   notesCount: number;
   attachmentsCount: number;
+  age_hours?: number;
+  sla_status?: 'ok' | 'warning' | 'breach';
 }
 
 export interface CaseCreateInput {
@@ -89,8 +91,11 @@ export interface CaseFilters {
   q?: string;
   overdue?: boolean;
   unassigned?: boolean;
+  sla_status?: 'ok' | 'warning' | 'breach';
   limit?: number;
   offset?: number;
+  sortBy?: 'createdAt' | 'dueAt' | 'updatedAt' | 'age';
+  sortDir?: 'asc' | 'desc';
 }
 
 export interface PaginatedCasesResponse {
