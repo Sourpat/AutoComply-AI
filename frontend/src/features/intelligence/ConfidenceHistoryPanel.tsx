@@ -18,6 +18,19 @@ interface AuditExportResponse {
     include_payload: boolean;
     format_version: string;
   };
+  export_metadata?: {
+    redaction_mode: 'safe' | 'full';
+    redacted_fields_count: number;
+    retention_policy: {
+      evidence_retention_days: number;
+      payload_retention_days: number;
+    };
+    permissions: {
+      role: string;
+      include_payload: boolean;
+      include_evidence: boolean;
+    };
+  };
   integrity_check: {
     is_valid: boolean;
     broken_links: Array<{ entry_id: string; missing_previous_id: string }>;
@@ -122,7 +135,9 @@ export const ConfidenceHistoryPanel: React.FC<ConfidenceHistoryPanelProps> = ({
   // Phase 7.22: Audit export state
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [safeMode, setSafeMode] = useState(role === 'verifier'); // Phase 7.30: Default safe mode for verifiers
   const [includePayload, setIncludePayload] = useState(false);
+  const [includeEvidence, setIncludeEvidence] = useState(false); // Phase 7.30
   const [lastExport, setLastExport] = useState<AuditExportResponse | null>(null);
   const [showIntegrityDetails, setShowIntegrityDetails] = useState(false);
   
@@ -165,7 +180,13 @@ export const ConfidenceHistoryPanel: React.FC<ConfidenceHistoryPanelProps> = ({
     setExportError(null);
 
     try {
-      const url = `${API_BASE}/workflow/cases/${caseId}/audit/export?include_payload=${includePayload}`;
+      // Phase 7.30: Add safe_mode and include_evidence parameters
+      const params = new URLSearchParams({
+        include_payload: includePayload.toString(),
+        include_evidence: includeEvidence.toString(),
+        ...(role !== 'verifier' && { safe_mode: safeMode.toString() }) // Only add safe_mode for non-verifiers
+      });
+      const url = `${API_BASE}/workflow/cases/${caseId}/audit/export?${params}`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -479,21 +500,71 @@ export const ConfidenceHistoryPanel: React.FC<ConfidenceHistoryPanelProps> = ({
         </span>
       </button>
 
-      {/* Phase 7.22: Audit Export Section (shown when expanded, gated by role) */}
+      {/* Phase 7.22/7.30: Audit Export Section (shown when expanded, gated by role) */}
       {isExpanded && (role === 'verifier' || role === 'devsupport' || role === 'admin') && (
-        <div className="border-t border-zinc-800 bg-zinc-950/50 px-3 py-2.5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 flex-1">
-              <label className="flex items-center gap-1.5 text-xs text-zinc-400">
+        <div className="border-t border-zinc-800 bg-zinc-950/50 px-3 py-2.5 space-y-2">
+          {/* Phase 7.30: Export mode selector (admin/devsupport only) */}
+          {(role === 'admin' || role === 'devsupport') && (
+            <div className="flex items-center gap-3 pb-2 border-b border-zinc-800">
+              <span className="text-xs font-medium text-zinc-400">Export Mode:</span>
+              <label className="flex items-center gap-1.5 text-xs text-zinc-300">
                 <input
-                  type="checkbox"
-                  checked={includePayload}
-                  onChange={(e) => setIncludePayload(e.target.checked)}
-                  className="h-3 w-3 rounded border-zinc-700 bg-zinc-900 text-blue-600 focus:ring-1 focus:ring-blue-500"
+                  type="radio"
+                  name="exportMode"
+                  checked={safeMode}
+                  onChange={() => setSafeMode(true)}
+                  className="h-3 w-3 border-zinc-700 bg-zinc-900 text-blue-600 focus:ring-1 focus:ring-blue-500"
                 />
-                Include full payloads
+                Safe (Redacted)
               </label>
-              <span className="text-[10px] text-zinc-600">(larger file size)</span>
+              <label className="flex items-center gap-1.5 text-xs text-zinc-300">
+                <input
+                  type="radio"
+                  name="exportMode"
+                  checked={!safeMode}
+                  onChange={() => setSafeMode(false)}
+                  className="h-3 w-3 border-zinc-700 bg-zinc-900 text-blue-600 focus:ring-1 focus:ring-blue-500"
+                />
+                Full (Unredacted)
+              </label>
+            </div>
+          )}
+          
+          {/* Verifier mode indicator */}
+          {role === 'verifier' && (
+            <div className="rounded border border-blue-700/50 bg-blue-950/20 px-2 py-1.5">
+              <p className="text-xs text-blue-300">
+                🔒 Redacted export (safe to share) - Verifiers always use safe mode
+              </p>
+            </div>
+          )}
+          
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 flex-1 flex-wrap">
+              {/* Include options (admin/devsupport only) */}
+              {(role === 'admin' || role === 'devsupport') && (
+                <>
+                  <label className="flex items-center gap-1.5 text-xs text-zinc-400">
+                    <input
+                      type="checkbox"
+                      checked={includePayload}
+                      onChange={(e) => setIncludePayload(e.target.checked)}
+                      className="h-3 w-3 rounded border-zinc-700 bg-zinc-900 text-blue-600 focus:ring-1 focus:ring-blue-500"
+                    />
+                    Include payloads
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-zinc-400">
+                    <input
+                      type="checkbox"
+                      checked={includeEvidence}
+                      onChange={(e) => setIncludeEvidence(e.target.checked)}
+                      className="h-3 w-3 rounded border-zinc-700 bg-zinc-900 text-blue-600 focus:ring-1 focus:ring-blue-500"
+                    />
+                    Include evidence
+                  </label>
+                  <span className="text-[10px] text-zinc-600">(subject to retention)</span>
+                </>
+              )}
             </div>
             <button
               onClick={handleExportAudit}
@@ -575,6 +646,36 @@ export const ConfidenceHistoryPanel: React.FC<ConfidenceHistoryPanelProps> = ({
                   )}
                 </p>
               </div>
+              
+              {/* Phase 7.30: Export metadata */}
+              {lastExport.export_metadata && (
+                <div className="rounded border border-zinc-700/50 bg-zinc-900/20 px-2 py-1.5 space-y-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-zinc-400">Redaction Mode:</span>
+                    <span className={`font-medium ${
+                      lastExport.export_metadata.redaction_mode === 'safe' 
+                        ? 'text-blue-300' 
+                        : 'text-amber-300'
+                    }`}>
+                      {lastExport.export_metadata.redaction_mode.toUpperCase()}
+                      {lastExport.export_metadata.redaction_mode === 'safe' && ' 🔒'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-zinc-400">Fields Redacted:</span>
+                    <span className="text-zinc-300 font-medium">
+                      {lastExport.export_metadata.redacted_fields_count}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-zinc-400">Retention Policy:</span>
+                    <span className="text-zinc-300 font-mono text-[10px]">
+                      Evidence: {lastExport.export_metadata.retention_policy.evidence_retention_days}d, 
+                      Payload: {lastExport.export_metadata.retention_policy.payload_retention_days}d
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Phase 7.26: Signature info */}
               {lastExport.signature && (
