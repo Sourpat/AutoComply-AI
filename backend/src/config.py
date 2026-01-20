@@ -117,6 +117,29 @@ class Settings(BaseSettings):
         description="Optional bearer token for POST /dev/seed endpoint protection"
     )
 
+    # Audit Signing (Phase 7.26)
+    # =============================================================================
+    # AUDIT_SIGNING_SECRET: Secret key for HMAC-SHA256 signing of audit exports
+    # - REQUIRED in production for tamper-proof audit trails
+    # - Defaults to insecure dev key in development (set proper secret in prod)
+    # - Use a strong random string (e.g., openssl rand -hex 32)
+    # - Rotate key via AUDIT_SIGNING_KEY_ID when changing secret
+    # =============================================================================
+    AUDIT_SIGNING_SECRET: str = Field(
+        default="dev-insecure-audit-signing-secret-change-in-production",
+        description="HMAC secret for signing audit exports (MUST change in production)"
+    )
+    
+    AUDIT_SIGNING_KEY_ID: str = Field(
+        default="k1",
+        description="Key identifier for audit signing (increment when rotating keys)"
+    )
+    
+    AUDIT_SIGNING_ALG: str = Field(
+        default="HMAC-SHA256",
+        description="Signing algorithm for audit exports (fixed to HMAC-SHA256)"
+    )
+
     # Runtime (legacy)
     ENV: str = "development"
 

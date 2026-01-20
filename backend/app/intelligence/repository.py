@@ -607,23 +607,44 @@ def update_executive_summary(case_id: str, executive_summary_json: str) -> None:
 
 
 # ============================================================================
-# Intelligence History Operations (Phase 7.11)
+# Intelligence History Operations (Phase 7.11 + 7.20)
 # ============================================================================
 
 def insert_intelligence_history(
     case_id: str,
     payload: Dict[str, Any],
     actor: str = "system",
-    reason: str = "Intelligence updated"
+    reason: str = "Intelligence updated",
+    triggered_by: Optional[str] = None,
+    input_hash: Optional[str] = None,
+    previous_run_id: Optional[str] = None
 ) -> str:
     """
-    Insert a snapshot of intelligence into history table.
+    Insert a snapshot of intelligence into history table (append-only).
+    
+    Phase 7.20: Enhanced with integrity fields for audit trail hardening:
+    - previous_run_id: Links to previous computation for audit chain
+    - triggered_by: Role/user who triggered recompute  
+    - input_hash: Stable hash of normalized inputs
+    
+    Phase 7.24: Enhanced with evidence snapshot for reproducibility:
+    - evidence_snapshot: JSON snapshot of evidence used for computation
+    - evidence_hash: SHA256 hash of normalized evidence
+    - evidence_version: Schema version for evidence snapshot
+    
+    Phase 7.25: Enhanced with policy versioning for traceability:
+    - policy_id: Identifier for the policy set used
+    - policy_version: Semantic version of the policy
+    - policy_hash: SHA256 hash of the policy definition
     
     Args:
         case_id: The case ID
         payload: Full DecisionIntelligenceResponse dict
-        actor: Who triggered the recompute
+        actor: Who triggered the recompute (email/system)
         reason: Why the recompute happened
+        triggered_by: Role/user identifier (e.g., "admin", "verifier", "system")
+        input_hash: SHA256 hash of normalized inputs
+        previous_run_id: ID of previous history entry (for audit chain)
         
     Returns:
         History entry ID
@@ -633,22 +654,68 @@ def insert_intelligence_history(
         ...     case_id="case_123",
         ...     payload={"confidence_score": 85, ...},
         ...     actor="verifier@example.com",
-        ...     reason="Evidence attached"
+        ...     reason="Evidence attached",
+        ...     triggered_by="verifier",
+        ...     input_hash="a1b2c3d4...",
+        ...     previous_run_id="hist_abc"
         ... )
-        "hist_abc123xyz"
+        "hist_xyz123"
+        
+    Note:
+        This function enforces append-only behavior - it only creates new records,
+        never updates existing ones. This ensures audit trail integrity.
     """
     history_id = f"hist_{uuid.uuid4().hex[:12]}"
     now = datetime.utcnow().isoformat() + "Z"
     computed_at = payload.get("computed_at", now)
     
+    # Phase 7.24: Create evidence snapshot
+    from .evidence_snapshot import (
+        create_evidence_snapshot,
+        compute_evidence_hash,
+        get_evidence_version
+    )
+    
+    evidence_snapshot = create_evidence_snapshot(case_id)
+    evidence_hash = compute_evidence_hash(evidence_snapshot)
+    evidence_version = get_evidence_version()
+    
+    # Phase 7.25: Capture current policy version
+    from app.policy import get_current_policy
+    
+    current_policy = get_current_policy()
+    policy_id = current_policy.policy_id
+    policy_version = current_policy.version
+    policy_hash = current_policy.policy_hash
+    
+    # Phase 7.20: If previous_run_id not provided, try to get the latest entry
+    if previous_run_id is None:
+        latest = execute_sql(
+            """
+            SELECT id FROM intelligence_history
+            WHERE case_id = :case_id
+            ORDER BY computed_at DESC
+            LIMIT 1
+            """,
+            {"case_id": case_id}
+        )
+        if latest:
+            previous_run_id = latest[0]["id"]
+    
     execute_insert(
         """
         INSERT INTO intelligence_history (
             id, case_id, computed_at, payload_json,
-            created_at, actor, reason
+            created_at, actor, reason,
+            previous_run_id, triggered_by, input_hash,
+            evidence_snapshot, evidence_hash, evidence_version,
+            policy_id, policy_version, policy_hash
         ) VALUES (
             :id, :case_id, :computed_at, :payload_json,
-            :created_at, :actor, :reason
+            :created_at, :actor, :reason,
+            :previous_run_id, :triggered_by, :input_hash,
+            :evidence_snapshot, :evidence_hash, :evidence_version,
+            :policy_id, :policy_version, :policy_hash
         )
         """,
         {
@@ -659,6 +726,15 @@ def insert_intelligence_history(
             "created_at": now,
             "actor": actor,
             "reason": reason,
+            "previous_run_id": previous_run_id,
+            "triggered_by": triggered_by or actor,  # Default to actor if not provided
+            "input_hash": input_hash,
+            "evidence_snapshot": json.dumps(evidence_snapshot),
+            "evidence_hash": evidence_hash,
+            "evidence_version": evidence_version,
+            "policy_id": policy_id,
+            "policy_version": policy_version,
+            "policy_hash": policy_hash,
         },
     )
     
@@ -671,6 +747,10 @@ def get_intelligence_history(
 ) -> List[Dict[str, Any]]:
     """
     Retrieve intelligence history for a case, ordered newest first.
+    
+    Phase 7.20: Now includes integrity fields (previous_run_id, triggered_by, input_hash).
+    Phase 7.24: Now includes evidence fields (evidence_snapshot, evidence_hash, evidence_version).
+    Phase 7.25: Now includes policy fields (policy_id, policy_version, policy_hash).
     
     Args:
         case_id: The case ID
@@ -685,6 +765,15 @@ def get_intelligence_history(
         - created_at: When history entry was created
         - actor: Who triggered the recompute
         - reason: Why the recompute happened
+        - previous_run_id: ID of previous history entry (audit chain)
+        - triggered_by: Role/user who triggered recompute
+        - input_hash: Stable hash of inputs
+        - evidence_snapshot: JSON snapshot of evidence
+        - evidence_hash: SHA256 hash of evidence
+        - evidence_version: Schema version for evidence
+        - policy_id: Policy set identifier
+        - policy_version: Semantic version of policy
+        - policy_hash: SHA256 hash of policy definition
         
     Example:
         >>> get_intelligence_history("case_123", limit=5)
@@ -693,6 +782,12 @@ def get_intelligence_history(
                 "id": "hist_xyz",
                 "computed_at": "2026-01-17T22:30:00Z",
                 "payload": {"confidence_score": 85, ...},
+                "previous_run_id": "hist_abc",
+                "triggered_by": "verifier",
+                "input_hash": "a1b2c3...",
+                "evidence_hash": "def456...",
+                "policy_version": "1.0.0",
+                "policy_hash": "abc123...",
                 ...
             }
         ]
@@ -701,7 +796,10 @@ def get_intelligence_history(
         """
         SELECT 
             id, case_id, computed_at, payload_json,
-            created_at, actor, reason
+            created_at, actor, reason,
+            previous_run_id, triggered_by, input_hash,
+            evidence_snapshot, evidence_hash, evidence_version,
+            policy_id, policy_version, policy_hash
         FROM intelligence_history
         WHERE case_id = :case_id
         ORDER BY computed_at DESC
@@ -719,6 +817,15 @@ def get_intelligence_history(
             "created_at": row["created_at"],
             "actor": row["actor"],
             "reason": row["reason"],
+            "previous_run_id": row.get("previous_run_id"),  # Phase 7.20
+            "triggered_by": row.get("triggered_by"),        # Phase 7.20
+            "input_hash": row.get("input_hash"),            # Phase 7.20
+            "evidence_snapshot": json.loads(row["evidence_snapshot"]) if row.get("evidence_snapshot") else None,  # Phase 7.24
+            "evidence_hash": row.get("evidence_hash"),      # Phase 7.24
+            "evidence_version": row.get("evidence_version"), # Phase 7.24
+            "policy_id": row.get("policy_id"),              # Phase 7.25
+            "policy_version": row.get("policy_version"),    # Phase 7.25
+            "policy_hash": row.get("policy_hash"),          # Phase 7.25
         }
         for row in rows
     ]

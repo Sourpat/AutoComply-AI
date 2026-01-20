@@ -55,6 +55,9 @@ from app.workflow.router import router as workflow_router
 # Intelligence - Phase 7.1
 from app.intelligence.router import router as intelligence_router
 
+# Policy - Phase 7.25
+from app.policy.router import router as policy_router
+
 # Submissions persistence
 from app.submissions.router import router as submissions_router
 
@@ -228,6 +231,9 @@ app.include_router(workflow_router)
 
 # Intelligence - Phase 7.1
 app.include_router(intelligence_router)
+
+# Policy - Phase 7.25
+app.include_router(policy_router)
 
 # Submissions persistence
 app.include_router(submissions_router)

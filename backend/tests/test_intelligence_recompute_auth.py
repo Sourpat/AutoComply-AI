@@ -111,9 +111,13 @@ def test_recompute_forbidden_with_verifier_role(test_case):
         headers={"x-user-role": "verifier"}
     )
     
-    # Should be 403 Forbidden
+    # Should be 403 Forbidden with structured response
     assert response.status_code == 403, f"Expected 403, got {response.status_code}"
-    assert "Only admin and devsupport" in response.json()["detail"]
+    data = response.json()
+    assert data["detail"]["error"] == "insufficient_permissions"
+    assert "admin" in data["detail"]["required_roles"]
+    assert "devsupport" in data["detail"]["required_roles"]
+    assert data["detail"]["current_role"] == "verifier"
 
 
 def test_recompute_forbidden_without_headers(test_case):
@@ -122,9 +126,13 @@ def test_recompute_forbidden_without_headers(test_case):
         f"/workflow/cases/{test_case.id}/intelligence/recompute"
     )
     
-    # Should be 403 Forbidden
+    # Should be 403 Forbidden with structured response (defaults to verifier)
     assert response.status_code == 403, f"Expected 403, got {response.status_code}"
-    assert "Only admin and devsupport" in response.json()["detail"]
+    data = response.json()
+    assert data["detail"]["error"] == "insufficient_permissions"
+    assert "admin" in data["detail"]["required_roles"]
+    assert "devsupport" in data["detail"]["required_roles"]
+    assert data["detail"]["current_role"] == "verifier"  # Defaults to verifier
 
 
 def test_recompute_forbidden_with_invalid_role(test_case):
@@ -136,7 +144,11 @@ def test_recompute_forbidden_with_invalid_role(test_case):
     
     # Should be 403 Forbidden (invalid role defaults to verifier)
     assert response.status_code == 403, f"Expected 403, got {response.status_code}"
-    assert "Only admin and devsupport" in response.json()["detail"]
+    data = response.json()
+    assert data["detail"]["error"] == "insufficient_permissions"
+    assert "admin" in data["detail"]["required_roles"]
+    assert "devsupport" in data["detail"]["required_roles"]
+    assert data["detail"]["current_role"] == "verifier"  # Invalid roles default to verifier
 
 
 def test_recompute_with_combined_headers(test_case):
