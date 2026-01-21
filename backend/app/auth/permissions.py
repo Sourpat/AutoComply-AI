@@ -245,7 +245,8 @@ def require_role(*allowed_roles: str):
                     }
                 )
             
-            return func(*args, **kwargs)
+            # Phase 7.33: Pass request through to wrapped function for request_id access
+            return func(*args, request=req, **kwargs)
         
         # Return appropriate wrapper based on whether function is async
         import asyncio

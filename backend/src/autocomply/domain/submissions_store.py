@@ -12,7 +12,7 @@ Future: Replace with SQLAlchemy models or document store
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, List, Optional
 
@@ -143,7 +143,7 @@ class SubmissionStore:
         Returns:
             Created Submission object
         """
-        now = datetime.utcnow().isoformat() + "Z"
+        now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         submission_id = str(uuid.uuid4())
 
         submission = Submission(
@@ -211,7 +211,7 @@ class SubmissionStore:
             return None
 
         submission.status = status
-        submission.updated_at = datetime.utcnow().isoformat() + "Z"
+        submission.updated_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         return submission
 
     def update_submission(
@@ -231,7 +231,7 @@ class SubmissionStore:
             # Set reviewed_at when status changes to approved or rejected
             if status in [SubmissionStatus.APPROVED, SubmissionStatus.REJECTED]:
                 if not submission.reviewed_at:
-                    submission.reviewed_at = datetime.utcnow().isoformat() + "Z"
+                    submission.reviewed_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         
         if reviewer_notes is not None:
             submission.reviewer_notes = reviewer_notes
@@ -239,7 +239,7 @@ class SubmissionStore:
         if reviewed_by is not None:
             submission.reviewed_by = reviewed_by
         
-        submission.updated_at = datetime.utcnow().isoformat() + "Z"
+        submission.updated_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         return submission
 
     def delete_submission(self, submission_id: str) -> bool:

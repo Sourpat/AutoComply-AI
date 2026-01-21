@@ -23,7 +23,7 @@ Schema:
 import json
 import logging
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -391,7 +391,7 @@ def _build_badges(
     if updated_at_str:
         try:
             updated_at = datetime.fromisoformat(updated_at_str.replace('Z', '+00:00'))
-            age_minutes = (datetime.utcnow() - updated_at.replace(tzinfo=None)).total_seconds() / 60
+            age_minutes = (datetime.now(timezone.utc) - updated_at).total_seconds() / 60
             if age_minutes > 60:  # Stale after 1 hour
                 badges.append("Stale Signals")
         except Exception:

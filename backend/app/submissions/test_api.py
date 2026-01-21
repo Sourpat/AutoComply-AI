@@ -8,7 +8,7 @@ Tests all 3 endpoints:
 """
 
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 
 BASE_URL = "http://localhost:8001"
 
@@ -150,7 +150,7 @@ def run_all_tests():
         print("SUBMISSIONS API TESTS")
         print("="*60)
         print(f"\nBase URL: {BASE_URL}")
-        print(f"Timestamp: {datetime.utcnow().isoformat()}")
+        print(f"Timestamp: {datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')}")
         
         # Run tests
         submission_id = test_create_submission()

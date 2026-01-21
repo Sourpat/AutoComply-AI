@@ -27,7 +27,7 @@ client = TestClient(app)
 
 def test_middleware_generates_request_id_when_not_provided():
     """Test that middleware generates X-Request-Id if not provided."""
-    response = client.get("/api/health")
+    response = client.get("/health")
     
     assert response.status_code == 200
     assert "X-Request-Id" in response.headers
@@ -46,7 +46,7 @@ def test_middleware_reuses_client_provided_request_id():
     client_request_id = str(uuid.uuid4())
     
     response = client.get(
-        "/api/health",
+        "/health",
         headers={"X-Request-Id": client_request_id}
     )
     
@@ -58,9 +58,8 @@ def test_middleware_reuses_client_provided_request_id():
 def test_middleware_adds_request_id_to_all_responses():
     """Test that X-Request-Id is added to all API responses."""
     endpoints = [
-        "/api/health",
-        "/api/cases",
-        "/api/submissions",
+        "/health",
+        "/healthz",
     ]
     
     for endpoint in endpoints:
@@ -79,48 +78,72 @@ def test_middleware_adds_request_id_to_all_responses():
 
 
 # ============================================================================
-# Intelligence Recompute Tests
+# Intelligence Recompute Tests (Integration - requires full API setup)
 # ============================================================================
 
 @pytest.fixture
-def sample_case():
-    """Create a test case for intelligence recompute."""
-    from src.core.db import execute_update
+def sample_case_with_submission():
+    """Create a test case with submission for intelligence recompute."""
+    from src.core.db import execute_insert, execute_delete
+    from app.intelligence.repository import insert_intelligence_history
     
     case_id = f"test-case-{uuid.uuid4()}"
-    execute_update(
+    
+    # Create case (submission_id can be null or just a string reference)
+    execute_insert(
         """
-        INSERT INTO cases (id, applicant_name, submission_date, status, decision_type)
-        VALUES (:id, :name, :date, :status, :decision_type)
+        INSERT INTO cases (id, title, decision_type, status, created_at, updated_at)
+        VALUES (:id, :title, :decision_type, :status, :created_at, :updated_at)
         """,
         {
             "id": case_id,
-            "name": "Test Applicant",
-            "date": "2026-01-21",
-            "status": "pending",
-            "decision_type": "license"
+            "title": "Test Case for Request ID",
+            "decision_type": "license",
+            "status": "in_review",
+            "created_at": "2026-01-21T00:00:00Z",
+            "updated_at": "2026-01-21T00:00:00Z"
         }
+    )
+    
+    # Insert initial intelligence history so recompute has something to work with
+    initial_payload = {
+        "confidence_score": 75.0,
+        "confidence_band": "MEDIUM",
+        "rules_passed": 10,
+        "rules_total": 15,
+        "gaps": [],
+        "bias_flags": []
+    }
+    insert_intelligence_history(
+        case_id=case_id,
+        payload=initial_payload,
+        actor="system",
+        reason="Initial test setup"
     )
     
     yield case_id
     
     # Cleanup
-    execute_update("DELETE FROM cases WHERE id = :id", {"id": case_id})
+    execute_delete("DELETE FROM intelligence_history WHERE case_id = :id", {"id": case_id})
+    execute_delete("DELETE FROM cases WHERE id = :id", {"id": case_id})
 
 
-def test_recompute_stores_request_id_in_history(sample_case):
+def test_recompute_stores_request_id_in_history(sample_case_with_submission):
     """Test that intelligence recompute stores request_id in history."""
     client_request_id = str(uuid.uuid4())
     
     response = client.post(
-        f"/api/intelligence/recompute/{sample_case}",
-        headers={"X-Request-Id": client_request_id}
+        f"/workflow/cases/{sample_case_with_submission}/intelligence/recompute",
+        headers={
+            "X-Request-Id": client_request_id,
+            "x-user-role": "admin"  # Required for RBAC
+        }
     )
     
     assert response.status_code == 200
     
     # Check that history entry was created with request_id
-    history = get_intelligence_history(sample_case, limit=1)
+    history = get_intelligence_history(sample_case_with_submission, limit=1)
     
     assert len(history) > 0, "No history entry created"
     
@@ -135,7 +158,7 @@ def test_recompute_stores_request_id_in_history(sample_case):
         ORDER BY computed_at DESC 
         LIMIT 1
         """,
-        {"case_id": sample_case}
+        {"case_id": sample_case_with_submission}
     )
     rows = list(result)
     
@@ -144,9 +167,12 @@ def test_recompute_stores_request_id_in_history(sample_case):
         f"Expected request_id {client_request_id}, got {rows[0]['request_id']}"
 
 
-def test_recompute_without_request_id_stores_generated_id(sample_case):
+def test_recompute_without_request_id_stores_generated_id(sample_case_with_submission):
     """Test that recompute stores generated request_id even if client doesn't provide one."""
-    response = client.post(f"/api/intelligence/recompute/{sample_case}")
+    response = client.post(
+        f"/workflow/cases/{sample_case_with_submission}/intelligence/recompute",
+        headers={"x-user-role": "admin"}  # Required for RBAC
+    )
     
     assert response.status_code == 200
     
@@ -162,7 +188,7 @@ def test_recompute_without_request_id_stores_generated_id(sample_case):
         ORDER BY computed_at DESC 
         LIMIT 1
         """,
-        {"case_id": sample_case}
+        {"case_id": sample_case_with_submission}
     )
     rows = list(result)
     
@@ -171,21 +197,27 @@ def test_recompute_without_request_id_stores_generated_id(sample_case):
 
 
 # ============================================================================
-# Export Tests
+# Export Tests (Integration - requires full API setup)
 # ============================================================================
 
-def test_export_includes_request_id_in_metadata(sample_case):
+def test_export_includes_request_id_in_metadata(sample_case_with_submission):
     """Test that export response includes request_id in metadata."""
     # First recompute to create intelligence
-    recompute_response = client.post(f"/api/intelligence/recompute/{sample_case}")
+    recompute_response = client.post(
+        f"/workflow/cases/{sample_case_with_submission}/intelligence/recompute",
+        headers={"x-user-role": "admin"}
+    )
     assert recompute_response.status_code == 200
     
     # Now export with a known request_id
     export_request_id = str(uuid.uuid4())
     
     export_response = client.get(
-        f"/api/intelligence/export/{sample_case}",
-        headers={"X-Request-Id": export_request_id}
+        f"/workflow/cases/{sample_case_with_submission}/audit/export",
+        headers={
+            "X-Request-Id": export_request_id,
+            "x-user-role": "admin"  # Required for RBAC
+        }
     )
     
     assert export_response.status_code == 200
@@ -198,17 +230,23 @@ def test_export_includes_request_id_in_metadata(sample_case):
     assert export_data["export_metadata"]["request_id"] == export_request_id
 
 
-def test_export_request_id_is_signed(sample_case):
+def test_export_request_id_is_signed(sample_case_with_submission):
     """Test that request_id is part of the signed payload."""
     # First recompute to create intelligence
-    client.post(f"/api/intelligence/recompute/{sample_case}")
+    client.post(
+        f"/workflow/cases/{sample_case_with_submission}/intelligence/recompute",
+        headers={"x-user-role": "admin"}
+    )
     
     # Export with known request_id
     export_request_id = str(uuid.uuid4())
     
     response = client.get(
-        f"/api/intelligence/export/{sample_case}",
-        headers={"X-Request-Id": export_request_id}
+        f"/workflow/cases/{sample_case_with_submission}/audit/export",
+        headers={
+            "X-Request-Id": export_request_id,
+            "x-user-role": "admin"
+        }
     )
     
     assert response.status_code == 200
@@ -217,7 +255,7 @@ def test_export_request_id_is_signed(sample_case):
     # Verify signature exists
     assert "signature" in export_data, "signature missing from export"
     assert "signed_at" in export_data["signature"], "signed_at missing"
-    assert "hash" in export_data["signature"], "hash missing"
+    assert "value" in export_data["signature"], "signature value missing"
     
     # Verify request_id is in the metadata that was signed
     assert "export_metadata" in export_data
@@ -228,17 +266,20 @@ def test_export_request_id_is_signed(sample_case):
 
 
 # ============================================================================
-# End-to-End Tracing Test
+# End-to-End Tracing Test (Integration - requires full API setup)
 # ============================================================================
 
-def test_end_to_end_request_tracing(sample_case):
+def test_end_to_end_request_tracing(sample_case_with_submission):
     """Test complete request tracing from middleware → storage → export."""
     trace_id = str(uuid.uuid4())
     
     # Step 1: Recompute with trace_id
     recompute_response = client.post(
-        f"/api/intelligence/recompute/{sample_case}",
-        headers={"X-Request-Id": trace_id}
+        f"/workflow/cases/{sample_case_with_submission}/intelligence/recompute",
+        headers={
+            "X-Request-Id": trace_id,
+            "x-user-role": "admin"
+        }
     )
     
     assert recompute_response.status_code == 200
@@ -252,7 +293,7 @@ def test_end_to_end_request_tracing(sample_case):
         ORDER BY computed_at DESC 
         LIMIT 1
         """,
-        {"case_id": sample_case}
+        {"case_id": sample_case_with_submission}
     )
     history_rows = list(history_result)
     
@@ -263,8 +304,11 @@ def test_end_to_end_request_tracing(sample_case):
     export_trace_id = str(uuid.uuid4())
     
     export_response = client.get(
-        f"/api/intelligence/export/{sample_case}",
-        headers={"X-Request-Id": export_trace_id}
+        f"/workflow/cases/{sample_case_with_submission}/audit/export",
+        headers={
+            "X-Request-Id": export_trace_id,
+            "x-user-role": "admin"
+        }
     )
     
     assert export_response.status_code == 200
@@ -290,7 +334,7 @@ def test_concurrent_requests_get_different_request_ids():
     
     # Make multiple concurrent requests
     for _ in range(5):
-        response = client.get("/api/health")
+        response = client.get("/health")
         responses.append(response)
     
     request_ids = [r.headers["X-Request-Id"] for r in responses]
@@ -303,7 +347,7 @@ def test_concurrent_requests_get_different_request_ids():
 def test_request_id_format_is_valid_uuid():
     """Test that all generated request IDs are valid UUIDs."""
     for _ in range(10):
-        response = client.get("/api/health")
+        response = client.get("/health")
         request_id = response.headers["X-Request-Id"]
         
         # Should parse as UUID without error

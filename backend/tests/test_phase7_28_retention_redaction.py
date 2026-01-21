@@ -8,7 +8,7 @@ Date: 2026-01-20
 
 import pytest
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
 from app.intelligence.redaction import (
@@ -51,7 +51,7 @@ def test_redact_pii():
 
 def test_retention_policy_evidence_expired():
     """Test evidence snapshot expires after retention period."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     old_date = (now - timedelta(days=EVIDENCE_RETENTION_DAYS + 5)).isoformat() + "Z"
     
     entries = [
@@ -79,7 +79,7 @@ def test_retention_policy_evidence_expired():
 
 def test_retention_policy_payload_expired():
     """Test intelligence payload expires after retention period."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     old_date = (now - timedelta(days=PAYLOAD_RETENTION_DAYS + 5)).isoformat() + "Z"
     
     entries = [
@@ -106,7 +106,7 @@ def test_retention_policy_payload_expired():
 
 def test_retention_policy_recent_data_kept():
     """Test recent data is not expired."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     recent_date = (now - timedelta(days=5)).isoformat() + "Z"
     
     entries = [
@@ -174,7 +174,7 @@ def test_admin_export_full_mode():
         "history": [
             {
                 "id": "run_1",
-                "computed_at": datetime.utcnow().isoformat() + "Z",
+                "computed_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
                 "confidence_score": 85,
                 "intelligence_payload": {"gaps": [], "bias_flags": []},
                 "evidence_snapshot": {"case": {"status": "pending"}},
@@ -258,7 +258,7 @@ def sample_intelligence_payload():
         "completeness_score": 90.0,
         "gaps": [{"question_id": "q1", "severity": "MEDIUM"}],
         "bias_flags": [],
-        "computed_at": datetime.utcnow().isoformat() + "Z",
+        "computed_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
     }
 
 
@@ -271,7 +271,7 @@ def test_export_retention_drops_expired_evidence(setup_test_case):
     case_id = setup_test_case
     
     # Create old intelligence entry (beyond retention)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     old_date = (now - timedelta(days=EVIDENCE_RETENTION_DAYS + 10)).isoformat() + "Z"
     
     old_payload = {

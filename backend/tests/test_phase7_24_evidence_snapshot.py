@@ -10,7 +10,7 @@ Tests:
 
 import pytest
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.intelligence.evidence_snapshot import (
     create_evidence_snapshot,
@@ -179,7 +179,7 @@ def test_intelligence_history_stores_evidence(test_case):
         "completeness_score": 90.0,
         "gaps": [],
         "bias_flags": [],
-        "computed_at": datetime.utcnow().isoformat() + "Z",
+        "computed_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
     }
     
     # Insert history entry
@@ -228,7 +228,7 @@ def test_get_intelligence_history_includes_evidence(test_case):
         "case_id": test_case,
         "confidence_score": 85.0,
         "confidence_band": "high",
-        "computed_at": datetime.utcnow().isoformat() + "Z",
+        "computed_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
     }
     
     history_id = insert_intelligence_history(

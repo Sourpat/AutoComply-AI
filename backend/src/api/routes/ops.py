@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from src.database.connection import get_db
 from src.database.models import ReviewQueueItem, ReviewStatus, QuestionEvent, QuestionStatus
@@ -132,7 +132,7 @@ async def get_ops_summary(db: Session = Depends(get_db)) -> OpsKPIResponse:
     - Avg time to first response (last 7 days)
     - Auto-answered rate (last 7 days)
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     seven_days_ago = now - timedelta(days=7)
     
     # Open reviews
@@ -205,7 +205,7 @@ async def get_ops_reviews(
     - days: Look back period (default 14)
     - limit: Max items to return (default 100)
     """
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     
     items = db.query(ReviewQueueItem).filter(
         ReviewQueueItem.created_at >= cutoff
@@ -254,7 +254,7 @@ async def get_ops_trends(
     - Daily count of open items created
     - Daily count of published items
     """
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     
     # Get items created per day
     created_items = db.query(
@@ -281,7 +281,7 @@ async def get_ops_trends(
     # Create complete date range
     result_dict = {}
     current_date = cutoff.date()
-    end_date = datetime.utcnow().date()
+    end_date = datetime.now(timezone.utc).date()
     
     while current_date <= end_date:
         result_dict[current_date] = {

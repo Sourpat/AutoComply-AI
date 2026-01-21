@@ -21,7 +21,7 @@ Trigger events:
 import time
 import logging
 from typing import Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.core.db import execute_sql, execute_insert
 from src.config import get_settings
@@ -211,7 +211,7 @@ def _emit_intelligence_updated_event(
     confidence_band = intelligence.get('confidence_band', 'low')
     gap_severity_score = intelligence.get('gap_severity_score', 0)
     bias_flags = intelligence.get('bias_flags', [])
-    computed_at = intelligence.get('computed_at', datetime.utcnow().isoformat() + 'Z')
+    computed_at = intelligence.get('computed_at', datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'))
     
     payload = {
         "reason": reason,

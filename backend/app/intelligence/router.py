@@ -8,7 +8,7 @@ Endpoints:
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Request, Query
@@ -52,7 +52,7 @@ def compute_is_stale(computed_at: str, stale_after_minutes: int) -> bool:
     """
     try:
         computed_time = datetime.fromisoformat(computed_at.replace("Z", "+00:00"))
-        age_minutes = (datetime.utcnow() - computed_time.replace(tzinfo=None)).total_seconds() / 60
+        age_minutes = (datetime.now(timezone.utc) - computed_time).total_seconds() / 60
         return age_minutes > stale_after_minutes
     except Exception as e:
         logger.warning(f"Failed to compute is_stale: {e}")
@@ -409,7 +409,7 @@ def get_executive_summary_endpoint(
 @require_role("admin", "devsupport")  # Phase 7.27: Enforce RBAC
 def recompute_intelligence_endpoint(
     case_id: str,
-    request: Request = None,  # Phase 7.27: Added for RBAC (optional for testing)
+    request: Request = None,  # Phase 7.27: Added for RBAC (optional for decorator compat)
     decision_type: str = Query(default="default", description="Decision type for gap expectations"),
     body: Optional[ComputeIntelligenceRequest] = None,
 ):
@@ -468,6 +468,36 @@ def recompute_intelligence_endpoint(
         bias_flags = json.loads(intelligence.bias_json)
     except:
         bias_flags = []
+    
+    # Phase 7.33: Store intelligence computation in history with request_id
+    from .repository import insert_intelligence_history
+    from .integrity import compute_input_hash
+    
+    # Build payload for history
+    intelligence_payload = {
+        "confidence_score": intelligence.confidence_score,
+        "confidence_band": intelligence.confidence_band,
+        "completeness_score": intelligence.completeness_score,
+        "gaps": gaps,
+        "bias_flags": bias_flags,
+        "computed_at": intelligence.computed_at,
+        "updated_at": intelligence.updated_at,
+    }
+    
+    # Compute input hash for duplicate detection (case data only - submission not required)
+    case_data = {"id": case_id, "status": case.status if case else "unknown"}
+    input_hash = compute_input_hash(case_data, None)
+    
+    # Insert into history
+    insert_intelligence_history(
+        case_id=case_id,
+        payload=intelligence_payload,
+        actor=request.state.user_email if request and hasattr(request.state, "user_email") else "system",
+        reason=f"Intelligence recomputed by {ctx['role']}",
+        triggered_by=ctx['role'],
+        input_hash=input_hash,
+        request_id=request_id  # Phase 7.33: Include request_id for tracing
+    )
     
     # Calculate gap severity score
     gap_severity_score = 0
@@ -804,7 +834,7 @@ def get_intelligence_history_endpoint(
 @require_role("admin", "verifier", "devsupport")  # Phase 7.27: All authenticated roles
 def export_audit_trail(
     case_id: str,
-    request: Request = None,  # Phase 7.27: Added for RBAC (optional for testing)
+    request: Request = None,  # Phase 7.27: Added for RBAC (optional for decorator compat)
     include_payload: bool = Query(default=False, description="Include full intelligence payloads (admin only)"),
     include_evidence: bool = Query(default=False, description="Include evidence snapshots (admin only)"),
     safe_mode: Optional[bool] = Query(default=None, description="Safe redaction mode (verifier=forced, admin=optional)")
@@ -875,7 +905,7 @@ def export_audit_trail(
     history_entries = get_intelligence_history(case_id, limit=1000)
     
     # Prepare export data
-    export_timestamp = datetime.utcnow().isoformat() + "Z"
+    export_timestamp = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     
     # Build history export (include all fields before redaction)
     history_export = []

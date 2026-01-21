@@ -16,7 +16,7 @@ from pathlib import Path
 backend_dir = Path(__file__).parent
 sys.path.insert(0, str(backend_dir))
 
-from datetime import datetime
+from datetime import datetime, timezone
 from app.workflow.repo import (
     create_case,
     get_case,
@@ -206,7 +206,7 @@ def test_submission_crud():
             "licenseNumber": "NP.12345",
             "question": "Can I prescribe controlled substances?",
         },
-        rawPayload={"timestamp": datetime.utcnow().isoformat()},
+        rawPayload={"timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')},
         evaluatorOutput={
             "decision": "approved",
             "confidence": 0.95,

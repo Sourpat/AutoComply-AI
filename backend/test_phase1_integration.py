@@ -38,7 +38,7 @@ submission_input = SubmissionCreateInput(
 )
 
 # Manually create case (simulating what router does)
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.workflow.models import CaseCreateInput
 from app.workflow.repo import create_case
 
@@ -50,7 +50,7 @@ print(f"  Form Data: {json.dumps(submission.formData, indent=2)}")
 
 # Create linked case
 submitter_name = submission.formData.get('name', 'Unknown')
-due_at = (datetime.utcnow() + timedelta(days=7)).isoformat() + 'Z'
+due_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat() + 'Z'
 
 case_input = CaseCreateInput(
     decisionType=submission.decisionType,

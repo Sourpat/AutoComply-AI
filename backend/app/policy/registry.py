@@ -7,7 +7,7 @@ Manages policy versions, provides current policy metadata, and computes policy d
 import hashlib
 import json
 from typing import Dict, List, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .models import PolicyMeta
 from app.intelligence.rules_engine import (
@@ -116,7 +116,7 @@ def get_current_policy() -> PolicyMeta:
     return PolicyMeta(
         policy_id=CURRENT_POLICY_ID,
         version=CURRENT_POLICY_VERSION,
-        created_at=datetime.utcnow().isoformat() + "Z",  # In production, this would be fixed
+        created_at=datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),  # In production, this would be fixed
         policy_hash=policy_hash,
         summary=f"AutoComply Decision Rules v{CURRENT_POLICY_VERSION}",
         rules_count=total_rules

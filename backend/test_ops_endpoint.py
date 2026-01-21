@@ -1,6 +1,6 @@
 """Test script to debug ops endpoint issues."""
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from src.database.connection import get_db
 from src.database.models import ReviewQueueItem, ReviewStatus, QuestionEvent, QuestionStatus
 
@@ -9,7 +9,7 @@ def test_ops_summary():
     db = next(get_db())
     
     try:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         seven_days_ago = now - timedelta(days=7)
         
         print("Testing ops summary queries...")

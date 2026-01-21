@@ -124,6 +124,16 @@ def ensure_test_schema():
                 cursor.execute(f"ALTER TABLE intelligence_history ADD COLUMN {col} TEXT")
                 conn.commit()
         
+        # Phase 7.33: Request ID column
+        if not column_exists("intelligence_history", "request_id"):
+            cursor.execute("ALTER TABLE intelligence_history ADD COLUMN request_id TEXT")
+            conn.commit()
+        
+        # Phase 7.33: Add applicant_name to cases (for test fixtures)
+        if not column_exists("cases", "applicant_name"):
+            cursor.execute("ALTER TABLE cases ADD COLUMN applicant_name TEXT")
+            conn.commit()
+        
         # Phase 7.24+: Add missing columns to attachments (used by evidence snapshot)
         for col in ["mime_type", "uploaded_at", "category"]:
             if not column_exists("attachments", col):

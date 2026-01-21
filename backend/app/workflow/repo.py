@@ -19,7 +19,7 @@ All function signatures preserved for backward compatibility.
 import uuid
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Tuple
 
 from src.core.db import execute_sql, execute_insert, execute_update, execute_delete
@@ -236,7 +236,7 @@ def create_case(input_data: CaseCreateInput) -> CaseRecord:
         >>> print(case.id)  # Generated UUID
     """
     case_id = str(uuid.uuid4())
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     # Calculate packet evidence IDs from evidence list
     packet_evidence_ids = [e.id for e in (input_data.evidence or []) if e.includedInPacket]
@@ -455,7 +455,7 @@ def list_cases(
         
         if filters.overdue:
             where_clauses.append("due_at < :now AND status NOT IN ('approved', 'blocked', 'closed', 'cancelled')")
-            params["now"] = datetime.utcnow().isoformat()
+            params["now"] = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         
         if filters.unassigned:
             where_clauses.append("assigned_to IS NULL")
@@ -529,7 +529,7 @@ def update_case(case_id: str, updates: CaseUpdateInput) -> Optional[CaseRecord]:
     searchable_fields_changed = any(field in update_dict for field in ["title", "summary", "assignedTo"])
     
     set_clauses = []
-    params = {"id": case_id, "updated_at": datetime.utcnow().isoformat()}
+    params = {"id": case_id, "updated_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')}
     
     for field, value in update_dict.items():
         # Map Python field names to database column names
@@ -644,7 +644,7 @@ def add_audit_event(input_data: AuditEventCreateInput) -> AuditEvent:
         ... ))
     """
     event_id = str(uuid.uuid4())
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     message = input_data.message or f"{input_data.eventType.value} event"
 
@@ -740,7 +740,7 @@ def create_evidence_upload(
     sha256: Optional[str] = None,
     uploaded_by: Optional[str] = None,
 ) -> EvidenceUploadItem:
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     evidence_id = str(uuid.uuid4())
 
     execute_insert(
@@ -834,7 +834,7 @@ def create_attachment(
     description: Optional[str] = None,
     original_sha256: Optional[str] = None,
 ) -> AttachmentItem:
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     attachment_id = str(uuid.uuid4())
 
     execute_insert(
@@ -913,7 +913,7 @@ def soft_delete_attachment(
         """,
         {
             "id": attachment_id,
-            "deleted_at": datetime.utcnow().isoformat(),
+            "deleted_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             "deleted_by": deleted_by,
             "delete_reason": reason,
         },
@@ -937,7 +937,7 @@ def redact_attachment(
         """,
         {
             "id": attachment_id,
-            "redacted_at": datetime.utcnow().isoformat(),
+            "redacted_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             "redacted_by": redacted_by,
             "redact_reason": reason,
         },
@@ -990,7 +990,7 @@ def upsert_evidence(
     if not get_case(case_id):
         return None
     
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     # Replace evidence list if provided
     if evidence is not None:
@@ -1187,7 +1187,7 @@ def create_case_note(case_id: str, input_data: CaseNoteCreateInput) -> CaseNote:
     if not case:
         raise ValueError(f"Case not found: {case_id}")
     
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     note_id = str(uuid.uuid4())
     
     # Insert note
@@ -1313,7 +1313,7 @@ def create_case_event(
         ...     payload_dict={"from": "new", "to": "in_review"}
         ... )
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     event_id = str(uuid.uuid4())
     
     resolved_payload = payload_dict
@@ -1467,7 +1467,7 @@ def create_case_decision(case_id: str, input_data: CaseDecisionCreateInput) -> C
     if case.status in {CaseStatus.CANCELLED, CaseStatus.APPROVED, CaseStatus.BLOCKED, CaseStatus.CLOSED}:
         raise ValueError("Case is already resolved or cancelled")
     
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     decision_id = str(uuid.uuid4())
     
     # Ensure only one active decision per case
@@ -1589,7 +1589,7 @@ def create_case_request(
         WHERE case_id = :case_id AND status = 'open'
     """, {
         "case_id": case_id,
-        "resolved_at": datetime.utcnow().isoformat(),
+        "resolved_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
     })
     
     # Create new request
@@ -1605,7 +1605,7 @@ def create_case_request(
     """, {
         "id": request_id,
         "case_id": case_id,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         "status": "open",
         "requested_by": requested_by,
         "message": message,
@@ -1668,7 +1668,7 @@ def resolve_case_request(request_id: str) -> bool:
         WHERE id = :id AND status = 'open'
     """, {
         "id": request_id,
-        "resolved_at": datetime.utcnow().isoformat(),
+        "resolved_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
     })
     
     return rows_updated > 0

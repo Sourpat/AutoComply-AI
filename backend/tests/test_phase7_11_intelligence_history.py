@@ -11,7 +11,7 @@ Validates:
 import pytest
 import time
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from app.intelligence.repository import (
     get_intelligence_history,
     insert_intelligence_history,
@@ -51,8 +51,8 @@ def sample_payload():
     """Sample intelligence payload for testing."""
     return {
         "case_id": "test_case_123",
-        "computed_at": datetime.utcnow().isoformat() + "Z",
-        "updated_at": datetime.utcnow().isoformat() + "Z",
+        "computed_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+        "updated_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         "completeness_score": 85,
         "confidence_score": 75,
         "confidence_band": "medium",
@@ -75,7 +75,7 @@ def sample_payload():
 
 def test_insert_intelligence_history(sample_payload):
     """Test that history entry is created correctly."""
-    case_id = "test_case_" + datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+    case_id = "test_case_" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     
     history_id = insert_intelligence_history(
         case_id=case_id,
@@ -96,12 +96,12 @@ def test_insert_intelligence_history(sample_payload):
 
 def test_multiple_history_entries_ordered_correctly(sample_payload):
     """Test that multiple history entries are ordered newest first."""
-    case_id = "test_case_" + datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+    case_id = "test_case_" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     
     # Insert 3 entries with small delays
     for i in range(3):
         payload = sample_payload.copy()
-        payload["computed_at"] = datetime.utcnow().isoformat() + "Z"
+        payload["computed_at"] = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         payload["confidence_score"] = 60 + i * 10
         
         insert_intelligence_history(
@@ -124,7 +124,7 @@ def test_multiple_history_entries_ordered_correctly(sample_payload):
 
 def test_history_retrieval_respects_limit(sample_payload):
     """Test that history retrieval respects the limit parameter."""
-    case_id = "test_case_" + datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+    case_id = "test_case_" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     
     # Insert 5 entries
     for i in range(5):
@@ -143,13 +143,13 @@ def test_history_retrieval_respects_limit(sample_payload):
 
 def test_cleanup_old_history_keeps_last_n(sample_payload):
     """Test that cleanup keeps only the N most recent entries."""
-    case_id = "test_case_" + datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+    case_id = "test_case_" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     
     # Insert 10 entries
     for i in range(10):
         payload = sample_payload.copy()
         payload["confidence_score"] = 50 + i
-        payload["computed_at"] = datetime.utcnow().isoformat() + "Z"
+        payload["computed_at"] = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         insert_intelligence_history(
             case_id=case_id,
             payload=payload,
@@ -176,14 +176,14 @@ def test_cleanup_old_history_keeps_last_n(sample_payload):
 
 def test_diff_computation_basic(sample_payload):
     """Test basic diff computation between two history entries."""
-    case_id = "test_case_" + datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+    case_id = "test_case_" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     
     # Insert first entry
     payload1 = sample_payload.copy()
     payload1["confidence_score"] = 70
     payload1["confidence_band"] = "medium"
     payload1["rules_passed"] = 7
-    payload1["computed_at"] = datetime.utcnow().isoformat() + "Z"
+    payload1["computed_at"] = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     insert_intelligence_history(case_id, payload1, reason="First")
     
     time.sleep(0.1)
@@ -193,7 +193,7 @@ def test_diff_computation_basic(sample_payload):
     payload2["confidence_score"] = 85
     payload2["confidence_band"] = "high"
     payload2["rules_passed"] = 9
-    payload2["computed_at"] = datetime.utcnow().isoformat() + "Z"
+    payload2["computed_at"] = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     insert_intelligence_history(case_id, payload2, reason="Second")
     
     # Get history and compute diff manually
@@ -217,7 +217,7 @@ def test_diff_computation_basic(sample_payload):
 
 def test_history_payload_contains_all_required_fields(sample_payload):
     """Test that history payload preserves all intelligence fields."""
-    case_id = "test_case_" + datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+    case_id = "test_case_" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     
     insert_intelligence_history(case_id, sample_payload, reason="Full payload test")
     

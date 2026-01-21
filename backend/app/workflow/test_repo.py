@@ -8,7 +8,7 @@ Run with: pytest backend/app/workflow/test_repo.py -v
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from .models import (
     CaseStatus,
@@ -110,7 +110,7 @@ def test_create_case_with_evidence():
 
 def test_create_case_with_due_date():
     """Test creating a case with SLA deadline."""
-    due_date = datetime.utcnow() + timedelta(hours=24)
+    due_date = datetime.now(timezone.utc) + timedelta(hours=24)
     
     case = create_case(CaseCreateInput(
         decisionType="csf_practitioner",
@@ -242,8 +242,8 @@ def test_list_cases_filter_by_search():
 
 def test_list_cases_filter_overdue():
     """Test filtering overdue cases."""
-    past_due = datetime.utcnow() - timedelta(hours=1)
-    future_due = datetime.utcnow() + timedelta(hours=1)
+    past_due = datetime.now(timezone.utc) - timedelta(hours=1)
+    future_due = datetime.now(timezone.utc) + timedelta(hours=1)
     
     case1 = create_case(CaseCreateInput(
         decisionType="csf_practitioner",

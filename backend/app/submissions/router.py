@@ -106,7 +106,7 @@ def create_new_submission(input_data: SubmissionCreateInput):
             }
         }
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from app.workflow.models import CaseCreateInput
     from app.workflow.repo import create_case
     
@@ -127,7 +127,7 @@ def create_new_submission(input_data: SubmissionCreateInput):
             initial_status = 'needs_info'
     
     # Calculate due date (7 days default)
-    due_at = (datetime.utcnow() + timedelta(days=7)).isoformat() + 'Z'
+    due_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat() + 'Z'
     
     # Create case title
     decision_type_labels = {
@@ -247,7 +247,7 @@ def update_submission_endpoint(submission_id: str, input_data: SubmissionUpdateI
         from datetime import datetime
         from app.workflow.repo import update_case, create_case_event
         from app.workflow.models import CaseUpdateInput
-        update_case(case.id, CaseUpdateInput(updatedAt=datetime.utcnow()))
+        update_case(case.id, CaseUpdateInput(updatedAt=datetime.now(timezone.utc)))
         
         # Phase 3.1: Create submission_updated event
         create_case_event(
@@ -338,7 +338,7 @@ def delete_submission_endpoint(submission_id: str):
         old_status = case.status
         update_case(case.id, CaseUpdateInput(
             status='cancelled',
-            updatedAt=datetime.utcnow()
+            updatedAt=datetime.now(timezone.utc)
         ))
         
         # Phase 3.1: Create events for cancellation

@@ -10,7 +10,7 @@ Functions:
 
 import uuid
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 
 from src.core.db import execute_sql, execute_insert, execute_update, execute_update
@@ -65,7 +65,7 @@ def upsert_signals(case_id: str, signals: List[Dict[str, Any]]) -> List[str]:
         ["sig_abc123"]
     """
     signal_ids = []
-    now = datetime.utcnow().isoformat() + "Z"
+    now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     
     for signal_data in signals:
         signal_id = f"sig_{uuid.uuid4().hex[:12]}"
@@ -309,7 +309,7 @@ def compute_and_upsert_decision_intelligence(
                     if exp.max_age_hours:
                         try:
                             signal_time = datetime.fromisoformat(signal.get("timestamp", "").replace("Z", "+00:00"))
-                            age_hours = (datetime.utcnow() - signal_time.replace(tzinfo=None)).total_seconds() / 3600
+                            age_hours = (datetime.now(timezone.utc) - signal_time).total_seconds() / 3600
                             if age_hours > exp.max_age_hours:
                                 gaps.append({
                                     "gapType": "stale",
@@ -463,7 +463,7 @@ def compute_and_upsert_decision_intelligence(
     # ========================================================================
     # Prepare data
     # ========================================================================
-    now = datetime.utcnow().isoformat() + "Z"
+    now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     gap_json = json.dumps(gaps)
     bias_json = json.dumps(bias_flags)
     explanation_json = json.dumps(explanation_factors)
@@ -605,7 +605,7 @@ def update_executive_summary(case_id: str, executive_summary_json: str) -> None:
         {
             "case_id": case_id,
             "executive_summary_json": executive_summary_json,
-            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "updated_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         },
     )
 
@@ -671,7 +671,7 @@ def insert_intelligence_history(
         never updates existing ones. This ensures audit trail integrity.
     """
     history_id = f"hist_{uuid.uuid4().hex[:12]}"
-    now = datetime.utcnow().isoformat() + "Z"
+    now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     computed_at = payload.get("computed_at", now)
     
     # Phase 7.24: Create evidence snapshot

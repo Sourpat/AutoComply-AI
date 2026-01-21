@@ -7,7 +7,7 @@ Provides CRUD operations for filter presets and dashboard layouts.
 
 import uuid
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 
 from src.core.db import execute_sql, execute_insert, execute_update, execute_delete
@@ -34,7 +34,7 @@ def create_view(
         Created view ID
     """
     view_id = f"view_{uuid.uuid4().hex[:12]}"
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     
     execute_insert(
         """
@@ -161,7 +161,7 @@ def update_view(view_id: str, patch: Dict[str, Any]) -> bool:
     updates = ["updated_at = :updated_at"]
     params = {
         "id": view_id,
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
     }
     
     if "name" in patch:

@@ -17,7 +17,7 @@ from pathlib import Path
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.intelligence.expectations import get_expected_signals, get_required_signals
 from app.intelligence.bias import detect_all_bias_flags
 from app.intelligence.scoring import compute_confidence_v2
@@ -93,7 +93,7 @@ def demo_gap_detection():
     
     # Scenario 4: Stale signal
     print("Scenario D: Stale Signal (older than 72 hours)")
-    old_time = (datetime.utcnow() - timedelta(hours=80)).isoformat() + "Z"
+    old_time = (datetime.now(timezone.utc) - timedelta(hours=80)).isoformat() + "Z"
     print(f"  Signal: 80 hours old (max_age_hours=72)")
     print(f"  Gap: Stale signal - may not reflect current case state")
 
@@ -147,7 +147,7 @@ def demo_bias_detection():
     
     # Scenario 4: Stale signals
     print("Scenario D: Stale Signals (>72 hours old)")
-    old_time = (datetime.utcnow() - timedelta(hours=80)).isoformat() + "Z"
+    old_time = (datetime.now(timezone.utc) - timedelta(hours=80)).isoformat() + "Z"
     stale_signals = [
         {"timestamp": old_time, "metadata_json": json.dumps({"signal_type": "old_signal"})},
     ]
@@ -258,8 +258,8 @@ def demo_api_response():
     # Simulate API response
     response = {
         "case_id": "demo_case_123",
-        "computed_at": datetime.utcnow().isoformat() + "Z",
-        "updated_at": datetime.utcnow().isoformat() + "Z",
+        "computed_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+        "updated_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         "completeness_score": 67,
         "gaps": [
             {

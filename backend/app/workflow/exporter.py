@@ -8,7 +8,7 @@ Functions:
 - generate_pdf(case_bundle) - Generate PDF packet using reportlab
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from io import BytesIO
 import hashlib
@@ -79,7 +79,7 @@ def build_case_bundle(case_id: str) -> Optional[Dict[str, Any]]:
         "evidence": [ev.model_dump() for ev in case.evidence],
         "packetEvidence": [ev.model_dump() for ev in packet_evidence],
         "metadata": {
-            "exportedAt": datetime.utcnow().isoformat(),
+            "exportedAt": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             "exportFormat": "bundle",
             "caseId": case_id,
             "version": "1.0",
@@ -123,7 +123,7 @@ def generate_pdf(case_bundle: Dict[str, Any]) -> bytes:
     # Get case metadata for footer
     case = case_bundle["case"]
     case_id = case["id"]
-    export_timestamp = case_bundle.get("metadata", {}).get("exportedAt", datetime.utcnow().isoformat())
+    export_timestamp = case_bundle.get("metadata", {}).get("exportedAt", datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'))
     
     # Create document with custom canvas for watermark and footer
     doc = SimpleDocTemplate(
@@ -492,7 +492,7 @@ class NumberedCanvas(canvas.Canvas):
     def __init__(self, *args, **kwargs):
         # Extract custom params
         self.case_id = kwargs.pop('case_id', 'N/A')
-        self.export_timestamp = kwargs.pop('export_timestamp', datetime.utcnow().isoformat())
+        self.export_timestamp = kwargs.pop('export_timestamp', datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'))
         self.signature_hash = kwargs.pop('signature_hash', 'N/A')
         
         canvas.Canvas.__init__(self, *args, **kwargs)

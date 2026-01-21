@@ -1,5 +1,5 @@
 """Test the ops endpoint review items logic."""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from src.database.connection import get_db
 from src.database.models import ReviewQueueItem
 
@@ -8,7 +8,7 @@ def test_ops_reviews():
     db = next(get_db())
     
     try:
-        cutoff = datetime.utcnow() - timedelta(days=14)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=14)
         
         items = db.query(ReviewQueueItem).filter(
             ReviewQueueItem.created_at >= cutoff

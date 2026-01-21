@@ -8,7 +8,7 @@ Run with: python backend/app/workflow/test_manual.py
 """
 
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.workflow.models import (
     CaseStatus,
@@ -294,7 +294,7 @@ def test_overdue_cases():
     reset_store()
     
     # Create overdue case (due 1 hour ago)
-    past_due = datetime.utcnow() - timedelta(hours=1)
+    past_due = datetime.now(timezone.utc) - timedelta(hours=1)
     case1 = create_case(CaseCreateInput(
         decisionType="csf_practitioner",
         title="Overdue Case",
@@ -302,7 +302,7 @@ def test_overdue_cases():
     ))
     
     # Create not-overdue case (due in 24 hours)
-    future_due = datetime.utcnow() + timedelta(hours=24)
+    future_due = datetime.now(timezone.utc) + timedelta(hours=24)
     case2 = create_case(CaseCreateInput(
         decisionType="csf_practitioner",
         title="On-Time Case",

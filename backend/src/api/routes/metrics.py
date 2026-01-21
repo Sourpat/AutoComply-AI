@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from src.database.connection import get_db
 from src.database.models import (
@@ -80,7 +80,7 @@ async def get_metrics(
     """
     
     # Calculate date range
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
     
     # ========================================================================
     # Question metrics

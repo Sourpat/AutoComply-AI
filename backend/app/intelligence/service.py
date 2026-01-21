@@ -13,7 +13,7 @@ Key Functions:
 import json
 import logging
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .generator import generate_signals_for_case
 from .repository import (
@@ -227,7 +227,7 @@ def _is_throttled(existing_intelligence) -> bool:
     
     try:
         updated_time = datetime.fromisoformat(existing_intelligence.updated_at.replace("Z", "+00:00"))
-        elapsed = (datetime.utcnow() - updated_time.replace(tzinfo=None)).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - updated_time).total_seconds()
         return elapsed < 2
     except:
         return False

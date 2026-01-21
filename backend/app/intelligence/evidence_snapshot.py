@@ -8,7 +8,7 @@ for intelligence computations.
 import hashlib
 import json
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.core.db import execute_sql
 
@@ -40,7 +40,7 @@ def create_evidence_snapshot(case_id: str) -> Dict[str, Any]:
         }
     """
     snapshot = {
-        "snapshot_at": datetime.utcnow().isoformat() + "Z",
+        "snapshot_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         "case": {},
         "submission": None,
         "attachments": [],

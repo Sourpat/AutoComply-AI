@@ -33,7 +33,7 @@ def calculate_next_run(
     Returns:
         ISO formatted datetime string
     """
-    now = from_time or datetime.utcnow()
+    now = from_time or datetime.now(timezone.utc)
     
     # Create target time today
     target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
@@ -87,7 +87,7 @@ def create_scheduled_export(
         Created export record
     """
     export_id = generate_export_id()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     next_run = calculate_next_run(schedule, hour, minute)
     
     query = """
@@ -215,7 +215,7 @@ def update_scheduled_export(
     
     # Build update fields
     updates = []
-    params = {"export_id": export_id, "updated_at": datetime.utcnow().isoformat()}
+    params = {"export_id": export_id, "updated_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')}
     
     if name is not None:
         updates.append("name = :name")
@@ -298,7 +298,7 @@ def mark_export_run(export_id: str) -> None:
     if not export:
         return
     
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     next_run = calculate_next_run(
         export["schedule"],
         export["hour"],
@@ -331,7 +331,7 @@ def get_due_exports() -> List[Dict[str, Any]]:
     Returns:
         List of due export records
     """
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     
     query = """
         SELECT 

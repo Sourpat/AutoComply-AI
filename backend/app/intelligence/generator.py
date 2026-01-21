@@ -12,7 +12,7 @@ Auto-generates signals from existing case artifacts:
 All signals are deterministic and recompute-safe.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 import json
 
@@ -117,7 +117,7 @@ def generate_signals_for_case(case_id: str) -> List[SignalCreate]:
     if not case:
         return signals  # No case found, return empty list
     
-    base_timestamp = datetime.utcnow().isoformat()
+    base_timestamp = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     
     # ========================================================================
     # SIGNAL 1: submission_present

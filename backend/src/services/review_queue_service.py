@@ -5,7 +5,7 @@ Review Queue service for managing human-in-the-loop workflow.
 
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from src.database.models import (
@@ -96,7 +96,7 @@ class ReviewQueueService:
             return None
         
         item.assigned_to = assigned_to
-        item.assigned_at = datetime.utcnow()
+        item.assigned_at = datetime.now(timezone.utc)
         item.status = ReviewStatus.IN_REVIEW
         
         self.db.commit()
@@ -166,8 +166,8 @@ class ReviewQueueService:
         # Update review item
         item.final_answer = final_answer
         item.status = ReviewStatus.PUBLISHED
-        item.approved_at = datetime.utcnow()
-        item.published_at = datetime.utcnow()
+        item.approved_at = datetime.now(timezone.utc)
+        item.published_at = datetime.now(timezone.utc)
         item.published_kb_id = kb_entry.id
         
         if tags:

@@ -5,7 +5,7 @@ Tests SLA classification boundaries, age computation, and endpoint filtering.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.workflow.sla import (
     compute_age_hours,
     compute_sla_status,
@@ -23,7 +23,7 @@ from app.workflow.sla import (
 def test_age_hours_from_created_at():
     """Test age calculation from created_at."""
     # Create a case 25 hours ago
-    created_at = datetime.utcnow() - timedelta(hours=25)
+    created_at = datetime.now(timezone.utc) - timedelta(hours=25)
     age = compute_age_hours(created_at)
     
     # Should be ~25 hours (allow 1 minute tolerance for test execution time)
@@ -33,8 +33,8 @@ def test_age_hours_from_created_at():
 def test_age_hours_from_status_updated_at():
     """Test age calculation prefers status_updated_at over created_at."""
     # Created 100 hours ago, but status updated 10 hours ago
-    created_at = datetime.utcnow() - timedelta(hours=100)
-    status_updated_at = datetime.utcnow() - timedelta(hours=10)
+    created_at = datetime.now(timezone.utc) - timedelta(hours=100)
+    status_updated_at = datetime.now(timezone.utc) - timedelta(hours=10)
     
     age = compute_age_hours(created_at, status_updated_at)
     
@@ -45,7 +45,7 @@ def test_age_hours_from_status_updated_at():
 def test_age_hours_recent_case():
     """Test age calculation for a very recent case."""
     # Created 30 minutes ago
-    created_at = datetime.utcnow() - timedelta(minutes=30)
+    created_at = datetime.now(timezone.utc) - timedelta(minutes=30)
     age = compute_age_hours(created_at)
     
     # Should be ~0.5 hours
@@ -127,7 +127,7 @@ def test_sla_status_needs_info_no_tracking():
 
 def test_add_sla_fields_basic():
     """Test adding SLA fields to a case dict."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     created_at = now - timedelta(hours=36)
     
     case = {
@@ -157,7 +157,7 @@ def test_add_sla_fields_basic():
 
 def test_add_sla_fields_with_iso_strings():
     """Test SLA fields work with ISO timestamp strings."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     created_at = now - timedelta(hours=80)
     
     case = {
@@ -183,7 +183,7 @@ def test_add_sla_fields_with_iso_strings():
 
 def test_add_sla_fields_recent_case():
     """Test SLA fields for a recently created case."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     created_at = now - timedelta(minutes=30)
     
     case = {
@@ -219,7 +219,7 @@ def test_sla_filter_warning_and_breach():
     client = TestClient(app)
     
     # Create test cases with different ages
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     # Case 1: Recent (ok)
     case1 = create_case(CaseCreateInput(

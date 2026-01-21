@@ -13,7 +13,7 @@ sys.path.insert(0, 'C:\\Users\\soura\\Documents\\Projects\\Projects\\AutoComply-
 from app.workflow.repo import list_cases, create_case
 from app.workflow.adherence import get_case_adherence
 from src.core.db import init_db
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Initialize database
 init_db()
@@ -38,7 +38,7 @@ if not cases:
         decisionType="csf_practitioner",
         title="Test CSF Practitioner Application",
         summary="Test case for adherence endpoint",
-        dueAt=(datetime.utcnow() + timedelta(days=7)).isoformat() + "Z"
+        dueAt=(datetime.now(timezone.utc) + timedelta(days=7)).isoformat() + "Z"
     ))
     case_id = test_case['id']
     decision_type = test_case['decisionType']

@@ -10,7 +10,7 @@ Tests cover:
 
 import json
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.intelligence.expectations import (
     get_expected_signals,
     get_required_signals,
@@ -168,8 +168,8 @@ def test_detect_contradictions_submission_completeness():
 
 def test_detect_stale_signals():
     """Test stale signal detection."""
-    old_time = (datetime.utcnow() - timedelta(hours=80)).isoformat() + "Z"
-    recent_time = datetime.utcnow().isoformat() + "Z"
+    old_time = (datetime.now(timezone.utc) - timedelta(hours=80)).isoformat() + "Z"
+    recent_time = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     
     signals = [
         {"timestamp": old_time, "metadata_json": json.dumps({"signal_type": "old_signal"})},
@@ -184,7 +184,7 @@ def test_detect_stale_signals():
 
 def test_detect_all_bias_flags():
     """Test combined bias detection."""
-    old_time = (datetime.utcnow() - timedelta(hours=80)).isoformat() + "Z"
+    old_time = (datetime.now(timezone.utc) - timedelta(hours=80)).isoformat() + "Z"
     
     signals = [
         {"source_type": "submission", "signal_strength": 0.9, "timestamp": old_time, "metadata_json": "{}"},

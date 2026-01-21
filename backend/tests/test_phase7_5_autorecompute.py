@@ -7,7 +7,7 @@ Tests for automatic intelligence recomputation on case changes.
 import json
 import time
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.workflow.models import CaseCreateInput
 from app.workflow.repo import create_case, list_case_events
@@ -321,7 +321,7 @@ def test_intelligence_updates_when_evidence_added(sample_case):
             "size_bytes": 1024,
             "storage_path": "/tmp/evidence.pdf",
             "uploaded_by": "test@example.com",
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
     )
     

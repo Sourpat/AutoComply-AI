@@ -9,7 +9,7 @@ Supports:
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 from src.utils.logger import get_logger
@@ -88,7 +88,7 @@ class DecisionStore:
         self._store[key] = {
             "engine_family": engine_family,
             "decision_type": decision_type,
-            "saved_at": datetime.utcnow().isoformat() + "Z",
+            "saved_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             "evidence": evidence,
             "meta": meta or {},
         }

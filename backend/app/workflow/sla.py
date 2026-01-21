@@ -5,7 +5,7 @@ Provides SLA status computation for case aging and escalation tracking.
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
 # ENV configuration with defaults
@@ -32,8 +32,8 @@ def compute_age_hours(created_at: datetime, status_updated_at: datetime | None =
         >>> age = compute_age_hours(created)  # 30 hours
     """
     reference_time = status_updated_at if status_updated_at else created_at
-    now = datetime.utcnow()
-    delta = now - reference_time.replace(tzinfo=None)
+    now = datetime.now(timezone.utc)
+    delta = now - reference_time
     return delta.total_seconds() / 3600
 
 

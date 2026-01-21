@@ -9,7 +9,7 @@ Functions:
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 from threading import Lock
 
@@ -44,14 +44,14 @@ def _should_throttle(case_id: str, throttle_seconds: int) -> bool:
             return False
         
         # Check if enough time has passed
-        elapsed = (datetime.utcnow() - last_recompute).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - last_recompute).total_seconds()
         return elapsed < throttle_seconds
 
 
 def _record_recompute(case_id: str) -> None:
     """Record successful recompute timestamp for throttling."""
     with _throttle_lock:
-        _throttle_map[case_id] = datetime.utcnow()
+        _throttle_map[case_id] = datetime.now(timezone.utc)
 
 
 # ============================================================================
@@ -183,7 +183,7 @@ def get_throttle_status(case_id: str) -> Optional[dict]:
         if not last_recompute:
             return None
         
-        elapsed = (datetime.utcnow() - last_recompute).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - last_recompute).total_seconds()
         return {
             "last_recompute": last_recompute.isoformat(),
             "seconds_since": elapsed

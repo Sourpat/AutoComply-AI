@@ -115,7 +115,7 @@ def sign_audit_export(export_data: Dict[str, Any], secret: str, key_id: str = "k
         >>> 'signature' in signed
         True
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     
     # Compute signature over export data (without signature field)
     payload_to_sign = {k: v for k, v in export_data.items() if k not in ['signature', 'canonicalization']}
@@ -128,7 +128,7 @@ def sign_audit_export(export_data: Dict[str, Any], secret: str, key_id: str = "k
         'alg': 'HMAC-SHA256',
         'key_id': key_id,
         'value': signature_value,
-        'signed_at': datetime.utcnow().isoformat() + 'Z'
+        'signed_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     }
     signed_data['canonicalization'] = {
         'json': 'sorted_keys_compact',

@@ -6,7 +6,7 @@ Safe with empty databases and optimized for indexed fields.
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
 from collections import Counter
 
@@ -68,7 +68,7 @@ class AnalyticsRepository:
         overdue_count = overdue_result[0]["count"] if overdue_result else 0
         
         # Due soon (within 24 hours)
-        due_soon_threshold = (datetime.utcnow() + timedelta(hours=24)).isoformat()
+        due_soon_threshold = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
         due_soon_params = {**params, "threshold": due_soon_threshold, "now": now_iso}
         due_soon_result = execute_sql(
             f"SELECT COUNT(*) as count FROM cases WHERE due_at <= :threshold AND due_at >= :now AND status NOT IN ('approved', 'blocked', 'closed'){dt_filter}",
@@ -107,7 +107,7 @@ class AnalyticsRepository:
     
     def get_cases_created_time_series(self, days: int = 14, decision_type: str | None = None) -> List[TimeSeriesPoint]:
         """Get cases created per day for the last N days, optionally filtered by decision type."""
-        cutoff_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         dt_filter = "" if not decision_type else " AND decision_type = :decision_type"
         params = {"cutoff": cutoff_date}
         if decision_type:
@@ -124,7 +124,7 @@ class AnalyticsRepository:
         Get cases closed per day for the last N days, optionally filtered by decision type.
         Uses updated_at when status changed to closed/approved/blocked.
         """
-        cutoff_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         dt_filter = "" if not decision_type else " AND decision_type = :decision_type"
         params = {"cutoff": cutoff_date}
         if decision_type:
@@ -138,7 +138,7 @@ class AnalyticsRepository:
     
     def get_top_event_types(self, days: int = 30, limit: int = 10) -> List[TopEventTypeItem]:
         """Get most frequent audit event types in the last N days."""
-        cutoff_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         rows = execute_sql(
             "SELECT event_type, COUNT(*) as count FROM audit_events WHERE created_at >= :cutoff GROUP BY event_type ORDER BY count DESC LIMIT :limit",
             {"cutoff": cutoff_date, "limit": limit}
@@ -147,7 +147,7 @@ class AnalyticsRepository:
     
     def get_verifier_activity(self, days: int = 30, limit: int = 10) -> List[VerifierActivityItem]:
         """Get verifier activity by actor in the last N days."""
-        cutoff_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         rows = execute_sql(
             "SELECT actor_name, COUNT(*) as count FROM audit_events WHERE created_at >= :cutoff AND actor_name != 'system' GROUP BY actor_name ORDER BY count DESC LIMIT :limit",
             {"cutoff": cutoff_date, "limit": limit}
@@ -168,7 +168,7 @@ class AnalyticsRepository:
         Get request info reasons from audit events meta field.
         Parses meta JSON to extract reason if present.
         """
-        cutoff_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         rows = execute_sql(
             "SELECT meta FROM audit_events WHERE event_type = 'requested_info' AND created_at >= :cutoff AND meta IS NOT NULL",
             {"cutoff": cutoff_date}
@@ -203,7 +203,7 @@ class AnalyticsRepository:
             "SELECT createdAt FROM cases WHERE status IN ('new', 'in_review', 'needs_info')"
         )
         
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         ages_hours = []
         
         for row in rows:
@@ -251,7 +251,7 @@ class AnalyticsRepository:
     
     def get_audit_time_series(self, days: int = 14) -> List[TimeSeriesPoint]:
         """Get audit events per day for the last N days."""
-        cutoff_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         rows = execute_sql(
             "SELECT DATE(createdAt) as date, COUNT(*) as count FROM audit_events WHERE createdAt >= :cutoff GROUP BY DATE(createdAt) ORDER BY date ASC",
             {"cutoff": cutoff_date}

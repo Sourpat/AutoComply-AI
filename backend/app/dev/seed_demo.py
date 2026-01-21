@@ -6,7 +6,7 @@ Automatically seeds data on startup when DEMO_SEED=1 and cases table is empty.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 import uuid
 
@@ -48,7 +48,7 @@ def seed_demo_data() -> int:
     
     logger.info("Seeding demo workflow cases...")
     
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     cases_created = 0
     
     # =========================================================================

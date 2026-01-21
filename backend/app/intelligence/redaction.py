@@ -8,7 +8,7 @@ Date: 2026-01-20
 
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional
 from .pii_scanner import detect_pii, count_findings_by_rule, generate_findings_sample
 
@@ -170,7 +170,7 @@ def apply_retention_policy(
     Returns:
         List of entries with retention applied
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     evidence_cutoff = now - timedelta(days=evidence_retention_days)
     payload_cutoff = now - timedelta(days=payload_retention_days)
     
@@ -182,7 +182,7 @@ def apply_retention_policy(
         computed_at_str = entry_copy.get("computed_at", "")
         try:
             # Handle both ISO format with and without 'Z'
-            computed_at_str_clean = computed_at_str.rstrip('Z')
+            computed_at_str_clean = computed_at_str.replace("Z", "+00:00")
             computed_at = datetime.fromisoformat(computed_at_str_clean)
         except (ValueError, AttributeError):
             # If can't parse, keep data (assume recent)

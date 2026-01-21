@@ -74,6 +74,7 @@ def _build_mock_response(
     "/orders/mock/ny-pharmacy-approval",
     methods=["GET", "POST"],
     response_model=MockOrderDecisionResponse,
+    operation_id="ny_pharmacy_mock_order_approval",
 )
 async def ny_pharmacy_mock_order_approval(
     http_request: Request,
@@ -104,6 +105,7 @@ async def ny_pharmacy_mock_order_approval(
 @router.get(
     "/orders/mock/ny-pharmacy-expired-license",
     response_model=MockOrderDecisionResponse,
+    operation_id="ny_pharmacy_expired_license_mock",
 )
 async def ny_pharmacy_expired_license_mock(
     http_request: Request,
@@ -133,6 +135,7 @@ async def ny_pharmacy_expired_license_mock(
 @router.get(
     "/orders/mock/ny-pharmacy-wrong-state",
     response_model=MockOrderDecisionResponse,
+    operation_id="ny_pharmacy_wrong_state_mock",
 )
 async def ny_pharmacy_wrong_state_mock(
     http_request: Request,

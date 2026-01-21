@@ -9,7 +9,7 @@ import time
 import os
 from pathlib import Path
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 from .scheduled_exports_repo import get_due_exports, mark_export_run
@@ -46,7 +46,7 @@ def run_export_job(export: Dict[str, Any]) -> None:
     target_id = export["target_id"]
     export_type = export["export_type"]
     
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     
     try:
         if mode == "case":
@@ -146,7 +146,7 @@ def run_view_export(
                 "view_name": view["name"],
                 "scope": view["scope"],
                 "view_json": view["view_json"],
-                "exported_at": datetime.utcnow().isoformat(),
+                "exported_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
                 "metadata": {
                     "created_at": view["created_at"],
                     "owner": view["owner"],

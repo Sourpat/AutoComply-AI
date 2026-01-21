@@ -12,7 +12,7 @@ Prerequisites:
 
 import requests
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 BASE_URL = "http://localhost:8001"
 
@@ -48,7 +48,7 @@ def test_create_case():
         "title": "Dr. Sarah Smith - CSF Application",
         "summary": "Application for controlled substance facilitation",
         "submissionId": "sub-test-12345",
-        "dueAt": (datetime.utcnow() + timedelta(hours=24)).isoformat()
+        "dueAt": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
     }
     
     response = requests.post(
@@ -311,7 +311,7 @@ def run_all_tests():
     print("WORKFLOW API TESTS")
     print("=" * 60)
     print(f"\nBase URL: {BASE_URL}")
-    print(f"Timestamp: {datetime.utcnow().isoformat()}")
+    print(f"Timestamp: {datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')}")
     
     try:
         # Test endpoints

@@ -293,10 +293,10 @@ def test_redaction_report_full_mode_no_findings():
 
 def test_redaction_report_retention_stats():
     """Test that retention statistics are included when applied."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     
     # Create old entry that should trigger retention
-    old_date = (datetime.utcnow() - timedelta(days=35)).isoformat() + "Z"
+    old_date = (datetime.now(timezone.utc) - timedelta(days=35)).isoformat() + "Z"
     
     export_data = {
         "metadata": {"case_id": "case_123"},

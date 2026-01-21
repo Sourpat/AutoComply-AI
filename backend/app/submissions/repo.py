@@ -5,7 +5,7 @@ SQLite-backed storage for submissions.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import uuid4
 
@@ -64,7 +64,7 @@ def create_submission(input_data: SubmissionCreateInput) -> SubmissionRecord:
         >>> print(submission.id)
     """
     submission_id = str(uuid4())
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     execute_insert("""
         INSERT INTO submissions (
@@ -199,7 +199,7 @@ def update_submission(submission_id: str, input_data: SubmissionUpdateInput) -> 
     set_clauses = ["updated_at = :updated_at"]
     params = {
         "id": submission_id,
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
     }
     
     if input_data.decisionType is not None:
@@ -247,7 +247,7 @@ def soft_delete_submission(submission_id: str) -> bool:
     if not existing or existing.isDeleted:
         return False
     
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     count = execute_update("""
         UPDATE submissions 
         SET is_deleted = 1, deleted_at = :deleted_at, updated_at = :updated_at

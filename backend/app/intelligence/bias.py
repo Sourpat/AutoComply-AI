@@ -11,7 +11,7 @@ No ML - pure heuristics.
 """
 
 from typing import List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 
 
@@ -246,7 +246,7 @@ def detect_stale_signals(signals: List[Dict[str, Any]], max_age_hours: int = 72)
         
     Example:
         >>> from datetime import datetime, timedelta
-        >>> old_time = (datetime.utcnow() - timedelta(hours=100)).isoformat()
+        >>> old_time = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat()
         >>> signals = [{"timestamp": old_time, "metadata_json": '{"signal_type": "test"}'}]
         >>> flags = detect_stale_signals(signals, max_age_hours=72)
         >>> len(flags)
@@ -255,7 +255,7 @@ def detect_stale_signals(signals: List[Dict[str, Any]], max_age_hours: int = 72)
     if not signals:
         return []
     
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=max_age_hours)
     stale_signals = []
     
