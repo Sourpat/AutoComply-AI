@@ -201,3 +201,74 @@ def get_settings() -> Settings:
 @lru_cache()
 def get_app_config() -> AppConfig:
     return AppConfig()
+
+
+def validate_runtime_config() -> dict:
+    """
+    Validate runtime configuration and return status for /health/details.
+
+    Returns:
+        dict with:
+        - ok: bool (true if all critical env vars present and valid)
+        - missing_env: list[str] (critical env vars that are missing or invalid)
+        - warnings: list[str] (non-critical issues that should be addressed)
+        - config: dict (boolean flags for feature status, never leak secrets)
+
+    Critical env vars (production must-have):
+    - DATABASE_URL: Must be set and non-default
+    - AUDIT_SIGNING_SECRET: Must NOT be dev default value in production
+
+    Important env vars (warn if missing):
+    - OPENAI_API_KEY or GEMINI_API_KEY: At least one should be present for LLM features
+    - DEV_SEED_TOKEN: Should be set in production to protect seed endpoint
+    - CORS_ORIGINS: Should NOT be "*" in production
+    """
+    settings = get_settings()
+    missing: list[str] = []
+    warnings: list[str] = []
+
+    # Check critical required env
+    # DATABASE_URL is always set by Pydantic default, but check it's not obviously wrong
+    if not settings.DATABASE_URL or settings.DATABASE_URL == "":
+        missing.append("DATABASE_URL")
+
+    # AUDIT_SIGNING_SECRET must not be dev default in production
+    dev_audit_secret = "dev-insecure-audit-signing-secret-change-in-production"
+    if settings.AUDIT_SIGNING_SECRET == dev_audit_secret:
+        if settings.is_production:
+            missing.append("AUDIT_SIGNING_SECRET")
+        else:
+            warnings.append("Using dev audit signing secret (not for production)")
+
+    # Check important optional env
+    if not settings.OPENAI_API_KEY and not settings.GEMINI_API_KEY:
+        warnings.append("No LLM API keys configured (OPENAI_API_KEY or GEMINI_API_KEY)")
+
+    # Check production security settings
+    if settings.is_production:
+        if settings.CORS_ORIGINS == "*":
+            warnings.append("CORS_ORIGINS set to '*' in production (security risk)")
+        if not settings.DEV_SEED_TOKEN:
+            warnings.append("DEV_SEED_TOKEN not set (seed endpoint unprotected)")
+
+    # Build config status (booleans only, never leak actual secrets)
+    config_status = {
+        "database_configured": bool(settings.DATABASE_URL),
+        "audit_signing_enabled": bool(settings.AUDIT_SIGNING_SECRET),
+        "audit_signing_is_dev_default": settings.AUDIT_SIGNING_SECRET == dev_audit_secret,
+        "openai_key_present": bool(settings.OPENAI_API_KEY),
+        "gemini_key_present": bool(settings.GEMINI_API_KEY),
+        "dev_seed_token_present": bool(settings.DEV_SEED_TOKEN),
+        "rag_enabled": settings.rag_enabled,
+        "auto_intelligence_enabled": settings.AUTO_INTELLIGENCE_ENABLED,
+        "demo_seed_enabled": settings.DEMO_SEED,
+        "is_production": settings.is_production,
+        "cors_origins_count": len(settings.cors_origins_list),
+    }
+
+    return {
+        "ok": len(missing) == 0,
+        "missing_env": missing,
+        "warnings": warnings,
+        "config": config_status,
+    }

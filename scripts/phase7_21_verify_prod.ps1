@@ -81,6 +81,82 @@ try {
     exit 1
 }
 
+# Step 2.5: Production Guardrails Validation (Phase 7.38)
+Write-Step '2.5 Production Guardrails'
+try {
+    $healthDetails = Invoke-RestMethod -Uri "$BackendUrl/health/details" -Method GET -TimeoutSec 10 -ErrorAction Stop
+    
+    if (-not $healthDetails) {
+        Write-Error 'Health details returned null response'
+        exit 1
+    }
+    
+    # Display environment info
+    Write-Success ('Environment: {0}' -f $healthDetails.environment)
+    Write-Success ('Version: {0}' -f $healthDetails.version)
+    if ($healthDetails.commit_sha) {
+        Write-Success ('Commit: {0}' -f $healthDetails.commit_sha)
+    }
+    if ($healthDetails.build_time) {
+        Write-Success ('Build: {0}' -f $healthDetails.build_time)
+    }
+    
+    # Check critical status
+    if (-not $healthDetails.ok) {
+        Write-Error 'Production guardrails validation FAILED'
+        if ($healthDetails.missing_env -and $healthDetails.missing_env.Count -gt 0) {
+            Write-Error ('Missing critical env vars: {0}' -f ($healthDetails.missing_env -join ', '))
+        }
+        $script:TestsPassed = $false
+        exit 1
+    }
+    
+    # Check for missing env (redundant with ok check, but explicit)
+    if ($healthDetails.missing_env -and $healthDetails.missing_env.Count -gt 0) {
+        Write-Error ('Critical env vars missing: {0}' -f ($healthDetails.missing_env -join ', '))
+        $script:TestsPassed = $false
+        exit 1
+    }
+    
+    Write-Success 'All critical env vars configured'
+    
+    # Display warnings if any
+    if ($healthDetails.warnings -and $healthDetails.warnings.Count -gt 0) {
+        Write-Warning ('Config warnings ({0}):' -f $healthDetails.warnings.Count)
+        foreach ($warning in $healthDetails.warnings) {
+            Write-Warning ('  - {0}' -f $warning)
+        }
+    }
+    
+    # Display config status
+    $cfg = $healthDetails.config
+    if ($cfg) {
+        Write-Host ''
+        Write-Host 'Config Status:' -ForegroundColor $Cyan
+        if ($cfg.database_configured) { Write-Success '  Database: [OK]' } else { Write-Error '  Database: [FAIL]' }
+        if ($cfg.audit_signing_enabled -and -not $cfg.audit_signing_is_dev_default) {
+            Write-Success '  Audit Signing: [OK]'
+        } else {
+            Write-Warning '  Audit Signing: [DEV DEFAULT]'
+        }
+        if ($cfg.openai_key_present) { Write-Success '  OpenAI: [OK]' } else { Write-Host '  OpenAI: [MISS]' -ForegroundColor Gray }
+        if ($cfg.gemini_key_present) { Write-Success '  Gemini: [OK]' } else { Write-Host '  Gemini: [MISS]' -ForegroundColor Gray }
+        Write-Host ('  RAG: {0}' -f $cfg.rag_enabled) -ForegroundColor $Cyan
+        Write-Host ('  Auto Intelligence: {0}' -f $cfg.auto_intelligence_enabled) -ForegroundColor $Cyan
+        Write-Host ('  Production: {0}' -f $cfg.is_production) -ForegroundColor $Cyan
+    }
+    
+} catch {
+    # If /health/details doesn't exist yet, warn but don't fail in smoke mode
+    if ($Smoke) {
+        Write-Warning 'Health details endpoint not available (may be older version)'
+        Write-Warning ('Error: {0}' -f $_)
+    } else {
+        Write-Error ('Health details check failed: {0}' -f $_)
+        exit 1
+    }
+}
+
 # Step 3: Get Existing Cases
 Write-Step '3. Get Existing Cases'
 try {

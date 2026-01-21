@@ -1,6 +1,9 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 import os
+from datetime import datetime, timezone
+
+from ...config import validate_runtime_config
 
 
 class HealthStatus(BaseModel):
@@ -8,6 +11,19 @@ class HealthStatus(BaseModel):
     service: str
     version: str
     checks: dict
+
+
+class HealthDetails(BaseModel):
+    """Comprehensive production health diagnostics."""
+
+    ok: bool
+    version: str
+    environment: str
+    commit_sha: str | None
+    build_time: str | None
+    config: dict
+    missing_env: list[str]
+    warnings: list[str]
 
 
 router = APIRouter(tags=["health"])
@@ -94,3 +110,53 @@ async def health_full() -> dict:
         "status": overall_status,
         "components": components,
     }
+
+
+@router.get("/health/details", response_model=HealthDetails, summary="Production health diagnostics")
+async def health_details() -> HealthDetails:
+    """
+    Comprehensive production health endpoint with environment validation and diagnostics.
+
+    This endpoint:
+    - Validates critical environment variables (DATABASE_URL, AUDIT_SIGNING_SECRET)
+    - Reports configuration status without leaking secrets (boolean flags only)
+    - Always returns 200 status code if service is up
+    - Sets ok=false when critical env vars are missing or invalid
+    - Provides warnings for non-critical issues
+
+    Use this for:
+    - Production readiness checks
+    - Deployment guardrails and validation
+    - Automated smoke testing
+    - Monitoring configuration drift
+
+    Never returns:
+    - Actual secret values
+    - API keys or tokens
+    - Database connection strings
+
+    Always returns:
+    - Boolean flags for feature status
+    - List of missing critical env vars (names only)
+    - List of warnings for non-critical issues
+    - Version, environment, and build metadata
+    """
+    # Get validation results
+    validation = validate_runtime_config()
+
+    # Get version and build metadata
+    version = os.getenv("AUTOCOMPLY_VERSION", "0.1.0")
+    environment = os.getenv("APP_ENV", "dev")
+    commit_sha = os.getenv("GIT_SHA")
+    build_time = os.getenv("BUILD_TIME")
+
+    return HealthDetails(
+        ok=validation["ok"],
+        version=version,
+        environment=environment,
+        commit_sha=commit_sha,
+        build_time=build_time,
+        config=validation["config"],
+        missing_env=validation["missing_env"],
+        warnings=validation["warnings"],
+    )

@@ -23,6 +23,83 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
+      - name: Validate production health and guardrails
+        shell: powershell
+        run: |
+          Write-Host "========================================" -ForegroundColor Cyan
+          Write-Host "Phase 7.38 - Production Health Check" -ForegroundColor Cyan
+          Write-Host "========================================" -ForegroundColor Cyan
+          Write-Host ""
+          
+          $backendUrl = "${{ inputs.backend_url }}"
+          if (-not $backendUrl) {
+            $backendUrl = "https://autocomply-ai.onrender.com"
+          }
+          
+          Write-Host "Checking health: $backendUrl/health/details" -ForegroundColor Yellow
+          Write-Host ""
+          
+          try {
+            $response = Invoke-RestMethod -Uri "$backendUrl/health/details" -Method Get -ErrorAction Stop
+            
+            Write-Host "[OK] Health endpoint accessible" -ForegroundColor Green
+            Write-Host ""
+            Write-Host "Environment: $($response.environment)" -ForegroundColor Cyan
+            Write-Host "Version: $($response.version)" -ForegroundColor Cyan
+            if ($response.commit_sha) {
+              Write-Host "Commit: $($response.commit_sha)" -ForegroundColor Cyan
+            }
+            if ($response.build_time) {
+              Write-Host "Build Time: $($response.build_time)" -ForegroundColor Cyan
+            }
+            Write-Host ""
+            
+            # Check critical status
+            if (-not $response.ok) {
+              Write-Host "[FAIL] Health check failed - critical env vars missing" -ForegroundColor Red
+              Write-Host "Missing env vars: $($response.missing_env -join ', ')" -ForegroundColor Red
+              exit 1
+            }
+            
+            if ($response.missing_env -and $response.missing_env.Count -gt 0) {
+              Write-Host "[FAIL] Critical environment variables missing:" -ForegroundColor Red
+              foreach ($missing in $response.missing_env) {
+                Write-Host "  - $missing" -ForegroundColor Red
+              }
+              exit 1
+            }
+            
+            Write-Host "[OK] All critical environment variables configured" -ForegroundColor Green
+            
+            # Display warnings if any
+            if ($response.warnings -and $response.warnings.Count -gt 0) {
+              Write-Host ""
+              Write-Host "[WARN] Configuration warnings:" -ForegroundColor Yellow
+              foreach ($warning in $response.warnings) {
+                Write-Host "  - $warning" -ForegroundColor Yellow
+              }
+            }
+            
+            # Display config status
+            Write-Host ""
+            Write-Host "Configuration Status:" -ForegroundColor Cyan
+            Write-Host "  Database: $(if ($response.config.database_configured) { '[OK]' } else { '[FAIL]' })" -ForegroundColor $(if ($response.config.database_configured) { 'Green' } else { 'Red' })
+            Write-Host "  Audit Signing: $(if ($response.config.audit_signing_enabled -and -not $response.config.audit_signing_is_dev_default) { '[OK]' } else { '[WARN]' })" -ForegroundColor $(if ($response.config.audit_signing_enabled -and -not $response.config.audit_signing_is_dev_default) { 'Green' } else { 'Yellow' })
+            Write-Host "  OpenAI Key: $(if ($response.config.openai_key_present) { '[OK]' } else { '[MISS]' })" -ForegroundColor $(if ($response.config.openai_key_present) { 'Green' } else { 'Gray' })
+            Write-Host "  Gemini Key: $(if ($response.config.gemini_key_present) { '[OK]' } else { '[MISS]' })" -ForegroundColor $(if ($response.config.gemini_key_present) { 'Green' } else { 'Gray' })
+            Write-Host "  RAG Enabled: $($response.config.rag_enabled)" -ForegroundColor Cyan
+            Write-Host "  Auto Intelligence: $($response.config.auto_intelligence_enabled)" -ForegroundColor Cyan
+            Write-Host "  Production Mode: $($response.config.is_production)" -ForegroundColor Cyan
+            
+            Write-Host ""
+            Write-Host "[OK] Production guardrails validated" -ForegroundColor Green
+            
+          } catch {
+            Write-Host "[FAIL] Health check failed: $_" -ForegroundColor Red
+            Write-Host "Error details: $($_.Exception.Message)" -ForegroundColor Red
+            exit 1
+          }
+      
       - name: Run production smoke test
         shell: powershell
         run: |
