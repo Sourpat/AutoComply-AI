@@ -106,6 +106,13 @@ $env:DEV_SEED_TOKEN = "your-secret-token"  # Optional: for seeding test data
 
 **Optional flags:**
 ```powershell
+# Smoke test mode (fast - health + cases only, no full E2E)
+.\scripts\phase7_21_verify_prod.ps1 -BackendUrl "https://autocomply-ai.onrender.com" -SkipSeed -Smoke
+
+# Seed test data if backend is empty (requires DEV_SEED_TOKEN env var)
+$env:DEV_SEED_TOKEN = "your-token"
+.\scripts\phase7_21_verify_prod.ps1 -BackendUrl "https://autocomply-ai.onrender.com" -Seed
+
 # Skip seed endpoint (use existing data)
 .\scripts\phase7_21_verify_prod.ps1 -SkipSeed
 
@@ -115,6 +122,31 @@ $env:DEV_SEED_TOKEN = "your-secret-token"  # Optional: for seeding test data
 # Custom backend URL
 .\scripts\phase7_21_verify_prod.ps1 -BackendUrl "https://your-backend.com"
 ```
+
+### GitHub Actions Automated Testing (Phase 7.37)
+
+The production smoke test runs automatically via GitHub Actions:
+
+**Automated Schedule:**
+- Runs daily at 9:00 AM UTC
+- Tests production backend health and connectivity
+- Results visible in Actions tab
+
+**Manual Trigger:**
+1. Go to GitHub → Actions → "Phase 7.37 - Production Smoke Test"
+2. Click "Run workflow"
+3. Enter backend URL (default: `https://autocomply-ai.onrender.com`)
+4. Click "Run workflow" button
+5. View results in workflow logs
+
+**What the smoke test checks:**
+- ✅ Backend API accessible and healthy
+- ✅ Version information correct
+- ✅ Cases endpoint responding (GET /workflow/cases)
+- ⚡ Fast execution (~10-20 seconds)
+- 🚫 Does NOT run full E2E verification (no seeding, recompute, or audit export)
+
+For full E2E verification with audit trail checks, use the PowerShell script locally.
 
 ### Manual Verification Checklist (Frontend UI)
 

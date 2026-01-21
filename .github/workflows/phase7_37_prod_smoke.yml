@@ -1,0 +1,67 @@
+name: Phase 7.37 - Production Smoke Test
+
+on:
+  # Manual trigger with configurable backend URL
+  workflow_dispatch:
+    inputs:
+      backend_url:
+        description: 'Backend URL to test'
+        required: true
+        default: 'https://autocomply-ai.onrender.com'
+        type: string
+  
+  # Daily automated smoke test at 9:00 AM UTC
+  schedule:
+    - cron: '0 9 * * *'
+
+jobs:
+  smoke-test:
+    name: Production Backend Smoke Test
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Run production smoke test
+        shell: powershell
+        run: |
+          Write-Host "========================================" -ForegroundColor Cyan
+          Write-Host "Phase 7.37 - Production Smoke Test" -ForegroundColor Cyan
+          Write-Host "========================================" -ForegroundColor Cyan
+          Write-Host ""
+          
+          $backendUrl = "${{ inputs.backend_url }}"
+          if (-not $backendUrl) {
+            # Use default for scheduled runs
+            $backendUrl = "https://autocomply-ai.onrender.com"
+          }
+          
+          Write-Host "Testing backend: $backendUrl" -ForegroundColor Yellow
+          Write-Host ""
+          
+          # Run smoke test script
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\phase7_21_verify_prod.ps1 -BackendUrl "$backendUrl" -SkipSeed -Smoke
+          
+          $exitCode = $LASTEXITCODE
+          
+          Write-Host ""
+          Write-Host "========================================" -ForegroundColor Cyan
+          if ($exitCode -eq 0) {
+            Write-Host "Smoke test PASSED" -ForegroundColor Green
+          } else {
+            Write-Host "Smoke test FAILED" -ForegroundColor Red
+          }
+          Write-Host "========================================" -ForegroundColor Cyan
+          
+          exit $exitCode
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-results
+          path: |
+            *.log
+          retention-days: 7
+          if-no-files-found: ignore
