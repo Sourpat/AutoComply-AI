@@ -1,6 +1,6 @@
 """
-Phase 7.28: Redaction & Retention for Audit Exports
-Safe-by-default redaction with role-based permissions.
+Phase 7.28/7.31: Redaction & Retention for Audit Exports
+Safe-by-default redaction with role-based permissions and PII scanning.
 
 Author: AutoComply AI
 Date: 2026-01-20
@@ -10,6 +10,7 @@ import os
 import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
+from .pii_scanner import detect_pii, count_findings_by_rule, generate_findings_sample
 
 
 # Environment variables for retention policy
@@ -215,7 +216,9 @@ def redact_export(
     include_evidence: bool = False
 ) -> Dict[str, Any]:
     """
-    Redact audit export based on role and permissions.
+    Redact audit export based on role and permissions with PII scanning.
+    
+    Phase 7.31: Adds deterministic redaction report with PII findings.
     
     Permission matrix:
     - verifier: forced safe mode, no payload/evidence
@@ -229,8 +232,13 @@ def redact_export(
         include_evidence: Whether to include evidence snapshots (admin only)
         
     Returns:
-        Redacted export with metadata
+        Redacted export with metadata and redaction_report
     """
+    # Phase 7.31: Scan for PII BEFORE any redaction
+    pii_findings = detect_pii(export_data)
+    findings_by_rule = count_findings_by_rule(pii_findings)
+    findings_sample = generate_findings_sample(pii_findings, max_items=20)
+    
     # Determine redaction mode
     if role == "verifier":
         # Verifiers are forced into safe mode
@@ -242,12 +250,28 @@ def redact_export(
         if safe_mode is None:
             safe_mode = False  # Default to full export for admin
     
+    # Track retention application
+    retention_applied = False
+    evidence_expired_count = 0
+    payload_expired_count = 0
+    
     # Apply retention policy first
     if "history" in export_data:
+        original_history = export_data["history"]
         export_data["history"] = apply_retention_policy(export_data["history"])
+        
+        # Count retention applications
+        for entry in export_data["history"]:
+            if entry.get("_retention_applied"):
+                retention_applied = True
+            if entry.get("_evidence_expired"):
+                evidence_expired_count += 1
+            if entry.get("_payload_expired"):
+                payload_expired_count += 1
     
     # Count redacted fields
     redacted_count = 0
+    redacted_fields_paths = []
     
     # Apply redaction
     if safe_mode:
@@ -256,16 +280,33 @@ def redact_export(
     
     # Remove payload/evidence if not permitted
     if "history" in export_data:
-        for entry in export_data["history"]:
+        for idx, entry in enumerate(export_data["history"]):
             if not include_payload and "intelligence_payload" in entry:
                 entry["intelligence_payload"] = None
                 redacted_count += 1
+                redacted_fields_paths.append(f"history[{idx}].intelligence_payload")
             
             if not include_evidence and "evidence_snapshot" in entry:
                 entry["evidence_snapshot"] = None
                 redacted_count += 1
+                redacted_fields_paths.append(f"history[{idx}].evidence_snapshot")
     
-    # Add export metadata
+    # Phase 7.31: Generate deterministic redaction report
+    redaction_report = {
+        "mode": "safe" if safe_mode else "full",
+        "findings_count": len(pii_findings),
+        "redacted_fields_count": redacted_count,
+        "redacted_fields_sample": redacted_fields_paths[:20],  # Max 20 paths
+        "rules_triggered": findings_by_rule,
+        "retention_applied": retention_applied,
+        "retention_stats": {
+            "evidence_expired": evidence_expired_count,
+            "payload_expired": payload_expired_count
+        } if retention_applied else None,
+        "pii_findings_sample": findings_sample if safe_mode else []  # Only show in safe mode
+    }
+    
+    # Add export metadata (Phase 7.28 compatibility)
     export_data["export_metadata"] = {
         "redaction_mode": "safe" if safe_mode else "full",
         "redacted_fields_count": redacted_count,
@@ -277,7 +318,8 @@ def redact_export(
             "role": role,
             "include_payload": include_payload,
             "include_evidence": include_evidence,
-        }
+        },
+        "redaction_report": redaction_report  # Phase 7.31
     }
     
     return export_data
