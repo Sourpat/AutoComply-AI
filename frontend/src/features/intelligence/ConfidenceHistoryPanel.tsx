@@ -30,6 +30,26 @@ interface AuditExportResponse {
       include_payload: boolean;
       include_evidence: boolean;
     };
+    // Phase 7.31: Advanced PII scanner report
+    redaction_report?: {
+      mode: 'safe' | 'full';
+      findings_count: number;
+      redacted_fields_count: number;
+      redacted_fields_sample: string[];
+      rules_triggered: Record<string, number>;
+      retention_applied: boolean;
+      retention_stats?: {
+        evidence_expired: number;
+        payload_expired: number;
+      };
+      pii_findings_sample: Array<{
+        path: string;
+        field_name: string;
+        rule: string;
+        value_preview: string;
+        confidence: string;
+      }>;
+    };
   };
   integrity_check: {
     is_valid: boolean;
@@ -674,6 +694,36 @@ export const ConfidenceHistoryPanel: React.FC<ConfidenceHistoryPanelProps> = ({
                       Payload: {lastExport.export_metadata.retention_policy.payload_retention_days}d
                     </span>
                   </div>
+                  
+                  {/* Phase 7.31: PII Scanner Report */}
+                  {lastExport.export_metadata.redaction_report && (
+                    <div className="mt-2 pt-2 border-t border-zinc-700/30 space-y-1">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-zinc-400">PII Findings:</span>
+                        <span className="text-zinc-300 font-medium">
+                          {lastExport.export_metadata.redaction_report.findings_count}
+                        </span>
+                      </div>
+                      {Object.keys(lastExport.export_metadata.redaction_report.rules_triggered).length > 0 && (
+                        <div className="text-[10px] text-zinc-400">
+                          Rules: {Object.entries(lastExport.export_metadata.redaction_report.rules_triggered)
+                            .map(([rule, count]) => `${rule}(${count})`)
+                            .join(', ')}
+                        </div>
+                      )}
+                      {lastExport.export_metadata.redaction_report.retention_applied && 
+                       lastExport.export_metadata.redaction_report.retention_stats && (
+                        <div className="text-[10px] text-amber-400">
+                          ⚠️ Retention applied: 
+                          {lastExport.export_metadata.redaction_report.retention_stats.evidence_expired > 0 && 
+                            ` ${lastExport.export_metadata.redaction_report.retention_stats.evidence_expired} evidence`}
+                          {lastExport.export_metadata.redaction_report.retention_stats.payload_expired > 0 && 
+                            `, ${lastExport.export_metadata.redaction_report.retention_stats.payload_expired} payload`}
+                          {' expired'}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
