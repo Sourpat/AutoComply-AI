@@ -178,6 +178,8 @@ class IntelligenceHistoryEntry(BaseModel):
     
     Extracted from case_events with event_type='decision_intelligence_updated'.
     Shows confidence changes over time with triggers (manual/submission/evidence/request_info).
+    
+    Phase 7.33: Added request_id for end-to-end request tracing.
     """
     computed_at: str = Field(..., description="When intelligence was computed (ISO 8601)")
     confidence_score: float = Field(..., description="Confidence percentage (0-100)")
@@ -188,6 +190,7 @@ class IntelligenceHistoryEntry(BaseModel):
     bias_count: int = Field(default=0, description="Number of bias flags")
     trigger: str = Field(default="unknown", description="What triggered recompute (manual/submission/evidence/request_info)")
     actor_role: str = Field(default="system", description="Role that triggered computation")
+    request_id: Optional[str] = Field(default=None, description="Request ID for tracing (Phase 7.33)")
     
     class Config:
         json_schema_extra = {

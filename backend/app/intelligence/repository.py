@@ -166,7 +166,11 @@ def get_signals(
 # Decision Intelligence Operations
 # ============================================================================
 
-def compute_and_upsert_decision_intelligence(case_id: str, decision_type: str = "default") -> DecisionIntelligence:
+def compute_and_upsert_decision_intelligence(
+    case_id: str, 
+    decision_type: str = "default",
+    request_id: Optional[str] = None  # Phase 7.33: Request ID for tracing
+) -> DecisionIntelligence:
     """
     Compute decision intelligence v2 for a case and store it (PHASE 7.2).
     
@@ -617,7 +621,8 @@ def insert_intelligence_history(
     reason: str = "Intelligence updated",
     triggered_by: Optional[str] = None,
     input_hash: Optional[str] = None,
-    previous_run_id: Optional[str] = None
+    previous_run_id: Optional[str] = None,
+    request_id: Optional[str] = None  # Phase 7.33: Request ID for tracing
 ) -> str:
     """
     Insert a snapshot of intelligence into history table (append-only).
@@ -709,13 +714,15 @@ def insert_intelligence_history(
             created_at, actor, reason,
             previous_run_id, triggered_by, input_hash,
             evidence_snapshot, evidence_hash, evidence_version,
-            policy_id, policy_version, policy_hash
+            policy_id, policy_version, policy_hash,
+            request_id
         ) VALUES (
             :id, :case_id, :computed_at, :payload_json,
             :created_at, :actor, :reason,
             :previous_run_id, :triggered_by, :input_hash,
             :evidence_snapshot, :evidence_hash, :evidence_version,
-            :policy_id, :policy_version, :policy_hash
+            :policy_id, :policy_version, :policy_hash,
+            :request_id
         )
         """,
         {
@@ -735,6 +742,7 @@ def insert_intelligence_history(
             "policy_id": policy_id,
             "policy_version": policy_version,
             "policy_hash": policy_hash,
+            "request_id": request_id,  # Phase 7.33
         },
     )
     

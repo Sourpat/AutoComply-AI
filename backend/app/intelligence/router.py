@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from app.core.authz import get_role, require_admin
 from app.auth.permissions import require_role, check_permission_or_raise  # Phase 7.27
+from app.middleware import get_request_id  # Phase 7.33
 from app.intelligence.models import (
     DecisionIntelligenceResponse,
     ComputeIntelligenceRequest,
@@ -451,7 +452,11 @@ def recompute_intelligence_endpoint(
     
     # Recompute intelligence from signals (v2 with gap/bias detection)
     logger.info(f"Recomputing intelligence v2 for case {case_id} by {ctx['role']} (admin_unlocked={ctx['admin_unlocked']}) with decision_type={decision_type}")
-    intelligence = compute_and_upsert_decision_intelligence(case_id, decision_type)
+    
+    # Phase 7.33: Capture request ID for tracing
+    request_id = get_request_id(request) if request else None
+    
+    intelligence = compute_and_upsert_decision_intelligence(case_id, decision_type, request_id=request_id)
     
     # Parse JSON fields for v2 response
     try:
@@ -940,6 +945,13 @@ def export_audit_trail(
         include_payload=include_payload,
         include_evidence=include_evidence
     )
+    
+    # Phase 7.33: Add request_id to export metadata
+    request_id = get_request_id(request) if request else None
+    if request_id:
+        if "export_metadata" not in export_data:
+            export_data["export_metadata"] = {}
+        export_data["export_metadata"]["request_id"] = request_id
     
     # Phase 7.26: Sign the FINAL redacted export
     signed_export = sign_audit_export(

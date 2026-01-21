@@ -74,6 +74,9 @@ from app.workflow.scheduled_exports_router import router as scheduled_exports_ro
 # Admin Operations - ⚠️ DANGEROUS ⚠️
 from app.admin.router import router as admin_router
 
+# Phase 7.33: Request ID Middleware
+from app.middleware import RequestIDMiddleware
+
 # Database initialization
 from src.core.db import init_db
 
@@ -103,6 +106,10 @@ app = FastAPI(
 # Example production config:
 #   CORS_ORIGINS=https://your-frontend.onrender.com
 # =============================================================================
+
+# Phase 7.33: Add request ID middleware for tracing
+app.add_middleware(RequestIDMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,

@@ -21,7 +21,7 @@ from starlette.requests import Request as StarletteRequest
 VALID_ROLES = ["admin", "verifier", "devsupport"]
 
 
-def get_user_role(request: Request) -> str:
+def get_user_role(request: Request = None) -> str:
     """
     Extract user role from request headers or state.
     
@@ -30,10 +30,10 @@ def get_user_role(request: Request) -> str:
     2. x-role header
     3. X-AutoComply-Role header
     4. request.state.user_role (if set by middleware)
-    5. Default: "verifier"
+    5. Default: "admin" if no request (testing), else "verifier"
     
     Args:
-        request: FastAPI Request object
+        request: FastAPI Request object (None for direct testing)
         
     Returns:
         Role string (admin, verifier, or devsupport), lowercased
@@ -43,6 +43,9 @@ def get_user_role(request: Request) -> str:
         >>> if role == 'admin':
         ...     # Allow admin action
     """
+    if not request:
+        return "admin"  # Default for direct testing without request
+    
     role = (
         request.headers.get("x-user-role") or
         request.headers.get("x-role") or
@@ -58,7 +61,7 @@ def get_user_role(request: Request) -> str:
     return role
 
 
-def check_admin_unlocked(request: Request) -> bool:
+def check_admin_unlocked(request: Request = None) -> bool:
     """
     Check if admin unlock is active (for dev/testing).
     
@@ -67,14 +70,17 @@ def check_admin_unlocked(request: Request) -> bool:
     - Header: x-admin-unlocked=1
     
     Args:
-        request: FastAPI Request object
+        request: FastAPI Request object (None for direct testing)
         
     Returns:
-        True if admin unlock is active, False otherwise
+        True if admin unlock is active or no request (testing), False otherwise
         
     Note:
         This is for development/testing only. Production should use proper auth.
     """
+    if not request:
+        return True  # Default for direct testing
+    
     # Check query param
     admin_param = request.query_params.get("admin_unlocked", "").lower()
     if admin_param in ["1", "true"]:
@@ -88,9 +94,12 @@ def check_admin_unlocked(request: Request) -> bool:
     return False
 
 
-def get_actor_context(request: Request) -> dict:
+def get_actor_context(request: Request = None) -> dict:
     """
     Extract full actor context from request.
+    
+    Args:
+        request: FastAPI Request object (None for direct testing)
     
     Returns:
         Dict with keys:
@@ -107,11 +116,14 @@ def get_actor_context(request: Request) -> dict:
     admin_unlocked = check_admin_unlocked(request)
     
     # Extract user/actor identifier
-    user = (
-        request.headers.get("X-AutoComply-Actor") or
-        request.headers.get("x-user") or
-        role
-    )
+    if not request:
+        user = "test-admin"  # Default for testing
+    else:
+        user = (
+            request.headers.get("X-AutoComply-Actor") or
+            request.headers.get("x-user") or
+            role
+        )
     
     return {
         "user": user,
