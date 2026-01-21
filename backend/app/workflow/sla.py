@@ -15,6 +15,66 @@ SLA_IN_REVIEW_BREACH_HOURS = int(os.getenv("SLA_IN_REVIEW_BREACH_HOURS", "72"))
 SLAStatus = Literal["ok", "warning", "breach"]
 
 
+def normalize_iso_datetime(iso_string: str) -> datetime:
+    """
+    Parse an ISO datetime string to timezone-aware datetime.
+    
+    Handles various formats:
+    - '2026-01-18T12:00:00Z' -> parses as UTC
+    - '2026-01-18T12:00:00+00:00' -> parses as UTC  
+    - '2026-01-18T12:00:00+00:00Z' -> parses as UTC (malformed but handles it)
+    - '2026-01-18T12:00:00' -> parses as UTC (assumes UTC if no tz)
+    
+    Args:
+        iso_string: ISO format datetime string
+        
+    Returns:
+        datetime with timezone=UTC
+        
+    Raises:
+        ValueError: If string cannot be parsed
+    """
+    if not iso_string:
+        raise ValueError("Empty ISO datetime string")
+    
+    # Normalize the string: remove 'Z' and ensure single +00:00
+    # Handle cases like '2026-01-18T12:00:00+00:00Z' -> '2026-01-18T12:00:00+00:00'
+    if iso_string.endswith('Z'):
+        iso_string = iso_string[:-1]
+        if not iso_string.endswith('+00:00') and not iso_string.endswith('-00:00'):
+            iso_string = iso_string + '+00:00'
+    
+    # Handle duplicate timezone suffix (e.g., '+00:00+00:00')
+    if iso_string.count('+00:00') > 1 or iso_string.count('-00:00') > 1:
+        # Find the last occurrence and keep only that
+        if '+00:00' in iso_string:
+            parts = iso_string.rsplit('+00:00', 1)
+            iso_string = parts[0].rstrip('+00:00') + '+00:00'
+        elif '-00:00' in iso_string:
+            parts = iso_string.rsplit('-00:00', 1)
+            iso_string = parts[0].rstrip('-00:00') + '-00:00'
+    
+    # Parse with fromisoformat
+    try:
+        dt = datetime.fromisoformat(iso_string)
+    except ValueError:
+        # Try parsing without timezone and add UTC
+        # Remove any timezone info and parse bare datetime
+        base_string = iso_string.split('+')[0].split('-')[0:3]  # Keep date parts only
+        base_string = iso_string.rsplit('+', 1)[0].rsplit('-', 1)[0] if '+' in iso_string or iso_string.count('-') > 2 else iso_string
+        dt = datetime.fromisoformat(base_string)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+    
+    # Ensure timezone is UTC
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    elif dt.tzinfo != timezone.utc:
+        dt = dt.astimezone(timezone.utc)
+    
+    return dt
+
+
 def compute_age_hours(created_at: datetime, status_updated_at: datetime | None = None) -> float:
     """
     Compute age in hours since case creation or last status update.
@@ -109,11 +169,11 @@ def add_sla_fields(case_dict: dict) -> dict:
     # Parse timestamps (handle both datetime objects and ISO strings)
     created_at = case_dict.get("createdAt")
     if isinstance(created_at, str):
-        created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        created_at = normalize_iso_datetime(created_at)
     
     updated_at = case_dict.get("updatedAt")
     if isinstance(updated_at, str):
-        updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        updated_at = normalize_iso_datetime(updated_at)
     
     # Compute age
     age_hours = compute_age_hours(created_at, updated_at)

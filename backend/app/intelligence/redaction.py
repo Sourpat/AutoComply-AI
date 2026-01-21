@@ -10,6 +10,7 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional
+from app.workflow.sla import normalize_iso_datetime
 from .pii_scanner import detect_pii, count_findings_by_rule, generate_findings_sample
 
 
@@ -181,9 +182,8 @@ def apply_retention_policy(
         # Parse computed_at timestamp
         computed_at_str = entry_copy.get("computed_at", "")
         try:
-            # Handle both ISO format with and without 'Z'
-            computed_at_str_clean = computed_at_str.replace("Z", "+00:00")
-            computed_at = datetime.fromisoformat(computed_at_str_clean)
+            # Normalize ISO string to timezone-aware datetime
+            computed_at = normalize_iso_datetime(computed_at_str)
         except (ValueError, AttributeError):
             # If can't parse, keep data (assume recent)
             result.append(entry_copy)

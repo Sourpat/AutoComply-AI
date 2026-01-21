@@ -12,6 +12,7 @@ No ML - pure heuristics.
 
 from typing import List, Dict, Any
 from datetime import datetime, timedelta, timezone
+from app.workflow.sla import normalize_iso_datetime
 import json
 
 
@@ -262,8 +263,8 @@ def detect_stale_signals(signals: List[Dict[str, Any]], max_age_hours: int = 72)
     for signal in signals:
         try:
             timestamp_str = signal.get("timestamp", "")
-            # Parse ISO timestamp
-            timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00").replace("+00:00", ""))
+            # Parse ISO timestamp with timezone awareness
+            timestamp = normalize_iso_datetime(timestamp_str)
             
             if timestamp < cutoff:
                 metadata = json.loads(signal.get("metadata_json", "{}"))

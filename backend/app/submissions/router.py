@@ -127,7 +127,8 @@ def create_new_submission(input_data: SubmissionCreateInput):
             initial_status = 'needs_info'
     
     # Calculate due date (7 days default)
-    due_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat() + 'Z'
+    # Use .replace() to convert +00:00 to Z (standard UTC format)
+    due_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat().replace('+00:00', 'Z')
     
     # Create case title
     decision_type_labels = {
