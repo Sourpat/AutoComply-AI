@@ -124,6 +124,12 @@ export async function apiFetch<T = any>(
     // Always clear timeout after fetch completes
     clearTimeout(timeoutId);
 
+    // Phase 7.33: Capture X-Request-Id from response for tracing
+    const requestId = response.headers.get("X-Request-Id");
+    if (requestId && isDev) {
+      console.log(`[API Request-Id] ${requestId}`);
+    }
+
     if (isDev) {
       console.log(`[API Response] ${options.method || "GET"} ${url} → ${response.status}`);
     }
@@ -179,6 +185,12 @@ export async function apiFetch<T = any>(
     const contentType = response.headers.get("content-type");
     if (contentType?.includes("application/json")) {
       const data = await response.json();
+      
+      // Phase 7.33: Attach request_id to response data for tracing (if available)
+      if (requestId && typeof data === "object" && data !== null) {
+        (data as any)._requestId = requestId;
+      }
+      
       if (isDev) {
         console.log(`[API Data]`, data);
       }

@@ -30,6 +30,7 @@ interface AuditExportResponse {
       include_payload: boolean;
       include_evidence: boolean;
     };
+    request_id?: string; // Phase 7.33: Request ID for tracing
     // Phase 7.31: Advanced PII scanner report
     redaction_report?: {
       mode: 'safe' | 'full';
@@ -694,6 +695,16 @@ export const ConfidenceHistoryPanel: React.FC<ConfidenceHistoryPanelProps> = ({
                       Payload: {lastExport.export_metadata.retention_policy.payload_retention_days}d
                     </span>
                   </div>
+                  
+                  {/* Phase 7.33: Request ID */}
+                  {lastExport.export_metadata.request_id && (
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-zinc-400">Request ID:</span>
+                      <span className="text-zinc-300 font-mono text-[10px]" title={lastExport.export_metadata.request_id}>
+                        {lastExport.export_metadata.request_id.substring(0, 8)}...
+                      </span>
+                    </div>
+                  )}
                   
                   {/* Phase 7.31: PII Scanner Report */}
                   {lastExport.export_metadata.redaction_report && (
