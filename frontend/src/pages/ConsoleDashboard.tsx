@@ -7,7 +7,7 @@ import { demoStore } from "../lib/demoStore";
 import * as submissionSelector from "../submissions/submissionStoreSelector";
 import type { SubmissionRecord } from "../submissions/submissionTypes";
 import { deleteSubmission, updateSubmission } from "../api/submissionsApi";
-import { listCases, getCaseInfoRequest } from "../api/workflowApi";
+import { listCases, getCaseInfoRequest, resubmitCase } from "../api/workflowApi";
 import { uploadEvidence, listEvidence, type EvidenceUploadItem, getEvidenceDownloadUrl } from "../api/evidenceApi";
 import type { WorkQueueItem as DemoWorkQueueItem } from "../types/workQueue";
 import { buildDecisionPacket } from "../utils/buildDecisionPacket";
@@ -713,7 +713,6 @@ const ConsoleDashboard: React.FC = () => {
       return;
     }
     try {
-      const { resubmitCase } = await import('../api/workflowApi');
       await resubmitCase(caseId, {
         submissionId: submissionId,
         note: 'Addressed requested information',

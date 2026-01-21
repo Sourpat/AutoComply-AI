@@ -59,6 +59,7 @@ import {
   unassignCase,
   setCaseStatus,
   getCaseEvents,
+  requestCaseInfo,
   type CaseEvent,
   type CaseAdherence, 
   type AuditEvent as ApiAuditEvent, 
@@ -932,7 +933,6 @@ export const CaseDetailsPanel: React.FC<CaseDetailsPanelProps> = ({ caseId, onCa
 
     // Phase 4.1: Call real API
     try {
-      const { requestCaseInfo } = await import('../../api/workflowApi');
       const result = await requestCaseInfo(caseId, {
         message: requestInfoMessage,
         requestedBy: currentUser?.name,

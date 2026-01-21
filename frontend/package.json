@@ -10,7 +10,8 @@
     "preview:host": "vite preview --host",
     "lint": "eslint .",
     "test": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:bundle": "node scripts/check_bundle_size.js"
   },
   "dependencies": {
     "lucide-react": "^0.555.0",
