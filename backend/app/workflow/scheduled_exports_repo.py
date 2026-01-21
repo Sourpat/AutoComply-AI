@@ -5,7 +5,7 @@ Manages recurring export jobs stored in SQLite.
 """
 
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 from src.core.db import execute_sql, execute_insert, execute_update, execute_delete
 
