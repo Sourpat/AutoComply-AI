@@ -258,3 +258,110 @@ def test_health_details_version_and_metadata(client, monkeypatch):
     assert data["environment"] == "staging"
     assert data["commit_sha"] == "abc123def"
     assert data["build_time"] == "2024-01-15T10:30:00Z"
+
+
+def test_health_details_commit_sha_from_render(client, monkeypatch):
+    """Test that commit_sha is detected from RENDER_GIT_COMMIT."""
+    get_settings.cache_clear()
+    
+    # Simulate Render platform env var
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "render-commit-abc123")
+    
+    response = client.get("/health/details")
+    assert response.status_code == 200
+    data = response.json()
+    
+    assert data["commit_sha"] == "render-commit-abc123"
+    
+    get_settings.cache_clear()
+
+
+def test_health_details_commit_sha_from_github_actions(client, monkeypatch):
+    """Test that commit_sha is detected from GITHUB_SHA."""
+    get_settings.cache_clear()
+    
+    # Simulate GitHub Actions env var
+    monkeypatch.setenv("GITHUB_SHA", "github-sha-xyz789")
+    
+    response = client.get("/health/details")
+    assert response.status_code == 200
+    data = response.json()
+    
+    assert data["commit_sha"] == "github-sha-xyz789"
+    
+    get_settings.cache_clear()
+
+
+def test_health_details_demo_seed_disabled_in_prod(client, monkeypatch):
+    """Test that demo_seed_enabled is false in production by default."""
+    get_settings.cache_clear()
+    
+    # Set to production without DEMO_SEED_ENABLED
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.delenv("DEMO_SEED_ENABLED", raising=False)
+    
+    response = client.get("/health/details")
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Should be disabled in prod by default
+    assert data["config"]["demo_seed_enabled"] is False
+    
+    get_settings.cache_clear()
+
+
+def test_health_details_demo_seed_enabled_in_dev(client, monkeypatch):
+    """Test that demo_seed_enabled is true in dev by default."""
+    get_settings.cache_clear()
+    
+    # Set to dev environment
+    monkeypatch.setenv("APP_ENV", "dev")
+    monkeypatch.delenv("DEMO_SEED_ENABLED", raising=False)
+    
+    response = client.get("/health/details")
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Should be enabled in dev by default
+    assert data["config"]["demo_seed_enabled"] is True
+    
+    get_settings.cache_clear()
+
+
+def test_health_details_demo_seed_explicit_override(client, monkeypatch):
+    """Test that DEMO_SEED_ENABLED explicitly overrides defaults."""
+    get_settings.cache_clear()
+    
+    # Explicitly enable in production
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("DEMO_SEED_ENABLED", "true")
+    
+    response = client.get("/health/details")
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Should respect explicit setting
+    assert data["config"]["demo_seed_enabled"] is True
+    
+    get_settings.cache_clear()
+
+
+def test_health_details_demo_seed_startup_flag(client, monkeypatch):
+    """Test that demo_seed_startup flag is separate from demo_seed_enabled."""
+    get_settings.cache_clear()
+    
+    # Set DEMO_SEED for startup seeding
+    monkeypatch.setenv("DEMO_SEED", "true")
+    monkeypatch.setenv("APP_ENV", "dev")
+    
+    response = client.get("/health/details")
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Both flags should be present and independent
+    assert "demo_seed_enabled" in data["config"]
+    assert "demo_seed_startup" in data["config"]
+    assert data["config"]["demo_seed_startup"] is True
+    
+    get_settings.cache_clear()
+

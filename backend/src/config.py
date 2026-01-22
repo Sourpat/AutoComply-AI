@@ -108,6 +108,19 @@ class Settings(BaseSettings):
         description="Auto-seed demo workflow cases on startup if DB is empty"
     )
     
+    # DEMO_SEED_ENABLED: Explicit flag to enable manual /dev/seed endpoint in production
+    # =============================================================================
+    # Controls whether /dev/seed POST endpoint is available in production.
+    # - Defaults to False in production (disabled)
+    # - Set DEMO_SEED_ENABLED=true to allow manual seeding in production
+    # - Always requires DEV_SEED_TOKEN authentication in production
+    # - In dev, defaults to True for convenience
+    # =============================================================================
+    DEMO_SEED_ENABLED: bool | None = Field(
+        default=None,  # Will be computed based on APP_ENV if not explicitly set
+        description="Enable manual /dev/seed endpoint. Auto-disabled in prod unless explicitly enabled."
+    )
+    
     # DEV_SEED_TOKEN: Optional token for protecting manual POST /dev/seed endpoint
     # - If set, POST /dev/seed requires Authorization: Bearer <token> header
     # - Falls back to admin_unlocked=1 or x-user-role=devsupport if not set
@@ -173,6 +186,20 @@ class Settings(BaseSettings):
         """
         if self.RAG_ENABLED is not None:
             return self.RAG_ENABLED
+        # Default: enabled in dev, disabled in prod
+        return not self.is_production
+    
+    @property
+    def demo_seed_enabled(self) -> bool:
+        """
+        Check if manual demo seed endpoint is enabled.
+        
+        Auto-disables in production unless explicitly enabled via DEMO_SEED_ENABLED=true.
+        Provides defense-in-depth: even if DEV_SEED_TOKEN is leaked, endpoint won't work
+        in production unless explicitly enabled.
+        """
+        if self.DEMO_SEED_ENABLED is not None:
+            return self.DEMO_SEED_ENABLED
         # Default: enabled in dev, disabled in prod
         return not self.is_production
 
@@ -261,7 +288,8 @@ def validate_runtime_config() -> dict:
         "dev_seed_token_present": bool(settings.DEV_SEED_TOKEN),
         "rag_enabled": settings.rag_enabled,
         "auto_intelligence_enabled": settings.AUTO_INTELLIGENCE_ENABLED,
-        "demo_seed_enabled": settings.DEMO_SEED,
+        "demo_seed_enabled": settings.demo_seed_enabled,  # Use property for smart default
+        "demo_seed_startup": settings.DEMO_SEED,  # Original DEMO_SEED for startup seeding
         "is_production": settings.is_production,
         "cors_origins_count": len(settings.cors_origins_list),
     }

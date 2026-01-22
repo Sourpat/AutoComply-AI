@@ -147,8 +147,22 @@ async def health_details() -> HealthDetails:
     # Get version and build metadata
     version = os.getenv("AUTOCOMPLY_VERSION", "0.1.0")
     environment = os.getenv("APP_ENV", "dev")
-    commit_sha = os.getenv("GIT_SHA")
-    build_time = os.getenv("BUILD_TIME")
+    
+    # Check multiple env var sources for commit SHA (platform-specific)
+    commit_sha = (
+        os.getenv("RENDER_GIT_COMMIT")  # Render platform
+        or os.getenv("SOURCE_VERSION")  # Azure
+        or os.getenv("GITHUB_SHA")  # GitHub Actions
+        or os.getenv("GIT_SHA")  # Custom
+        or os.getenv("COMMIT_SHA")  # Generic
+    )
+    
+    # Check multiple env var sources for build time
+    build_time = (
+        os.getenv("BUILD_TIME")  # Custom
+        or os.getenv("RENDER_BUILD_TIME")  # Render (if they provide it)
+        or os.getenv("BUILD_TIMESTAMP")  # Generic
+    )
 
     return HealthDetails(
         ok=validation["ok"],

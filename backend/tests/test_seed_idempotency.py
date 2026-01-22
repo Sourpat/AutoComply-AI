@@ -193,3 +193,86 @@ def test_get_workflow_cases_after_seed(client):
         assert "title" in first_case
         assert "decisionType" in first_case
         assert "status" in first_case
+
+
+def test_seed_endpoint_disabled_in_production(monkeypatch):
+    """Test that /dev/seed is disabled in production by default."""
+    from src.config import get_settings
+    
+    # Clear cache and set production environment
+    get_settings.cache_clear()
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.delenv("DEMO_SEED_ENABLED", raising=False)
+    
+    client = TestClient(app)
+    
+    # Should be forbidden even with valid auth
+    response = client.post("/dev/seed?admin_unlocked=1")
+    assert response.status_code == 403
+    assert "disabled in production" in response.json()["detail"].lower()
+    
+    get_settings.cache_clear()
+
+
+def test_seed_endpoint_requires_token_in_production(monkeypatch):
+    """Test that /dev/seed requires DEV_SEED_TOKEN in production."""
+    from src.config import get_settings
+    
+    # Clear cache and set production with seed enabled but no token
+    get_settings.cache_clear()
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("DEMO_SEED_ENABLED", "true")
+    monkeypatch.delenv("DEV_SEED_TOKEN", raising=False)
+    
+    client = TestClient(app)
+    
+    # Should require token
+    response = client.post("/dev/seed?admin_unlocked=1")
+    assert response.status_code == 403
+    assert "requires DEV_SEED_TOKEN" in response.json()["detail"]
+    
+    get_settings.cache_clear()
+
+
+def test_seed_endpoint_works_in_production_with_both_gates(monkeypatch):
+    """Test that /dev/seed works in production with DEMO_SEED_ENABLED=true and valid token."""
+    from src.config import get_settings
+    
+    # Clear cache and set production with both gates enabled
+    get_settings.cache_clear()
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("DEMO_SEED_ENABLED", "true")
+    monkeypatch.setenv("DEV_SEED_TOKEN", "prod-test-token")
+    
+    client = TestClient(app)
+    
+    # Should work with valid Bearer token
+    response = client.post(
+        "/dev/seed",
+        headers={"Authorization": "Bearer prod-test-token"}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    
+    get_settings.cache_clear()
+
+
+def test_seed_endpoint_fallback_auth_disabled_in_production(monkeypatch):
+    """Test that fallback auth (admin_unlocked) doesn't work in production even with DEMO_SEED_ENABLED."""
+    from src.config import get_settings
+    
+    # Clear cache and set production with seed enabled but no DEV_SEED_TOKEN
+    get_settings.cache_clear()
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("DEMO_SEED_ENABLED", "true")
+    monkeypatch.delenv("DEV_SEED_TOKEN", raising=False)
+    
+    client = TestClient(app)
+    
+    # Fallback auth should not work in production
+    response = client.post("/dev/seed?admin_unlocked=1")
+    assert response.status_code == 403
+    
+    get_settings.cache_clear()
+

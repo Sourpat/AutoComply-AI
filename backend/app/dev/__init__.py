@@ -223,6 +223,13 @@ def seed_demo_endpoint(
     """
     settings = get_settings()
     
+    # Production hardening: Check if demo seed is enabled
+    if settings.is_production and not settings.demo_seed_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Demo seed endpoint is disabled in production. Set DEMO_SEED_ENABLED=true to enable."
+        )
+    
     # Authorization check (multi-layered)
     authorized = False
     
@@ -247,8 +254,14 @@ def seed_demo_endpoint(
                 status_code=403,
                 detail="Forbidden: DEV_SEED_TOKEN is configured, requires valid Authorization: Bearer <token> header"
             )
+    elif settings.is_production:
+        # In production, REQUIRE DEV_SEED_TOKEN (don't allow fallback auth)
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Production requires DEV_SEED_TOKEN to be configured"
+        )
     else:
-        # 2. Fallback to admin_unlocked or devsupport role (only if DEV_SEED_TOKEN not set)
+        # 2. Fallback to admin_unlocked or devsupport role (only in non-prod if DEV_SEED_TOKEN not set)
         if admin_unlocked:
             authorized = True
             logger.info("Seed endpoint authorized via admin_unlocked=1")
