@@ -1,28 +1,42 @@
 """
-Test Phase 8.1: Enterprise Trace Spans
+Test Phase 8.1 + 8.2: Enterprise Trace Spans + Labels
 
 Tests for distributed tracing functionality:
 - TraceContext utility (span creation, nesting, auto-timing, error capture)
 - Recompute endpoint instrumentation (trace_id in response + headers)
-- Traces API (list traces, get trace details)
+- Traces API (list traces, get trace details, add labels) 
 - Redaction of sensitive data in metadata
 - Database persistence of trace fields
+- Human labeling of traces (Phase 8.2)
 
 DoD Requirements:
 - All tests pass
 - No new lint warnings
 - Trace data recorded in intelligence_history
 - Redaction prevents secret leakage
+- Labels stored and retrieved correctly
 """
 
 import json
 import time
 import pytest
 from unittest.mock import patch
+from fastapi.testclient import TestClient
 
 from app.intelligence.trace_context import TraceContext, TraceSpan, redact_metadata
 from app.intelligence.repository import insert_intelligence_history
 from src.core.db import execute_sql
+from src.api.main import app
+
+
+# ============================================================================
+# Fixtures
+# ============================================================================
+
+@pytest.fixture
+def client():
+    """Create test client for API tests."""
+    return TestClient(app)
 
 
 # ============================================================================
@@ -355,6 +369,143 @@ class TestTraceReliability:
         # To properly test isolation, need threading/multiprocessing
         # For now, just verify trace_id is set
         assert len(trace_ids) > 0
+
+
+# ============================================================================
+# Trace Labels API Tests (Phase 8.2)
+# ============================================================================
+
+@pytest.mark.skip(reason="Integration test - requires migrated database with trace columns")
+class TestTraceLabelsAPI:
+    """Test trace labeling endpoints."""
+    
+    def test_add_labels_to_trace(self, client):
+        """Test adding labels to a trace."""
+        # Create a trace with root span
+        with TraceContext.start_span(
+            "test_recompute",
+            span_kind="server",
+            case_id="case-123",
+            metadata={"test": "data"}
+        ) as span:
+            trace_id = span.trace_id
+        
+        # Add labels via API
+        response = client.post(
+            f"/api/traces/{trace_id}/labels",
+            json={
+                "open_codes": ["missing_data", "edge_case"],
+                "axial_category": "data_quality",
+                "pass_fail": False,
+                "severity": "P1",
+                "notes": "Missing practitioner NPI in submission"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["trace_id"] == trace_id
+        assert data["labels"]["open_codes"] == ["missing_data", "edge_case"]
+        assert data["labels"]["axial_category"] == "data_quality"
+        assert data["labels"]["pass_fail"] is False
+        assert data["labels"]["severity"] == "P1"
+    
+    def test_get_trace_includes_labels(self, client):
+        """Test that GET /traces/{trace_id} returns labels if present."""
+        # Create a trace
+        with TraceContext.start_span("test_span", span_kind="internal", case_id="case-456") as span:
+            trace_id = span.trace_id
+        
+        # Add labels
+        client.post(
+            f"/api/traces/{trace_id}/labels",
+            json={
+                "open_codes": ["policy_gap"],
+                "axial_category": "policy_gap",
+                "pass_fail": True,
+                "severity": "P2",
+                "notes": "Expected behavior"
+            }
+        )
+        
+        # Get trace details
+        response = client.get(f"/api/traces/{trace_id}")
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["labels"] is not None
+        assert data["labels"]["open_codes"] == ["policy_gap"]
+        assert data["labels"]["pass_fail"] is True
+    
+    def test_labels_are_redacted(self, client):
+        """Test that labels are redacted to prevent secret leakage."""
+        # Create a trace
+        with TraceContext.start_span("test_span", span_kind="internal", case_id="case-789") as span:
+            trace_id = span.trace_id
+        
+        # Try to add labels with sensitive data
+        response = client.post(
+            f"/api/traces/{trace_id}/labels",
+            json={
+                "open_codes": ["test"],
+                "notes": "API key: sk-1234567890 should be redacted"
+            }
+        )
+        
+        assert response.status_code == 200
+        labels = response.json()["labels"]
+        
+        # Verify redaction occurred (sk- should be masked)
+        assert "sk-1234567890" not in labels.get("notes", "")
+        assert "REDACTED" in labels.get("notes", "") or labels.get("notes") == ""
+    
+    def test_label_update_overwrites(self, client):
+        """Test that adding labels twice overwrites previous labels."""
+        # Create a trace
+        with TraceContext.start_span("test_span", span_kind="internal", case_id="case-abc") as span:
+            trace_id = span.trace_id
+        
+        # Add initial labels
+        client.post(
+            f"/api/traces/{trace_id}/labels",
+            json={
+                "open_codes": ["initial"],
+                "pass_fail": False,
+                "severity": "P0"
+            }
+        )
+        
+        # Update labels
+        client.post(
+            f"/api/traces/{trace_id}/labels",
+            json={
+                "open_codes": ["updated", "revised"],
+                "pass_fail": True,
+                "severity": "P2"
+            }
+        )
+        
+        # Verify latest labels are returned
+        response = client.get(f"/api/traces/{trace_id}")
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["labels"]["open_codes"] == ["updated", "revised"]
+        assert data["labels"]["pass_fail"] is True
+        assert data["labels"]["severity"] == "P2"
+    
+    def test_labels_404_for_nonexistent_trace(self, client):
+        """Test that labeling a non-existent trace returns 404."""
+        response = client.post(
+            "/api/traces/non-existent-trace-id/labels",
+            json={
+                "open_codes": ["test"],
+                "pass_fail": True
+            }
+        )
+        
+        assert response.status_code == 404
 
 
 # ============================================================================
