@@ -92,6 +92,11 @@ def compute_age_hours(created_at: datetime, status_updated_at: datetime | None =
         >>> age = compute_age_hours(created)  # 30 hours
     """
     reference_time = status_updated_at if status_updated_at else created_at
+    
+    # Ensure reference_time is timezone-aware (assume UTC if naive)
+    if reference_time and reference_time.tzinfo is None:
+        reference_time = reference_time.replace(tzinfo=timezone.utc)
+    
     now = datetime.now(timezone.utc)
     delta = now - reference_time
     return delta.total_seconds() / 3600

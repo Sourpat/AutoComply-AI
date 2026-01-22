@@ -6,7 +6,7 @@ Step 2.10: API Endpoints for Workflow Console
 Exposes REST API for case management, audit tracking, and evidence curation.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Query, Request, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
@@ -226,8 +226,13 @@ def get_trace(trace_id: str):
 # ============================================================================
 
 class PaginatedCasesResponse(BaseModel):
-    """Paginated response for cases list."""
-    items: List[CaseRecord]
+    """
+    Paginated response for cases list.
+    
+    Note: items are Dict[str, Any] to support dynamic computed fields
+    (age_hours, sla_status) added by SLA enrichment in Phase 7.29.
+    """
+    items: List[Dict[str, Any]]  # Use dict to allow computed SLA fields
     total: int
     limit: int
     offset: int
