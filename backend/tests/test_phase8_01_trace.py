@@ -325,7 +325,8 @@ class TestTraceReliability:
     def test_trace_recording_failure_does_not_propagate(self):
         """Test that trace recording errors don't fail the request."""
         # Simulate database failure during recording
-        with patch("app.intelligence.trace_context.execute_insert", side_effect=Exception("DB down")):
+        # Patch where execute_insert is looked up (repository module), not trace_context
+        with patch("app.intelligence.repository.execute_insert", side_effect=Exception("DB down")):
             # This should NOT raise an exception
             with TraceContext.start_span(
                 "test_span",
