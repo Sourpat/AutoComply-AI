@@ -9,21 +9,12 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3100';
-  const auth0Domain = process.env.AUTH0_DOMAIN;
-
-  if (!auth0Domain) {
-    return NextResponse.json(
-      { error: 'OAuth not configured' },
-      { 
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-  }
+  const auth0Domain = process.env.AUTH0_DOMAIN || 'auth0.example.com';
+  const isConfigured = !!process.env.AUTH0_DOMAIN;
 
   const metadata = {
+    _notice: isConfigured ? undefined : 'OAuth not fully configured - using placeholder values. Set AUTH0_DOMAIN to enable.',
+    configured: isConfigured,
     issuer: baseUrl,
     authorization_endpoint: `${baseUrl}/api/auth/authorize`,
     token_endpoint: `${baseUrl}/api/auth/token`,
