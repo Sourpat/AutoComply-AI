@@ -2,7 +2,7 @@
  * MCP Transport Endpoint for AutoComply Control-Plane
  * 
  * Provides remote MCP server for reading/writing task queue and decisions
- * via GitHub API. Requires bearer token authentication.
+ * via GitHub API. Supports OAuth 2.0 and legacy bearer token authentication.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -14,10 +14,11 @@ import {
 import { z } from 'zod';
 import { getFile, updateFile, appendToFile } from '@/lib/github';
 import { validateBearerToken } from '@/lib/auth';
+import { validateAccessToken, extractBearerToken, isOAuthConfigured } from '@/lib/oauth';
 
 // Validate environment variables
 function validateEnv() {
-  const required = ['GITHUB_TOKEN', 'GITHUB_OWNER', 'GITHUB_REPO', 'MCP_BEARER_TOKEN'];
+  const required = ['GITHUB_TOKEN', 'GITHUB_OWNER', 'GITHUB_REPO'];
   const missing = required.filter((key) => !process.env[key]);
   
   if (missing.length > 0) {
@@ -43,6 +44,9 @@ let server: Server | null = null;
 
 function getServer() {
   if (!server) {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3100';
+    const oauthConfigured = isOAuthConfigured();
+    
     server = new Server(
       {
         name: 'autocomply-control-plane',
@@ -51,6 +55,18 @@ function getServer() {
       {
         capabilities: {
           tools: {},
+          ...(oauthConfigured && {
+            security: {
+              oauth2: {
+                authorizationUrl: `${baseUrl}/api/auth/authorize`,
+                tokenUrl: `${baseUrl}/api/auth/token`,
+                scopes: {
+                  'read:tasks': 'Read task queue and decisions',
+                  'write:tasks': 'Update task queue and decisions',
+                },
+              },
+            },
+          }),
         },
       }
     );
@@ -232,6 +248,38 @@ function getServer() {
   return server;
 }
 
+/**
+ * Validate authentication (OAuth or legacy bearer token)
+ */
+async function validateAuth(authHeader: string | null): Promise<{ isAuthenticated: boolean; canWrite: boolean }> {
+  if (!authHeader) {
+    return { isAuthenticated: false, canWrite: false };
+  }
+
+  // Try OAuth first if configured
+  if (isOAuthConfigured()) {
+    const token = extractBearerToken(authHeader);
+    if (token) {
+      try {
+        const payload = await validateAccessToken(token);
+        // Check if token has write scope
+        const scopes = (payload.scope as string)?.split(' ') || [];
+        const canWrite = scopes.includes('write:tasks');
+        return { isAuthenticated: true, canWrite };
+      } catch {
+        // Fall through to legacy auth
+      }
+    }
+  }
+
+  // Fall back to legacy bearer token (full access if valid)
+  if (validateBearerToken(authHeader)) {
+    return { isAuthenticated: true, canWrite: true };
+  }
+
+  return { isAuthenticated: false, canWrite: false };
+}
+
 // HTTP POST handler for MCP requests
 export async function POST(request: NextRequest) {
   try {
@@ -240,15 +288,33 @@ export async function POST(request: NextRequest) {
 
     // Check authentication
     const authHeader = request.headers.get('authorization');
-    if (!validateBearerToken(authHeader)) {
+    const auth = await validateAuth(authHeader);
+    
+    if (!auth.isAuthenticated) {
       return NextResponse.json(
-        { error: 'Unauthorized: invalid or missing bearer token' },
+        { error: 'Unauthorized: invalid or missing access token' },
         { status: 401 }
       );
     }
 
     // Parse JSON-RPC request
     const body = await request.json();
+    
+    // Check if this is a write operation and user has write permission
+    const isWriteOperation = 
+      body.method === 'tools/call' && 
+      ['update_task_queue', 'append_decision'].includes(body.params?.name);
+    
+    if (isWriteOperation && !auth.canWrite) {
+      return NextResponse.json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32600,
+          message: 'Forbidden: write:tasks scope required for this operation',
+        },
+        id: body.id || null,
+      });
+    }
     
     // Get or create MCP server
     const mcpServer = getServer();
@@ -277,11 +343,17 @@ export async function POST(request: NextRequest) {
 
 // Health check endpoint
 export async function GET() {
+  const oauthConfigured = isOAuthConfigured();
+  
   return NextResponse.json({
     name: 'autocomply-control-plane',
     version: '1.0.0',
     status: 'ok',
     description: 'MCP server for AutoComply task queue and decision management',
     tools: ['get_task_queue', 'update_task_queue', 'append_decision', 'get_decisions', 'get_file'],
+    authentication: {
+      oauth: oauthConfigured,
+      legacyBearer: !!process.env.MCP_BEARER_TOKEN,
+    },
   });
 }

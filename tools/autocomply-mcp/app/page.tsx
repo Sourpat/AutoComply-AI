@@ -24,7 +24,13 @@ export default function Home() {
 
         <div className="mt-8 text-sm text-gray-500">
           <p>MCP Endpoint: <code>/api/mcp</code></p>
-          <p>Authentication: Bearer token required</p>
+          <p>Authentication: OAuth 2.0 (preferred) or Bearer token</p>
+          <p className="mt-2">OAuth Endpoints:</p>
+          <ul className="list-disc list-inside ml-4">
+            <li><code>/api/auth/authorize</code> - Authorization</li>
+            <li><code>/api/auth/token</code> - Token exchange</li>
+            <li><code>/api/auth/callback</code> - Callback handler</li>
+          </ul>
         </div>
       </div>
     </main>
