@@ -622,7 +622,16 @@ def insert_intelligence_history(
     triggered_by: Optional[str] = None,
     input_hash: Optional[str] = None,
     previous_run_id: Optional[str] = None,
-    request_id: Optional[str] = None  # Phase 7.33: Request ID for tracing
+    request_id: Optional[str] = None,  # Phase 7.33: Request ID for tracing
+    # Phase 8.1: Trace fields for observability
+    trace_id: Optional[str] = None,
+    span_id: Optional[str] = None,
+    parent_span_id: Optional[str] = None,
+    span_name: Optional[str] = None,
+    span_kind: Optional[str] = None,
+    duration_ms: Optional[int] = None,
+    error_text: Optional[str] = None,
+    trace_metadata_json: Optional[str] = None,
 ) -> str:
     """
     Insert a snapshot of intelligence into history table (append-only).
@@ -715,14 +724,20 @@ def insert_intelligence_history(
             previous_run_id, triggered_by, input_hash,
             evidence_snapshot, evidence_hash, evidence_version,
             policy_id, policy_version, policy_hash,
-            request_id
+            request_id,
+            trace_id, span_id, parent_span_id,
+            span_name, span_kind, duration_ms, error_text,
+            trace_metadata_json
         ) VALUES (
             :id, :case_id, :computed_at, :payload_json,
             :created_at, :actor, :reason,
             :previous_run_id, :triggered_by, :input_hash,
             :evidence_snapshot, :evidence_hash, :evidence_version,
             :policy_id, :policy_version, :policy_hash,
-            :request_id
+            :request_id,
+            :trace_id, :span_id, :parent_span_id,
+            :span_name, :span_kind, :duration_ms, :error_text,
+            :trace_metadata_json
         )
         """,
         {
@@ -743,6 +758,15 @@ def insert_intelligence_history(
             "policy_version": policy_version,
             "policy_hash": policy_hash,
             "request_id": request_id,  # Phase 7.33
+            # Phase 8.1: Trace fields
+            "trace_id": trace_id,
+            "span_id": span_id,
+            "parent_span_id": parent_span_id,
+            "span_name": span_name,
+            "span_kind": span_kind,
+            "duration_ms": duration_ms,
+            "error_text": error_text,
+            "trace_metadata_json": trace_metadata_json,
         },
     )
     

@@ -429,180 +429,260 @@ def recompute_intelligence_endpoint(
     # Get actor context (role + admin unlock)
     ctx = get_actor_context(request)
     
-    # Try to get decision_type from case
-    try:
-        case = get_case(case_id)
-        if case and hasattr(case, 'decision_type'):
-            decision_type = case.decision_type
-            logger.info(f"Using decision_type from case: {decision_type}")
-    except Exception as e:
-        logger.warning(f"Could not get decision_type from case: {e}")
-    
-    # Generate signals from case artifacts
-    logger.info(f"Generating signals for case {case_id}")
-    signals = generate_signals_for_case(case_id)
-    
-    # Upsert signals (convert SignalCreate models to dicts)
-    if signals:
-        logger.info(f"Upserting {len(signals)} signals for case {case_id}")
-        signal_dicts = [s.model_dump() for s in signals]
-        upsert_signals(case_id, signal_dicts)
-    else:
-        logger.warning(f"No signals generated for case {case_id}")
-    
-    # Recompute intelligence from signals (v2 with gap/bias detection)
-    logger.info(f"Recomputing intelligence v2 for case {case_id} by {ctx['role']} (admin_unlocked={ctx['admin_unlocked']}) with decision_type={decision_type}")
-    
     # Phase 7.33: Capture request ID for tracing
     request_id = get_request_id(request) if request else None
     
-    intelligence = compute_and_upsert_decision_intelligence(case_id, decision_type, request_id=request_id)
+    # Phase 8.1: Start trace span for entire recompute operation
+    from .trace_context import TraceContext
     
-    # Parse JSON fields for v2 response
-    try:
-        gaps = json.loads(intelligence.gap_json)
-    except:
-        gaps = []
-    
-    try:
-        bias_flags = json.loads(intelligence.bias_json)
-    except:
-        bias_flags = []
-    
-    # Phase 7.33: Store intelligence computation in history with request_id
-    from .repository import insert_intelligence_history
-    from .integrity import compute_input_hash
-    
-    # Build payload for history
-    intelligence_payload = {
-        "confidence_score": intelligence.confidence_score,
-        "confidence_band": intelligence.confidence_band,
-        "completeness_score": intelligence.completeness_score,
-        "gaps": gaps,
-        "bias_flags": bias_flags,
-        "computed_at": intelligence.computed_at,
-        "updated_at": intelligence.updated_at,
-    }
-    
-    # Compute input hash for duplicate detection (case data only - submission not required)
-    case_data = {"id": case_id, "status": case.status if case else "unknown"}
-    input_hash = compute_input_hash(case_data, None)
-    
-    # Insert into history
-    insert_intelligence_history(
+    with TraceContext.start_span(
+        span_name="intelligence_recompute",
+        span_kind="internal",
+        metadata={
+            "case_id": case_id,
+            "trigger": ctx.get("role", "unknown"),
+            "admin_unlocked": ctx.get("admin_unlocked", False),
+        },
         case_id=case_id,
-        payload=intelligence_payload,
-        actor=request.state.user_email if request and hasattr(request.state, "user_email") else "system",
-        reason=f"Intelligence recomputed by {ctx['role']}",
-        triggered_by=ctx['role'],
-        input_hash=input_hash,
-        request_id=request_id  # Phase 7.33: Include request_id for tracing
-    )
-    
-    # Calculate gap severity score
-    gap_severity_score = 0
-    if gaps:
-        missing_count = sum(1 for g in gaps if g.get("gapType") == "missing")
-        partial_count = sum(1 for g in gaps if g.get("gapType") == "partial")
-        weak_count = sum(1 for g in gaps if g.get("gapType") == "weak")
-        stale_count = sum(1 for g in gaps if g.get("gapType") == "stale")
+        request_id=request_id,
+    ) as root_span:
         
-        gap_weight = (
-            missing_count * 0.3 +
-            partial_count * 0.2 +
-            weak_count * 0.1 +
-            stale_count * 0.05
-        )
-        if gap_weight > 0:
-            gap_severity_score = min(100, int(100 * gap_weight / (1 + gap_weight)))
-    
-    # Explanation factors - extract from intelligence
-    explanation_factors = []
-    rules_total = 0
-    rules_passed = 0
-    rules_failed_count = 0
-    failed_rules = []
-    # Phase 7.14: Field validation
-    field_checks_total = 0
-    field_checks_passed = 0
-    field_issues = []
-    confidence_rationale = ""
-    
-    # Try to extract from executive_summary_json
-    try:
-        if intelligence.executive_summary_json:
-            exec_summary_data = json.loads(intelligence.executive_summary_json)
-            explanation_obj = exec_summary_data.get("explanation_factors", {})
-            if isinstance(explanation_obj, dict):
-                rules_total = explanation_obj.get("total_rules", 0)
-                rules_passed = explanation_obj.get("passed_rules", 0)
-                rules_failed_count = explanation_obj.get("failed_rules", 0)
-                rule_summary = explanation_obj.get("rule_summary", {})
-                failed_rules = rule_summary.get("failed_rules", [])
-                # Phase 7.14: Field validation
-                field_checks_total = explanation_obj.get("field_checks_total", 0)
-                field_checks_passed = explanation_obj.get("field_checks_passed", 0)
-                field_issues = explanation_obj.get("field_issues", [])
-                confidence_rationale = explanation_obj.get("confidence_rationale", "")
-    except:
-        pass
-    
-    # Emit case event
-    try:
-        create_case_event(
+        # Try to get decision_type from case
+        with TraceContext.start_span(
+            "fetch_case_decision_type",
+            span_kind="db_query",
+            metadata={"case_id": case_id},
             case_id=case_id,
-            event_type="decision_intelligence_updated",
-            actor_role=ctx["role"],
-            actor_id=request.state.user_email if request and hasattr(request.state, "user_email") else None,
-            message=f"Decision intelligence v2 recomputed: {intelligence.confidence_band} confidence ({intelligence.confidence_score}%), passed {rules_passed}/{rules_total} rules",
-            payload_dict={
-                "computed_at": intelligence.computed_at,
-                "completeness_score": intelligence.completeness_score,
-                "confidence_score": intelligence.confidence_score,
-                "confidence_band": intelligence.confidence_band,
-                "gap_count": len(gaps),
-                "gap_severity_score": gap_severity_score,
-                "bias_count": len(bias_flags),
-                "decision_type": decision_type,
-                "rules_total": rules_total,
-                "rules_passed": rules_passed,
-                "rules_failed": rules_failed_count,
-                "trigger": "manual",  # Phase 7.17: Explicit trigger
-            },
+            request_id=request_id,
+        ):
+            try:
+                case = get_case(case_id)
+                if case and hasattr(case, 'decision_type'):
+                    decision_type = case.decision_type
+                    logger.info(f"Using decision_type from case: {decision_type}")
+            except Exception as e:
+                logger.warning(f"Could not get decision_type from case: {e}")
+        
+        # Generate signals from case artifacts
+        logger.info(f"Generating signals for case {case_id}")
+        with TraceContext.start_span(
+            "generate_signals",
+            span_kind="internal",
+            metadata={"case_id": case_id},
+            case_id=case_id,
+            request_id=request_id,
+        ):
+            signals = generate_signals_for_case(case_id)
+        
+        # Upsert signals (convert SignalCreate models to dicts)
+        if signals:
+            logger.info(f"Upserting {len(signals)} signals for case {case_id}")
+            with TraceContext.start_span(
+                "upsert_signals",
+                span_kind="db_query",
+                metadata={"case_id": case_id, "signal_count": len(signals)},
+                case_id=case_id,
+                request_id=request_id,
+            ):
+                signal_dicts = [s.model_dump() for s in signals]
+                upsert_signals(case_id, signal_dicts)
+        else:
+            logger.warning(f"No signals generated for case {case_id}")
+        
+        # Recompute intelligence from signals (v2 with gap/bias detection)
+        logger.info(f"Recomputing intelligence v2 for case {case_id} by {ctx['role']} (admin_unlocked={ctx['admin_unlocked']}) with decision_type={decision_type}")
+        
+        with TraceContext.start_span(
+            "compute_intelligence",
+            span_kind="ai_call",
+            metadata={"case_id": case_id, "decision_type": decision_type},
+            case_id=case_id,
+            request_id=request_id,
+        ):
+            intelligence = compute_and_upsert_decision_intelligence(case_id, decision_type, request_id=request_id)
+    
+        # Parse JSON fields for v2 response
+        try:
+            gaps = json.loads(intelligence.gap_json)
+        except:
+            gaps = []
+        
+        try:
+            bias_flags = json.loads(intelligence.bias_json)
+        except:
+            bias_flags = []
+        
+        # Phase 7.33: Store intelligence computation in history with request_id
+        # Phase 8.1: Now includes trace fields for observability
+        from .repository import insert_intelligence_history
+        from .integrity import compute_input_hash
+        
+        # Build payload for history
+        intelligence_payload = {
+            "confidence_score": intelligence.confidence_score,
+            "confidence_band": intelligence.confidence_band,
+            "completeness_score": intelligence.completeness_score,
+            "gaps": gaps,
+            "bias_flags": bias_flags,
+            "computed_at": intelligence.computed_at,
+            "updated_at": intelligence.updated_at,
+        }
+        
+        # Compute input hash for duplicate detection (case data only - submission not required)
+        case_data = {"id": case_id, "status": case.status if case else "unknown"}
+        input_hash = compute_input_hash(case_data, None)
+        
+        # Get current trace context
+        trace_id = TraceContext.get_current_trace_id()
+        
+        # Build trace metadata
+        trace_metadata = {
+            "endpoint": "recompute_intelligence",
+            "decision_type": decision_type,
+            "trigger": ctx.get("role", "unknown"),
+        }
+        
+        # Insert into history with trace fields (Phase 8.1)
+        with TraceContext.start_span(
+            "record_intelligence_history",
+            span_kind="db_query",
+            metadata={"case_id": case_id},
+            case_id=case_id,
+            request_id=request_id,
+        ) as history_span:
+            insert_intelligence_history(
+                case_id=case_id,
+                payload=intelligence_payload,
+                actor=request.state.user_email if request and hasattr(request.state, "user_email") else "system",
+                reason=f"Intelligence recomputed by {ctx['role']}",
+                triggered_by=ctx['role'],
+                input_hash=input_hash,
+                request_id=request_id,  # Phase 7.33: Include request_id for tracing
+                # Phase 8.1: Trace fields
+                trace_id=trace_id,
+                span_id=history_span.span_id,
+                parent_span_id=root_span.span_id,
+                span_name="record_intelligence_history",
+                span_kind="db_query",
+                duration_ms=None,  # Will be computed by TraceContext on exit
+                error_text=None,
+                trace_metadata_json=json.dumps(trace_metadata),
+            )
+    
+        # Calculate gap severity score
+        gap_severity_score = 0
+        if gaps:
+            missing_count = sum(1 for g in gaps if g.get("gapType") == "missing")
+            partial_count = sum(1 for g in gaps if g.get("gapType") == "partial")
+            weak_count = sum(1 for g in gaps if g.get("gapType") == "weak")
+            stale_count = sum(1 for g in gaps if g.get("gapType") == "stale")
+            
+            gap_weight = (
+                missing_count * 0.3 +
+                partial_count * 0.2 +
+                weak_count * 0.1 +
+                stale_count * 0.05
+            )
+            if gap_weight > 0:
+                gap_severity_score = min(100, int(100 * gap_weight / (1 + gap_weight)))
+        
+        # Explanation factors - extract from intelligence
+        explanation_factors = []
+        rules_total = 0
+        rules_passed = 0
+        rules_failed_count = 0
+        failed_rules = []
+        # Phase 7.14: Field validation
+        field_checks_total = 0
+        field_checks_passed = 0
+        field_issues = []
+        confidence_rationale = ""
+        
+        # Try to extract from executive_summary_json
+        try:
+            if intelligence.executive_summary_json:
+                exec_summary_data = json.loads(intelligence.executive_summary_json)
+                explanation_obj = exec_summary_data.get("explanation_factors", {})
+                if isinstance(explanation_obj, dict):
+                    rules_total = explanation_obj.get("total_rules", 0)
+                    rules_passed = explanation_obj.get("passed_rules", 0)
+                    rules_failed_count = explanation_obj.get("failed_rules", 0)
+                    rule_summary = explanation_obj.get("rule_summary", {})
+                    failed_rules = rule_summary.get("failed_rules", [])
+                    # Phase 7.14: Field validation
+                    field_checks_total = explanation_obj.get("field_checks_total", 0)
+                    field_checks_passed = explanation_obj.get("field_checks_passed", 0)
+                    field_issues = explanation_obj.get("field_issues", [])
+                    confidence_rationale = explanation_obj.get("confidence_rationale", "")
+        except:
+            pass
+        
+        # Emit case event
+        try:
+            create_case_event(
+                case_id=case_id,
+                event_type="decision_intelligence_updated",
+                actor_role=ctx["role"],
+                actor_id=request.state.user_email if request and hasattr(request.state, "user_email") else None,
+                message=f"Decision intelligence v2 recomputed: {intelligence.confidence_band} confidence ({intelligence.confidence_score}%), passed {rules_passed}/{rules_total} rules",
+                payload_dict={
+                    "computed_at": intelligence.computed_at,
+                    "completeness_score": intelligence.completeness_score,
+                    "confidence_score": intelligence.confidence_score,
+                    "confidence_band": intelligence.confidence_band,
+                    "gap_count": len(gaps),
+                    "gap_severity_score": gap_severity_score,
+                    "bias_count": len(bias_flags),
+                    "decision_type": decision_type,
+                    "rules_total": rules_total,
+                    "rules_passed": rules_passed,
+                    "rules_failed": rules_failed_count,
+                    "trigger": "manual",  # Phase 7.17: Explicit trigger
+                    # Phase 8.1: Include trace_id for correlation
+                    "trace_id": trace_id,
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Failed to emit case event: {e}")
+        
+        # Phase 7.4: Compute freshness
+        stale_after_minutes = 30
+        is_stale = compute_is_stale(intelligence.computed_at, stale_after_minutes)
+        
+        # Phase 8.1: Build response with trace header
+        from fastapi.responses import JSONResponse
+        response_data = DecisionIntelligenceResponse(
+            case_id=intelligence.case_id,
+            computed_at=intelligence.computed_at,
+            updated_at=intelligence.updated_at,
+            completeness_score=intelligence.completeness_score,
+            gaps=gaps,
+            gap_severity_score=gap_severity_score,
+            bias_flags=bias_flags,
+            confidence_score=intelligence.confidence_score,
+            confidence_band=intelligence.confidence_band,
+            narrative=intelligence.narrative_template,
+            narrative_genai=intelligence.narrative_genai,
+            explanation_factors=explanation_factors,
+            is_stale=is_stale,
+            stale_after_minutes=stale_after_minutes,
+            # Phase 7.8: Rule-based confidence details
+            rules_total=rules_total,
+            rules_passed=rules_passed,
+            rules_failed_count=rules_failed_count,
+            failed_rules=failed_rules,
+            # Phase 7.14: Field validation details
+            field_checks_total=field_checks_total,
+            field_checks_passed=field_checks_passed,
+            field_issues=field_issues,
+            confidence_rationale=confidence_rationale,
         )
-    except Exception as e:
-        logger.warning(f"Failed to emit case event: {e}")
-    
-    # Phase 7.4: Compute freshness
-    stale_after_minutes = 30
-    is_stale = compute_is_stale(intelligence.computed_at, stale_after_minutes)
-    
-    return DecisionIntelligenceResponse(
-        case_id=intelligence.case_id,
-        computed_at=intelligence.computed_at,
-        updated_at=intelligence.updated_at,
-        completeness_score=intelligence.completeness_score,
-        gaps=gaps,
-        gap_severity_score=gap_severity_score,
-        bias_flags=bias_flags,
-        confidence_score=intelligence.confidence_score,
-        confidence_band=intelligence.confidence_band,
-        narrative=intelligence.narrative_template,
-        narrative_genai=intelligence.narrative_genai,
-        explanation_factors=explanation_factors,
-        is_stale=is_stale,
-        stale_after_minutes=stale_after_minutes,
-        # Phase 7.8: Rule-based confidence details
-        rules_total=rules_total,
-        rules_passed=rules_passed,
-        rules_failed_count=rules_failed_count,
-        failed_rules=failed_rules,
-        # Phase 7.14: Field validation details
-        field_checks_total=field_checks_total,
-        field_checks_passed=field_checks_passed,
-        field_issues=field_issues,
-        confidence_rationale=confidence_rationale,
-    )
+        
+        # Return response with X-Trace-Id header for correlation
+        return JSONResponse(
+            content=response_data.model_dump(mode="json"),
+            headers={"X-Trace-Id": trace_id} if trace_id else {},
+        )
 
 
 # ============================================================================

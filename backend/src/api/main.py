@@ -49,6 +49,9 @@ from src.api.routes import kb_admin
 from src.api.routes import demo
 from src.api.routes import ops
 
+# Phase 8.1: Distributed Traces API
+from src.api.routes import traces
+
 # Workflow Console - Step 2.10
 from app.workflow.router import router as workflow_router
 
@@ -228,6 +231,9 @@ app.include_router(console.router)
 # Learn After First Unknown routes
 app.include_router(chat.router)
 app.include_router(admin_review.router)
+
+# Phase 8.1: Distributed Traces API
+app.include_router(traces.router)
 app.include_router(metrics.router)
 app.include_router(kb_admin.router)
 app.include_router(demo.router)
