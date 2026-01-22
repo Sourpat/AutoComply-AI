@@ -70,17 +70,46 @@ def _build_mock_response(
     )
 
 
-@router.api_route(
+@router.get(
     "/orders/mock/ny-pharmacy-approval",
-    methods=["GET", "POST"],
     response_model=MockOrderDecisionResponse,
-    operation_id="ny_pharmacy_mock_order_approval",
+    operation_id="ny_pharmacy_mock_order_approval_get",
 )
-async def ny_pharmacy_mock_order_approval(
+async def ny_pharmacy_mock_order_approval_get(
     http_request: Request,
-    order_request: Optional[NyPharmacyOrderApprovalRequest] = None,
 ) -> MockOrderDecisionResponse:
-    """Happy-path NY pharmacy order mock: license active + NY ship-to."""
+    """Happy-path NY pharmacy order mock: license active + NY ship-to (GET)."""
+
+    incoming_trace_id = http_request.headers.get(TRACE_HEADER_NAME)
+    trace_id = incoming_trace_id or generate_trace_id()
+
+    decision = _build_mock_decision(
+        status=DecisionStatus.OK_TO_SHIP,
+        reason="NY pharmacy order approved: license appears active for NY ship-to.",
+        reference_label="NY pharmacy license appears active for New York ship-to.",
+        trace_id=trace_id,
+    )
+    notes = ["NY pharmacy mock order scenario: approval / happy path."]
+
+    _record_mock_decision(decision)
+
+    return _build_mock_response(
+        decision=decision,
+        scenario_id="ny-pharmacy-approval",
+        notes=notes,
+    )
+
+
+@router.post(
+    "/orders/mock/ny-pharmacy-approval",
+    response_model=MockOrderDecisionResponse,
+    operation_id="ny_pharmacy_mock_order_approval_post",
+)
+async def ny_pharmacy_mock_order_approval_post(
+    http_request: Request,
+    order_request: NyPharmacyOrderApprovalRequest,
+) -> MockOrderDecisionResponse:
+    """Happy-path NY pharmacy order mock: license active + NY ship-to (POST)."""
 
     incoming_trace_id = http_request.headers.get(TRACE_HEADER_NAME)
     trace_id = incoming_trace_id or generate_trace_id()
