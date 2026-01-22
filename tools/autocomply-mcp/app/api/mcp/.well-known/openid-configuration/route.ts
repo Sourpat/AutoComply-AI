@@ -1,7 +1,7 @@
 /**
- * OpenID Connect Discovery Endpoint
+ * OpenID Connect Discovery Endpoint (MCP-relative)
  * 
- * Provides OpenID configuration metadata for OAuth clients
+ * Provides OpenID configuration metadata for OAuth clients accessing via /api/mcp URL
  * Must be publicly accessible (no auth required)
  */
 

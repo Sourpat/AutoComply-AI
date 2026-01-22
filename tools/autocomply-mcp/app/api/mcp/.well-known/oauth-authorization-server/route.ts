@@ -1,15 +1,15 @@
 /**
- * OpenID Connect Discovery Endpoint
+ * OAuth 2.0 Authorization Server Metadata (MCP-relative)
  * 
- * Provides OpenID configuration metadata for OAuth clients
+ * Provides discovery endpoint for OAuth clients accessing via /api/mcp URL
  * Must be publicly accessible (no auth required)
  */
 
 import { NextResponse } from 'next/server';
-import { buildOIDCMetadata } from '@/lib/oauth-metadata';
+import { buildOAuthMetadata } from '@/lib/oauth-metadata';
 
 export async function GET() {
-  const metadata = buildOIDCMetadata();
+  const metadata = buildOAuthMetadata();
 
   return NextResponse.json(metadata, {
     headers: {
