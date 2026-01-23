@@ -441,10 +441,69 @@ Update your MCP client config (e.g., Claude Desktop) with:
 
 ## Environment Variables
 
+### Required for GitHub Integration
+
+These environment variables are **required for GitHub-dependent tools** (`get_task_queue`, `update_task_queue`, `append_decision`, `get_decisions`, `get_file`):
+
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GITHUB_TOKEN` | ✅ | GitHub PAT with `repo` scope |
-| `GITHUB_OWNER` | ✅ | Repository owner (e.g., `Sourpat`) |
+| `GITHUB_TOKEN` | ✅ | GitHub Personal Access Token with `repo` scope. [Create one here](https://github.com/settings/tokens/new) |
+| `GITHUB_OWNER` | ✅ | Repository owner username (e.g., `Sourpat`) |
+| `GITHUB_REPO` | ✅ | Repository name (e.g., `AutoComply-AI-fresh`) |
+
+**Note**: The MCP server will still start and respond to `tools/list` without these variables. GitHub-dependent tools will return an error message when called without proper configuration.
+
+### Required for OAuth 2.0
+
+These environment variables are **required for OAuth authentication with ChatGPT**:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `AUTH0_DOMAIN` | ✅* | Auth0 tenant domain (e.g., `tenant.us.auth0.com`) |
+| `AUTH0_AUDIENCE` | ✅* | Auth0 API identifier (e.g., `https://autocomply-mcp.example.com`) |
+| `AUTH0_CLIENT_ID` | ✅* | Auth0 application client ID |
+| `AUTH0_CLIENT_SECRET` | ✅* | Auth0 application client secret |
+| `NEXT_PUBLIC_BASE_URL` | ✅ | Your deployment base URL (e.g., `https://autocomply-mcp.vercel.app`) |
+
+*Required only if using OAuth. Can use legacy bearer token authentication instead.
+
+### Optional
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `MCP_BEARER_TOKEN` | ❌ | Legacy bearer token for simple authentication (alternative to OAuth) |
+| `GITHUB_BRANCH` | ❌ | Target branch for commits (defaults to `main`) |
+
+### Setting Environment Variables
+
+**Local Development** (`.env` file):
+```env
+# GitHub Integration (required for GitHub tools)
+GITHUB_TOKEN=ghp_your_github_pat_here
+GITHUB_OWNER=Sourpat
+GITHUB_REPO=AutoComply-AI-fresh
+
+# OAuth (required for ChatGPT integration)
+AUTH0_DOMAIN=your-tenant.us.auth0.com
+AUTH0_AUDIENCE=https://autocomply-mcp.example.com
+AUTH0_CLIENT_ID=your_client_id
+AUTH0_CLIENT_SECRET=your_client_secret
+NEXT_PUBLIC_BASE_URL=http://localhost:3100
+
+# Optional
+MCP_BEARER_TOKEN=my-secret-token-123
+```
+
+**Vercel Production**:
+1. Go to your Vercel project dashboard
+2. Navigate to **Settings** → **Environment Variables**
+3. Add each variable for **Production** environment
+4. Redeploy for changes to take effect
+
+**Testing Without GitHub**:
+- You can test tool discovery (`tools/list`) without any environment variables
+- The `health_check` tool works without GitHub configuration
+- Other tools will return clear error messages when GitHub is not configured
 ### OAuth Issues
 
 **"OAuth not configured on server"**:

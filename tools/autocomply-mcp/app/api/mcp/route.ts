@@ -16,14 +16,20 @@ import { getFile, updateFile, appendToFile } from '@/lib/github';
 import { validateBearerToken } from '@/lib/auth';
 import { validateAccessToken, extractBearerToken, isOAuthConfigured } from '@/lib/oauth';
 
-// Validate environment variables
-function validateEnv() {
+// JSON-RPC helper function for errors
+function jsonrpcErr(id: string | number | null, message: string, code = -32000) {
+  return { jsonrpc: '2.0', id, error: { code, message } };
+}
+
+// Get GitHub configuration error if any
+function getGitHubConfigError(): string | null {
   const required = ['GITHUB_TOKEN', 'GITHUB_OWNER', 'GITHUB_REPO'];
   const missing = required.filter((key) => !process.env[key]);
   
   if (missing.length > 0) {
-    throw new Error(`Missing required env vars: ${missing.join(', ')}`);
+    return `GitHub integration not configured on server. Missing env vars: ${missing.join(', ')}`;
   }
+  return null;
 }
 
 // Tool schemas
@@ -307,68 +313,79 @@ async function validateAuth(authHeader: string | null): Promise<{ isAuthenticate
 
 // HTTP POST handler for MCP requests
 export async function POST(request: NextRequest) {
+  let requestId: string | number | null = null;
+  
   try {
-    // Validate environment
-    validateEnv();
-
-    // Parse JSON-RPC request
+    // Parse JSON-RPC request first (before any validation)
     const body = await request.json();
+    requestId = body.id || null;
     
     // Log incoming MCP request
-    console.log(`[MCP] Incoming request: method=${body.method}, id=${body.id}`);
+    console.log(`[MCP] Incoming request: method=${body.method}, id=${requestId}`);
 
-    // Check authentication
+    // Special case: tools/list should always work (no auth or env vars required)
+    if (body.method === 'tools/list') {
+      console.log('[MCP] tools/list request - bypassing auth and env checks');
+      const mcpServer = getServer();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await (mcpServer.request as any)(body);
+      return NextResponse.json(response);
+    }
+
+    // Check authentication for all other methods
     const authHeader = request.headers.get('authorization');
     const auth = await validateAuth(authHeader);
     
     if (!auth.isAuthenticated) {
       console.log('[MCP] Authentication failed: no valid token');
       return NextResponse.json(
-        { error: 'Unauthorized: invalid or missing access token' },
-        { status: 401 }
+        jsonrpcErr(requestId, 'Unauthorized: invalid or missing access token', -32600)
       );
     }
     
     console.log(`[MCP] Authentication successful: canWrite=${auth.canWrite}`);
     
-    // Check if this is a write operation and user has write permission
+    // Check write permissions for write operations
     const isWriteOperation = 
       body.method === 'tools/call' && 
       ['update_task_queue', 'append_decision'].includes(body.params?.name);
     
     if (isWriteOperation && !auth.canWrite) {
       console.log(`[MCP] Write permission denied for tool: ${body.params?.name}`);
-      return NextResponse.json({
-        jsonrpc: '2.0',
-        error: {
-          code: -32600,
-          message: 'Forbidden: write:tasks scope required for this operation',
-        },
-        id: body.id || null,
-      });
+      return NextResponse.json(
+        jsonrpcErr(requestId, 'Forbidden: write:tasks scope required for this operation', -32600)
+      );
     }
     
-    // Get or create MCP server
+    // For tools/call with GitHub-dependent tools, check GitHub config
+    if (body.method === 'tools/call') {
+      const gitHubTools = ['get_task_queue', 'update_task_queue', 'append_decision', 'get_decisions', 'get_file'];
+      const toolName = body.params?.name;
+      
+      if (gitHubTools.includes(toolName)) {
+        const gitHubError = getGitHubConfigError();
+        if (gitHubError) {
+          console.log(`[MCP] GitHub config error for tool ${toolName}: ${gitHubError}`);
+          return NextResponse.json(
+            jsonrpcErr(requestId, gitHubError, -32000)
+          );
+        }
+      }
+    }
+    
+    // Get or create MCP server and handle the request
     const mcpServer = getServer();
-
-    // Handle the request
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const response = await (mcpServer.request as any)(body);
 
     return NextResponse.json(response);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
-    console.error('MCP handler error:', error);
+    console.error('[MCP] Handler error:', error);
+    
+    // Always return HTTP 200 with JSON-RPC error payload
     return NextResponse.json(
-      { 
-        jsonrpc: '2.0',
-        error: {
-          code: -32603,
-          message: errorMessage,
-        },
-        id: null,
-      },
-      { status: 500 }
+      jsonrpcErr(requestId, errorMessage, -32603)
     );
   }
 }
