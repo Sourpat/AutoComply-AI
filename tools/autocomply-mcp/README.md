@@ -250,6 +250,41 @@ curl http://localhost:3100/api/.well-known/oauth-authorization-server
 curl http://localhost:3100/api/mcp
 ```
 
+**Test MCP Tool Discovery**:
+```bash
+# List available tools (requires auth)
+curl -X POST http://localhost:3100/api/mcp \
+  -H "Authorization: Bearer your_secret_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/list",
+    "params": {},
+    "id": 1
+  }'
+
+# Should return 6 tools including health_check
+```
+
+**Test Health Check Tool**:
+```bash
+# Call health_check tool
+curl -X POST http://localhost:3100/api/mcp \
+  -H "Authorization: Bearer your_secret_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "health_check",
+      "arguments": {}
+    },
+    "id": 1
+  }'
+
+# Returns: {"ok": true, "timestamp": "...", "message": "..."}
+```
+
 **MCP Tool Call** (example):
 ```bash
 curl -X POST http://localhost:3100/api/mcp \

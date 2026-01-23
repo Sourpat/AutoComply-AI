@@ -73,83 +73,108 @@ function getServer() {
 
     // Register tool handlers
     server.setRequestHandler(ListToolsRequestSchema, async () => {
-      return {
-        tools: [
-          {
-            name: 'get_task_queue',
-            description: 'Fetch TASK_QUEUE.md content from the repository',
-            inputSchema: {
-              type: 'object',
-              properties: {},
-            },
+      const tools = [
+        {
+          name: 'health_check',
+          description: 'Returns ok to confirm MCP discovery works',
+          inputSchema: {
+            type: 'object',
+            properties: {},
           },
-          {
-            name: 'update_task_queue',
-            description: 'Replace TASK_QUEUE.md content in the repository',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                content: {
-                  type: 'string',
-                  description: 'New content for TASK_QUEUE.md',
-                },
-                message: {
-                  type: 'string',
-                  description: 'Commit message describing the changes',
-                },
+        },
+        {
+          name: 'get_task_queue',
+          description: 'Fetch TASK_QUEUE.md content from the repository',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
+        {
+          name: 'update_task_queue',
+          description: 'Replace TASK_QUEUE.md content in the repository',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              content: {
+                type: 'string',
+                description: 'New content for TASK_QUEUE.md',
               },
-              required: ['content', 'message'],
-            },
-          },
-          {
-            name: 'append_decision',
-            description: 'Append a new decision entry to DECISIONS.md',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                decision: {
-                  type: 'string',
-                  description: 'Decision entry in markdown format',
-                },
-                message: {
-                  type: 'string',
-                  description: 'Commit message (defaults to "docs: add decision to ADR")',
-                },
+              message: {
+                type: 'string',
+                description: 'Commit message describing the changes',
               },
-              required: ['decision'],
             },
+            required: ['content', 'message'],
           },
-          {
-            name: 'get_decisions',
-            description: 'Fetch DECISIONS.md content from the repository',
-            inputSchema: {
-              type: 'object',
-              properties: {},
-            },
-          },
-          {
-            name: 'get_file',
-            description: 'Fetch arbitrary markdown file from the repository (restricted to *.md files)',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                path: {
-                  type: 'string',
-                  description: 'File path relative to repo root',
-                },
+        },
+        {
+          name: 'append_decision',
+          description: 'Append a new decision entry to DECISIONS.md',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              decision: {
+                type: 'string',
+                description: 'Decision entry in markdown format',
               },
-              required: ['path'],
+              message: {
+                type: 'string',
+                description: 'Commit message (defaults to "docs: add decision to ADR")',
+              },
             },
+            required: ['decision'],
           },
-        ],
-      };
+        },
+        {
+          name: 'get_decisions',
+          description: 'Fetch DECISIONS.md content from the repository',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
+        {
+          name: 'get_file',
+          description: 'Fetch arbitrary markdown file from the repository (restricted to *.md files)',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              path: {
+                type: 'string',
+                description: 'File path relative to repo root',
+              },
+            },
+            required: ['path'],
+          },
+        },
+      ];
+      
+      console.log(`[MCP] tools/list returned ${tools.length} tools`);
+      return { tools };
     });
 
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
+      console.log(`[MCP] tools/call invoked: ${name}`);
 
       try {
         switch (name) {
+          case 'health_check': {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({
+                    ok: true,
+                    timestamp: new Date().toISOString(),
+                    message: 'MCP server is healthy and tools are discoverable',
+                  }, null, 2),
+                },
+              ],
+            };
+          }
+
           case 'get_task_queue': {
             const { content } = await getFile('TASK_QUEUE.md');
             return {
@@ -286,19 +311,25 @@ export async function POST(request: NextRequest) {
     // Validate environment
     validateEnv();
 
+    // Parse JSON-RPC request
+    const body = await request.json();
+    
+    // Log incoming MCP request
+    console.log(`[MCP] Incoming request: method=${body.method}, id=${body.id}`);
+
     // Check authentication
     const authHeader = request.headers.get('authorization');
     const auth = await validateAuth(authHeader);
     
     if (!auth.isAuthenticated) {
+      console.log('[MCP] Authentication failed: no valid token');
       return NextResponse.json(
         { error: 'Unauthorized: invalid or missing access token' },
         { status: 401 }
       );
     }
-
-    // Parse JSON-RPC request
-    const body = await request.json();
+    
+    console.log(`[MCP] Authentication successful: canWrite=${auth.canWrite}`);
     
     // Check if this is a write operation and user has write permission
     const isWriteOperation = 
@@ -306,6 +337,7 @@ export async function POST(request: NextRequest) {
       ['update_task_queue', 'append_decision'].includes(body.params?.name);
     
     if (isWriteOperation && !auth.canWrite) {
+      console.log(`[MCP] Write permission denied for tool: ${body.params?.name}`);
       return NextResponse.json({
         jsonrpc: '2.0',
         error: {
@@ -350,7 +382,7 @@ export async function GET() {
     version: '1.0.0',
     status: 'ok',
     description: 'MCP server for AutoComply task queue and decision management',
-    tools: ['get_task_queue', 'update_task_queue', 'append_decision', 'get_decisions', 'get_file'],
+    tools: ['health_check', 'get_task_queue', 'update_task_queue', 'append_decision', 'get_decisions', 'get_file'],
     authentication: {
       oauth: oauthConfigured,
       legacyBearer: !!process.env.MCP_BEARER_TOKEN,
