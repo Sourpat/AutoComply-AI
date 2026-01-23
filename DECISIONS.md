@@ -1,0 +1,158 @@
+# Architecture Decision Record (ADR)
+
+**Purpose**: Log significant technical decisions made during development to provide context for future changes.
+
+---
+
+## Template (Use for New Decisions)
+
+```markdown
+## [YYYY-MM-DD] Decision Title
+
+**Context**: What problem or question prompted this decision?
+
+**Decision**: What did we decide to do?
+
+**Rationale**: Why did we choose this approach?
+
+**Alternatives Considered**:
+- Option 1: Why rejected
+- Option 2: Why rejected
+
+**Consequences**:
+- Positive: Benefits of this decision
+- Negative: Tradeoffs or limitations
+- Neutral: Other impacts
+
+**Status**: Proposed | Accepted | Superseded
+
+**Related**:
+- Commit: abc1234
+- Tasks: T-042
+- Docs: PHASE_X.md
+```
+
+---
+
+## Decisions
+
+### [2026-01-22] Use Dict[str, Any] for PaginatedCasesResponse items
+
+**Context**: Phase 7.29 added computed SLA fields (age_hours, sla_status) to case objects, but PaginatedCasesResponse used `List[CaseRecord]` which stripped these fields during Pydantic validation.
+
+**Decision**: Changed `items: List[CaseRecord]` to `items: List[Dict[str, Any]]` in PaginatedCasesResponse model.
+
+**Rationale**:
+- Allows dynamic computed fields to pass through API response
+- Avoids adding fields to base CaseRecord model (keeps it clean)
+- Minimal change to existing codebase
+- Preserves backward compatibility (dict is superset of model)
+
+**Alternatives Considered**:
+- Add age_hours/sla_status to CaseRecord: Rejected (pollutes base model, not always computed)
+- Create CaseRecordWithSLA model: Rejected (too much duplication)
+- Use response_model_exclude_unset: Rejected (doesn't help with missing fields)
+
+**Consequences**:
+- Positive: Flexible schema for computed fields, easy to extend
+- Negative: Lose Pydantic validation on response items (rely on dict structure)
+- Neutral: Frontend still gets typed interfaces via TypeScript
+
+**Status**: Accepted
+
+**Related**:
+- Commit: 075c245
+- Issue: Console "Backend Not Reachable" P0 fix
+- File: backend/app/workflow/router.py
+
+---
+
+### [2026-01-22] Store trace labels in trace_metadata_json
+
+**Context**: Phase 8.2 requires human labeling of traces (open codes, category, pass/fail, severity, notes) without adding new database tables.
+
+**Decision**: Store labels in root span's `trace_metadata_json` field under `__labels` key.
+
+**Rationale**:
+- No schema migration needed
+- Labels are semantically part of trace metadata
+- Atomic updates with trace data
+- Easy retrieval in single query
+
+**Alternatives Considered**:
+- New trace_labels table: Rejected (violates WIP=1 constraint, requires migration)
+- Separate JSON column: Rejected (unnecessary complexity)
+- Store in notes field: Rejected (not structured, hard to query)
+
+**Consequences**:
+- Positive: Zero migration cost, simple implementation
+- Negative: Can't query labels efficiently (no indexed columns)
+- Neutral: Labels are read-heavy, query performance acceptable for MVP
+
+**Status**: Accepted
+
+**Related**:
+- Commit: 920c558
+- Phase: 8.2 Trace Viewer with Labeling
+- File: backend/src/api/routes/traces.py
+
+---
+
+### [2026-01-16] Use timezone-aware datetimes with UTC default
+
+**Context**: SLA computation was crashing due to mixing timezone-naive and timezone-aware datetime objects.
+
+**Decision**: All datetime comparisons must use timezone-aware objects. If input is naive, assume UTC and add `tzinfo=timezone.utc`.
+
+**Rationale**:
+- Python datetime subtraction requires both operands to have same timezone awareness
+- UTC is standard for server-side timestamps
+- Prevents future timezone bugs
+- Minimal code change (add 2-line check)
+
+**Alternatives Considered**:
+- Make everything timezone-naive: Rejected (loses DST handling, not best practice)
+- Convert to naive before comparison: Rejected (error-prone, hides issues)
+- Use pytz library: Rejected (overkill for UTC-only requirement)
+
+**Consequences**:
+- Positive: Robust datetime handling, prevents 500 errors
+- Negative: Assumes UTC for naive inputs (acceptable for this app)
+- Neutral: Existing data unaffected (SQLite stores as text)
+
+**Status**: Accepted
+
+**Related**:
+- Commit: 075c245
+- Issue: Cases list 500 error
+- File: backend/app/workflow/sla.py
+
+---
+
+## Superseded Decisions
+
+*(Move obsolete decisions here when replaced by newer decisions)*
+
+---
+
+## Decision Process
+
+1. **Identify**: Recognize when a decision has long-term architectural impact
+2. **Document**: Use template above to record decision while context is fresh
+3. **Review**: Share with team/user if decision affects roadmap or UX
+4. **Commit**: Include ADR update in same commit as implementation
+5. **Reference**: Link to decision from code comments if non-obvious
+
+**What to Document**:
+- Data model choices
+- API design patterns
+- Technology selections
+- Performance tradeoffs
+- Security approaches
+- Major refactorings
+
+**What NOT to Document**:
+- Routine bug fixes
+- Code formatting choices
+- Dependency version bumps
+- Obvious implementation details

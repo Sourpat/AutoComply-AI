@@ -324,12 +324,112 @@ export async function POST(request: NextRequest) {
     console.log(`[MCP] Incoming request: method=${body.method}, id=${requestId}`);
 
     // Special case: tools/list should always work (no auth or env vars required)
+    // Return tool catalog directly without MCP SDK connection
     if (body.method === 'tools/list') {
-      console.log('[MCP] tools/list request - bypassing auth and env checks');
-      const mcpServer = getServer();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await (mcpServer.request as any)(body);
-      return NextResponse.json(response);
+      console.log('[MCP] tools/list request - returning tool catalog without auth');
+      return NextResponse.json({
+        jsonrpc: '2.0',
+        id: requestId,
+        result: {
+          tools: [
+            {
+              name: 'health_check',
+              description: 'Returns ok to confirm MCP discovery works',
+              inputSchema: {
+                type: 'object',
+                properties: {},
+              },
+            },
+            {
+              name: 'get_task_queue',
+              description: 'Fetch TASK_QUEUE.md content from the repository',
+              inputSchema: {
+                type: 'object',
+                properties: {},
+              },
+            },
+            {
+              name: 'update_task_queue',
+              description: 'Replace TASK_QUEUE.md content in the repository',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  content: {
+                    type: 'string',
+                    description: 'New content for TASK_QUEUE.md',
+                  },
+                  message: {
+                    type: 'string',
+                    description: 'Commit message describing the changes',
+                  },
+                },
+                required: ['content', 'message'],
+              },
+            },
+            {
+              name: 'append_decision',
+              description: 'Append a new decision entry to DECISIONS.md',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  decision: {
+                    type: 'string',
+                    description: 'Decision entry in markdown format',
+                  },
+                  message: {
+                    type: 'string',
+                    description: 'Commit message (defaults to "docs: add decision to ADR")',
+                  },
+                },
+                required: ['decision'],
+              },
+            },
+            {
+              name: 'get_decisions',
+              description: 'Fetch DECISIONS.md content from the repository',
+              inputSchema: {
+                type: 'object',
+                properties: {},
+              },
+            },
+            {
+              name: 'get_file',
+              description: 'Fetch arbitrary markdown file from the repository (restricted to *.md files)',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  path: {
+                    type: 'string',
+                    description: 'File path relative to repo root',
+                  },
+                },
+                required: ['path'],
+              },
+            },
+          ],
+        },
+      });
+    }
+
+    // Special case: health_check tool doesn't require authentication
+    if (body.method === 'tools/call' && body.params?.name === 'health_check') {
+      console.log('[MCP] health_check tool - no auth required');
+      return NextResponse.json({
+        jsonrpc: '2.0',
+        id: requestId,
+        result: {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                ok: true,
+                timestamp: new Date().toISOString(),
+                message: 'MCP server is healthy and tools are discoverable',
+              }, null, 2),
+            },
+          ],
+        },
+      });
     }
 
     // Check authentication for all other methods
