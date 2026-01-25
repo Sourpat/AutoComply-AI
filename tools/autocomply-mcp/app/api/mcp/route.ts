@@ -418,7 +418,7 @@ export async function POST(request: NextRequest) {
 
     // Special case: initialize - MCP handshake (no auth required)
     if (body.method === 'initialize') {
-      console.log('[MCP] initialize request - returning server capabilities');
+      console.log('[MCP] initialize request - returning server capabilities (NO AUTH)');
       return NextResponse.json({
         jsonrpc: '2.0',
         id: requestId,
@@ -435,6 +435,7 @@ export async function POST(request: NextRequest) {
             },
             resources: {},
           },
+          // NO security/oauth section - use tools without authentication
         },
       }, { headers: corsHeaders });
     }
