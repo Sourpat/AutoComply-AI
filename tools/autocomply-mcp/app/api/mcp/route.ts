@@ -411,9 +411,12 @@ export async function POST(request: NextRequest) {
           serverInfo: {
             name: 'autocomply-control-plane',
             version: '1.0.0',
+            description: 'MCP server for AutoComply task queue and decision management',
           },
           capabilities: {
-            tools: {},
+            tools: {
+              listChanged: true,
+            },
             resources: {},
           },
         },
@@ -423,7 +426,17 @@ export async function POST(request: NextRequest) {
     // Special case: notifications/initialized - MCP handshake completion (no auth required)
     if (body.method === 'notifications/initialized') {
       console.log('[MCP] notifications/initialized - handshake complete');
-      return new NextResponse(null, { status: 202 });
+      return new NextResponse(null, { status: 204 });
+    }
+
+    // Special case: ping - health check (no auth required)
+    if (body.method === 'ping') {
+      console.log('[MCP] ping request - responding with pong');
+      return NextResponse.json({
+        jsonrpc: '2.0',
+        id: requestId,
+        result: {},
+      });
     }
 
     // Special case: tools/list should always work (no auth or env vars required)
