@@ -311,6 +311,111 @@ async function validateAuth(authHeader: string | null): Promise<{ isAuthenticate
   return { isAuthenticated: false, canWrite: false };
 }
 
+// Force dynamic rendering for SSE
+export const dynamic = 'force-dynamic';
+
+// HTTP GET handler for SSE MCP discovery (ChatGPT integration)
+export async function GET() {
+  console.log('[MCP SSE] GET request received for tool discovery');
+  
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream({
+    start(controller) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const send = (event: string, data: any) => {
+        controller.enqueue(
+          encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+        );
+      };
+
+      // REQUIRED: announce tools immediately for ChatGPT discovery
+      send('tools', {
+        tools: [
+          {
+            name: 'health_check',
+            description: 'Returns ok to confirm MCP discovery works',
+            input_schema: { type: 'object', properties: {} },
+          },
+          {
+            name: 'get_task_queue',
+            description: 'Fetch TASK_QUEUE.md content from the repository',
+            input_schema: { type: 'object', properties: {} },
+          },
+          {
+            name: 'update_task_queue',
+            description: 'Replace TASK_QUEUE.md content in the repository',
+            input_schema: {
+              type: 'object',
+              properties: {
+                content: {
+                  type: 'string',
+                  description: 'New content for TASK_QUEUE.md',
+                },
+                message: {
+                  type: 'string',
+                  description: 'Commit message describing the changes',
+                },
+              },
+              required: ['content', 'message'],
+            },
+          },
+          {
+            name: 'append_decision',
+            description: 'Append a new decision entry to DECISIONS.md',
+            input_schema: {
+              type: 'object',
+              properties: {
+                decision: {
+                  type: 'string',
+                  description: 'Decision entry in markdown format',
+                },
+                message: {
+                  type: 'string',
+                  description: 'Commit message (defaults to "docs: add decision to ADR")',
+                },
+              },
+              required: ['decision'],
+            },
+          },
+          {
+            name: 'get_decisions',
+            description: 'Fetch DECISIONS.md content from the repository',
+            input_schema: { type: 'object', properties: {} },
+          },
+          {
+            name: 'get_file',
+            description: 'Fetch arbitrary markdown file from the repository (restricted to *.md files)',
+            input_schema: {
+              type: 'object',
+              properties: {
+                path: {
+                  type: 'string',
+                  description: 'File path relative to repo root',
+                },
+              },
+              required: ['path'],
+            },
+          },
+        ],
+      });
+
+      // Send ready signal
+      send('ready', { ok: true });
+
+      console.log('[MCP SSE] Sent tools catalog via SSE');
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
+}
+
 // HTTP POST handler for MCP requests
 export async function POST(request: NextRequest) {
   let requestId: string | number | null = null;
@@ -514,21 +619,4 @@ export async function POST(request: NextRequest) {
       jsonrpcErr(requestId, errorMessage, -32603)
     );
   }
-}
-
-// Health check endpoint
-export async function GET() {
-  const oauthConfigured = isOAuthConfigured();
-  
-  return NextResponse.json({
-    name: 'autocomply-control-plane',
-    version: '1.0.0',
-    status: 'ok',
-    description: 'MCP server for AutoComply task queue and decision management',
-    tools: ['health_check', 'get_task_queue', 'update_task_queue', 'append_decision', 'get_decisions', 'get_file'],
-    authentication: {
-      oauth: oauthConfigured,
-      legacyBearer: !!process.env.MCP_BEARER_TOKEN,
-    },
-  });
 }
