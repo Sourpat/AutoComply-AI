@@ -19,7 +19,8 @@ Remote MCP (Model Context Protocol) server for managing AutoComply task queue an
 ```
 ┌─────────────┐                    ┌──────────────────┐
 │ ChatGPT     │ ──── OAuth 2.0 ──→ │  Next.js Server  │
-│ MCP App     │      (Auth0)       │  /api/mcp        │
+│ MCP App     │      (Auth0)       │  /api/mcp/sse    │ ← SSE Transport
+│             │                    │  /api/mcp        │ ← JSON-RPC
 └─────────────┘                    └──────────────────┘
                                            │
                                            │ GitHub API
@@ -30,6 +31,31 @@ Remote MCP (Model Context Protocol) server for managing AutoComply task queue an
                                     │  DECISIONS.md    │
                                     └──────────────────┘
 ```
+
+## Endpoints
+
+### SSE Transport (ChatGPT Integration)
+
+**GET `/mcp/sse`** or **`/api/mcp/sse`**
+- Returns: `text/event-stream`
+- Purpose: SSE connection for MCP protocol discovery
+- Auth: Not required for initial connection
+- Use: ChatGPT MCP Apps integration
+
+**POST `/mcp/sse`** or **`/api/mcp/sse`**
+- Content-Type: `application/json`
+- Body: JSON-RPC 2.0 request
+- Purpose: Forwards to `/api/mcp` for tool execution
+- Auth: Required for protected tools (OAuth or bearer token)
+
+### JSON-RPC Transport (Direct Testing)
+
+**POST `/mcp`** or **`/api/mcp`**
+- Content-Type: `application/json`
+- Body: JSON-RPC 2.0 request
+- Purpose: Direct MCP protocol communication
+- Methods: `tools/list`, `tools/call`
+- Auth: `tools/list` and `health_check` are public, other tools require auth
 
 ## Quick Start
 
@@ -99,6 +125,11 @@ For testing without OAuth:
 
 ### Testing in ChatGPT
 
+Configure your MCP server URL in ChatGPT Developer Mode:
+```
+https://autocomply-mcp-control-plane.vercel.app/mcp/sse
+```
+
 Try these prompts:
 
 ```
@@ -111,6 +142,8 @@ Try these prompts:
 "Update task T-001 status to completed"
 → Uses update_task_queue tool (requires write:tasks scope)
 ```
+
+**Note**: ChatGPT uses the SSE endpoint (`/mcp/sse`) for MCP protocol communication. You can still use the POST endpoint (`/mcp`) for direct testing with curl.
 
 ## Local Development
 
