@@ -20,6 +20,14 @@ import { validateAccessToken, extractBearerToken, isOAuthConfigured } from '@/li
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
+// CORS headers for ChatGPT integration
+const corsHeaders = {
+  'Access-Control-Allow-Origin': 'https://chatgpt.com',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'content-type, authorization',
+  'Access-Control-Max-Age': '86400',
+};
+
 // JSON-RPC helper function for errors
 function jsonrpcErr(id: string | number | null, message: string, code = -32000) {
   return { jsonrpc: '2.0', id, error: { code, message } };
@@ -315,6 +323,14 @@ async function validateAuth(authHeader: string | null): Promise<{ isAuthenticate
   return { isAuthenticated: false, canWrite: false };
 }
 
+// HTTP OPTIONS handler for CORS preflight
+export async function OPTIONS() {
+  return new NextResponse(null, { 
+    status: 204, 
+    headers: corsHeaders 
+  });
+}
+
 // HTTP GET handler for SSE MCP discovery (ChatGPT integration)
 export async function GET() {
   const encoder = new TextEncoder();
@@ -420,7 +436,7 @@ export async function POST(request: NextRequest) {
             resources: {},
           },
         },
-      });
+      }, { headers: corsHeaders });
     }
 
     // Special case: notifications/initialized - MCP handshake completion (no auth required)
@@ -436,7 +452,7 @@ export async function POST(request: NextRequest) {
         jsonrpc: '2.0',
         id: requestId,
         result: {},
-      });
+      }, { headers: corsHeaders });
     }
 
     // Special case: tools/list should always work (no auth or env vars required)
@@ -524,7 +540,7 @@ export async function POST(request: NextRequest) {
             },
           ],
         },
-      });
+      }, { headers: corsHeaders });
     }
 
     // Special case: health_check tool doesn't require authentication
@@ -545,7 +561,7 @@ export async function POST(request: NextRequest) {
             },
           ],
         },
-      });
+      }, { headers: corsHeaders });
     }
 
     // Check authentication for all other methods
@@ -555,7 +571,8 @@ export async function POST(request: NextRequest) {
     if (!auth.isAuthenticated) {
       console.log('[MCP] Authentication failed: no valid token');
       return NextResponse.json(
-        jsonrpcErr(requestId, 'Unauthorized: invalid or missing access token', -32600)
+        jsonrpcErr(requestId, 'Unauthorized: invalid or missing access token', -32600),
+        { headers: corsHeaders }
       );
     }
     
@@ -569,7 +586,8 @@ export async function POST(request: NextRequest) {
     if (isWriteOperation && !auth.canWrite) {
       console.log(`[MCP] Write permission denied for tool: ${body.params?.name}`);
       return NextResponse.json(
-        jsonrpcErr(requestId, 'Forbidden: write:tasks scope required for this operation', -32600)
+        jsonrpcErr(requestId, 'Forbidden: write:tasks scope required for this operation', -32600),
+        { headers: corsHeaders }
       );
     }
     
@@ -583,7 +601,8 @@ export async function POST(request: NextRequest) {
         if (gitHubError) {
           console.log(`[MCP] GitHub config error for tool ${toolName}: ${gitHubError}`);
           return NextResponse.json(
-            jsonrpcErr(requestId, gitHubError, -32000)
+            jsonrpcErr(requestId, gitHubError, -32000),
+            { headers: corsHeaders }
           );
         }
       }
@@ -594,14 +613,15 @@ export async function POST(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const response = await (mcpServer.request as any)(body);
 
-    return NextResponse.json(response);
+    return NextResponse.json(response, { headers: corsHeaders });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
     console.error('[MCP] Handler error:', error);
     
     // Always return HTTP 200 with JSON-RPC error payload
     return NextResponse.json(
-      jsonrpcErr(requestId, errorMessage, -32603)
+      jsonrpcErr(requestId, errorMessage, -32603),
+      { headers: corsHeaders }
     );
   }
 }
