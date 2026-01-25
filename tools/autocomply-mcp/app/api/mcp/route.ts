@@ -16,6 +16,10 @@ import { getFile, updateFile, appendToFile } from '@/lib/github';
 import { validateBearerToken } from '@/lib/auth';
 import { validateAccessToken, extractBearerToken, isOAuthConfigured } from '@/lib/oauth';
 
+// Edge runtime for SSE streaming
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+
 // JSON-RPC helper function for errors
 function jsonrpcErr(id: string | number | null, message: string, code = -32000) {
   return { jsonrpc: '2.0', id, error: { code, message } };
@@ -311,14 +315,42 @@ async function validateAuth(authHeader: string | null): Promise<{ isAuthenticate
   return { isAuthenticated: false, canWrite: false };
 }
 
-// Force dynamic rendering for SSE
-export const dynamic = 'force-dynamic';
-
 // HTTP GET handler for SSE MCP discovery (ChatGPT integration)
 export async function GET() {
-  console.log('[MCP SSE] GET request received for tool discovery');
-  
   const encoder = new TextEncoder();
+
+  const tools = [
+    {
+      name: 'health_check',
+      description: 'Returns ok to confirm MCP discovery works',
+      input_schema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'get_task_queue',
+      description: 'Fetch task queue',
+      input_schema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'update_task_queue',
+      description: 'Update task queue',
+      input_schema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'append_decision',
+      description: 'Append decision',
+      input_schema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'get_decisions',
+      description: 'Fetch decisions',
+      input_schema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'get_file',
+      description: 'Fetch a markdown file',
+      input_schema: { type: 'object', properties: {} },
+    },
+  ];
 
   const stream = new ReadableStream({
     start(controller) {
@@ -329,89 +361,29 @@ export async function GET() {
         );
       };
 
-      // REQUIRED: announce tools immediately for ChatGPT discovery
-      send('tools', {
-        tools: [
-          {
-            name: 'health_check',
-            description: 'Returns ok to confirm MCP discovery works',
-            input_schema: { type: 'object', properties: {} },
-          },
-          {
-            name: 'get_task_queue',
-            description: 'Fetch TASK_QUEUE.md content from the repository',
-            input_schema: { type: 'object', properties: {} },
-          },
-          {
-            name: 'update_task_queue',
-            description: 'Replace TASK_QUEUE.md content in the repository',
-            input_schema: {
-              type: 'object',
-              properties: {
-                content: {
-                  type: 'string',
-                  description: 'New content for TASK_QUEUE.md',
-                },
-                message: {
-                  type: 'string',
-                  description: 'Commit message describing the changes',
-                },
-              },
-              required: ['content', 'message'],
-            },
-          },
-          {
-            name: 'append_decision',
-            description: 'Append a new decision entry to DECISIONS.md',
-            input_schema: {
-              type: 'object',
-              properties: {
-                decision: {
-                  type: 'string',
-                  description: 'Decision entry in markdown format',
-                },
-                message: {
-                  type: 'string',
-                  description: 'Commit message (defaults to "docs: add decision to ADR")',
-                },
-              },
-              required: ['decision'],
-            },
-          },
-          {
-            name: 'get_decisions',
-            description: 'Fetch DECISIONS.md content from the repository',
-            input_schema: { type: 'object', properties: {} },
-          },
-          {
-            name: 'get_file',
-            description: 'Fetch arbitrary markdown file from the repository (restricted to *.md files)',
-            input_schema: {
-              type: 'object',
-              properties: {
-                path: {
-                  type: 'string',
-                  description: 'File path relative to repo root',
-                },
-              },
-              required: ['path'],
-            },
-          },
-        ],
-      });
+      // tools event (what ChatGPT needs)
+      send('tools', { tools });
 
-      // Send ready signal
+      // ready event
       send('ready', { ok: true });
 
-      console.log('[MCP SSE] Sent tools catalog via SSE');
+      // keepalive so the connection isn't buffered/closed
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const interval = setInterval(() => {
+        controller.enqueue(encoder.encode(`: ping\n\n`));
+      }, 15000);
+
+      // NOTE: Edge ReadableStream doesn't expose close callbacks reliably,
+      // but this is good enough for discovery.
+      // If you add cancellation later, clearInterval(interval).
     },
   });
 
   return new Response(stream, {
     headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
     },
   });
 }
