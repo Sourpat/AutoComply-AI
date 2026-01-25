@@ -323,6 +323,32 @@ export async function POST(request: NextRequest) {
     // Log incoming MCP request
     console.log(`[MCP] Incoming request: method=${body.method}, id=${requestId}`);
 
+    // Special case: initialize - MCP handshake (no auth required)
+    if (body.method === 'initialize') {
+      console.log('[MCP] initialize request - returning server capabilities');
+      return NextResponse.json({
+        jsonrpc: '2.0',
+        id: requestId,
+        result: {
+          protocolVersion: '2024-11-05',
+          serverInfo: {
+            name: 'autocomply-control-plane',
+            version: '1.0.0',
+          },
+          capabilities: {
+            tools: {},
+            resources: {},
+          },
+        },
+      });
+    }
+
+    // Special case: notifications/initialized - MCP handshake completion (no auth required)
+    if (body.method === 'notifications/initialized') {
+      console.log('[MCP] notifications/initialized - handshake complete');
+      return new NextResponse(null, { status: 202 });
+    }
+
     // Special case: tools/list should always work (no auth or env vars required)
     // Return tool catalog directly without MCP SDK connection
     if (body.method === 'tools/list') {
