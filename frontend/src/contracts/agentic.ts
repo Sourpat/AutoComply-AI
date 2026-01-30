@@ -53,6 +53,14 @@ export type AgentTrace = {
   modelNotes: string[];
 };
 
+export type CaseEvent = {
+  id: string;
+  caseId: string;
+  timestamp: string;
+  type: "agent_plan" | "user_input" | "action" | "status_change";
+  payload: Record<string, unknown>;
+};
+
 export type AgentPlan = {
   caseId: string;
   status: CaseStatus;
@@ -62,4 +70,5 @@ export type AgentPlan = {
   questions: AgentQuestion[];
   nextState: CaseStatus;
   trace: AgentTrace;
+  events?: CaseEvent[];
 };

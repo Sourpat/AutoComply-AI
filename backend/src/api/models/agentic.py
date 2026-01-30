@@ -62,6 +62,14 @@ class AgentTrace(BaseModel):
     modelNotes: List[str]
 
 
+class CaseEvent(BaseModel):
+    id: str
+    caseId: str
+    timestamp: str
+    type: str
+    payload: Dict[str, Any]
+
+
 class AgentPlan(BaseModel):
     caseId: str
     status: CaseStatus
@@ -71,10 +79,29 @@ class AgentPlan(BaseModel):
     questions: List[AgentQuestion]
     nextState: CaseStatus
     trace: AgentTrace
+    events: Optional[List[CaseEvent]] = None
 
 
 class AgentActionRequest(BaseModel):
     input: Optional[Dict[str, Any]] = None
+
+
+class AgentInputRequest(BaseModel):
+    questionId: str
+    input: Dict[str, Any]
+
+
+class ReviewDecisionRequest(BaseModel):
+    decision: str
+    notes: Optional[str] = None
+
+
+class AgentCaseSummary(BaseModel):
+    caseId: str
+    title: str
+    summary: Optional[str] = None
+    status: str
+    updatedAt: str
 
 
 JSONSchema.update_forward_refs()

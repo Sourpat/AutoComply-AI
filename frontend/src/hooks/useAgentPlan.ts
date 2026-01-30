@@ -71,6 +71,37 @@ export function useAgentPlan(caseId: string) {
     [caseId]
   );
 
+  const submitInput = useCallback(
+    async (questionId: string, input: Record<string, unknown>) => {
+      if (!caseId) return null;
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetch(`${API_BASE}/api/agentic/cases/${caseId}/inputs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ questionId, input }),
+        });
+        if (!response.ok) {
+          throw new Error(`Input submit failed (${response.status})`);
+        }
+        const data = (await response.json()) as AgentPlan;
+        planCache.set(caseId, data);
+        setPlan(data);
+        return data;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to submit input");
+        return null;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [caseId]
+  );
+
   useEffect(() => {
     fetchPlan();
     return () => abortRef.current?.abort();
@@ -82,5 +113,6 @@ export function useAgentPlan(caseId: string) {
     error,
     refresh: fetchPlan,
     executeAction,
+    submitInput,
   };
 }

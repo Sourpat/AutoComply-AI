@@ -7,18 +7,29 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
 
-from app.workflow.repo import get_case
+from app.workflow.repo import get_case as get_workflow_case
+from app.data.agentic_cases import (
+    append_case_event,
+    get_case as get_agentic_case,
+    list_case_events,
+    list_cases as list_agentic_cases,
+    upsert_case,
+)
 from src.core.db import get_raw_connection
 from src.api.models.agentic import (
     AgentAction,
     AgentActionIntent,
     AgentActionRequest,
+    AgentCaseSummary,
+    AgentInputRequest,
     AgentPlan,
     AgentQuestion,
     AgentTrace,
     CaseStatus,
+    CaseEvent,
     JSONSchema,
     RuleEvaluation,
+    ReviewDecisionRequest,
 )
 
 router = APIRouter(prefix="/api/agentic", tags=["agentic"])
@@ -118,6 +129,8 @@ def _save_agentic_state(
     next_state: CaseStatus,
     next_required_input: Optional[Dict[str, Any]] = None,
 ) -> None:
+    previous = _get_agentic_state(case_id)
+
     with get_raw_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -142,9 +155,24 @@ def _save_agentic_state(
         conn.commit()
         cursor.close()
 
+    upsert_case(
+        case_id,
+        {
+            "status": status.value,
+        },
+    )
+
+    if previous is None or previous.get("status") != status.value:
+        append_case_event(
+            case_id,
+            "status_change",
+            {"status": status.value},
+        )
+
 
 def _build_plan(case_id: str, note: Optional[str] = None) -> AgentPlan:
-    case = get_case(case_id)
+    agentic_case = get_agentic_case(case_id)
+    workflow_case = get_workflow_case(case_id)
     persisted = _get_agentic_state(case_id)
 
     questions: list[AgentQuestion] = []
@@ -154,6 +182,16 @@ def _build_plan(case_id: str, note: Optional[str] = None) -> AgentPlan:
     next_state = CaseStatus.DRAFT
     confidence = 0.42
     next_required_input = None
+
+    if agentic_case is None and workflow_case is not None:
+        agentic_case = upsert_case(
+            case_id,
+            {
+                "title": workflow_case.title,
+                "summary": workflow_case.summary,
+                "status": workflow_case.status.value,
+            },
+        )
 
     if persisted:
         status = CaseStatus(persisted["status"])
@@ -169,11 +207,30 @@ def _build_plan(case_id: str, note: Optional[str] = None) -> AgentPlan:
                 )
             )
 
-    if case is None and not persisted:
+    if agentic_case is None and workflow_case is None and not persisted:
+        upsert_case(
+            case_id,
+            {
+                "title": "Agentic Case",
+                "summary": None,
+                "status": status.value,
+            },
+        )
         recommended_actions = [
             _action("open_console", "Open case console", AgentActionIntent.OPEN_CONSOLE, False),
         ]
         trace = _trace(case_id, False, False, [note] if note else [])
+        append_case_event(
+            case_id,
+            "agent_plan",
+            {
+                "status": status.value,
+                "nextState": next_state.value,
+                "summary": summary,
+                "confidence": confidence,
+            },
+        )
+        events = [CaseEvent(**event) for event in list_case_events(case_id, 10)]
         return AgentPlan(
             caseId=case_id,
             status=status,
@@ -183,11 +240,12 @@ def _build_plan(case_id: str, note: Optional[str] = None) -> AgentPlan:
             questions=questions,
             nextState=next_state,
             trace=trace,
+            events=events,
         )
 
-    if case and not persisted:
-        title = (case.title or "").lower()
-        summary_text = (case.summary or "").strip()
+    if (agentic_case or workflow_case) and not persisted:
+        title = ((agentic_case or {}).get("title") or (workflow_case.title if workflow_case else "") or "").lower()
+        summary_text = ((agentic_case or {}).get("summary") or (workflow_case.summary if workflow_case else "") or "").strip()
 
         if not summary_text:
             status = CaseStatus.NEEDS_INPUT
@@ -219,7 +277,9 @@ def _build_plan(case_id: str, note: Optional[str] = None) -> AgentPlan:
                 _action("route_review", "Route to review", AgentActionIntent.ROUTE_REVIEW, True),
             ]
             confidence = 0.62
-        elif case.status.value == "approved":
+        elif (workflow_case and workflow_case.status.value == "approved") or (
+            agentic_case and agentic_case.get("status") == "approved"
+        ):
             status = CaseStatus.APPROVED
             next_state = CaseStatus.COMPLETED
             summary = "Case already approved."
@@ -227,12 +287,14 @@ def _build_plan(case_id: str, note: Optional[str] = None) -> AgentPlan:
                 _action("open_console", "Open case console", AgentActionIntent.OPEN_CONSOLE, False),
             ]
             confidence = 0.9
-        elif case.status.value == "blocked":
+        elif (workflow_case and workflow_case.status.value == "blocked") or (
+            agentic_case and agentic_case.get("status") == "blocked"
+        ):
             status = CaseStatus.BLOCKED
             next_state = CaseStatus.BLOCKED
             summary = "Case is blocked."
             recommended_actions = [
-                _action("route_review", "Route to review", AgentActionIntent.ROUTE_REVIEW, True),
+                _action("send_to_human_review", "Send to human review", AgentActionIntent.ROUTE_REVIEW, True),
             ]
             confidence = 0.88
         else:
@@ -254,7 +316,23 @@ def _build_plan(case_id: str, note: Optional[str] = None) -> AgentPlan:
         _save_agentic_state(case_id, status, next_state, None)
 
     trace_notes = [note] if note else []
-    trace = _trace(case_id, case is not None, bool(case and case.summary), trace_notes)
+    trace = _trace(
+        case_id,
+        agentic_case is not None or workflow_case is not None,
+        bool((agentic_case or {}).get("summary") or (workflow_case and workflow_case.summary)),
+        trace_notes,
+    )
+    append_case_event(
+        case_id,
+        "agent_plan",
+        {
+            "status": status.value,
+            "nextState": next_state.value,
+            "summary": summary,
+            "confidence": confidence,
+        },
+    )
+    events = [CaseEvent(**event) for event in list_case_events(case_id, 10)]
     return AgentPlan(
         caseId=case_id,
         status=status,
@@ -264,6 +342,7 @@ def _build_plan(case_id: str, note: Optional[str] = None) -> AgentPlan:
         questions=questions,
         nextState=next_state,
         trace=trace,
+        events=events,
     )
 
 
@@ -272,22 +351,117 @@ def get_agent_plan(case_id: str) -> AgentPlan:
     return _build_plan(case_id)
 
 
+@router.get("/cases", response_model=list[AgentCaseSummary])
+def list_agentic_case_summaries() -> list[AgentCaseSummary]:
+    cases = list_agentic_cases(50)
+    return [AgentCaseSummary(**case) for case in cases]
+
+
+@router.get("/cases/{case_id}/events", response_model=list[CaseEvent])
+def get_case_events(case_id: str) -> list[CaseEvent]:
+    events = list_case_events(case_id, 10)
+    return [CaseEvent(**event) for event in events]
+
+
 @router.post("/cases/{case_id}/actions/{action_id}", response_model=AgentPlan)
 def post_agent_action(case_id: str, action_id: str, payload: AgentActionRequest) -> AgentPlan:
-    if action_id not in {"open_console", "route_review", "run_check"}:
+    if action_id not in {"open_console", "route_review", "run_check", "send_to_human_review"}:
         raise HTTPException(status_code=400, detail=f"Unsupported action_id: {action_id}")
 
     if action_id == "open_console":
+        append_case_event(
+            case_id,
+            "action",
+            {"actionId": action_id, "input": payload.input},
+        )
         plan = _build_plan(case_id, note="open_console invoked")
         return plan
 
-    if action_id == "route_review":
+    if action_id in {"route_review", "send_to_human_review"}:
+        append_case_event(
+            case_id,
+            "action",
+            {"actionId": action_id, "input": payload.input},
+        )
         _save_agentic_state(case_id, CaseStatus.QUEUED_REVIEW, CaseStatus.QUEUED_REVIEW, None)
         return _build_plan(case_id, note="route_review invoked")
 
     if action_id == "run_check":
+        append_case_event(
+            case_id,
+            "action",
+            {"actionId": action_id, "input": payload.input},
+        )
         result_status = CaseStatus.BLOCKED if "block" in case_id.lower() else CaseStatus.APPROVED
         _save_agentic_state(case_id, result_status, result_status, None)
         return _build_plan(case_id, note=f"run_check invoked -> {result_status.value}")
 
     raise HTTPException(status_code=400, detail=f"Unhandled action_id: {action_id}")
+
+
+@router.post("/cases/{case_id}/inputs", response_model=AgentPlan)
+def submit_case_input(case_id: str, payload: AgentInputRequest) -> AgentPlan:
+    append_case_event(
+        case_id,
+        "user_input",
+        {"questionId": payload.questionId, "input": payload.input},
+    )
+
+    if "summary" in payload.input:
+        upsert_case(case_id, {"summary": payload.input.get("summary")})
+
+    return _build_plan(case_id, note="user_input received")
+
+
+@router.post("/cases/{case_id}/review/decision", response_model=AgentPlan)
+def review_decision(case_id: str, payload: ReviewDecisionRequest) -> AgentPlan:
+    decision = payload.decision.lower()
+    if decision not in {"approve", "block"}:
+        raise HTTPException(status_code=400, detail="decision must be approve or block")
+
+    status = CaseStatus.APPROVED if decision == "approve" else CaseStatus.BLOCKED
+    append_case_event(
+        case_id,
+        "action",
+        {"actionId": "review_decision", "decision": decision, "notes": payload.notes},
+    )
+    _save_agentic_state(case_id, status, status, None)
+    return _build_plan(case_id, note=f"review_decision -> {status.value}")
+
+
+@router.post("/demo/seed", response_model=list[AgentCaseSummary])
+def seed_demo_cases() -> list[AgentCaseSummary]:
+    demo_cases = [
+        {
+            "caseId": "demo-ok",
+            "title": "Demo case (ok)",
+            "summary": "All required fields present.",
+            "status": CaseStatus.EVALUATING.value,
+        },
+        {
+            "caseId": "demo-needs-input",
+            "title": "Demo case (needs input)",
+            "summary": "",
+            "status": CaseStatus.NEEDS_INPUT.value,
+        },
+        {
+            "caseId": "demo-block",
+            "title": "Demo case (block)",
+            "summary": "Validation failure detected.",
+            "status": CaseStatus.BLOCKED.value,
+        },
+    ]
+
+    summaries: list[AgentCaseSummary] = []
+    for demo in demo_cases:
+        case = upsert_case(
+            demo["caseId"],
+            {
+                "title": demo["title"],
+                "summary": demo["summary"],
+                "status": demo["status"],
+            },
+        )
+        summaries.append(AgentCaseSummary(**case))
+
+    return summaries

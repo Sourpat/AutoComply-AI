@@ -68,7 +68,7 @@ function renderSchemaFields(
 }
 
 export function AgentActionPanel({ caseId }: { caseId: string }) {
-  const { plan, loading, error, refresh, executeAction } = useAgentPlan(caseId);
+  const { plan, loading, error, refresh, executeAction, submitInput } = useAgentPlan(caseId);
   const [activeAction, setActiveAction] = useState<AgentAction | null>(null);
   const [actionInput, setActionInput] = useState<Record<string, unknown>>({});
   const [questionInputs, setQuestionInputs] = useState<Record<string, Record<string, unknown>>>({});
@@ -157,6 +157,16 @@ export function AgentActionPanel({ caseId }: { caseId: string }) {
                         questionInputs[question.id] ?? {},
                         (key, value) => updateQuestionInput(question.id, key, value)
                       )}
+                    </div>
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          submitInput(question.id, questionInputs[question.id] ?? {})
+                        }
+                      >
+                        Submit answer
+                      </Button>
                     </div>
                   </div>
                 ))}

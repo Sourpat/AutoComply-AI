@@ -126,6 +126,27 @@ CREATE TABLE IF NOT EXISTS agentic_case_state (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS agentic_cases (
+    case_id TEXT PRIMARY KEY NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT,
+    status TEXT NOT NULL,
+    metadata TEXT,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS agentic_case_events (
+    id TEXT PRIMARY KEY NOT NULL,
+    case_id TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    type TEXT NOT NULL,
+    payload TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_agentic_cases_status ON agentic_cases(status);
+CREATE INDEX IF NOT EXISTS idx_agentic_events_case_id ON agentic_case_events(case_id);
+CREATE INDEX IF NOT EXISTS idx_agentic_events_timestamp ON agentic_case_events(timestamp);
+
 -- ============================================================================
 -- Attachments Table (Phase 6.1)
 -- ============================================================================

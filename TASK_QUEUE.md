@@ -31,7 +31,19 @@
 
 ## P1 - High Priority (Do Next)
 
-*No tasks currently in P1*
+### T-002: Agentic workflow loop + review handoff
+**Status**: in-progress
+**Assigned**: copilot
+**Goal**: Add deterministic agentic loop with events, review handoff, and needs-input cycle
+**Acceptance Criteria**:
+- [ ] Case store with get/upsert/append event
+- [ ] Events timeline endpoint and plan includes events
+- [ ] Review handoff action + reviewer decision endpoint
+- [ ] Needs-input loop with /inputs
+- [ ] Review Queue renders agentic cases + timeline + seed button
+**Verification**:
+- Manual: /console/cases review panel updates plan + timeline
+**Dependencies**: None
 
 ---
 
@@ -42,6 +54,11 @@
 ---
 
 ## Completed Tasks (Last 5)
+
+### T-001: Premium UI refresh (web)
+**Completed**: 2026-01-30
+**Commit**: (pending)
+**Summary**: Added shadcn/ui primitives, app shell, dark mode, motion polish, and refreshed key UI surfaces. Lint still fails due to pre-existing ESLint/prop-types issues.
 
 ### T-000: Fix cases list endpoint 500 error
 **Completed**: 2026-01-22
