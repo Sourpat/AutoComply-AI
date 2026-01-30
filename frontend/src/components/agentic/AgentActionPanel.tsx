@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import type { AgentAction, AgentPlan, JSONSchema } from "../../contracts/agentic";
 import { useAgentPlan } from "../../hooks/useAgentPlan";
@@ -70,6 +71,7 @@ function renderSchemaFields(
 export function AgentActionPanel({ caseId }: { caseId: string }) {
   const { plan, loading, error, refresh, executeAction, submitInput } = useAgentPlan(caseId);
   const [activeAction, setActiveAction] = useState<AgentAction | null>(null);
+  const [activeWhyAction, setActiveWhyAction] = useState<AgentAction | null>(null);
   const [actionInput, setActionInput] = useState<Record<string, unknown>>({});
   const [questionInputs, setQuestionInputs] = useState<Record<string, Record<string, unknown>>>({});
 
@@ -83,12 +85,18 @@ export function AgentActionPanel({ caseId }: { caseId: string }) {
       setActiveAction(action);
       return;
     }
-    await executeAction(action.id, actionInput);
+    const updated = await executeAction(action.id, actionInput);
+    if (updated?.status) {
+      toast.success(`Status updated to ${updated.status}`);
+    }
   };
 
   const confirmAction = async () => {
     if (!activeAction) return;
-    await executeAction(activeAction.id, actionInput);
+    const updated = await executeAction(activeAction.id, actionInput);
+    if (updated?.status) {
+      toast.success(`Status updated to ${updated.status}`);
+    }
     setActiveAction(null);
     setActionInput({});
   };
@@ -107,22 +115,61 @@ export function AgentActionPanel({ caseId }: { caseId: string }) {
     }));
   };
 
+  const handleQuestionSubmit = async (questionId: string) => {
+    const updated = await submitInput(questionId, questionInputs[questionId] ?? {});
+    if (updated?.status) {
+      toast.success(`Status updated to ${updated.status}`);
+    }
+  };
+
+  const fallbackReviewAction: AgentAction = useMemo(
+    () => ({
+      id: "send_to_human_review",
+      label: "Send to human review",
+      intent: "route_review",
+      requiresConfirmation: true,
+      inputSchema: { type: "object", properties: {} },
+    }),
+    []
+  );
+
+  const copyTrace = async () => {
+    if (!plan?.trace) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(plan.trace, null, 2));
+      toast.success("Trace copied to clipboard");
+    } catch (err) {
+      toast.error("Unable to copy trace");
+    }
+  };
+
   return (
     <Card>
       <CardContent className="space-y-4 p-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-1">
-            <h3 className="text-lg font-semibold text-foreground">Agentic Action Panel</h3>
-            <p className="text-sm text-muted-foreground">Deterministic plan for case {caseId}.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant={statusTone[plan?.status ?? "draft"] ?? "secondary"}>
-              {plan?.status ?? "draft"}
-            </Badge>
-            <Badge variant="secondary">Confidence {confidenceLabel}</Badge>
-            <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
-              Refresh plan
-            </Button>
+        <div className="sticky top-0 z-10 -mx-6 border-b border-border/60 bg-background/90 px-6 pb-3 pt-2 backdrop-blur">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <h3 className="text-lg font-semibold text-foreground">Agentic Action Panel</h3>
+              <p className="text-sm text-muted-foreground">Deterministic plan for case {caseId}.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={statusTone[plan?.status ?? "draft"] ?? "secondary"}>
+                {plan?.status ?? "draft"}
+              </Badge>
+              <div className="flex items-center gap-2 rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
+                <span>Confidence</span>
+                <span className="font-medium text-foreground">{confidenceLabel}</span>
+                <span className="h-1.5 w-16 rounded-full bg-muted">
+                  <span
+                    className="block h-1.5 rounded-full bg-primary"
+                    style={{ width: plan ? `${Math.round(plan.confidence * 100)}%` : "0%" }}
+                  />
+                </span>
+              </div>
+              <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
+                Refresh plan
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -130,6 +177,12 @@ export function AgentActionPanel({ caseId }: { caseId: string }) {
           <div className="space-y-2">
             <Skeleton className="h-5 w-40" />
             <Skeleton className="h-10 w-full" />
+          </div>
+        )}
+
+        {!loading && !plan && !error && (
+          <div className="rounded-lg border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
+            No plan available yet. Try refreshing to load the latest recommendations.
           </div>
         )}
 
@@ -161,9 +214,8 @@ export function AgentActionPanel({ caseId }: { caseId: string }) {
                     <div className="mt-3 flex justify-end">
                       <Button
                         size="sm"
-                        onClick={() =>
-                          submitInput(question.id, questionInputs[question.id] ?? {})
-                        }
+                        onClick={() => handleQuestionSubmit(question.id)}
+                        disabled={loading}
                       >
                         Submit answer
                       </Button>
@@ -178,26 +230,50 @@ export function AgentActionPanel({ caseId }: { caseId: string }) {
 
             <div className="space-y-2">
               <h4 className="text-sm font-semibold text-foreground">Recommended actions</h4>
-              <div className="flex flex-wrap gap-2">
-                {plan.recommendedActions.map((action) => (
-                  <Button
-                    key={action.id}
-                    variant={action.intent === "route_review" ? "secondary" : "default"}
-                    size="sm"
-                    onClick={() => handleAction(action)}
-                  >
-                    {action.label}
-                  </Button>
-                ))}
-              </div>
+              {plan.recommendedActions.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
+                  <p className="font-medium text-foreground">No recommended actions.</p>
+                  <p className="mt-1">Try refreshing the plan or send this case to review.</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
+                      Refresh plan
+                    </Button>
+                    <Button size="sm" onClick={() => handleAction(fallbackReviewAction)} disabled={loading}>
+                      Send to review
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {plan.recommendedActions.map((action) => (
+                    <div key={action.id} className="rounded-lg border border-border/70 bg-background p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          variant={action.intent === "route_review" ? "secondary" : "default"}
+                          size="sm"
+                          onClick={() => handleAction(action)}
+                          disabled={loading}
+                        >
+                          {action.label}
+                        </Button>
+                        {action.requiresConfirmation && (
+                          <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">
+                            Confirm required
+                          </Badge>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveWhyAction(action)}
+                        className="mt-2 text-xs font-medium text-primary hover:underline"
+                      >
+                        Why?
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-
-            <details className="rounded-lg border border-border/70 bg-background p-4">
-              <summary className="cursor-pointer text-sm font-medium text-foreground">View trace</summary>
-              <pre className="mt-3 max-h-64 overflow-auto rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
-                {JSON.stringify(plan.trace, null, 2)}
-              </pre>
-            </details>
           </>
         )}
       </CardContent>
@@ -207,7 +283,7 @@ export function AgentActionPanel({ caseId }: { caseId: string }) {
           <DialogHeader>
             <DialogTitle>Confirm action</DialogTitle>
             <DialogDescription>
-              {activeAction?.label}
+              {activeAction?.label}. This action will update the case status and timeline.
             </DialogDescription>
           </DialogHeader>
           {activeAction && renderSchemaFields(activeAction.inputSchema, actionInput, updateActionInput)}
@@ -215,8 +291,84 @@ export function AgentActionPanel({ caseId }: { caseId: string }) {
             <Button variant="outline" onClick={() => setActiveAction(null)}>
               Cancel
             </Button>
-            <Button onClick={confirmAction}>Confirm</Button>
+            <Button onClick={confirmAction} disabled={loading}>
+              Confirm
+            </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(activeWhyAction)} onOpenChange={() => setActiveWhyAction(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Why this action?</DialogTitle>
+            <DialogDescription>{activeWhyAction?.label}</DialogDescription>
+          </DialogHeader>
+          {plan && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Plan summary</p>
+                <p className="mt-1 text-foreground">{plan.summary}</p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Rules evaluated</p>
+                  <Button variant="ghost" size="sm" onClick={copyTrace}>
+                    Copy trace
+                  </Button>
+                </div>
+                {plan.trace.rulesEvaluated.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No rules recorded.</p>
+                ) : (
+                  <div className="overflow-hidden rounded-lg border border-border/70">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50 text-left">
+                        <tr>
+                          <th className="px-3 py-2 font-semibold text-muted-foreground">Rule</th>
+                          <th className="px-3 py-2 font-semibold text-muted-foreground">Outcome</th>
+                          <th className="px-3 py-2 font-semibold text-muted-foreground">Evidence</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {plan.trace.rulesEvaluated.map((rule) => (
+                          <tr key={rule.ruleId} className="border-t border-border/60">
+                            <td className="px-3 py-2 text-foreground">{rule.ruleId}</td>
+                            <td className="px-3 py-2 text-foreground">{rule.outcome}</td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {rule.evidence?.length ? rule.evidence.join(", ") : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Model notes</p>
+                {plan.trace.modelNotes.length > 0 ? (
+                  <ul className="list-disc space-y-1 pl-5 text-xs text-foreground">
+                    {plan.trace.modelNotes.map((note, index) => (
+                      <li key={`${note}-${index}`}>{note}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No model notes recorded.</p>
+                )}
+              </div>
+
+              <div className="rounded-lg border border-border/70 bg-background p-3 text-xs text-muted-foreground">
+                <p>
+                  <span className="font-semibold text-foreground">Trace ID:</span> {plan.trace.traceId}
+                </p>
+                <p className="mt-1">
+                  <span className="font-semibold text-foreground">Timestamp:</span> {plan.trace.timestamp}
+                </p>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </Card>

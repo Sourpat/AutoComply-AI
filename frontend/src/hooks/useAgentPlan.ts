@@ -5,6 +5,24 @@ import { API_BASE } from "../lib/api";
 
 const planCache = new Map<string, AgentPlan>();
 
+async function buildErrorMessage(response: Response, fallback: string) {
+  try {
+    const text = await response.text();
+    if (!text) return `${fallback} (${response.status})`;
+    try {
+      const parsed = JSON.parse(text) as { detail?: string };
+      if (parsed?.detail) {
+        return `${fallback} (${response.status}): ${parsed.detail}`;
+      }
+    } catch {
+      // ignore JSON parse errors
+    }
+    return `${fallback} (${response.status}): ${text}`;
+  } catch {
+    return `${fallback} (${response.status})`;
+  }
+}
+
 export function useAgentPlan(caseId: string) {
   const [plan, setPlan] = useState<AgentPlan | null>(() => planCache.get(caseId) ?? null);
   const [loading, setLoading] = useState(!planCache.has(caseId));
@@ -24,7 +42,7 @@ export function useAgentPlan(caseId: string) {
         signal: controller.signal,
       });
       if (!response.ok) {
-        throw new Error(`Failed to load plan (${response.status})`);
+        throw new Error(await buildErrorMessage(response, "Failed to load plan"));
       }
       const data = (await response.json()) as AgentPlan;
       planCache.set(caseId, data);
@@ -55,7 +73,7 @@ export function useAgentPlan(caseId: string) {
           }
         );
         if (!response.ok) {
-          throw new Error(`Action failed (${response.status})`);
+          throw new Error(await buildErrorMessage(response, "Action failed"));
         }
         const data = (await response.json()) as AgentPlan;
         planCache.set(caseId, data);
@@ -86,7 +104,7 @@ export function useAgentPlan(caseId: string) {
           body: JSON.stringify({ questionId, input }),
         });
         if (!response.ok) {
-          throw new Error(`Input submit failed (${response.status})`);
+          throw new Error(await buildErrorMessage(response, "Input submit failed"));
         }
         const data = (await response.json()) as AgentPlan;
         planCache.set(caseId, data);

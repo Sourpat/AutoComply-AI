@@ -36,6 +36,86 @@
 
 ## Decisions
 
+### [2026-01-30] Agentic explainability via per-action drawer
+
+**Context**: The agentic UI needs premium explainability without redesigning the layout or altering backend behavior.
+
+**Decision**: Add a per-action “Why?” dialog that summarizes plan reasoning, rule outcomes, and trace metadata, with a copyable trace payload.
+
+**Rationale**:
+- Keeps explainability colocated with actions
+- Avoids major layout changes while improving trust
+- Uses existing trace data without backend changes
+
+**Alternatives Considered**:
+- Dedicated full-page explainability view: Rejected (too broad)
+- Inline expanded trace JSON: Rejected (too noisy for primary action UI)
+
+**Consequences**:
+- Positive: Clear, on-demand explanations and audit-friendly copy
+- Negative: Adds one more modal interaction
+- Neutral: No backend changes required
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-003
+- Area: agentic UI
+
+### [2026-01-28] Adopt shadcn/ui tokens + app shell for premium UI
+
+**Context**: The web UI needs a premium, modern treatment with consistent typography, spacing, and component styling while keeping existing business logic intact.
+
+**Decision**: Introduce shadcn/ui primitives, tokenized theme variables, and a standard app shell (header, left nav, content container) while refactoring key pages to use shared components and subtle motion.
+
+**Rationale**:
+- Provides consistent visual hierarchy and spacing
+- Enables dark mode with minimal code
+- Keeps UI refactor scoped to presentation layer
+
+**Alternatives Considered**:
+- Custom CSS-only refactor: Rejected (harder to maintain consistency)
+- Full UI redesign: Rejected (too broad for current scope)
+
+**Consequences**:
+- Positive: Premium look and reusable primitives
+- Negative: Added frontend dependencies (Radix + sonner + framer-motion)
+- Neutral: Business logic remains unchanged
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-001
+- Area: frontend UI
+
+---
+
+### [2026-01-30] Add deterministic agentic workflow scaffold
+
+**Context**: Need a first-class agentic workflow layer that is deterministic, auditable, and UI-actionable without breaking existing routes.
+
+**Decision**: Add a shared contract plus a new agentic API that returns deterministic plans and actions. Persist agentic state in a new dedicated table to avoid altering existing case flows.
+
+**Rationale**:
+- Keeps agent behavior deterministic with explicit actions and schemas
+- Provides auditable traces per response
+- Isolated persistence avoids breaking current case workflows
+
+**Alternatives Considered**:
+- Reusing existing case status: Rejected (semantics differ)
+- In-memory state only: Rejected (not persistent)
+
+**Consequences**:
+- Positive: Clear, testable plan/action contract
+- Negative: Adds a new table and API surface area
+- Neutral: Existing endpoints unchanged
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-001
+- Area: agentic workflow
+
 ### [2026-01-22] Use Dict[str, Any] for PaginatedCasesResponse items
 
 **Context**: Phase 7.29 added computed SLA fields (age_hours, sla_status) to case objects, but PaginatedCasesResponse used `List[CaseRecord]` which stripped these fields during Pydantic validation.

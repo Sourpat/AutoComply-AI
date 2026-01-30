@@ -2,63 +2,12 @@ import React, { useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useRole, getRoleDisplayName, getRoleIcon, type UserRole } from "../context/RoleContext";
 import { API_BASE } from "../lib/api";
+import { ThemeToggle } from "./common/ThemeToggle";
+import { navConfig, isAdminUnlocked, type NavItem } from "./common/navigation";
 
 type AppHeaderProps = {
   onToggleDevSupport?: () => void;
 };
-
-// Navigation configuration - single source of truth
-type NavItem = {
-  to: string;
-  label: string;
-  group: "primary" | "suites" | "more" | "admin";
-  exact?: boolean;
-};
-
-const navConfig: NavItem[] = [
-  // Primary navigation (always visible on desktop)
-  { to: "/", label: "Home", group: "primary", exact: true },
-  { to: "/chat", label: "Chat", group: "primary" },
-  { to: "/console", label: "Console", group: "primary" },
-  
-  // Admin items (controlled by feature flags)
-  { to: "/admin/review", label: "Review Queue", group: "admin" },
-  { to: "/admin/ops", label: "Ops", group: "admin" },
-  
-  // Suites dropdown
-  { to: "/csf", label: "CSF Suite", group: "suites" },
-  { to: "/license", label: "License Suite", group: "suites" },
-  
-  // More dropdown
-  { to: "/coverage", label: "Coverage", group: "more" },
-  { to: "/analytics", label: "Analytics", group: "more" },
-];
-
-// Check if admin features are enabled via feature flags OR localStorage
-function isAdminUnlocked(): boolean {
-  const metaEnv = (import.meta as any)?.env ?? {};
-  
-  // Priority 1: Check feature flag environment variables
-  // VITE_ENABLE_REVIEW_QUEUE and VITE_ENABLE_OPS
-  const enableReviewQueue = metaEnv.VITE_ENABLE_REVIEW_QUEUE;
-  const enableOps = metaEnv.VITE_ENABLE_OPS;
-  
-  // If explicitly disabled via env vars, return false
-  if (enableReviewQueue === 'false' || enableReviewQueue === '0') return false;
-  if (enableOps === 'false' || enableOps === '0') return false;
-  
-  // If explicitly enabled via env vars, return true
-  if (enableReviewQueue === 'true' || enableReviewQueue === '1') return true;
-  if (enableOps === 'true' || enableOps === '1') return true;
-  
-  // Priority 2: Check localStorage (runtime unlock for demos)
-  if (localStorage.getItem("admin_unlocked") === "true") return true;
-  
-  // Default: ENABLED (show admin nav items by default)
-  // This ensures localhost and Vercel production have same behavior
-  // unless explicitly disabled via env vars
-  return true;
-}
 
 // Dropdown component
 function NavDropdown({ 
@@ -85,8 +34,8 @@ function NavDropdown({
         }}
         className={`px-3 py-2 rounded-lg text-sm font-medium inline-flex items-center gap-1 transition-all ${
           isActive
-            ? "text-white bg-cyan-600/20 border border-cyan-500/50"
-            : "text-slate-200 hover:text-white hover:bg-slate-800/70"
+            ? "text-primary bg-primary/10 border border-primary/20"
+            : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
         }`}
         aria-expanded={isOpen}
         aria-haspopup="true"
@@ -107,7 +56,7 @@ function NavDropdown({
           />
           
           {/* Dropdown menu */}
-          <div className="absolute left-0 mt-1 w-48 rounded-lg bg-slate-900 ring-1 ring-slate-700 shadow-lg z-50 py-1">
+          <div className="absolute left-0 mt-1 w-48 rounded-lg bg-popover ring-1 ring-border shadow-lg z-50 py-1">
             {items.map((item) => (
               <NavLink
                 key={item.to}
@@ -117,8 +66,8 @@ function NavDropdown({
                 className={({ isActive }) =>
                   `block px-4 py-2 text-sm transition-colors ${
                     isActive
-                      ? "bg-cyan-600/20 text-cyan-400 font-medium"
-                      : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                      ? "bg-primary/10 text-primary font-medium"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`
                 }
               >
@@ -347,6 +296,7 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
   const { role, setRole } = useRole();
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -355,6 +305,15 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
     };
     window.addEventListener("storage", handleStorageChange);
     return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 8);
+    };
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   // Filter items based on admin unlock
@@ -370,7 +329,13 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
   const isMoreActive = moreItems.some(item => location.pathname.startsWith(item.to));
 
   return (
-    <header className="sticky top-0 z-50 bg-slate-950/70 backdrop-blur-md border-b border-white/10 shadow-sm">
+    <header
+      className={`sticky top-0 z-50 border-b border-border/80 backdrop-blur-md transition-all ${
+        isScrolled
+          ? "bg-background/95 shadow-lg shadow-black/10"
+          : "bg-background/80"
+      }`}
+    >
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="flex h-16 items-center justify-between gap-6">
           {/* Left: Logo */}
@@ -378,7 +343,7 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
             {/* Mobile hamburger */}
             <button
               onClick={() => setShowMobileMenu(true)}
-              className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white transition-colors"
+              className="lg:hidden p-2 -ml-2 text-muted-foreground hover:text-foreground transition-colors"
               aria-label="Open menu"
             >
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -387,7 +352,7 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
             </button>
 
             {/* Logo */}
-            <NavLink to="/" className="text-xl font-semibold tracking-tight text-white hover:text-cyan-400 transition-colors">
+            <NavLink to="/" className="text-xl font-semibold tracking-tight text-foreground hover:text-primary transition-colors">
               AutoComply AI
             </NavLink>
           </div>
@@ -403,8 +368,8 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
                 className={({ isActive }) =>
                   `px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                     isActive
-                      ? "text-white bg-cyan-600/20 border border-cyan-500/50"
-                      : "text-slate-200 hover:text-white hover:bg-slate-800/70"
+                      ? "text-primary bg-primary/10 border border-primary/20"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
                   }`
                 }
               >
@@ -420,8 +385,8 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
                 className={({ isActive }) =>
                   `px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                     isActive
-                      ? "text-white bg-cyan-600/20 border border-cyan-500/50"
-                      : "text-slate-200 hover:text-white hover:bg-slate-800/70"
+                      ? "text-primary bg-primary/10 border border-primary/20"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
                   }`
                 }
               >
@@ -450,7 +415,7 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
               <button
                 type="button"
                 onClick={() => setShowRoleDropdown(!showRoleDropdown)}
-                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ring-1 bg-slate-900 text-slate-200 ring-slate-700 hover:ring-cyan-500/60 transition-all"
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ring-1 bg-muted/70 text-foreground ring-border hover:ring-primary/60 transition-all"
                 title="Switch role"
                 aria-label="Switch user role"
                 aria-expanded={showRoleDropdown}
@@ -469,7 +434,7 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
                     onClick={() => setShowRoleDropdown(false)}
                   />
                   
-                  <div className="absolute right-0 mt-1 w-40 rounded-lg bg-slate-900 ring-1 ring-slate-700 shadow-lg z-50 py-1">
+                  <div className="absolute right-0 mt-1 w-40 rounded-lg bg-popover ring-1 ring-border shadow-lg z-50 py-1">
                     {(['submitter', 'verifier', 'admin'] as UserRole[]).map((r) => (
                       <button
                         key={r}
@@ -479,8 +444,8 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
                         }}
                         className={`w-full text-left px-3 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${
                           role === r
-                            ? 'bg-cyan-600/20 text-cyan-400'
-                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                         }`}
                       >
                         <span>{getRoleIcon(r)}</span>
@@ -498,12 +463,14 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
               <button
                 type="button"
                 onClick={onToggleDevSupport}
-                className="hidden sm:inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium ring-1 bg-slate-900 text-slate-200 ring-slate-700 hover:ring-cyan-500/60 transition-all"
+                className="hidden sm:inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium ring-1 bg-muted/70 text-foreground ring-border hover:ring-primary/60 transition-all"
                 aria-label="Toggle developer support panel"
               >
                 DevSupport
               </button>
             )}
+
+            <ThemeToggle />
           </div>
         </div>
       </div>

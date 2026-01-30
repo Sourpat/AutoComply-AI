@@ -31,19 +31,7 @@
 
 ## P1 - High Priority (Do Next)
 
-### T-002: Agentic workflow loop + review handoff
-**Status**: in-progress
-**Assigned**: copilot
-**Goal**: Add deterministic agentic loop with events, review handoff, and needs-input cycle
-**Acceptance Criteria**:
-- [ ] Case store with get/upsert/append event
-- [ ] Events timeline endpoint and plan includes events
-- [ ] Review handoff action + reviewer decision endpoint
-- [ ] Needs-input loop with /inputs
-- [ ] Review Queue renders agentic cases + timeline + seed button
-**Verification**:
-- Manual: /console/cases review panel updates plan + timeline
-**Dependencies**: None
+*No tasks currently in P1*
 
 ---
 
@@ -54,6 +42,16 @@
 ---
 
 ## Completed Tasks (Last 5)
+
+### T-003: Agentic UX polish + safety
+**Completed**: 2026-01-30
+**Commit**: (pending)
+**Summary**: Added sticky action panel header with confidence bar, per-action explainability drawer, timeline grouping/filters, header scroll contrast, and action safety feedback.
+
+### T-002: Agentic workflow loop + review handoff
+**Completed**: 2026-01-30
+**Commit**: d989318
+**Summary**: Added agentic case store, events timeline, review decision endpoints, needs-input loop, and Review Queue agentic panel with demo seeding.
 
 ### T-001: Premium UI refresh (web)
 **Completed**: 2026-01-30
