@@ -115,6 +115,18 @@ CREATE INDEX IF NOT EXISTS idx_evidence_case_created ON evidence_items(case_id, 
 CREATE INDEX IF NOT EXISTS idx_evidence_submission_created ON evidence_items(submission_id, created_at DESC);
 
 -- ============================================================================
+-- Agentic Case State (Phase Agentic Workflow)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS agentic_case_state (
+    case_id TEXT PRIMARY KEY NOT NULL,
+    status TEXT NOT NULL,
+    next_state TEXT NOT NULL,
+    next_required_input TEXT,
+    updated_at TEXT NOT NULL
+);
+
+-- ============================================================================
 -- Attachments Table (Phase 6.1)
 -- ============================================================================
 
