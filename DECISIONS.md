@@ -36,6 +36,32 @@
 
 ## Decisions
 
+### [2026-01-30] Launch Agentic Workbench with JSON audit packet export
+
+**Context**: Verifiers need a dedicated workbench with audit-grade traceability and exportable audit packets without changing backend semantics.
+
+**Decision**: Add a new Agentic Workbench route with left/center/right panels, evidence viewer backed by localStorage, and JSON export. PDF export is intentionally stubbed for a future iteration.
+
+**Rationale**:
+- Delivers verifier-grade UX quickly without backend changes
+- Keeps deterministic contracts intact
+- Enables immediate audit packet export while deferring PDF complexity
+
+**Alternatives Considered**:
+- New backend export endpoint: Rejected (not required yet)
+- Full PDF export now: Deferred (needs separate design + tooling)
+
+**Consequences**:
+- Positive: Premium audit UX with traceability and export
+- Negative: PDF export still pending
+- Neutral: No backend changes required
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-004
+- Area: agentic workbench
+
 ### [2026-01-30] Agentic explainability via per-action drawer
 
 **Context**: The agentic UI needs premium explainability without redesigning the layout or altering backend behavior.

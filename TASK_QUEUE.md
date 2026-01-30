@@ -43,6 +43,11 @@
 
 ## Completed Tasks (Last 5)
 
+### T-004: Agentic workbench + audit packet UX
+**Completed**: 2026-01-30
+**Commit**: (pending)
+**Summary**: Added Agentic Workbench route with case list, evidence viewer, audit packet panel, and JSON export (PDF export deferred).
+
 ### T-003: Agentic UX polish + safety
 **Completed**: 2026-01-30
 **Commit**: (pending)

@@ -18,6 +18,7 @@ import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { AdminOpsDashboard } from "./pages/AdminOpsDashboard";
 import { ProtectedAdminRoute } from "./components/ProtectedAdminRoute";
 import { ReviewQueuePage } from "./pages/ReviewQueuePage";
+import { AgenticWorkbenchPage } from "./pages/AgenticWorkbenchPage";
 import CoverageDashboardPage from "./pages/CoverageDashboardPage";
 import { AnalyticsDashboardPage } from "./pages/AnalyticsDashboardPage";
 import { DiagnosticsBanner } from "./components/DiagnosticsBanner";
@@ -46,6 +47,7 @@ export default function App() {
             <Route path="/console/cases" element={<CaseWorkspace />} />
             <Route path="/console/rag" element={<RagExplorerPage />} />
             <Route path="/console/review-queue" element={<ReviewQueuePage />} />
+            <Route path="/agentic/workbench" element={<AgenticWorkbenchPage />} />
             <Route path="/coverage" element={<CoverageDashboardPage />} />
             <Route path="/analytics" element={<AnalyticsDashboardPage />} />
             <Route path="/license/ohio-tddd" element={<OhioTdddSandbox />} />
