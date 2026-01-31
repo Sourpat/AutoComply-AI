@@ -36,6 +36,32 @@
 
 ## Decisions
 
+### [2026-01-31] Polish audit diff UX for executive readability
+
+**Context**: Command 11 requires the audit diff experience to be demo-grade, readable, and executive-friendly without adding backend features.
+
+**Decision**: Refine the Audit Diff UI with same-hash states, count badges, collapsible lists, deep-link navigation from the workbench, and export metadata while reusing shared UI primitives.
+
+**Rationale**:
+- Improves scan-ability and clarity for stakeholders
+- Keeps changes UI-only and preserves existing backend contracts
+- Supports direct navigation via shareable deep links
+
+**Alternatives Considered**:
+- Full backend-driven diff export: Rejected (out of scope)
+- Redesigning the workbench layout: Rejected (constraint)
+
+**Consequences**:
+- Positive: Cleaner diff presentation and faster reviews
+- Negative: Slightly more client-side UI logic
+- Neutral: No API or storage changes
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-011
+- Area: audit diff UX
+
 ### [2026-01-31] Add audit diff report with deterministic matching
 
 **Context**: Reviewers need to compare two audit packets to understand what changed between decisions for the same case.

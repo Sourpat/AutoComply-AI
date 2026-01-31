@@ -1,18 +1,21 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { EmptyState } from "../components/common/EmptyState";
 import { PageHeader } from "../components/common/PageHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Card, CardContent } from "../components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { CheckCircle2, ChevronDown } from "../lib/lucide-react";
+import { formatTimestamp } from "../lib/formatters";
 import { loadAuditPacket, type AuditPacket } from "../lib/agenticAudit";
 import { fetchAuditPacketFromServer, fetchAuditPacketMeta } from "../lib/auditServer";
 import { buildAuditDiff, computeAuditDiffHash, type AuditDiff, type AuditDiffMeta } from "../lib/auditDiff";
-import { formatTimestamp } from "../lib/formatters";
 
 const hashPattern = /^[a-f0-9]{64}$/i;
+const MAX_PREVIEW_ITEMS = 5;
 
 type PacketLoadResult = {
   packet: AuditPacket | null;
@@ -20,19 +23,78 @@ type PacketLoadResult = {
   error: string | null;
 };
 
+type SameHashInfo = AuditDiffMeta & { comparedAt: string };
+
+type EvidenceTab = "added" | "removed" | "changed";
+
+type SectionKey =
+  | "decision"
+  | "evidence-added"
+  | "evidence-removed"
+  | "evidence-changed"
+  | "human-added"
+  | "human-removed"
+  | "timeline";
+
 function formatValue(value: unknown) {
   if (value === null || value === undefined) return "--";
   if (typeof value === "number") return value.toFixed(2);
   return String(value);
 }
 
+function formatFileTimestamp(date: Date) {
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(
+    date.getHours()
+  )}${pad(date.getMinutes())}`;
+}
+
+function NoChangesRow({ label = "No changes" }: { label?: string }) {
+  return (
+    <div className="rounded-md border border-dashed border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+      {label}
+    </div>
+  );
+}
+
+function SectionToggle({
+  expanded,
+  total,
+  onToggle,
+}: {
+  expanded: boolean;
+  total: number;
+  onToggle: () => void;
+}) {
+  if (total <= MAX_PREVIEW_ITEMS) return null;
+  return (
+    <Button variant="ghost" size="sm" onClick={onToggle} className="gap-1 text-xs">
+      {expanded ? "Show less" : `Show all (${total})`}
+      <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
+    </Button>
+  );
+}
+
 export function AuditDiffPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [leftHash, setLeftHash] = useState("");
   const [rightHash, setRightHash] = useState("");
   const [diff, setDiff] = useState<AuditDiff | null>(null);
+  const [sameHashInfo, setSameHashInfo] = useState<SameHashInfo | null>(null);
   const [leftError, setLeftError] = useState<string | null>(null);
   const [rightError, setRightError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [evidenceTab, setEvidenceTab] = useState<EvidenceTab>("added");
+  const [expandedSections, setExpandedSections] = useState<Record<SectionKey, boolean>>({
+    "decision": false,
+    "evidence-added": false,
+    "evidence-removed": false,
+    "evidence-changed": false,
+    "human-added": false,
+    "human-removed": false,
+    "timeline": false,
+  });
+  const initializedRef = useRef(false);
 
   const copyValue = async (value: string) => {
     if (!value) return;
@@ -43,7 +105,7 @@ export function AuditDiffPage() {
     }
   };
 
-  const loadPacket = async (hash: string, sideLabel: "left" | "right"): Promise<PacketLoadResult> => {
+  const loadPacket = useCallback(async (hash: string, sideLabel: "left" | "right"): Promise<PacketLoadResult> => {
     if (!hash.trim()) {
       return { packet: null, meta: null, error: `${sideLabel} hash is required` };
     }
@@ -68,47 +130,112 @@ export function AuditDiffPage() {
 
     const message = localResult.error || serverResult.message || "Packet not found";
     return { packet: null, meta: null, error: message };
-  };
+  }, []);
+
+  const runComparison = useCallback(
+    async (leftValue: string, rightValue: string) => {
+      const left = leftValue.trim();
+      const right = rightValue.trim();
+      setLoading(true);
+      setLeftError(null);
+      setRightError(null);
+      setDiff(null);
+      setSameHashInfo(null);
+
+      if (left && right) {
+        setSearchParams({ left, right }, { replace: true });
+      }
+
+      if (left && right && left === right) {
+        const leftResult = await loadPacket(left, "left");
+        if (leftResult.error) {
+          setLeftError(leftResult.error);
+          setRightError(leftResult.error);
+          setLoading(false);
+          return;
+        }
+        if (leftResult.packet) {
+          const meta = leftResult.meta;
+          setSameHashInfo({
+            packetHash: meta?.packetHash ?? leftResult.packet.packetHash ?? left,
+            caseId: meta?.caseId ?? leftResult.packet.metadata.caseId,
+            decisionId: meta?.decisionId ?? leftResult.packet.metadata.decisionId,
+            createdAt: meta?.createdAt ?? leftResult.packet.metadata.generatedAt,
+            comparedAt: new Date().toISOString(),
+          });
+        }
+        setLoading(false);
+        return;
+      }
+
+      const [leftResult, rightResult] = await Promise.all([
+        loadPacket(left, "left"),
+        loadPacket(right, "right"),
+      ]);
+
+      if (leftResult.error) setLeftError(leftResult.error);
+      if (rightResult.error) setRightError(rightResult.error);
+
+      if (leftResult.packet && rightResult.packet) {
+        const built = buildAuditDiff(leftResult.packet, rightResult.packet, {
+          leftMeta: leftResult.meta ?? undefined,
+          rightMeta: rightResult.meta ?? undefined,
+        });
+        setDiff(built);
+      }
+
+      setLoading(false);
+    },
+    [loadPacket, setSearchParams]
+  );
+
+  useEffect(() => {
+    if (initializedRef.current) return;
+    const leftParam = searchParams.get("left") ?? "";
+    const rightParam = searchParams.get("right") ?? "";
+    if (leftParam) setLeftHash(leftParam);
+    if (rightParam) setRightHash(rightParam);
+    if (leftParam && rightParam) {
+      runComparison(leftParam, rightParam);
+    }
+    initializedRef.current = true;
+  }, [searchParams, runComparison]);
 
   const handleCompare = async () => {
-    setLoading(true);
-    setLeftError(null);
-    setRightError(null);
-    setDiff(null);
-
-    const [leftResult, rightResult] = await Promise.all([
-      loadPacket(leftHash, "left"),
-      loadPacket(rightHash, "right"),
-    ]);
-
-    if (leftResult.error) setLeftError(leftResult.error);
-    if (rightResult.error) setRightError(rightResult.error);
-
-    if (leftResult.packet && rightResult.packet) {
-      const built = buildAuditDiff(leftResult.packet, rightResult.packet, {
-        leftMeta: leftResult.meta ?? undefined,
-        rightMeta: rightResult.meta ?? undefined,
-      });
-      setDiff(built);
-    }
-
-    setLoading(false);
+    await runComparison(leftHash, rightHash);
   };
 
   const handleExport = async () => {
     if (!diff) return;
-    const exportedAt = new Date().toISOString();
-    const diffWithExport = { ...diff, exportedAt };
-    const diffHash = await computeAuditDiffHash(diffWithExport);
-    const payload = { ...diffWithExport, diffHash };
+    const comparedAt = new Date().toISOString();
+    const diffHash = await computeAuditDiffHash(diff);
+    const payload = {
+      metadata: {
+        comparedAt,
+        leftHash: diff.left.packetHash,
+        rightHash: diff.right.packetHash,
+        diffHash,
+      },
+      diff,
+    };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
+    const timestamp = formatFileTimestamp(new Date());
     anchor.href = url;
-    anchor.download = `audit-diff_${diff.left.packetHash.slice(0, 8)}_${diff.right.packetHash.slice(0, 8)}.json`;
+    anchor.download = `autocomply_audit_diff_${diff.left.caseId}_${timestamp}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
   };
+
+  const toggleSection = (key: SectionKey) => {
+    setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const isExpanded = (key: SectionKey) => Boolean(expandedSections[key]);
+
+  const visibleItems = <T,>(items: T[], key: SectionKey) =>
+    isExpanded(key) ? items : items.slice(0, MAX_PREVIEW_ITEMS);
 
   return (
     <div className="space-y-6">
@@ -149,11 +276,51 @@ export function AuditDiffPage() {
         </Card>
 
         <div className="space-y-6">
-          {!diff && !loading && (
+          {!diff && !sameHashInfo && !loading && (
             <EmptyState
               title="Compare audit packets"
               description="Enter two packet hashes to generate an audit-grade diff report."
             />
+          )}
+
+          {sameHashInfo && (
+            <Card>
+              <CardContent className="space-y-4 p-5">
+                <div className="flex flex-wrap items-center gap-3">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                  <div>
+                    <h3 className="text-base font-semibold text-foreground">No changes detected</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Left and right hashes match. This packet is identical across both comparisons.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid gap-3 text-xs md:grid-cols-3">
+                  <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                    <p className="text-muted-foreground">Packet hash</p>
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <p className="break-all text-foreground">{sameHashInfo.packetHash}</p>
+                      <Button variant="ghost" size="sm" onClick={() => copyValue(sameHashInfo.packetHash)}>
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                    <p className="text-muted-foreground">Decision ID</p>
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <p className="break-all text-foreground">{sameHashInfo.decisionId}</p>
+                      <Button variant="ghost" size="sm" onClick={() => copyValue(sameHashInfo.decisionId)}>
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                    <p className="text-muted-foreground">Generated</p>
+                    <p className="mt-1 text-foreground">{formatTimestamp(sameHashInfo.createdAt)}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {diff && (
@@ -175,6 +342,27 @@ export function AuditDiffPage() {
                         Export Diff JSON
                       </Button>
                     </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <Badge variant={diff.changes.decision.length ? "warning" : "secondary"}>
+                      Decision changes {diff.changes.decision.length}
+                    </Badge>
+                    <Badge variant={diff.changes.evidence.added.length ? "success" : "secondary"}>
+                      Evidence added {diff.changes.evidence.added.length}
+                    </Badge>
+                    <Badge variant={diff.changes.evidence.removed.length ? "destructive" : "secondary"}>
+                      Evidence removed {diff.changes.evidence.removed.length}
+                    </Badge>
+                    <Badge variant={diff.changes.evidence.changed.length ? "warning" : "secondary"}>
+                      Evidence changed {diff.changes.evidence.changed.length}
+                    </Badge>
+                    <Badge variant={diff.changes.humanActions.added.length ? "success" : "secondary"}>
+                      Human actions added {diff.changes.humanActions.added.length}
+                    </Badge>
+                    <Badge variant={diff.changes.timeline.addedTypes.length ? "warning" : "secondary"}>
+                      Timeline changes {diff.changes.timeline.addedTypes.length}
+                    </Badge>
                   </div>
 
                   <div className="grid gap-3 text-xs md:grid-cols-2">
@@ -215,144 +403,267 @@ export function AuditDiffPage() {
               </Card>
 
               <Card>
-                <CardContent className="space-y-3 p-5">
-                  <h3 className="text-sm font-semibold text-foreground">Decision changes</h3>
-                  {diff.changes.decision.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No decision changes detected.</p>
-                  ) : (
-                    <table className="table-premium">
-                      <thead>
-                        <tr>
-                          <th>Field</th>
-                          <th>Left</th>
-                          <th>Right</th>
+                <CardHeader className="pb-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-sm">Decision changes</CardTitle>
+                      <Badge variant={diff.changes.decision.length ? "warning" : "secondary"}>
+                        {diff.changes.decision.length}
+                      </Badge>
+                    </div>
+                    <SectionToggle
+                      expanded={isExpanded("decision")}
+                      total={diff.changes.decision.length}
+                      onToggle={() => toggleSection("decision")}
+                    />
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <table className="table-premium">
+                    <thead>
+                      <tr>
+                        <th>Field</th>
+                        <th>Left</th>
+                        <th>Right</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleItems(diff.changes.decision, "decision").map((change) => (
+                        <tr key={change.field}>
+                          <td>{change.field}</td>
+                          <td>{formatValue(change.left)}</td>
+                          <td>{formatValue(change.right)}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {diff.changes.decision.map((change) => (
-                          <tr key={change.field}>
-                            <td>{change.field}</td>
-                            <td>{formatValue(change.left)}</td>
-                            <td>{formatValue(change.right)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
+                      ))}
+                      {diff.changes.decision.length === 0 && (
+                        <tr>
+                          <td colSpan={3}>
+                            <NoChangesRow label="No decision changes" />
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </CardContent>
               </Card>
 
               <Card>
-                <CardContent className="space-y-4 p-5">
-                  <h3 className="text-sm font-semibold text-foreground">Evidence changes</h3>
-                  <Tabs defaultValue="added">
+                <CardHeader className="pb-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-sm">Evidence changes</CardTitle>
+                      <Badge variant={diff.summary.evidenceChanges ? "warning" : "secondary"}>
+                        {diff.summary.evidenceChanges}
+                      </Badge>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <Tabs value={evidenceTab} onValueChange={(value) => setEvidenceTab(value as EvidenceTab)}>
                     <TabsList>
-                      <TabsTrigger value="added">Added ({diff.changes.evidence.added.length})</TabsTrigger>
-                      <TabsTrigger value="removed">Removed ({diff.changes.evidence.removed.length})</TabsTrigger>
-                      <TabsTrigger value="changed">Changed ({diff.changes.evidence.changed.length})</TabsTrigger>
+                      <TabsTrigger value="added">
+                        <span className="flex items-center gap-2">
+                          Added
+                          <Badge variant={diff.changes.evidence.added.length ? "success" : "secondary"}>
+                            {diff.changes.evidence.added.length}
+                          </Badge>
+                        </span>
+                      </TabsTrigger>
+                      <TabsTrigger value="removed">
+                        <span className="flex items-center gap-2">
+                          Removed
+                          <Badge variant={diff.changes.evidence.removed.length ? "destructive" : "secondary"}>
+                            {diff.changes.evidence.removed.length}
+                          </Badge>
+                        </span>
+                      </TabsTrigger>
+                      <TabsTrigger value="changed">
+                        <span className="flex items-center gap-2">
+                          Changed
+                          <Badge variant={diff.changes.evidence.changed.length ? "warning" : "secondary"}>
+                            {diff.changes.evidence.changed.length}
+                          </Badge>
+                        </span>
+                      </TabsTrigger>
                     </TabsList>
-                    <TabsContent value="added" className="space-y-2">
-                      {diff.changes.evidence.added.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">No evidence added.</p>
-                      ) : (
+
+                    <TabsContent value="added">
+                      <div className="space-y-2">
                         <ul className="space-y-2 text-xs">
-                          {diff.changes.evidence.added.map((item) => (
+                          {visibleItems(diff.changes.evidence.added, "evidence-added").map((item) => (
                             <li key={item.signature} className="rounded-md border border-border/70 bg-background p-2">
-                              <p className="font-semibold text-foreground">{item.type}</p>
-                              <p className="text-muted-foreground">{item.source}</p>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="success">Added</Badge>
+                                  <p className="font-semibold text-foreground">{item.type ?? "Evidence"}</p>
+                                </div>
+                                {item.title && (
+                                  <Badge variant="secondary" className="max-w-[180px] truncate">
+                                    {item.title}
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-muted-foreground">{item.source ?? "--"}</p>
                               <p className="text-muted-foreground">{formatTimestamp(item.timestamp ?? "")}</p>
                             </li>
                           ))}
                         </ul>
-                      )}
+                        {diff.changes.evidence.added.length === 0 && <NoChangesRow label="No evidence added" />}
+                        <SectionToggle
+                          expanded={isExpanded("evidence-added")}
+                          total={diff.changes.evidence.added.length}
+                          onToggle={() => toggleSection("evidence-added")}
+                        />
+                      </div>
                     </TabsContent>
-                    <TabsContent value="removed" className="space-y-2">
-                      {diff.changes.evidence.removed.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">No evidence removed.</p>
-                      ) : (
+
+                    <TabsContent value="removed">
+                      <div className="space-y-2">
                         <ul className="space-y-2 text-xs">
-                          {diff.changes.evidence.removed.map((item) => (
+                          {visibleItems(diff.changes.evidence.removed, "evidence-removed").map((item) => (
                             <li key={item.signature} className="rounded-md border border-border/70 bg-background p-2">
-                              <p className="font-semibold text-foreground">{item.type}</p>
-                              <p className="text-muted-foreground">{item.source}</p>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="destructive">Removed</Badge>
+                                  <p className="font-semibold text-foreground">{item.type ?? "Evidence"}</p>
+                                </div>
+                                {item.title && (
+                                  <Badge variant="secondary" className="max-w-[180px] truncate">
+                                    {item.title}
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-muted-foreground">{item.source ?? "--"}</p>
                               <p className="text-muted-foreground">{formatTimestamp(item.timestamp ?? "")}</p>
                             </li>
                           ))}
                         </ul>
-                      )}
+                        {diff.changes.evidence.removed.length === 0 && <NoChangesRow label="No evidence removed" />}
+                        <SectionToggle
+                          expanded={isExpanded("evidence-removed")}
+                          total={diff.changes.evidence.removed.length}
+                          onToggle={() => toggleSection("evidence-removed")}
+                        />
+                      </div>
                     </TabsContent>
-                    <TabsContent value="changed" className="space-y-2">
-                      {diff.changes.evidence.changed.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">No evidence changes detected.</p>
-                      ) : (
+
+                    <TabsContent value="changed">
+                      <div className="space-y-2">
                         <ul className="space-y-2 text-xs">
-                          {diff.changes.evidence.changed.map((item) => (
+                          {visibleItems(diff.changes.evidence.changed, "evidence-changed").map((item) => (
                             <li key={item.left.signature} className="rounded-md border border-border/70 bg-background p-2">
-                              <p className="font-semibold text-foreground">{item.left.type}</p>
-                              <p className="text-muted-foreground">{item.left.source} → {item.right.source}</p>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="warning">Changed</Badge>
+                                <p className="font-semibold text-foreground">{item.left.type ?? "Evidence"}</p>
+                              </div>
+                              <p className="text-muted-foreground">
+                                {item.left.source ?? "--"} → {item.right.source ?? "--"}
+                              </p>
                               <p className="text-muted-foreground">
                                 {formatTimestamp(item.left.timestamp ?? "")} → {formatTimestamp(item.right.timestamp ?? "")}
                               </p>
                             </li>
                           ))}
                         </ul>
-                      )}
+                        {diff.changes.evidence.changed.length === 0 && (
+                          <NoChangesRow label="No evidence changes" />
+                        )}
+                        <SectionToggle
+                          expanded={isExpanded("evidence-changed")}
+                          total={diff.changes.evidence.changed.length}
+                          onToggle={() => toggleSection("evidence-changed")}
+                        />
+                      </div>
                     </TabsContent>
                   </Tabs>
                 </CardContent>
               </Card>
 
               <Card>
-                <CardContent className="space-y-3 p-5">
-                  <h3 className="text-sm font-semibold text-foreground">Human actions</h3>
-                  {diff.changes.humanActions.added.length === 0 && diff.changes.humanActions.removed.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No human action changes.</p>
-                  ) : (
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Added</p>
-                        <ul className="mt-2 space-y-2 text-xs">
-                          {diff.changes.humanActions.added.map((event) => (
-                            <li key={event.signature} className="rounded-md border border-border/70 bg-background p-2">
-                              <p className="font-semibold text-foreground">{event.type}</p>
-                              <p className="text-muted-foreground">{formatTimestamp(event.timestamp ?? "")}</p>
-                            </li>
-                          ))}
-                          {diff.changes.humanActions.added.length === 0 && (
-                            <p className="text-xs text-muted-foreground">None</p>
-                          )}
-                        </ul>
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Removed</p>
-                        <ul className="mt-2 space-y-2 text-xs">
-                          {diff.changes.humanActions.removed.map((event) => (
-                            <li key={event.signature} className="rounded-md border border-border/70 bg-background p-2">
-                              <p className="font-semibold text-foreground">{event.type}</p>
-                              <p className="text-muted-foreground">{formatTimestamp(event.timestamp ?? "")}</p>
-                            </li>
-                          ))}
-                          {diff.changes.humanActions.removed.length === 0 && (
-                            <p className="text-xs text-muted-foreground">None</p>
-                          )}
-                        </ul>
-                      </div>
+                <CardHeader className="pb-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-sm">Human actions</CardTitle>
+                      <Badge variant={diff.changes.humanActions.added.length ? "success" : "secondary"}>
+                        Added {diff.changes.humanActions.added.length}
+                      </Badge>
+                      <Badge variant={diff.changes.humanActions.removed.length ? "destructive" : "secondary"}>
+                        Removed {diff.changes.humanActions.removed.length}
+                      </Badge>
                     </div>
-                  )}
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Added</p>
+                      <ul className="mt-2 space-y-2 text-xs">
+                        {visibleItems(diff.changes.humanActions.added, "human-added").map((event) => (
+                          <li key={event.signature} className="rounded-md border border-border/70 bg-background p-2">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="success">Added</Badge>
+                              <p className="font-semibold text-foreground">{event.type}</p>
+                            </div>
+                            <p className="text-muted-foreground">{formatTimestamp(event.timestamp ?? "")}</p>
+                          </li>
+                        ))}
+                      </ul>
+                      {diff.changes.humanActions.added.length === 0 && <NoChangesRow label="No actions added" />}
+                      <SectionToggle
+                        expanded={isExpanded("human-added")}
+                        total={diff.changes.humanActions.added.length}
+                        onToggle={() => toggleSection("human-added")}
+                      />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Removed</p>
+                      <ul className="mt-2 space-y-2 text-xs">
+                        {visibleItems(diff.changes.humanActions.removed, "human-removed").map((event) => (
+                          <li key={event.signature} className="rounded-md border border-border/70 bg-background p-2">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="destructive">Removed</Badge>
+                              <p className="font-semibold text-foreground">{event.type}</p>
+                            </div>
+                            <p className="text-muted-foreground">{formatTimestamp(event.timestamp ?? "")}</p>
+                          </li>
+                        ))}
+                      </ul>
+                      {diff.changes.humanActions.removed.length === 0 && <NoChangesRow label="No actions removed" />}
+                      <SectionToggle
+                        expanded={isExpanded("human-removed")}
+                        total={diff.changes.humanActions.removed.length}
+                        onToggle={() => toggleSection("human-removed")}
+                      />
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
 
               <Card>
-                <CardContent className="space-y-2 p-5 text-xs">
-                  <h3 className="text-sm font-semibold text-foreground">Timeline summary</h3>
+                <CardHeader className="pb-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-sm">Timeline summary</CardTitle>
+                      <Badge variant={diff.changes.timeline.addedTypes.length ? "warning" : "secondary"}>
+                        Added types {diff.changes.timeline.addedTypes.length}
+                      </Badge>
+                    </div>
+                    <SectionToggle
+                      expanded={isExpanded("timeline")}
+                      total={diff.changes.timeline.addedTypes.length}
+                      onToggle={() => toggleSection("timeline")}
+                    />
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-2 pt-0 text-xs">
                   <p className="text-muted-foreground">
                     Left events: {diff.changes.timeline.counts.left} · Right events: {diff.changes.timeline.counts.right}
                   </p>
                   {diff.changes.timeline.addedTypes.length === 0 ? (
-                    <p className="text-muted-foreground">No new event types.</p>
+                    <NoChangesRow label="No new event types" />
                   ) : (
                     <ul className="flex flex-wrap gap-2">
-                      {diff.changes.timeline.addedTypes.map((value) => (
+                      {visibleItems(diff.changes.timeline.addedTypes, "timeline").map((value) => (
                         <li key={value}>
                           <Badge variant="secondary">{value.replace(/_/g, " ")}</Badge>
                         </li>

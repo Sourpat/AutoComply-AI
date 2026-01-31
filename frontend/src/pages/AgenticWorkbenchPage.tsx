@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { getWorkQueue, type WorkQueueSubmission } from "../api/consoleClient";
@@ -194,9 +194,40 @@ export function AgenticWorkbenchPage() {
   const [packetHash, setPacketHash] = useState<string | null>(null);
   const [visibleEvidenceCount, setVisibleEvidenceCount] = useState(50);
   const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
+  const navigate = useNavigate();
 
   const caseId = selectedCaseId ?? "";
   const { plan, loading: planLoading, error: planError, refresh } = useAgentPlan(caseId);
+
+  const findPreviousPacketHash = useCallback(
+    (currentHash?: string | null) => {
+      if (!caseId) return null;
+      try {
+        const keys = Object.keys(localStorage).filter((key) =>
+          key.startsWith("agentic:audit-packet:")
+        );
+        const packets = keys
+          .map((key) => {
+            const raw = localStorage.getItem(key);
+            if (!raw) return null;
+            const packet = JSON.parse(raw) as { metadata?: { caseId?: string; generatedAt?: string } };
+            if (packet?.metadata?.caseId !== caseId) return null;
+            return {
+              hash: key.replace("agentic:audit-packet:", ""),
+              generatedAt: packet?.metadata?.generatedAt ?? "",
+            };
+          })
+          .filter((value): value is { hash: string; generatedAt: string } => Boolean(value))
+          .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
+
+        const previous = packets.find((packet) => packet.hash !== currentHash);
+        return previous?.hash ?? null;
+      } catch {
+        return null;
+      }
+    },
+    [caseId]
+  );
 
   const selectedCase = useMemo(
     () => cases.find((item) => item.submission_id === selectedCaseId) ?? null,
@@ -638,6 +669,23 @@ export function AgenticWorkbenchPage() {
     }
   };
 
+  const handleCompareWithPrevious = async () => {
+    if (!selectedCase || !packetBase) {
+      toast.error("Select a case to compare.");
+      return;
+    }
+    const currentHash = packetHash ?? (await computePacketHash(packetBase));
+    const packet = { ...packetBase, packetHash: currentHash };
+    saveAuditPacket(packet, currentHash);
+    const previousHash = findPreviousPacketHash(currentHash);
+    if (!previousHash) {
+      toast.error("No previous audit packet found for this case.");
+      return;
+    }
+    const params = new URLSearchParams({ left: previousHash, right: currentHash });
+    navigate(`/audit/diff?${params.toString()}`);
+  };
+
   const saveAuditNotes = async () => {
     if (!caseId) return;
     localStorage.setItem(`agentic:audit-notes:${caseId}`, auditNotes);
@@ -709,6 +757,14 @@ export function AgenticWorkbenchPage() {
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="ghost" size="sm">
               <Link to="/audit/verify">Verify packet</Link>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCompareWithPrevious}
+              disabled={!selectedCase || !packetBase}
+            >
+              Compare with previous decision
             </Button>
             <Button variant="outline" size="sm" onClick={handleExportJson} disabled={!selectedCase}>
               Export JSON

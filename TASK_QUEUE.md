@@ -43,6 +43,11 @@
 
 ## Completed Tasks (Last 5)
 
+### T-011: Audit diff UX polish
+**Completed**: 2026-01-31
+**Commit**: (pending)
+**Summary**: Polished diff UI readability, deep-link navigation, and export metadata.
+
 ### T-010: Audit diff report
 **Completed**: 2026-01-31
 **Commit**: 481b4bc
@@ -62,11 +67,6 @@
 **Completed**: 2026-01-31
 **Commit**: (pending)
 **Summary**: Added verify shortcut and decision trace drawer with search and lazy payload expansion.
-
-### T-006: Audit verification + share links
-**Completed**: 2026-01-31
-**Commit**: (pending)
-**Summary**: Added audit verification route, local share links with packet storage, and audit analytics.
 
 ---
 
