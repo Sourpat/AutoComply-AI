@@ -36,6 +36,32 @@
 
 ## Decisions
 
+### [2026-01-31] Persist audit packets server-side with canonical hashing
+
+**Context**: Share links must work across devices and verification should be possible server-side.
+
+**Decision**: Add a thin audit packet persistence API with SQLite storage and server-side hash verification using the same canonicalization rules as the frontend.
+
+**Rationale**:
+- Enables cross-device sharing without changing agent contracts
+- Keeps persistence minimal and auditable
+- Ensures hash validation is consistent across FE/BE
+
+**Alternatives Considered**:
+- External storage service: Deferred
+- Embedding packet JSON in share URLs: Rejected (size/security)
+
+**Consequences**:
+- Positive: Server retrieval + verification available
+- Negative: Requires database storage
+- Neutral: Frontend keeps localStorage fast path
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-009
+- Area: audit persistence
+
 ### [2026-01-31] Normalize decision trace presentation in UI
 
 **Context**: Repeated plan snapshots made the decision trace look broken and noisy.

@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 
 import { EmptyState } from "../components/common/EmptyState";
@@ -6,7 +6,8 @@ import { PageHeader } from "../components/common/PageHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
-import { loadAuditPacket, type AuditPacket } from "../lib/agenticAudit";
+import { loadAuditPacket, saveAuditPacket, type AuditPacket } from "../lib/agenticAudit";
+import { fetchAuditPacketFromServer } from "../lib/auditServer";
 import { formatTimestamp } from "../lib/formatters";
 
 function useQuery() {
@@ -20,8 +21,41 @@ export function AuditPacketViewPage() {
   const caseId = query.get("caseId") ?? "";
   const decisionId = query.get("decisionId") ?? "";
 
+  const [packet, setPacket] = useState<AuditPacket | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
   const packetResult = useMemo(() => (hash ? loadAuditPacket(hash) : null), [hash]);
-  const fallbackPacket: AuditPacket | null = packetResult?.packet ?? null;
+
+  useEffect(() => {
+    if (!hash) return;
+    if (packetResult?.packet) {
+      setPacket(packetResult.packet);
+      return;
+    }
+    if (packetResult?.error) {
+      setError(packetResult.error);
+      return;
+    }
+    setLoading(true);
+    fetchAuditPacketFromServer(hash)
+      .then((result) => {
+        if (result.ok) {
+          setPacket(result.data);
+          const saveResult = saveAuditPacket(result.data, hash);
+          if (!saveResult.ok && saveResult.error) {
+            setError(saveResult.error);
+          }
+        } else {
+          if (result.status === 404) {
+            setError(null);
+          } else {
+            setError(result.message);
+          }
+        }
+      })
+      .finally(() => setLoading(false));
+  }, [hash, packetResult]);
 
   if (!hash) {
     return (
@@ -32,20 +66,29 @@ export function AuditPacketViewPage() {
     );
   }
 
-  if (packetResult?.error) {
+  if (error) {
     return (
       <EmptyState
         title="Local storage unavailable"
-        description={packetResult.error}
+        description={error}
       />
     );
   }
 
-  if (!fallbackPacket) {
+  if (loading) {
+    return (
+      <EmptyState
+        title="Loading audit packet"
+        description="Fetching packet from local storage or server."
+      />
+    );
+  }
+
+  if (!packet) {
     return (
       <EmptyState
         title="Packet not found on this device"
-        description="This share link points to a local packet that isn't stored in this browser."
+        description="Packet not found locally or on server."
       />
     );
   }
@@ -60,17 +103,17 @@ export function AuditPacketViewPage() {
       <Card>
         <CardContent className="space-y-4 p-6">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">Case {caseId || fallbackPacket.metadata.caseId}</Badge>
-            <Badge variant="secondary">Decision {decisionId || fallbackPacket.metadata.decisionId}</Badge>
+            <Badge variant="secondary">Case {caseId || packet.metadata.caseId}</Badge>
+            <Badge variant="secondary">Decision {decisionId || packet.metadata.decisionId}</Badge>
             <Badge variant="secondary">Hash {hash}</Badge>
           </div>
 
           <div className="space-y-2 text-xs">
-            <p className="text-muted-foreground">Generated {formatTimestamp(fallbackPacket.metadata.generatedAt)}</p>
-            <p className="text-muted-foreground">Status {fallbackPacket.decision.status}</p>
-            <p className="text-muted-foreground">Risk {fallbackPacket.decision.riskLevel ?? "unknown"}</p>
+            <p className="text-muted-foreground">Generated {formatTimestamp(packet.metadata.generatedAt)}</p>
+            <p className="text-muted-foreground">Status {packet.decision.status}</p>
+            <p className="text-muted-foreground">Risk {packet.decision.riskLevel ?? "unknown"}</p>
             <p className="text-muted-foreground">
-              Confidence {fallbackPacket.decision.confidence !== null ? Math.round(fallbackPacket.decision.confidence * 100) + "%" : "--"}
+              Confidence {packet.decision.confidence !== null ? Math.round(packet.decision.confidence * 100) + "%" : "--"}
             </p>
           </div>
         </CardContent>
@@ -80,7 +123,7 @@ export function AuditPacketViewPage() {
         <CardContent className="space-y-4 p-6">
           <h3 className="text-sm font-semibold text-foreground">Decision summary</h3>
           <p className="text-sm text-muted-foreground">
-            {fallbackPacket.explainability.summary ?? "No summary provided."}
+            {packet.explainability.summary ?? "No summary provided."}
           </p>
         </CardContent>
       </Card>
@@ -94,7 +137,7 @@ export function AuditPacketViewPage() {
             </Button>
           </div>
           <ul className="space-y-2 text-xs">
-            {fallbackPacket.timelineEvents.map((event) => (
+            {packet.timelineEvents.map((event) => (
               <li key={event.id} className="rounded-md border border-border/60 bg-background p-2">
                 <div className="flex items-center justify-between">
                   <span className="font-medium text-foreground">{event.type.replace(/_/g, " ")}</span>
@@ -112,11 +155,11 @@ export function AuditPacketViewPage() {
       <Card>
         <CardContent className="space-y-4 p-6">
           <h3 className="text-sm font-semibold text-foreground">Evidence index</h3>
-          {fallbackPacket.evidenceIndex.length === 0 ? (
+          {packet.evidenceIndex.length === 0 ? (
             <p className="text-xs text-muted-foreground">No evidence captured.</p>
           ) : (
             <ul className="space-y-2 text-xs">
-              {fallbackPacket.evidenceIndex.map((item) => (
+              {packet.evidenceIndex.map((item) => (
                 <li key={item.id} className="rounded-md border border-border/60 bg-background p-2">
                   <p className="font-medium text-foreground">{item.type.replace(/_/g, " ")}</p>
                   <p className="text-muted-foreground">{item.source}</p>
@@ -131,11 +174,11 @@ export function AuditPacketViewPage() {
       <Card>
         <CardContent className="space-y-4 p-6">
           <h3 className="text-sm font-semibold text-foreground">Human actions</h3>
-          {fallbackPacket.humanActions.events.length === 0 ? (
+          {packet.humanActions.events.length === 0 ? (
             <p className="text-xs text-muted-foreground">No human actions recorded.</p>
           ) : (
             <ul className="space-y-2 text-xs">
-              {fallbackPacket.humanActions.events.map((event) => (
+              {packet.humanActions.events.map((event) => (
                 <li key={event.id} className="rounded-md border border-border/60 bg-background p-2">
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-foreground">{event.type.replace(/_/g, " ")}</span>
@@ -151,7 +194,7 @@ export function AuditPacketViewPage() {
       <Card>
         <CardContent className="space-y-4 p-6">
           <h3 className="text-sm font-semibold text-foreground">Packet hash</h3>
-          <p className="text-xs text-muted-foreground">{fallbackPacket.packetHash ?? hash}</p>
+          <p className="text-xs text-muted-foreground">{packet.packetHash ?? hash}</p>
         </CardContent>
       </Card>
     </div>

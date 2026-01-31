@@ -43,6 +43,11 @@
 
 ## Completed Tasks (Last 5)
 
+### T-009: Audit packet persistence
+**Completed**: 2026-01-31
+**Commit**: (pending)
+**Summary**: Added audit packet storage endpoints, server verification, and frontend server fallback.
+
 ### T-008: Trace normalization UI
 **Completed**: 2026-01-31
 **Commit**: (pending)

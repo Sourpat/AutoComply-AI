@@ -41,6 +41,7 @@ import {
   type HumanActionEvent,
   toDecisionId,
 } from "../lib/agenticAudit";
+import { saveAuditPacketToServer } from "../lib/auditServer";
 import { formatTimestamp } from "../lib/formatters";
 import { cn } from "../lib/utils";
 
@@ -459,6 +460,12 @@ export function AgenticWorkbenchPage() {
     if (!saveResult.ok && saveResult.error) {
       toast.error(`Local storage error: ${saveResult.error}`);
     }
+    const serverResult = await saveAuditPacketToServer(packet);
+    if (serverResult.ok) {
+      toast.success("Saved to server");
+    } else {
+      toast.error(`Saved locally, server save failed: ${serverResult.message}`);
+    }
     const blob = new Blob([JSON.stringify(packet, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -492,6 +499,12 @@ export function AgenticWorkbenchPage() {
     const saveResult = saveAuditPacket(packet, hash);
     if (!saveResult.ok && saveResult.error) {
       toast.error(`Local storage error: ${saveResult.error}`);
+    }
+    const serverResult = await saveAuditPacketToServer(packet);
+    if (serverResult.ok) {
+      toast.success("Saved to server");
+    } else {
+      toast.error(`Saved locally, server save failed: ${serverResult.message}`);
     }
     const pdfBytes = await buildAuditPdf(packet, hash);
     const blob = new Blob([pdfBytes], { type: "application/pdf" });
@@ -528,6 +541,12 @@ export function AgenticWorkbenchPage() {
     if (!saveResult.ok && saveResult.error) {
       toast.error(`Local storage error: ${saveResult.error}`);
       return;
+    }
+    const serverResult = await saveAuditPacketToServer(packet);
+    if (serverResult.ok) {
+      toast.success("Saved to server");
+    } else {
+      toast.error(`Saved locally, server save failed: ${serverResult.message}`);
     }
     const url = new URL(window.location.origin);
     url.pathname = "/audit/view";

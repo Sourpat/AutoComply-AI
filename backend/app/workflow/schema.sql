@@ -148,6 +148,24 @@ CREATE INDEX IF NOT EXISTS idx_agentic_events_case_id ON agentic_case_events(cas
 CREATE INDEX IF NOT EXISTS idx_agentic_events_timestamp ON agentic_case_events(timestamp);
 
 -- ============================================================================
+-- Audit Packets (Cross-device Sharing)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS audit_packets (
+    packet_hash TEXT PRIMARY KEY NOT NULL,
+    case_id TEXT NOT NULL,
+    decision_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    packet_version TEXT NOT NULL DEFAULT 'v1',
+    packet_json TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_packets_case_id ON audit_packets(case_id);
+CREATE INDEX IF NOT EXISTS idx_audit_packets_decision_id ON audit_packets(decision_id);
+CREATE INDEX IF NOT EXISTS idx_audit_packets_created_at ON audit_packets(created_at);
+
+-- ============================================================================
 -- Attachments Table (Phase 6.1)
 -- ============================================================================
 

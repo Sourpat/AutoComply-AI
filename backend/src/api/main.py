@@ -49,6 +49,7 @@ from src.api.routes import kb_admin
 from src.api.routes import demo
 from src.api.routes import ops
 from src.api.routes import agentic
+from src.api.routes import audit_packets
 
 # Phase 8.1: Distributed Traces API
 from src.api.routes import traces
@@ -240,6 +241,7 @@ app.include_router(kb_admin.router)
 app.include_router(demo.router)
 app.include_router(ops.router)
 app.include_router(agentic.router)
+app.include_router(audit_packets.router)
 
 # Workflow Console - Step 2.10
 app.include_router(workflow_router)

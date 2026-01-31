@@ -8,12 +8,14 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { computePacketHash, type AuditPacket } from "../lib/agenticAudit";
+import { verifyAuditPacketOnServer } from "../lib/auditServer";
 
 export function AuditVerifyPage() {
   const [input, setInput] = useState("");
   const [parsed, setParsed] = useState<AuditPacket | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [computedHash, setComputedHash] = useState<string | null>(null);
+  const [serverResult, setServerResult] = useState<{ claimed?: string; computed?: string; match?: boolean } | null>(null);
 
   const claimedHash = parsed?.packetHash ?? null;
   const verificationState = useMemo(() => {
@@ -25,6 +27,7 @@ export function AuditVerifyPage() {
     setError(null);
     setComputedHash(null);
     setParsed(null);
+    setServerResult(null);
 
     try {
       const parsedJson = JSON.parse(input) as AuditPacket;
@@ -35,6 +38,20 @@ export function AuditVerifyPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invalid JSON payload");
     }
+  };
+
+  const handleServerVerify = async () => {
+    if (!parsed) {
+      toast.error("Paste and verify JSON first");
+      return;
+    }
+    const response = await verifyAuditPacketOnServer(parsed);
+    if (!response.ok) {
+      toast.error(response.message ?? "Server verification failed");
+      return;
+    }
+    setServerResult(response.data as { claimed?: string; computed?: string; match?: boolean });
+    toast.success("Server verification complete");
   };
 
   return (
@@ -58,9 +75,14 @@ export function AuditVerifyPage() {
               aria-label="Audit packet JSON input"
             />
           </div>
-          <Button onClick={handleVerify} disabled={!input.trim()}>
-            Verify packet
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={handleVerify} disabled={!input.trim()}>
+              Verify packet
+            </Button>
+            <Button variant="outline" onClick={handleServerVerify} disabled={!parsed}>
+              Verify via server
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -96,6 +118,20 @@ export function AuditVerifyPage() {
               <p className="text-muted-foreground">Computed SHA-256</p>
               <p className="mt-1 break-all text-foreground">{computedHash ?? "--"}</p>
             </div>
+            {serverResult && (
+              <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-xs">
+                <p className="text-muted-foreground">Server verification</p>
+                <p className="mt-1 text-foreground">
+                  {serverResult.match ? "PASS" : "FAIL"}
+                </p>
+                <p className="mt-2 break-all text-muted-foreground">
+                  Claimed: {serverResult.claimed ?? "--"}
+                </p>
+                <p className="mt-1 break-all text-muted-foreground">
+                  Computed: {serverResult.computed ?? "--"}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
