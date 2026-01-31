@@ -31,7 +31,6 @@ import {
   buildAuditPdf,
   computePacketHash,
   getHumanEvents,
-  loadAuditPacket,
   saveAuditPacket,
   type EvidenceItem,
   type EvidenceState,
@@ -250,7 +249,11 @@ export function AgenticWorkbenchPage() {
     const raw = localStorage.getItem(`agentic:evidence:${caseId}`);
     const notes = localStorage.getItem(`agentic:audit-notes:${caseId}`) ?? "";
     setAuditNotes(notes);
-    setHumanEvents(getHumanEvents(caseId));
+    const humanResult = getHumanEvents(caseId);
+    setHumanEvents(humanResult.events);
+    if (humanResult.error) {
+      toast.error(`Human actions unavailable: ${humanResult.error}`);
+    }
 
     if (!raw) {
       setEvidenceState({});
@@ -288,13 +291,18 @@ export function AgenticWorkbenchPage() {
 
   const commitEvidenceNote = (evidenceId: string, note: string) => {
     if (!caseId || !note.trim()) return;
-    const event = appendHumanEvent(caseId, {
+    const result = appendHumanEvent(caseId, {
       caseId,
       type: "NOTE_ADDED",
       actor: "verifier",
       payload: { evidenceId, note },
     });
-    setHumanEvents((prev) => [...prev, event]);
+    if (result.event) {
+      setHumanEvents((prev) => [...prev, result.event]);
+    }
+    if (result.error) {
+      toast.error(`Unable to log note: ${result.error}`);
+    }
   };
 
   const toggleEvidenceReviewed = (evidenceId: string) => {
@@ -307,13 +315,18 @@ export function AgenticWorkbenchPage() {
     };
     persistEvidenceState(next);
     if (caseId) {
-      const event = appendHumanEvent(caseId, {
+      const result = appendHumanEvent(caseId, {
         caseId,
         type: "EVIDENCE_REVIEWED",
         actor: "verifier",
         payload: { evidenceId, reviewed: next[evidenceId]?.reviewed },
       });
-      setHumanEvents((prev) => [...prev, event]);
+      if (result.event) {
+        setHumanEvents((prev) => [...prev, result.event]);
+      }
+      if (result.error) {
+        toast.error(`Unable to log review: ${result.error}`);
+      }
     }
   };
 
@@ -437,7 +450,10 @@ export function AgenticWorkbenchPage() {
     if (!selectedCase || !packetBase) return;
     const hash = packetHash ?? (await computePacketHash(packetBase));
     const packet = { ...packetBase, packetHash: hash };
-    saveAuditPacket(packet, hash);
+    const saveResult = saveAuditPacket(packet, hash);
+    if (!saveResult.ok && saveResult.error) {
+      toast.error(`Local storage error: ${saveResult.error}`);
+    }
     const blob = new Blob([JSON.stringify(packet, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -448,13 +464,18 @@ export function AgenticWorkbenchPage() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     if (caseId) {
-      const event = appendHumanEvent(caseId, {
+      const result = appendHumanEvent(caseId, {
         caseId,
         type: "EXPORT_JSON",
         actor: "verifier",
         payload: { fileName: buildAuditFileName(selectedCase.submission_id) },
       });
-      setHumanEvents((prev) => [...prev, event]);
+      if (result.event) {
+        setHumanEvents((prev) => [...prev, result.event]);
+      }
+      if (result.error) {
+        toast.error(`Unable to log export: ${result.error}`);
+      }
     }
     toast.success("Audit packet exported");
   };
@@ -463,7 +484,10 @@ export function AgenticWorkbenchPage() {
     if (!selectedCase || !packetBase) return;
     const hash = packetHash ?? (await computePacketHash(packetBase));
     const packet = { ...packetBase, packetHash: hash };
-    saveAuditPacket(packet, hash);
+    const saveResult = saveAuditPacket(packet, hash);
+    if (!saveResult.ok && saveResult.error) {
+      toast.error(`Local storage error: ${saveResult.error}`);
+    }
     const pdfBytes = await buildAuditPdf(packet, hash);
     const blob = new Blob([pdfBytes], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
@@ -475,13 +499,18 @@ export function AgenticWorkbenchPage() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     if (caseId) {
-      const event = appendHumanEvent(caseId, {
+      const result = appendHumanEvent(caseId, {
         caseId,
         type: "EXPORT_PDF",
         actor: "verifier",
         payload: { fileName: buildAuditFileName(selectedCase.submission_id).replace(".json", ".pdf") },
       });
-      setHumanEvents((prev) => [...prev, event]);
+      if (result.event) {
+        setHumanEvents((prev) => [...prev, result.event]);
+      }
+      if (result.error) {
+        toast.error(`Unable to log export: ${result.error}`);
+      }
     }
     toast.success("Audit packet PDF exported");
   };
@@ -490,7 +519,11 @@ export function AgenticWorkbenchPage() {
     if (!selectedCase || !packetBase) return;
     const hash = packetHash ?? (await computePacketHash(packetBase));
     const packet = { ...packetBase, packetHash: hash };
-    saveAuditPacket(packet, hash);
+    const saveResult = saveAuditPacket(packet, hash);
+    if (!saveResult.ok && saveResult.error) {
+      toast.error(`Local storage error: ${saveResult.error}`);
+      return;
+    }
     const url = new URL(window.location.origin);
     url.pathname = "/audit/view";
     url.searchParams.set("hash", hash);
@@ -508,13 +541,18 @@ export function AgenticWorkbenchPage() {
     if (!caseId) return;
     localStorage.setItem(`agentic:audit-notes:${caseId}`, auditNotes);
     if (auditNotes.trim()) {
-      const event = appendHumanEvent(caseId, {
+      const result = appendHumanEvent(caseId, {
         caseId,
         type: "NOTE_ADDED",
         actor: "verifier",
         payload: { note: auditNotes },
       });
-      setHumanEvents((prev) => [...prev, event]);
+      if (result.event) {
+        setHumanEvents((prev) => [...prev, result.event]);
+      }
+      if (result.error) {
+        toast.error(`Unable to log note: ${result.error}`);
+      }
     }
     toast.success("Audit notes saved");
   };

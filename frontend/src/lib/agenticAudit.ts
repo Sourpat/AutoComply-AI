@@ -159,26 +159,36 @@ export function buildAuditPacket(params: {
   };
 }
 
-export function getHumanEvents(caseId: string): HumanActionEvent[] {
-  const raw = localStorage.getItem(`agentic:human-events:${caseId}`);
-  if (!raw) return [];
+export function getHumanEvents(caseId: string) {
   try {
-    return JSON.parse(raw) as HumanActionEvent[];
-  } catch {
-    return [];
+    const raw = localStorage.getItem(`agentic:human-events:${caseId}`);
+    if (!raw) return { events: [] as HumanActionEvent[], error: null as string | null };
+    return { events: JSON.parse(raw) as HumanActionEvent[], error: null as string | null };
+  } catch (error) {
+    return {
+      events: [] as HumanActionEvent[],
+      error: error instanceof Error ? error.message : "Local storage unavailable",
+    };
   }
 }
 
 export function appendHumanEvent(caseId: string, event: Omit<HumanActionEvent, "id" | "timestamp">) {
-  const existing = getHumanEvents(caseId);
-  const nextEvent: HumanActionEvent = {
-    id: crypto.randomUUID(),
-    timestamp: new Date().toISOString(),
-    ...event,
-  };
-  const updated = [...existing, nextEvent];
-  localStorage.setItem(`agentic:human-events:${caseId}`, JSON.stringify(updated));
-  return nextEvent;
+  try {
+    const existing = getHumanEvents(caseId).events;
+    const nextEvent: HumanActionEvent = {
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      ...event,
+    };
+    const updated = [...existing, nextEvent];
+    localStorage.setItem(`agentic:human-events:${caseId}`, JSON.stringify(updated));
+    return { event: nextEvent, error: null as string | null };
+  } catch (error) {
+    return {
+      event: null,
+      error: error instanceof Error ? error.message : "Unable to write to local storage",
+    };
+  }
 }
 
 export function stableStringify(input: unknown): string {
@@ -215,16 +225,27 @@ export async function computePacketHash(packet: AuditPacket) {
 }
 
 export function saveAuditPacket(packet: AuditPacket, hash: string) {
-  localStorage.setItem(`agentic:audit-packet:${hash}`, JSON.stringify(packet));
+  try {
+    localStorage.setItem(`agentic:audit-packet:${hash}`, JSON.stringify(packet));
+    return { ok: true, error: null as string | null };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Unable to write to local storage",
+    };
+  }
 }
 
-export function loadAuditPacket(hash: string): AuditPacket | null {
-  const raw = localStorage.getItem(`agentic:audit-packet:${hash}`);
-  if (!raw) return null;
+export function loadAuditPacket(hash: string) {
   try {
-    return JSON.parse(raw) as AuditPacket;
-  } catch {
-    return null;
+    const raw = localStorage.getItem(`agentic:audit-packet:${hash}`);
+    if (!raw) return { packet: null as AuditPacket | null, error: null as string | null };
+    return { packet: JSON.parse(raw) as AuditPacket, error: null as string | null };
+  } catch (error) {
+    return {
+      packet: null as AuditPacket | null,
+      error: error instanceof Error ? error.message : "Local storage unavailable",
+    };
   }
 }
 

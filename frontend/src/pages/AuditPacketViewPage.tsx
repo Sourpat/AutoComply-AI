@@ -20,14 +20,23 @@ export function AuditPacketViewPage() {
   const caseId = query.get("caseId") ?? "";
   const decisionId = query.get("decisionId") ?? "";
 
-  const packet = useMemo(() => (hash ? loadAuditPacket(hash) : null), [hash]);
-  const fallbackPacket: AuditPacket | null = packet;
+  const packetResult = useMemo(() => (hash ? loadAuditPacket(hash) : null), [hash]);
+  const fallbackPacket: AuditPacket | null = packetResult?.packet ?? null;
 
   if (!hash) {
     return (
       <EmptyState
         title="Missing audit packet hash"
         description="Provide a valid hash in the URL to view the packet."
+      />
+    );
+  }
+
+  if (packetResult?.error) {
+    return (
+      <EmptyState
+        title="Local storage unavailable"
+        description={packetResult.error}
       />
     );
   }
