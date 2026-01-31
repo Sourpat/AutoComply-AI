@@ -36,6 +36,32 @@
 
 ## Decisions
 
+### [2026-01-31] Add audit diff report with deterministic matching
+
+**Context**: Reviewers need to compare two audit packets to understand what changed between decisions for the same case.
+
+**Decision**: Introduce a structured audit diff with deterministic signatures (evidence and human actions) plus a diff hash for exports. The UI computes the diff and exports JSON; backend optionally exposes diff/meta endpoints.
+
+**Rationale**:
+- Provides audit-grade comparison without redesigning the workbench
+- Keeps deterministic matching stable across devices
+- Enables future server-side diff without changing the FE structure
+
+**Alternatives Considered**:
+- Ad hoc UI comparison: Rejected (no deterministic structure)
+- Full server-only diff: Deferred (FE-only works offline)
+
+**Consequences**:
+- Positive: Reviewers see deltas clearly and can export diff artifacts
+- Negative: Additional computation on the client
+- Neutral: Existing audit packet contracts unchanged
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-010
+- Area: audit diff
+
 ### [2026-01-31] Persist verifier actions as append-only audit events
 
 **Context**: Human actions must be traceable and replayable across devices.
