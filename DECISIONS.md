@@ -36,6 +36,31 @@
 
 ## Decisions
 
+### [2026-01-31] Restore theme tokens and dark contrast baseline
+
+**Context**: The workbench UI rendered washed out in dark mode due to global light theme overrides and missing token definitions.
+
+**Decision**: Reintroduce shadcn-style CSS variables for background/foreground/muted tokens, enable Tailwind color mappings, and align global styles with theme tokens.
+
+**Rationale**:
+- Ensures consistent dark-mode contrast across pages
+- Lets shared UI primitives render with intended token colors
+- Eliminates light-theme input overrides that broke dark mode
+
+**Alternatives Considered**:
+- Ad hoc per-page text color overrides: Rejected (inconsistent)
+- Hardcoding dark colors in Layout: Rejected (breaks light mode)
+
+**Consequences**:
+- Positive: Stable contrast for workbench and shared UI
+- Negative: Requires maintaining token definitions
+- Neutral: No backend changes
+
+**Status**: Accepted
+
+**Related**:
+- Area: theming
+
 ### [2026-01-31] Polish audit diff UX for executive readability
 
 **Context**: Command 11 requires the audit diff experience to be demo-grade, readable, and executive-friendly without adding backend features.
