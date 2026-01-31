@@ -43,6 +43,11 @@
 
 ## Completed Tasks (Last 5)
 
+### T-007: Audit panel trace UX polish
+**Completed**: 2026-01-31
+**Commit**: (pending)
+**Summary**: Added verify shortcut and decision trace drawer with search and lazy payload expansion.
+
 ### T-006: Audit verification + share links
 **Completed**: 2026-01-31
 **Commit**: (pending)

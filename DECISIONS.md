@@ -36,6 +36,32 @@
 
 ## Decisions
 
+### [2026-01-31] Use decision trace drawer for audit panel clarity
+
+**Context**: The audit panel decision trace list was cramped and difficult to scan.
+
+**Decision**: Show a compact top-3 trace preview in the audit panel and expose a full-width decision trace drawer with search, filtering, and lazy payload expansion.
+
+**Rationale**:
+- Improves readability without redesigning layout
+- Preserves access to full trace details
+- Keeps heavy JSON rendering out of the right panel
+
+**Alternatives Considered**:
+- Inline full trace list: Rejected (space constraints)
+- Separate page: Rejected (navigation overhead)
+
+**Consequences**:
+- Positive: Cleaner audit panel and richer trace view
+- Negative: Additional modal interaction
+- Neutral: No backend changes
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-007
+- Area: audit UX
+
 ### [2026-01-31] Add audit packet verification + local share links
 
 **Context**: Verifiers need to validate packet integrity and share audit packets without backend persistence.

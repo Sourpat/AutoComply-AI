@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 import { getWorkQueue, type WorkQueueSubmission } from "../api/consoleClient";
+import { DecisionTraceDrawer } from "../components/audit/DecisionTraceDrawer";
 import { AgentActionPanel } from "../components/agentic/AgentActionPanel";
 import { AgentEventTimeline } from "../components/agentic/AgentEventTimeline";
 import { EmptyState } from "../components/common/EmptyState";
@@ -181,6 +183,7 @@ export function AgenticWorkbenchPage() {
   const [evidenceState, setEvidenceState] = useState<EvidenceState>({});
   const [auditNotes, setAuditNotes] = useState("");
   const [auditOpen, setAuditOpen] = useState(false);
+  const [traceOpen, setTraceOpen] = useState(false);
   const [humanEvents, setHumanEvents] = useState<HumanActionEvent[]>([]);
   const [packetHash, setPacketHash] = useState<string | null>(null);
   const [visibleEvidenceCount, setVisibleEvidenceCount] = useState(50);
@@ -596,6 +599,9 @@ export function AgenticWorkbenchPage() {
             <p className="text-xs text-muted-foreground">Verifier-grade traceability bundle.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/audit/verify">Verify packet</Link>
+            </Button>
             <Button variant="outline" size="sm" onClick={handleExportJson} disabled={!selectedCase}>
               Export JSON
             </Button>
@@ -714,27 +720,26 @@ export function AgenticWorkbenchPage() {
             <p className="text-xs text-muted-foreground">No decision steps recorded yet.</p>
           )}
           {events.length > 0 && (
-            <ul className="space-y-2 text-xs">
-              {events.map((event) => (
-                <li key={event.id} className="rounded-md border border-border/60 bg-background p-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-foreground">{event.type.replace(/_/g, " ")}</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => copyId(event.id)}
-                      aria-label="Copy event ID"
-                    >
-                      Copy ID
-                    </Button>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">{formatTimestamp(event.timestamp)}</p>
-                  <p className="mt-1 text-xs text-muted-foreground break-words">
-                    {JSON.stringify(event.payload).slice(0, 140)}
-                  </p>
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-3">
+              <ul className="space-y-2 text-xs">
+                {events.slice(0, 3).map((event) => (
+                  <li key={event.id} className="rounded-md border border-border/60 bg-background p-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-foreground">{event.type.replace(/_/g, " ")}</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {formatTimestamp(event.timestamp)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground break-words">
+                      {JSON.stringify(event.payload).slice(0, 120)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+              <Button variant="outline" size="sm" onClick={() => setTraceOpen(true)}>
+                View full trace
+              </Button>
+            </div>
           )}
         </div>
 
@@ -836,6 +841,8 @@ export function AgenticWorkbenchPage() {
           {renderAuditPanel()}
         </DialogContent>
       </Dialog>
+
+      <DecisionTraceDrawer open={traceOpen} onOpenChange={setTraceOpen} events={events} />
 
       <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)_360px]">
         <Card className="h-full">
