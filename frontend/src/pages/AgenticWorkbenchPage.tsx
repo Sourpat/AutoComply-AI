@@ -25,10 +25,15 @@ import type { CaseEvent } from "../contracts/agentic";
 import { useAgentPlan } from "../hooks/useAgentPlan";
 import { API_BASE } from "../lib/api";
 import {
+  appendHumanEvent,
   buildAuditFileName,
   buildAuditPacket,
+  buildAuditPdf,
+  computePacketHash,
+  getHumanEvents,
   type EvidenceItem,
   type EvidenceState,
+  type HumanActionEvent,
   toDecisionId,
 } from "../lib/agenticAudit";
 import { formatTimestamp } from "../lib/formatters";
@@ -175,6 +180,10 @@ export function AgenticWorkbenchPage() {
   const [evidenceState, setEvidenceState] = useState<EvidenceState>({});
   const [auditNotes, setAuditNotes] = useState("");
   const [auditOpen, setAuditOpen] = useState(false);
+  const [humanEvents, setHumanEvents] = useState<HumanActionEvent[]>([]);
+  const [packetHash, setPacketHash] = useState<string | null>(null);
+  const [visibleEvidenceCount, setVisibleEvidenceCount] = useState(50);
+  const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
 
   const caseId = selectedCaseId ?? "";
   const { plan, loading: planLoading, error: planError, refresh } = useAgentPlan(caseId);
@@ -239,6 +248,7 @@ export function AgenticWorkbenchPage() {
     const raw = localStorage.getItem(`agentic:evidence:${caseId}`);
     const notes = localStorage.getItem(`agentic:audit-notes:${caseId}`) ?? "";
     setAuditNotes(notes);
+    setHumanEvents(getHumanEvents(caseId));
 
     if (!raw) {
       setEvidenceState({});
@@ -249,6 +259,11 @@ export function AgenticWorkbenchPage() {
     } catch {
       setEvidenceState({});
     }
+  }, [caseId]);
+
+  useEffect(() => {
+    setVisibleEvidenceCount(50);
+    setExpandedEvidence({});
   }, [caseId]);
 
   const persistEvidenceState = (next: EvidenceState) => {
@@ -269,6 +284,17 @@ export function AgenticWorkbenchPage() {
     persistEvidenceState(next);
   };
 
+  const commitEvidenceNote = (evidenceId: string, note: string) => {
+    if (!caseId || !note.trim()) return;
+    const event = appendHumanEvent(caseId, {
+      caseId,
+      type: "NOTE_ADDED",
+      actor: "verifier",
+      payload: { evidenceId, note },
+    });
+    setHumanEvents((prev) => [...prev, event]);
+  };
+
   const toggleEvidenceReviewed = (evidenceId: string) => {
     const next = {
       ...evidenceState,
@@ -278,6 +304,15 @@ export function AgenticWorkbenchPage() {
       },
     };
     persistEvidenceState(next);
+    if (caseId) {
+      const event = appendHumanEvent(caseId, {
+        caseId,
+        type: "EVIDENCE_REVIEWED",
+        actor: "verifier",
+        payload: { evidenceId, reviewed: next[evidenceId]?.reviewed },
+      });
+      setHumanEvents((prev) => [...prev, event]);
+    }
   };
 
   const evidenceItems = useMemo(() => {
@@ -285,6 +320,13 @@ export function AgenticWorkbenchPage() {
     const submissionEvidence = buildEvidenceFromSubmission(selectedCase);
     return [...eventEvidence, ...submissionEvidence];
   }, [events, selectedCase]);
+
+  const visibleEvidenceItems = useMemo(() => {
+    if (evidenceItems.length > 200) {
+      return evidenceItems.slice(0, visibleEvidenceCount);
+    }
+    return evidenceItems;
+  }, [evidenceItems, visibleEvidenceCount]);
 
   const filteredCases = useMemo(() => {
     let filtered = [...cases];
@@ -355,16 +397,44 @@ export function AgenticWorkbenchPage() {
 
   const decisionId = selectedCase ? toDecisionId(selectedCase.submission_id, selectedCase.updated_at) : "";
 
-  const handleExportJson = () => {
-    if (!selectedCase) return;
-    const packet = buildAuditPacket({
+  const packetBase = useMemo(() => {
+    if (!selectedCase) return null;
+    return buildAuditPacket({
       caseItem: selectedCase,
       plan,
       events,
       evidenceItems,
       evidenceState,
       auditNotes,
+      humanEvents,
+      packetHash: undefined,
     });
+  }, [auditNotes, evidenceItems, evidenceState, events, humanEvents, plan, selectedCase]);
+
+  useEffect(() => {
+    let active = true;
+    if (!packetBase) {
+      setPacketHash(null);
+      return () => {
+        active = false;
+      };
+    }
+    computePacketHash(packetBase)
+      .then((hash) => {
+        if (active) setPacketHash(hash);
+      })
+      .catch(() => {
+        if (active) setPacketHash(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [packetBase]);
+
+  const handleExportJson = async () => {
+    if (!selectedCase || !packetBase) return;
+    const hash = packetHash ?? (await computePacketHash(packetBase));
+    const packet = { ...packetBase, packetHash: hash };
     const blob = new Blob([JSON.stringify(packet, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -374,12 +444,56 @@ export function AgenticWorkbenchPage() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    if (caseId) {
+      const event = appendHumanEvent(caseId, {
+        caseId,
+        type: "EXPORT_JSON",
+        actor: "verifier",
+        payload: { fileName: buildAuditFileName(selectedCase.submission_id) },
+      });
+      setHumanEvents((prev) => [...prev, event]);
+    }
     toast.success("Audit packet exported");
+  };
+
+  const handleExportPdf = async () => {
+    if (!selectedCase || !packetBase) return;
+    const hash = packetHash ?? (await computePacketHash(packetBase));
+    const packet = { ...packetBase, packetHash: hash };
+    const pdfBytes = await buildAuditPdf(packet, hash);
+    const blob = new Blob([pdfBytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = buildAuditFileName(selectedCase.submission_id).replace(".json", ".pdf");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    if (caseId) {
+      const event = appendHumanEvent(caseId, {
+        caseId,
+        type: "EXPORT_PDF",
+        actor: "verifier",
+        payload: { fileName: buildAuditFileName(selectedCase.submission_id).replace(".json", ".pdf") },
+      });
+      setHumanEvents((prev) => [...prev, event]);
+    }
+    toast.success("Audit packet PDF exported");
   };
 
   const saveAuditNotes = () => {
     if (!caseId) return;
     localStorage.setItem(`agentic:audit-notes:${caseId}`, auditNotes);
+    if (auditNotes.trim()) {
+      const event = appendHumanEvent(caseId, {
+        caseId,
+        type: "NOTE_ADDED",
+        actor: "verifier",
+        payload: { note: auditNotes },
+      });
+      setHumanEvents((prev) => [...prev, event]);
+    }
     toast.success("Audit notes saved");
   };
 
@@ -431,6 +545,22 @@ export function AgenticWorkbenchPage() {
             </Button>
           </div>
           <p className="mt-1 text-foreground break-all">{caseId || "--"}</p>
+        </div>
+
+        <div className="rounded-lg border border-border/70 bg-background p-3 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Packet Hash (SHA-256)</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => copyId(packetHash ?? "")}
+              aria-label="Copy packet hash"
+              disabled={!packetHash}
+            >
+              Copy
+            </Button>
+          </div>
+          <p className="mt-1 break-all text-foreground">{packetHash ?? "--"}</p>
         </div>
 
         <div className="space-y-2">
@@ -519,6 +649,30 @@ export function AgenticWorkbenchPage() {
           <Button variant="outline" size="sm" onClick={saveAuditNotes}>
             Save notes
           </Button>
+          <div className="space-y-2 text-xs">
+            {humanEvents.length === 0 ? (
+              <p className="text-muted-foreground">No human actions logged.</p>
+            ) : (
+              <ul className="space-y-2">
+                {humanEvents.map((event) => (
+                  <li key={event.id} className="rounded-md border border-border/60 bg-background p-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-foreground">{event.type.replace(/_/g, " ")}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyId(event.id)}
+                        aria-label="Copy human action ID"
+                      >
+                        Copy ID
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">{formatTimestamp(event.timestamp)}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -527,7 +681,7 @@ export function AgenticWorkbenchPage() {
             <Button variant="default" size="sm" onClick={handleExportJson} disabled={!selectedCase}>
               Export JSON
             </Button>
-            <Button variant="outline" size="sm" disabled title="PDF export coming next">
+            <Button variant="outline" size="sm" onClick={handleExportPdf} disabled={!selectedCase}>
               Export PDF
             </Button>
           </div>
@@ -756,7 +910,20 @@ export function AgenticWorkbenchPage() {
                     <ErrorState title="Timeline error" description={eventsError} onRetry={loadEvents} />
                   )}
                   {eventsLoading && <Skeleton className="h-40 w-full" />}
-                  <AgentEventTimeline caseId={caseId} />
+                  <AgentEventTimeline
+                    caseId={caseId}
+                    extraEvents={humanEvents.map((event) => ({
+                      id: event.id,
+                      caseId: event.caseId,
+                      timestamp: event.timestamp,
+                      type: "action",
+                      payload: {
+                        actor: event.actor,
+                        type: event.type,
+                        ...event.payload,
+                      },
+                    }))}
+                  />
                 </TabsContent>
 
                 <TabsContent value="evidence" className="space-y-4">
@@ -769,8 +936,9 @@ export function AgenticWorkbenchPage() {
                   )}
                   {!eventsLoading && evidenceItems.length > 0 && (
                     <div className="space-y-3">
-                      {evidenceItems.map((item) => {
+                      {visibleEvidenceItems.map((item) => {
                         const state = evidenceState[item.id];
+                        const isExpanded = expandedEvidence[item.id];
                         return (
                           <Card key={item.id}>
                             <CardContent className="space-y-3 p-4">
@@ -797,14 +965,32 @@ export function AgenticWorkbenchPage() {
                               <p className="text-xs text-muted-foreground">
                                 {formatTimestamp(item.timestamp)}
                               </p>
-                              <details className="rounded-md border border-border/70 bg-muted/20 p-3">
-                                <summary className="cursor-pointer text-xs font-medium text-foreground">
-                                  View details
-                                </summary>
-                                <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
-                                  {JSON.stringify(item.details, null, 2)}
-                                </pre>
-                              </details>
+                              <div className="rounded-md border border-border/70 bg-muted/20 p-3">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-xs font-medium text-foreground">Evidence details</p>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() =>
+                                      setExpandedEvidence((prev) => ({
+                                        ...prev,
+                                        [item.id]: !prev[item.id],
+                                      }))
+                                    }
+                                  >
+                                    {isExpanded ? "Hide" : "Show"}
+                                  </Button>
+                                </div>
+                                {isExpanded ? (
+                                  <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                                    {JSON.stringify(item.details, null, 2)}
+                                  </pre>
+                                ) : (
+                                  <p className="mt-2 text-xs text-muted-foreground">
+                                    {typeof item.details === "string" ? item.details.slice(0, 120) : "Expand to view details"}
+                                  </p>
+                                )}
+                              </div>
                               <div className="space-y-2">
                                 <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                                   Add note
@@ -812,6 +998,7 @@ export function AgenticWorkbenchPage() {
                                 <textarea
                                   value={state?.note ?? ""}
                                   onChange={(event) => updateEvidenceNote(item.id, event.target.value)}
+                                  onBlur={(event) => commitEvidenceNote(item.id, event.target.value)}
                                   placeholder="Add verifier note"
                                   className="min-h-[72px] w-full rounded-md border border-border/70 bg-background px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
                                 />
@@ -820,6 +1007,17 @@ export function AgenticWorkbenchPage() {
                           </Card>
                         );
                       })}
+                      {evidenceItems.length > 200 && visibleEvidenceItems.length < evidenceItems.length && (
+                        <div className="flex justify-center">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setVisibleEvidenceCount((prev) => prev + 50)}
+                          >
+                            Load more evidence
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </TabsContent>

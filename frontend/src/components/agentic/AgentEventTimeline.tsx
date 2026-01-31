@@ -14,17 +14,29 @@ const eventTone: Record<string, "secondary" | "info" | "warning" | "success" | "
   status_change: "success",
 };
 
-export function AgentEventTimeline({ caseId }: { caseId: string }) {
+type AgentEventTimelineProps = {
+  caseId: string;
+  extraEvents?: CaseEvent[];
+};
+
+export function AgentEventTimeline({ caseId, extraEvents = [] }: AgentEventTimelineProps) {
   const [events, setEvents] = useState<CaseEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"all" | "agent" | "user" | "review">("all");
+  const [filter, setFilter] = useState<"all" | "agent" | "user" | "review" | "human">("all");
   const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
+  const [visibleCount, setVisibleCount] = useState(50);
+
+  const combinedEvents = useMemo(() => {
+    const merged = [...events, ...extraEvents];
+    return merged.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }, [events, extraEvents]);
 
   const filteredEvents = useMemo(() => {
     const classify = (event: CaseEvent) => {
       if (event.type === "user_input") return "user";
       if (event.type === "action") {
+        if (event.payload?.actor === "verifier") return "human";
         const actionId = String(event.payload?.actionId ?? "").toLowerCase();
         if (actionId.includes("review")) return "review";
         return "agent";
@@ -32,8 +44,15 @@ export function AgentEventTimeline({ caseId }: { caseId: string }) {
       return "agent";
     };
 
-    return events.filter((event) => (filter === "all" ? true : classify(event) === filter));
-  }, [events, filter]);
+    return combinedEvents.filter((event) => (filter === "all" ? true : classify(event) === filter));
+  }, [combinedEvents, filter]);
+
+  const visibleEvents = useMemo(() => {
+    if (filteredEvents.length > 200) {
+      return filteredEvents.slice(0, visibleCount);
+    }
+    return filteredEvents;
+  }, [filteredEvents, visibleCount]);
 
   const groupedEvents = useMemo(() => {
     const groups: { label: string; items: CaseEvent[] }[] = [];
@@ -48,7 +67,7 @@ export function AgentEventTimeline({ caseId }: { caseId: string }) {
       return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
     };
 
-    filteredEvents.forEach((event) => {
+    visibleEvents.forEach((event) => {
       const label = getLabel(event.timestamp);
       const lastGroup = groups[groups.length - 1];
       if (!lastGroup || lastGroup.label !== label) {
@@ -58,9 +77,10 @@ export function AgentEventTimeline({ caseId }: { caseId: string }) {
       }
     });
     return groups;
-  }, [filteredEvents]);
+  }, [visibleEvents]);
 
   const getEventIcon = (event: CaseEvent) => {
+    if (event.payload?.actor === "verifier") return "🧑‍💼";
     if (event.type === "user_input") return "🧾";
     if (event.type === "status_change") return "✅";
     if (event.type === "agent_plan") return "🤖";
@@ -69,8 +89,10 @@ export function AgentEventTimeline({ caseId }: { caseId: string }) {
     return "⚙️";
   };
 
-  const getDetailsSnippet = (payload: Record<string, unknown>) => {
-    return JSON.stringify(payload, null, 2);
+  const getPreview = (payload: Record<string, unknown>) => {
+    const keys = Object.keys(payload ?? {}).slice(0, 6);
+    if (keys.length === 0) return "No payload details";
+    return `Keys: ${keys.join(", ")}${Object.keys(payload ?? {}).length > keys.length ? "…" : ""}`;
   };
 
   useEffect(() => {
@@ -98,13 +120,17 @@ export function AgentEventTimeline({ caseId }: { caseId: string }) {
     };
   }, [caseId]);
 
+  useEffect(() => {
+    setVisibleCount(50);
+  }, [caseId, filter]);
+
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="text-sm font-semibold text-foreground">Event timeline</h4>
           <div className="flex flex-wrap gap-2">
-            {(["all", "agent", "user", "review"] as const).map((option) => (
+            {(["all", "agent", "user", "review", "human"] as const).map((option) => (
               <Button
                 key={option}
                 size="sm"
@@ -136,10 +162,12 @@ export function AgentEventTimeline({ caseId }: { caseId: string }) {
                 </p>
                 <ul className="space-y-3">
                   {group.items.map((event) => {
-                    const details = getDetailsSnippet(event.payload);
                     const isExpanded = expandedEvents[event.id];
-                    const showToggle = details.length > 220;
-                    const displayDetails = showToggle && !isExpanded ? `${details.slice(0, 220)}…` : details;
+                    const details = isExpanded ? JSON.stringify(event.payload, null, 2) : getPreview(event.payload);
+                    const showToggle = Object.keys(event.payload ?? {}).length > 0;
+                    const isHuman = event.payload?.actor === "verifier";
+                    const label = isHuman ? String(event.payload?.type ?? "human_action") : event.type;
+                    const tone = isHuman ? "secondary" : eventTone[event.type] ?? "secondary";
 
                     return (
                       <li key={event.id} className="rounded-lg border border-border/70 bg-background p-3">
@@ -148,13 +176,17 @@ export function AgentEventTimeline({ caseId }: { caseId: string }) {
                             <span className="text-base" aria-hidden>
                               {getEventIcon(event)}
                             </span>
-                            <Badge variant={eventTone[event.type] ?? "secondary"}>{event.type}</Badge>
+                            <Badge variant={tone}>{label}</Badge>
                           </div>
                           <span className="text-xs text-muted-foreground">{event.timestamp}</span>
                         </div>
-                        <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-muted-foreground">
-                          {displayDetails}
-                        </pre>
+                        {isExpanded ? (
+                          <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-muted-foreground">
+                            {details}
+                          </pre>
+                        ) : (
+                          <p className="mt-2 text-xs text-muted-foreground">{details}</p>
+                        )}
                         {showToggle && (
                           <button
                             type="button"
@@ -166,7 +198,7 @@ export function AgentEventTimeline({ caseId }: { caseId: string }) {
                             }
                             className="mt-2 text-xs font-medium text-primary hover:underline"
                           >
-                            {isExpanded ? "Show less" : "Show more"}
+                            {isExpanded ? "Hide details" : "Show details"}
                           </button>
                         )}
                       </li>
@@ -175,6 +207,17 @@ export function AgentEventTimeline({ caseId }: { caseId: string }) {
                 </ul>
               </div>
             ))}
+            {filteredEvents.length > 200 && visibleCount < filteredEvents.length && (
+              <div className="flex justify-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setVisibleCount((prev) => prev + 50)}
+                >
+                  Load more events
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </CardContent>

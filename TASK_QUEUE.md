@@ -43,6 +43,11 @@
 
 ## Completed Tasks (Last 5)
 
+### T-005: Audit packet PDF + integrity
+**Completed**: 2026-01-30
+**Commit**: (pending)
+**Summary**: Enabled PDF export, SHA-256 hash integrity, human action events, and large-list performance safeguards.
+
 ### T-004: Agentic workbench + audit packet UX
 **Completed**: 2026-01-30
 **Commit**: (pending)

@@ -36,6 +36,32 @@
 
 ## Decisions
 
+### [2026-01-30] Add PDF export + SHA-256 integrity hash for audit packets
+
+**Context**: Verifiers need audit-grade exportability and integrity validation for agentic decisions.
+
+**Decision**: Implement client-side PDF export using pdf-lib and compute a SHA-256 hash over a canonicalized audit packet (stable key ordering, excluding non-deterministic fields like generated timestamps). Display the hash in the UI and include it in JSON/PDF exports.
+
+**Rationale**:
+- Keeps audit exports deterministic and verifiable
+- Avoids backend changes while enabling integrity checks
+- Leverages lightweight client-side PDF generation
+
+**Alternatives Considered**:
+- Server-side PDF generation: Rejected (not required yet)
+- Hash raw JSON with timestamps: Rejected (non-deterministic)
+
+**Consequences**:
+- Positive: Audit-grade exports with integrity signature
+- Negative: Client-side PDF size limited by browser memory
+- Neutral: Backend contracts unchanged
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-005
+- Area: audit packet export
+
 ### [2026-01-30] Launch Agentic Workbench with JSON audit packet export
 
 **Context**: Verifiers need a dedicated workbench with audit-grade traceability and exportable audit packets without changing backend semantics.
