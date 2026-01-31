@@ -36,6 +36,31 @@
 
 ## Decisions
 
+### [2026-01-31] Add explicit audit packet load-source badges
+
+**Context**: Audit packet view needed clearer indication of local vs server load and a more helpful missing state.
+
+**Decision**: Display a load-source badge, add server retry + verify link actions, and provide a paste-to-load fallback in the empty state.
+
+**Rationale**:
+- Clarifies where the packet was sourced
+- Improves recovery when local storage is empty
+- Keeps audit verification nearby
+
+**Alternatives Considered**:
+- Silent fallback without badge: Rejected (no transparency)
+- Separate recovery page: Rejected (unnecessary navigation)
+
+**Consequences**:
+- Positive: Better operator confidence and faster recovery
+- Negative: Slightly more UI logic
+- Neutral: No backend changes
+
+**Status**: Accepted
+
+**Related**:
+- Area: audit packet view
+
 ### [2026-01-31] Restore theme tokens and dark contrast baseline
 
 **Context**: The workbench UI rendered washed out in dark mode due to global light theme overrides and missing token definitions.

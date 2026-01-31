@@ -43,6 +43,11 @@
 
 ## Completed Tasks (Last 5)
 
+### T-012: Audit packet view fallback UX
+**Completed**: 2026-01-31
+**Commit**: (pending)
+**Summary**: Added load-source badge, retry actions, and improved missing state in audit packet view.
+
 ### T-011: Audit diff UX polish
 **Completed**: 2026-01-31
 **Commit**: (pending)
@@ -62,11 +67,6 @@
 **Completed**: 2026-01-31
 **Commit**: (pending)
 **Summary**: Grouped repeated plan snapshots and truncated trace previews in audit panel and drawer.
-
-### T-007: Audit panel trace UX polish
-**Completed**: 2026-01-31
-**Commit**: (pending)
-**Summary**: Added verify shortcut and decision trace drawer with search and lazy payload expansion.
 
 ---
 
