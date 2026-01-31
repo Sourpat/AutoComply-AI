@@ -43,6 +43,11 @@
 
 ## Completed Tasks (Last 5)
 
+### T-006: Audit verification + share links
+**Completed**: 2026-01-31
+**Commit**: (pending)
+**Summary**: Added audit verification route, local share links with packet storage, and audit analytics.
+
 ### T-005: Audit packet PDF + integrity
 **Completed**: 2026-01-30
 **Commit**: (pending)

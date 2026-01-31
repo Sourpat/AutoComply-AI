@@ -36,6 +36,32 @@
 
 ## Decisions
 
+### [2026-01-31] Add audit packet verification + local share links
+
+**Context**: Verifiers need to validate packet integrity and share audit packets without backend persistence.
+
+**Decision**: Add /audit/verify for hash verification using canonicalization rules and /audit/view for local share links backed by localStorage. Share links only contain IDs + packetHash.
+
+**Rationale**:
+- Maintains deterministic hashing rules
+- Avoids backend changes while enabling sharing on same device
+- Keeps audit verification explicit and repeatable
+
+**Alternatives Considered**:
+- Server-side packet storage: Deferred (requires backend)
+- Embedding full packet in URL: Rejected (too large)
+
+**Consequences**:
+- Positive: Clear verification UX + local sharing
+- Negative: Links only work on same device
+- Neutral: Backend unchanged
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-006
+- Area: audit packet UX
+
 ### [2026-01-30] Add PDF export + SHA-256 integrity hash for audit packets
 
 **Context**: Verifiers need audit-grade exportability and integrity validation for agentic decisions.

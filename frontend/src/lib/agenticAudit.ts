@@ -214,6 +214,20 @@ export async function computePacketHash(packet: AuditPacket) {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+export function saveAuditPacket(packet: AuditPacket, hash: string) {
+  localStorage.setItem(`agentic:audit-packet:${hash}`, JSON.stringify(packet));
+}
+
+export function loadAuditPacket(hash: string): AuditPacket | null {
+  const raw = localStorage.getItem(`agentic:audit-packet:${hash}`);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AuditPacket;
+  } catch {
+    return null;
+  }
+}
+
 export async function buildAuditPdf(packet: AuditPacket, hash: string) {
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);

@@ -31,6 +31,8 @@ import {
   buildAuditPdf,
   computePacketHash,
   getHumanEvents,
+  loadAuditPacket,
+  saveAuditPacket,
   type EvidenceItem,
   type EvidenceState,
   type HumanActionEvent,
@@ -435,6 +437,7 @@ export function AgenticWorkbenchPage() {
     if (!selectedCase || !packetBase) return;
     const hash = packetHash ?? (await computePacketHash(packetBase));
     const packet = { ...packetBase, packetHash: hash };
+    saveAuditPacket(packet, hash);
     const blob = new Blob([JSON.stringify(packet, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -460,6 +463,7 @@ export function AgenticWorkbenchPage() {
     if (!selectedCase || !packetBase) return;
     const hash = packetHash ?? (await computePacketHash(packetBase));
     const packet = { ...packetBase, packetHash: hash };
+    saveAuditPacket(packet, hash);
     const pdfBytes = await buildAuditPdf(packet, hash);
     const blob = new Blob([pdfBytes], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
@@ -480,6 +484,24 @@ export function AgenticWorkbenchPage() {
       setHumanEvents((prev) => [...prev, event]);
     }
     toast.success("Audit packet PDF exported");
+  };
+
+  const handleCopyShareLink = async () => {
+    if (!selectedCase || !packetBase) return;
+    const hash = packetHash ?? (await computePacketHash(packetBase));
+    const packet = { ...packetBase, packetHash: hash };
+    saveAuditPacket(packet, hash);
+    const url = new URL(window.location.origin);
+    url.pathname = "/audit/view";
+    url.searchParams.set("hash", hash);
+    url.searchParams.set("caseId", selectedCase.submission_id);
+    url.searchParams.set("decisionId", decisionId);
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      toast.success("Share link copied");
+    } catch {
+      toast.error("Unable to copy share link");
+    }
   };
 
   const saveAuditNotes = () => {
@@ -507,6 +529,26 @@ export function AgenticWorkbenchPage() {
     }
   };
 
+  const evidenceReviewedCount = useMemo(() => {
+    return evidenceItems.filter((item) => evidenceState[item.id]?.reviewed).length;
+  }, [evidenceItems, evidenceState]);
+
+  const evidenceReviewedPct = evidenceItems.length
+    ? Math.round((evidenceReviewedCount / evidenceItems.length) * 100)
+    : 0;
+
+  const completenessTone = useMemo(() => {
+    if (plan?.status === "needs_input") return "warning";
+    if (evidenceItems.length > 0 && evidenceReviewedPct < 80) return "warning";
+    return "success";
+  }, [evidenceItems.length, evidenceReviewedPct, plan?.status]);
+
+  const completenessLabel = useMemo(() => {
+    if (plan?.status === "needs_input") return "Needs input";
+    if (evidenceItems.length > 0 && evidenceReviewedPct < 80) return "Evidence incomplete";
+    return "Complete";
+  }, [evidenceItems.length, evidenceReviewedPct, plan?.status]);
+
   const renderAuditPanel = () => (
     <Card className="h-full">
       <CardContent className="space-y-4 p-5">
@@ -515,9 +557,14 @@ export function AgenticWorkbenchPage() {
             <h3 className="text-base font-semibold text-foreground">Audit Packet</h3>
             <p className="text-xs text-muted-foreground">Verifier-grade traceability bundle.</p>
           </div>
-          <Button variant="outline" size="sm" onClick={handleExportJson} disabled={!selectedCase}>
-            Export JSON
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={handleExportJson} disabled={!selectedCase}>
+              Export JSON
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExportPdf} disabled={!selectedCase}>
+              Export PDF
+            </Button>
+          </div>
         </div>
 
         <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-xs">
@@ -563,6 +610,24 @@ export function AgenticWorkbenchPage() {
           <p className="mt-1 break-all text-foreground">{packetHash ?? "--"}</p>
         </div>
 
+        <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Share packet</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleCopyShareLink}
+              aria-label="Copy share link"
+              disabled={!selectedCase}
+            >
+              Copy link
+            </Button>
+          </div>
+          <p className="mt-1 text-muted-foreground">
+            Share links are stored locally on this device.
+          </p>
+        </div>
+
         <div className="space-y-2">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Decision summary</h4>
           <div className="flex flex-wrap items-center gap-2">
@@ -579,6 +644,30 @@ export function AgenticWorkbenchPage() {
           <p className="text-xs text-muted-foreground">
             Updated {selectedCase ? formatTimestamp(selectedCase.updated_at) : "--"}
           </p>
+        </div>
+
+        <div className="space-y-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Audit analytics</h4>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-md border border-border/70 bg-background p-2">
+              <p className="text-[11px] text-muted-foreground">Evidence reviewed</p>
+              <p className="text-sm font-semibold text-foreground">
+                {evidenceReviewedPct}% ({evidenceReviewedCount}/{evidenceItems.length})
+              </p>
+            </div>
+            <div className="rounded-md border border-border/70 bg-background p-2">
+              <p className="text-[11px] text-muted-foreground">Timeline events</p>
+              <p className="text-sm font-semibold text-foreground">{events.length}</p>
+            </div>
+            <div className="rounded-md border border-border/70 bg-background p-2">
+              <p className="text-[11px] text-muted-foreground">Human actions</p>
+              <p className="text-sm font-semibold text-foreground">{humanEvents.length}</p>
+            </div>
+            <div className="rounded-md border border-border/70 bg-background p-2">
+              <p className="text-[11px] text-muted-foreground">Completeness</p>
+              <Badge variant={completenessTone}>{completenessLabel}</Badge>
+            </div>
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -675,17 +764,6 @@ export function AgenticWorkbenchPage() {
           </div>
         </div>
 
-        <div className="space-y-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Export options</h4>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="default" size="sm" onClick={handleExportJson} disabled={!selectedCase}>
-              Export JSON
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleExportPdf} disabled={!selectedCase}>
-              Export PDF
-            </Button>
-          </div>
-        </div>
       </CardContent>
     </Card>
   );
