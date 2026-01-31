@@ -43,6 +43,11 @@
 
 ## Completed Tasks (Last 5)
 
+### T-010: Audit diff report
+**Completed**: 2026-01-31
+**Commit**: 481b4bc
+**Summary**: Added audit diff route, deterministic matching, and exportable diff hash.
+
 ### T-009: Audit events persistence + replay
 **Completed**: 2026-01-31
 **Commit**: 01d5cd7
@@ -62,36 +67,6 @@
 **Completed**: 2026-01-31
 **Commit**: (pending)
 **Summary**: Added audit verification route, local share links with packet storage, and audit analytics.
-
-### T-005: Audit packet PDF + integrity
-**Completed**: 2026-01-30
-**Commit**: (pending)
-**Summary**: Enabled PDF export, SHA-256 hash integrity, human action events, and large-list performance safeguards.
-
-### T-004: Agentic workbench + audit packet UX
-**Completed**: 2026-01-30
-**Commit**: (pending)
-**Summary**: Added Agentic Workbench route with case list, evidence viewer, audit packet panel, and JSON export (PDF export deferred).
-
-### T-003: Agentic UX polish + safety
-**Completed**: 2026-01-30
-**Commit**: (pending)
-**Summary**: Added sticky action panel header with confidence bar, per-action explainability drawer, timeline grouping/filters, header scroll contrast, and action safety feedback.
-
-### T-002: Agentic workflow loop + review handoff
-**Completed**: 2026-01-30
-**Commit**: d989318
-**Summary**: Added agentic case store, events timeline, review decision endpoints, needs-input loop, and Review Queue agentic panel with demo seeding.
-
-### T-001: Premium UI refresh (web)
-**Completed**: 2026-01-30
-**Commit**: (pending)
-**Summary**: Added shadcn/ui primitives, app shell, dark mode, motion polish, and refreshed key UI surfaces. Lint still fails due to pre-existing ESLint/prop-types issues.
-
-### T-000: Fix cases list endpoint 500 error
-**Completed**: 2026-01-22
-**Commit**: 075c245
-**Summary**: Fixed timezone handling bug in compute_age_hours() causing Console "Backend Not Reachable" error. Changed PaginatedCasesResponse to use Dict[str, Any] for computed SLA fields.
 
 ---
 
