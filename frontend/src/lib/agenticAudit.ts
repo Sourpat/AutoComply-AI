@@ -26,6 +26,8 @@ export type HumanActionEvent = {
   actor: "verifier";
   timestamp: string;
   payload: Record<string, unknown>;
+  clientEventId?: string;
+  source?: "local" | "server";
 };
 
 export type AuditPacket = {
@@ -253,10 +255,13 @@ export function getHumanEvents(caseId: string) {
 export function appendHumanEvent(caseId: string, event: Omit<HumanActionEvent, "id" | "timestamp">) {
   try {
     const existing = getHumanEvents(caseId).events;
+    const clientEventId = event.clientEventId ?? crypto.randomUUID();
     const nextEvent: HumanActionEvent = {
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       ...event,
+      clientEventId,
+      source: event.source ?? "local",
     };
     const updated = [...existing, nextEvent];
     localStorage.setItem(`agentic:human-events:${caseId}`, JSON.stringify(updated));

@@ -1,6 +1,6 @@
 # Task Queue
 
-**Last Updated**: 2026-01-22
+**Last Updated**: 2026-01-31
 
 **Active WIP**: 0 (no tasks in progress)
 
@@ -43,10 +43,10 @@
 
 ## Completed Tasks (Last 5)
 
-### T-009: Audit packet persistence
+### T-009: Audit events persistence + replay
 **Completed**: 2026-01-31
 **Commit**: (pending)
-**Summary**: Added audit packet storage endpoints, server verification, and frontend server fallback.
+**Summary**: Added server-side audit events persistence and replay UI, with server-first merge.
 
 ### T-008: Trace normalization UI
 **Completed**: 2026-01-31

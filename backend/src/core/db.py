@@ -208,6 +208,31 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     
     cursor.close()
 
+    # Migration 4: Add audit_events columns for packet linkage
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(audit_events)")
+    audit_columns = [row[1] for row in cursor.fetchall()]
+    audit_new_columns = {
+        "packet_hash": "TEXT",
+        "client_event_id": "TEXT",
+        "payload_json": "TEXT",
+    }
+    for col, col_type in audit_new_columns.items():
+        if col not in audit_columns:
+            cursor.execute(f"ALTER TABLE audit_events ADD COLUMN {col} {col_type}")
+            conn.commit()
+
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_case_id_created_at ON audit_events(case_id, created_at)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_events_packet_hash_created_at ON audit_events(packet_hash, created_at)"
+        )
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
+    cursor.close()
+
     # Migration 2: Add evidence upload columns to evidence_items
     cursor = conn.cursor()
     cursor.execute("PRAGMA table_info(evidence_items)")
@@ -310,7 +335,13 @@ def init_db() -> None:
                     conn.executescript(workflow_sql)
                 except sqlite3.OperationalError as e:
                     error_text = str(e)
-                    if "no such column: searchable_text" in error_text or "no such column: submission_id" in error_text:
+                    if (
+                        "no such column: searchable_text" in error_text
+                        or "no such column: submission_id" in error_text
+                        or "no such column: packet_hash" in error_text
+                        or "no such column: client_event_id" in error_text
+                        or "no such column: payload_json" in error_text
+                    ):
                         print("  Detected missing column, running migration...")
                         # Run migration first
                         _run_migrations(conn)

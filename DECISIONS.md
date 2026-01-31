@@ -36,6 +36,32 @@
 
 ## Decisions
 
+### [2026-01-31] Persist verifier actions as append-only audit events
+
+**Context**: Human actions must be traceable and replayable across devices.
+
+**Decision**: Store verifier actions in the server-side `audit_events` table with idempotent clientEventId support. Frontend merges server events with local fallback and renders a replay view.
+
+**Rationale**:
+- Provides audit-grade history with append-only semantics
+- Preserves offline fallback while preferring server data
+- Enables unified replay alongside agent events
+
+**Alternatives Considered**:
+- Local-only storage: Rejected (not cross-device)
+- Overwriting existing audit_events: Rejected (append-only required)
+
+**Consequences**:
+- Positive: Durable human action history
+- Negative: Additional storage and API calls
+- Neutral: Agent contracts unchanged
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-009
+- Area: audit events
+
 ### [2026-01-31] Persist audit packets server-side with canonical hashing
 
 **Context**: Share links must work across devices and verification should be possible server-side.

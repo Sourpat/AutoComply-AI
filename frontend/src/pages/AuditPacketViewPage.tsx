@@ -8,6 +8,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { loadAuditPacket, saveAuditPacket, type AuditPacket } from "../lib/agenticAudit";
 import { fetchAuditPacketFromServer } from "../lib/auditServer";
+import { getAuditEvents } from "../lib/auditEventsServer";
 import { formatTimestamp } from "../lib/formatters";
 
 function useQuery() {
@@ -24,6 +25,15 @@ export function AuditPacketViewPage() {
   const [packet, setPacket] = useState<AuditPacket | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [serverEvents, setServerEvents] = useState<
+    Array<{
+      id: string;
+      caseId: string;
+      eventType: string;
+      createdAt: string;
+      payload: Record<string, unknown>;
+    }>
+  >([]);
 
   const packetResult = useMemo(() => (hash ? loadAuditPacket(hash) : null), [hash]);
 
@@ -56,6 +66,16 @@ export function AuditPacketViewPage() {
       })
       .finally(() => setLoading(false));
   }, [hash, packetResult]);
+
+  useEffect(() => {
+    if (!hash && !caseId) return;
+    const loadEvents = async () => {
+      const response = await getAuditEvents({ caseId: caseId || undefined, packetHash: hash || undefined });
+      if (!response.ok) return;
+      setServerEvents(response.data?.items ?? []);
+    };
+    loadEvents();
+  }, [hash, caseId]);
 
   if (!hash) {
     return (
@@ -174,15 +194,19 @@ export function AuditPacketViewPage() {
       <Card>
         <CardContent className="space-y-4 p-6">
           <h3 className="text-sm font-semibold text-foreground">Human actions</h3>
-          {packet.humanActions.events.length === 0 ? (
+          {packet.humanActions.events.length === 0 && serverEvents.length === 0 ? (
             <p className="text-xs text-muted-foreground">No human actions recorded.</p>
           ) : (
             <ul className="space-y-2 text-xs">
-              {packet.humanActions.events.map((event) => (
+              {[...packet.humanActions.events.map((event) => ({
+                id: event.id,
+                eventType: event.type,
+                createdAt: event.timestamp,
+              })), ...serverEvents].map((event) => (
                 <li key={event.id} className="rounded-md border border-border/60 bg-background p-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium text-foreground">{event.type.replace(/_/g, " ")}</span>
-                    <span className="text-muted-foreground">{formatTimestamp(event.timestamp)}</span>
+                    <span className="font-medium text-foreground">{event.eventType.replace(/_/g, " ")}</span>
+                    <span className="text-muted-foreground">{formatTimestamp(event.createdAt)}</span>
                   </div>
                 </li>
               ))}

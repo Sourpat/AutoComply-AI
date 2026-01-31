@@ -236,6 +236,11 @@ CREATE TABLE IF NOT EXISTS audit_events (
     actor_role TEXT,           -- admin, reviewer, submitter, system
     actor_name TEXT,           -- User name or "System"
     message TEXT NOT NULL,     -- Human-readable description
+
+    -- Audit packet linkage
+    packet_hash TEXT,
+    client_event_id TEXT,
+    payload_json TEXT,
     
     -- Related entities
     submission_id TEXT,        -- Optional link to submission
@@ -251,6 +256,8 @@ CREATE INDEX IF NOT EXISTS idx_audit_case_id ON audit_events(case_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_events(created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_event_type ON audit_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_audit_submission_id ON audit_events(submission_id);
+CREATE INDEX IF NOT EXISTS idx_audit_events_case_id_created_at ON audit_events(case_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_events_packet_hash_created_at ON audit_events(packet_hash, created_at);
 
 -- ============================================================================
 -- Case Notes Table (Phase 2)

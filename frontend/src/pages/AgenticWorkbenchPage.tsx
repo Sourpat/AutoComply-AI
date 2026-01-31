@@ -42,6 +42,7 @@ import {
   toDecisionId,
 } from "../lib/agenticAudit";
 import { saveAuditPacketToServer } from "../lib/auditServer";
+import { getAuditEvents, postAuditEvent } from "../lib/auditEventsServer";
 import { formatTimestamp } from "../lib/formatters";
 import { cn } from "../lib/utils";
 
@@ -86,6 +87,7 @@ const workbenchTabs = [
   { value: "overview", label: "Overview" },
   { value: "actions", label: "Agent Actions" },
   { value: "timeline", label: "Timeline" },
+  { value: "replay", label: "Replay" },
   { value: "evidence", label: "Evidence" },
 ];
 
@@ -188,6 +190,7 @@ export function AgenticWorkbenchPage() {
   const [auditOpen, setAuditOpen] = useState(false);
   const [traceOpen, setTraceOpen] = useState(false);
   const [humanEvents, setHumanEvents] = useState<HumanActionEvent[]>([]);
+  const [serverEvents, setServerEvents] = useState<HumanActionEvent[]>([]);
   const [packetHash, setPacketHash] = useState<string | null>(null);
   const [visibleEvidenceCount, setVisibleEvidenceCount] = useState(50);
   const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
@@ -277,6 +280,52 @@ export function AgenticWorkbenchPage() {
     setExpandedEvidence({});
   }, [caseId]);
 
+  useEffect(() => {
+    if (!caseId) return;
+    const loadServerEvents = async () => {
+      const response = await getAuditEvents({ caseId, packetHash: packetHash ?? undefined });
+      if (!response.ok) {
+        return;
+      }
+      const items = (response.data?.items ?? []) as Array<{
+        id: string;
+        caseId: string;
+        packetHash?: string | null;
+        actor: string;
+        eventType: HumanActionEvent["type"];
+        payload: Record<string, unknown>;
+        createdAt: string;
+        clientEventId?: string;
+      }>;
+
+      const mapped = items.map((item) => ({
+        id: item.id,
+        caseId: item.caseId,
+        type: item.eventType,
+        actor: "verifier" as const,
+        timestamp: item.createdAt,
+        payload: item.payload,
+        clientEventId: item.clientEventId,
+        source: "server" as const,
+      }));
+      setServerEvents(mapped);
+    };
+    loadServerEvents();
+  }, [caseId, packetHash]);
+
+  const mergedHumanEvents = useMemo(() => {
+    const map = new Map<string, HumanActionEvent>();
+    humanEvents.forEach((event) => {
+      const key = event.clientEventId ?? event.id;
+      map.set(key, event);
+    });
+    serverEvents.forEach((event) => {
+      const key = event.clientEventId ?? event.id;
+      map.set(key, event);
+    });
+    return Array.from(map.values()).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  }, [humanEvents, serverEvents]);
+
   const persistEvidenceState = (next: EvidenceState) => {
     setEvidenceState(next);
     if (caseId) {
@@ -295,7 +344,7 @@ export function AgenticWorkbenchPage() {
     persistEvidenceState(next);
   };
 
-  const commitEvidenceNote = (evidenceId: string, note: string) => {
+  const commitEvidenceNote = async (evidenceId: string, note: string) => {
     if (!caseId || !note.trim()) return;
     const result = appendHumanEvent(caseId, {
       caseId,
@@ -305,13 +354,20 @@ export function AgenticWorkbenchPage() {
     });
     if (result.event) {
       setHumanEvents((prev) => [...prev, result.event]);
+      await postAuditEvent({
+        caseId,
+        packetHash: packetHash ?? undefined,
+        eventType: "NOTE_ADDED",
+        payload: { evidenceId, note },
+        clientEventId: result.event.clientEventId,
+      });
     }
     if (result.error) {
       toast.error(`Unable to log note: ${result.error}`);
     }
   };
 
-  const toggleEvidenceReviewed = (evidenceId: string) => {
+  const toggleEvidenceReviewed = async (evidenceId: string) => {
     const next = {
       ...evidenceState,
       [evidenceId]: {
@@ -329,6 +385,13 @@ export function AgenticWorkbenchPage() {
       });
       if (result.event) {
         setHumanEvents((prev) => [...prev, result.event]);
+        await postAuditEvent({
+          caseId,
+          packetHash: packetHash ?? undefined,
+          eventType: "EVIDENCE_REVIEWED",
+          payload: { evidenceId, reviewed: next[evidenceId]?.reviewed },
+          clientEventId: result.event.clientEventId,
+        });
       }
       if (result.error) {
         toast.error(`Unable to log review: ${result.error}`);
@@ -484,6 +547,13 @@ export function AgenticWorkbenchPage() {
       });
       if (result.event) {
         setHumanEvents((prev) => [...prev, result.event]);
+        await postAuditEvent({
+          caseId,
+          packetHash: hash,
+          eventType: "EXPORT_JSON",
+          payload: { fileName: buildAuditFileName(selectedCase.submission_id) },
+          clientEventId: result.event.clientEventId,
+        });
       }
       if (result.error) {
         toast.error(`Unable to log export: ${result.error}`);
@@ -525,6 +595,13 @@ export function AgenticWorkbenchPage() {
       });
       if (result.event) {
         setHumanEvents((prev) => [...prev, result.event]);
+        await postAuditEvent({
+          caseId,
+          packetHash: hash,
+          eventType: "EXPORT_PDF",
+          payload: { fileName: buildAuditFileName(selectedCase.submission_id).replace(".json", ".pdf") },
+          clientEventId: result.event.clientEventId,
+        });
       }
       if (result.error) {
         toast.error(`Unable to log export: ${result.error}`);
@@ -561,7 +638,7 @@ export function AgenticWorkbenchPage() {
     }
   };
 
-  const saveAuditNotes = () => {
+  const saveAuditNotes = async () => {
     if (!caseId) return;
     localStorage.setItem(`agentic:audit-notes:${caseId}`, auditNotes);
     if (auditNotes.trim()) {
@@ -573,6 +650,16 @@ export function AgenticWorkbenchPage() {
       });
       if (result.event) {
         setHumanEvents((prev) => [...prev, result.event]);
+        const serverResult = await postAuditEvent({
+          caseId,
+          packetHash: packetHash ?? undefined,
+          eventType: "NOTE_ADDED",
+          payload: { note: auditNotes },
+          clientEventId: result.event.clientEventId,
+        });
+        if (!serverResult.ok) {
+          toast.error(`Server audit log failed: ${serverResult.message}`);
+        }
       }
       if (result.error) {
         toast.error(`Unable to log note: ${result.error}`);
@@ -817,11 +904,11 @@ export function AgenticWorkbenchPage() {
             Save notes
           </Button>
           <div className="space-y-2 text-xs">
-            {humanEvents.length === 0 ? (
+            {mergedHumanEvents.length === 0 ? (
               <p className="text-muted-foreground">No human actions logged.</p>
             ) : (
               <ul className="space-y-2">
-                {humanEvents.map((event) => (
+                {mergedHumanEvents.map((event) => (
                   <li key={event.id} className="rounded-md border border-border/60 bg-background p-2">
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-foreground">{event.type.replace(/_/g, " ")}</span>
@@ -834,7 +921,9 @@ export function AgenticWorkbenchPage() {
                         Copy ID
                       </Button>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">{formatTimestamp(event.timestamp)}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {formatTimestamp(event.timestamp)} {event.source === "server" ? "• server" : "• local"}
+                    </p>
                   </li>
                 ))}
               </ul>
@@ -1070,7 +1159,7 @@ export function AgenticWorkbenchPage() {
                   {eventsLoading && <Skeleton className="h-40 w-full" />}
                   <AgentEventTimeline
                     caseId={caseId}
-                    extraEvents={humanEvents.map((event) => ({
+                    extraEvents={mergedHumanEvents.map((event) => ({
                       id: event.id,
                       caseId: event.caseId,
                       timestamp: event.timestamp,
@@ -1089,7 +1178,7 @@ export function AgenticWorkbenchPage() {
                   {!eventsLoading && evidenceItems.length === 0 && (
                     <EmptyState
                       title="No evidence captured"
-                      description="Evidence will appear here once agent actions and inputs are recorded."
+                      description="Evidence from the agent will appear here when available."
                     />
                   )}
                   {!eventsLoading && evidenceItems.length > 0 && (
@@ -1145,7 +1234,9 @@ export function AgenticWorkbenchPage() {
                                   </pre>
                                 ) : (
                                   <p className="mt-2 text-xs text-muted-foreground">
-                                    {typeof item.details === "string" ? item.details.slice(0, 120) : "Expand to view details"}
+                                    {typeof item.details === "string"
+                                      ? item.details.slice(0, 120)
+                                      : "Expand to view details"}
                                   </p>
                                 )}
                               </div>
@@ -1178,6 +1269,38 @@ export function AgenticWorkbenchPage() {
                       )}
                     </div>
                   )}
+                </TabsContent>
+
+                <TabsContent value="replay" className="space-y-4">
+                  <div className="space-y-3">
+                    {[...events.map((event) => ({
+                      id: event.id,
+                      timestamp: event.timestamp,
+                      label: event.type.replace(/_/g, " "),
+                      payload: event.payload ?? {},
+                    })),
+                    ...mergedHumanEvents.map((event) => ({
+                      id: event.id,
+                      timestamp: event.timestamp,
+                      label: "Human action",
+                      payload: {
+                        type: event.type,
+                        ...event.payload,
+                      },
+                    }))]
+                      .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+                      .map((event) => (
+                        <details key={event.id} className="rounded-lg border border-border/70 bg-background p-3">
+                          <summary className="flex cursor-pointer items-center justify-between text-sm text-foreground">
+                            <span>{event.label}</span>
+                            <span className="text-xs text-muted-foreground">{formatTimestamp(event.timestamp)}</span>
+                          </summary>
+                          <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                            {JSON.stringify(event.payload, null, 2)}
+                          </pre>
+                        </details>
+                      ))}
+                  </div>
                 </TabsContent>
               </Tabs>
             )}
