@@ -33,6 +33,8 @@ import {
   buildAuditPdf,
   computePacketHash,
   getHumanEvents,
+  getTraceLabel,
+  groupTraceEvents,
   saveAuditPacket,
   type EvidenceItem,
   type EvidenceState,
@@ -722,19 +724,33 @@ export function AgenticWorkbenchPage() {
           {events.length > 0 && (
             <div className="space-y-3">
               <ul className="space-y-2 text-xs">
-                {events.slice(0, 3).map((event) => (
-                  <li key={event.id} className="rounded-md border border-border/60 bg-background p-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-foreground">{event.type.replace(/_/g, " ")}</span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {formatTimestamp(event.timestamp)}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground break-words">
-                      {JSON.stringify(event.payload).slice(0, 120)}
-                    </p>
-                  </li>
-                ))}
+                {groupTraceEvents(events).slice(0, 3).map((group) => {
+                  const summary = group.meta.summary ?? JSON.stringify(group.payload).slice(0, 90);
+
+                  return (
+                    <li key={group.id} className="rounded-md border border-border/60 bg-background p-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-foreground">{getTraceLabel(group.type)}</span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {group.count > 1
+                            ? `${formatTimestamp(group.firstTimestamp)} → ${formatTimestamp(group.lastTimestamp)}`
+                            : formatTimestamp(group.firstTimestamp)}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {group.meta.status && <Badge variant="secondary">Status {group.meta.status}</Badge>}
+                        {group.meta.nextState && <Badge variant="secondary">Next {group.meta.nextState}</Badge>}
+                        {typeof group.meta.confidence === "number" && (
+                          <Badge variant="secondary">Conf {Math.round(group.meta.confidence * 100)}%</Badge>
+                        )}
+                        {group.count > 1 && <Badge variant="secondary">x{group.count} repeats</Badge>}
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground break-words">
+                        {summary.length > 90 ? `${summary.slice(0, 90)}…` : summary}
+                      </p>
+                    </li>
+                  );
+                })}
               </ul>
               <Button variant="outline" size="sm" onClick={() => setTraceOpen(true)}>
                 View full trace

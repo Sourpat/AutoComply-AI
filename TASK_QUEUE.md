@@ -43,6 +43,11 @@
 
 ## Completed Tasks (Last 5)
 
+### T-008: Trace normalization UI
+**Completed**: 2026-01-31
+**Commit**: (pending)
+**Summary**: Grouped repeated plan snapshots and truncated trace previews in audit panel and drawer.
+
 ### T-007: Audit panel trace UX polish
 **Completed**: 2026-01-31
 **Commit**: (pending)

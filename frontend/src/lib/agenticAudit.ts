@@ -84,6 +84,84 @@ export type AuditPacket = {
   };
 };
 
+export type TraceMeta = {
+  status?: string;
+  nextState?: string;
+  confidence?: number;
+  summary?: string;
+};
+
+export type TraceGroup = {
+  id: string;
+  type: string;
+  label: string;
+  signature: string;
+  count: number;
+  firstTimestamp: string;
+  lastTimestamp: string;
+  meta: TraceMeta;
+  payload: Record<string, unknown>;
+  instances: Array<{
+    id: string;
+    timestamp: string;
+    payload: Record<string, unknown>;
+  }>;
+};
+
+export function getTraceMeta(event: CaseEvent): TraceMeta {
+  const payload = event.payload ?? {};
+  return {
+    status: typeof payload.status === "string" ? payload.status : undefined,
+    nextState: typeof payload.nextState === "string" ? payload.nextState : undefined,
+    confidence: typeof payload.confidence === "number" ? payload.confidence : undefined,
+    summary: typeof payload.summary === "string" ? payload.summary : undefined,
+  };
+}
+
+export function getTraceLabel(eventType: string) {
+  if (eventType === "agent_plan") return "Plan snapshot";
+  return eventType.replace(/_/g, " ");
+}
+
+export function buildTraceSignature(event: CaseEvent, meta: TraceMeta) {
+  return [
+    event.type,
+    meta.summary ?? "",
+    meta.status ?? "",
+    meta.nextState ?? "",
+    meta.confidence ?? "",
+  ].join("|");
+}
+
+export function groupTraceEvents(events: CaseEvent[]): TraceGroup[] {
+  const groups: TraceGroup[] = [];
+  events.forEach((event) => {
+    const meta = getTraceMeta(event);
+    const signature = buildTraceSignature(event, meta);
+    const label = getTraceLabel(event.type);
+    const last = groups[groups.length - 1];
+    if (last && last.type === event.type && last.signature === signature) {
+      last.count += 1;
+      last.lastTimestamp = event.timestamp;
+      last.instances.push({ id: event.id, timestamp: event.timestamp, payload: event.payload ?? {} });
+      return;
+    }
+    groups.push({
+      id: event.id,
+      type: event.type,
+      label,
+      signature,
+      count: 1,
+      firstTimestamp: event.timestamp,
+      lastTimestamp: event.timestamp,
+      meta,
+      payload: event.payload ?? {},
+      instances: [{ id: event.id, timestamp: event.timestamp, payload: event.payload ?? {} }],
+    });
+  });
+  return groups;
+}
+
 export function toDecisionId(caseId: string, updatedAt: string) {
   const sanitized = updatedAt.replace(/[-:]/g, "").replace("T", "_").slice(0, 13);
   return `decision_${caseId}_${sanitized}`;

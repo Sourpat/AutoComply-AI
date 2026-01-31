@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import type { CaseEvent } from "../../contracts/agentic";
 import { formatTimestamp } from "../../lib/formatters";
+import { groupTraceEvents, getTraceMeta, getTraceLabel } from "../../lib/agenticAudit";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -37,8 +38,9 @@ type DecisionTraceDrawerProps = {
 };
 
 function getSummary(event: CaseEvent) {
+  const meta = getTraceMeta(event);
+  if (meta.summary) return meta.summary;
   const payload = event.payload ?? {};
-  if (typeof payload.summary === "string") return payload.summary;
   if (typeof payload.note === "string") return payload.note;
   if (typeof payload.notes === "string") return payload.notes;
   if (typeof payload.decision === "string") return `Decision: ${payload.decision}`;
@@ -57,22 +59,24 @@ export function DecisionTraceDrawer({ open, onOpenChange, events }: DecisionTrac
       if (typeFilter !== "all" && event.type !== typeFilter) return false;
       if (!query.trim()) return true;
       const q = query.toLowerCase();
-      const title = event.type.replace(/_/g, " ");
+      const title = getTraceLabel(event.type);
       const summary = getSummary(event);
       return `${title} ${summary}`.toLowerCase().includes(q);
     });
   }, [events, query, typeFilter]);
 
-  const visibleEvents = useMemo(() => {
-    if (filteredEvents.length > 200) {
-      return filteredEvents.slice(0, visibleCount);
-    }
-    return filteredEvents;
-  }, [filteredEvents, visibleCount]);
+  const groupedEvents = useMemo(() => groupTraceEvents(filteredEvents), [filteredEvents]);
 
-  const handleCopyPayload = async (event: CaseEvent) => {
+  const visibleGroups = useMemo(() => {
+    if (groupedEvents.length > 200) {
+      return groupedEvents.slice(0, visibleCount);
+    }
+    return groupedEvents;
+  }, [groupedEvents, visibleCount]);
+
+  const handleCopyPayload = async (payload: Record<string, unknown>) => {
     try {
-      await navigator.clipboard.writeText(JSON.stringify(event.payload ?? {}, null, 2));
+      await navigator.clipboard.writeText(JSON.stringify(payload ?? {}, null, 2));
       toast.success("Payload copied");
     } catch {
       toast.error("Unable to copy payload");
@@ -106,44 +110,71 @@ export function DecisionTraceDrawer({ open, onOpenChange, events }: DecisionTrac
                 ))}
               </SelectContent>
             </Select>
-            <Badge variant="secondary">{filteredEvents.length} steps</Badge>
+            <Badge variant="secondary">{groupedEvents.length} steps</Badge>
           </div>
 
           <div className="max-h-[520px] space-y-3 overflow-auto pr-2">
-            {visibleEvents.map((event) => {
-              const isExpanded = expanded[event.id];
+            {visibleGroups.map((group) => {
+              const isExpanded = expanded[group.id];
+              const summary = group.meta.summary ?? JSON.stringify(group.payload).slice(0, 160);
               return (
-                <div key={event.id} className="rounded-lg border border-border/70 bg-background p-4">
+                <div key={group.id} className="rounded-lg border border-border/70 bg-background p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <Badge variant={toneByType[event.type] ?? "secondary"}>{event.type.replace(/_/g, " ")}</Badge>
+                      <Badge variant={toneByType[group.type] ?? "secondary"}>{group.label}</Badge>
+                      {group.count > 1 && (
+                        <Badge variant="secondary">x{group.count} repeats</Badge>
+                      )}
                       <span className="text-xs text-muted-foreground">
-                        {formatTimestamp(event.timestamp)}
+                        {group.count > 1
+                          ? `${formatTimestamp(group.firstTimestamp)} → ${formatTimestamp(group.lastTimestamp)}`
+                          : formatTimestamp(group.firstTimestamp)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => handleCopyPayload(event)}>
+                      <Button variant="ghost" size="sm" onClick={() => handleCopyPayload(group.payload)}>
                         Copy payload
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setExpanded((prev) => ({ ...prev, [event.id]: !prev[event.id] }))}
+                        onClick={() => setExpanded((prev) => ({ ...prev, [group.id]: !prev[group.id] }))}
                       >
                         {isExpanded ? "Hide" : "View"}
                       </Button>
                     </div>
                   </div>
-                  <p className="mt-2 text-sm text-foreground">{getSummary(event)}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    {group.meta.status && <Badge variant="secondary">Status {group.meta.status}</Badge>}
+                    {group.meta.nextState && <Badge variant="secondary">Next {group.meta.nextState}</Badge>}
+                    {typeof group.meta.confidence === "number" && (
+                      <Badge variant="secondary">Conf {Math.round(group.meta.confidence * 100)}%</Badge>
+                    )}
+                  </div>
+                  <p className="mt-2 text-sm text-foreground">{summary.length > 160 ? `${summary.slice(0, 160)}…` : summary}</p>
                   {isExpanded && (
-                    <pre className="mt-3 whitespace-pre-wrap text-xs text-muted-foreground">
-                      {JSON.stringify(event.payload ?? {}, null, 2)}
-                    </pre>
+                    <div className="mt-3 space-y-3">
+                      <pre className="whitespace-pre-wrap text-xs text-muted-foreground">
+                        {JSON.stringify(group.payload ?? {}, null, 2)}
+                      </pre>
+                      {group.count > 1 && (
+                        <div className="rounded-md border border-border/70 bg-muted/20 p-2 text-xs text-muted-foreground">
+                          <p className="font-semibold text-foreground">Instances</p>
+                          <ul className="mt-2 space-y-1">
+                            {group.instances.map((instance) => (
+                              <li key={instance.id}>
+                                {formatTimestamp(instance.timestamp)}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               );
             })}
-            {filteredEvents.length > 200 && visibleEvents.length < filteredEvents.length && (
+            {groupedEvents.length > 200 && visibleGroups.length < groupedEvents.length && (
               <div className="flex justify-center">
                 <Button variant="outline" size="sm" onClick={() => setVisibleCount((prev) => prev + 40)}>
                   Load more

@@ -36,6 +36,32 @@
 
 ## Decisions
 
+### [2026-01-31] Normalize decision trace presentation in UI
+
+**Context**: Repeated plan snapshots made the decision trace look broken and noisy.
+
+**Decision**: Group consecutive trace events with identical signature in the UI, truncate previews, and show a compact chip summary without changing backend contracts.
+
+**Rationale**:
+- Improves readability and reduces visual noise
+- Keeps deterministic contracts untouched
+- Maintains filter behavior while normalizing presentation
+
+**Alternatives Considered**:
+- Filtering out duplicate events entirely: Rejected (loses history)
+- Backend deduplication: Rejected (contract change)
+
+**Consequences**:
+- Positive: Cleaner trace display with repeat counts
+- Negative: Requires UI-only grouping logic
+- Neutral: Raw events remain available in expanded view
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-008
+- Area: audit trace UX
+
 ### [2026-01-31] Use decision trace drawer for audit panel clarity
 
 **Context**: The audit panel decision trace list was cramped and difficult to scan.
