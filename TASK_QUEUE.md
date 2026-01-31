@@ -45,7 +45,7 @@
 
 ### T-009: Audit events persistence + replay
 **Completed**: 2026-01-31
-**Commit**: (pending)
+**Commit**: 01d5cd7
 **Summary**: Added server-side audit events persistence and replay UI, with server-first merge.
 
 ### T-008: Trace normalization UI
