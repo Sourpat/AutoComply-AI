@@ -53,6 +53,12 @@ export function ExecutionPreviewPanel({ preview }: ExecutionPreviewPanelProps) {
               <div key={`${intent?.intent ?? "intent"}-${index}`} className="rounded-md border border-border/70 bg-muted/20 p-2">
                 <p className="font-medium text-foreground">{toText(intent?.intent, "unknown")}</p>
                 <p>{toText(intent?.reason, "No reason provided.")}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Spec: {toText(intent?.sourceRef?.specId, "--")} · Decision: {toText(intent?.sourceRef?.decisionId, "--")}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Outcome: {toText(intent?.outcome?.decisionStatus, "--")} · Risk {toText(intent?.outcome?.riskLevel, "--")}
+                </p>
               </div>
             ))
           ) : (

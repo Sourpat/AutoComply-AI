@@ -54,6 +54,23 @@
 
 **Status**: Accepted
 
+### [2026-02-01] Expand deterministic execution intent derivation (Phase 8.2)
+
+**Context**: Phase 8.2 requires richer, deterministic intent derivation from existing decision/spec signals without changing decision logic.
+
+**Decision**: Extend execution preview derivation rules to map decision status, risk level, and audit events into explicit intents with outcomes and source references.
+
+**Rationale**:
+- Keeps intent derivation deterministic and read-only
+- Improves audit explainability without schema changes
+
+**Consequences**:
+- Positive: More actionable SDX preview content
+- Negative: Additional mapping logic to maintain
+- Neutral: No effect when feature flag is off
+
+**Status**: Accepted
+
 ### [2026-02-01] Add one-click governance narrative demo flow
 
 **Context**: Interview demos need a fast, reliable way to seed deterministic audit packets and open the governance narrative with a single action.

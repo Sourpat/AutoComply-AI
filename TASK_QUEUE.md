@@ -52,16 +52,6 @@
 
 ## P2 - Medium Priority (Backlog)
 
-### P8.2: Execution preview enrichment (TODO)
-**Status**: pending
-**Assigned**: (none)
-**Goal**: Extend SDX execution preview mapping for additional governance signals
-**Acceptance Criteria**:
-- [ ] Mapping covers additional intents and UI/audit impacts
-**Verification**:
-- Manual review only
-**Dependencies**: None
-
 ### P8.3: Execution preview UX polish (TODO)
 **Status**: pending
 **Assigned**: (none)
@@ -75,6 +65,11 @@
 ---
 
 ## Completed Tasks (Last 5)
+
+### P8.2: Execution preview intent derivation (Phase 8.2)
+**Completed**: 2026-02-01
+**Commit**: (pending)
+**Summary**: Expanded deterministic intent derivation from decision status, risk, and audit events.
 
 ### P8.1: Execution preview model foundation (Phase 8.1)
 **Completed**: 2026-02-01
@@ -95,11 +90,6 @@
 **Completed**: 2026-02-01
 **Commit**: (pending)
 **Summary**: Captured verifier override feedback as feature-flagged audit events with UI visibility.
-
-### T-017: Spec trace foundations (Command 1)
-**Completed**: 2026-01-31
-**Commit**: (pending)
-**Summary**: Added spec registry seed data and feature-flagged spec trace metadata in audit packets with UI rendering.
 
 ---
 

@@ -19,11 +19,18 @@ def _as_float(value: Any) -> Optional[float]:
     return float(value) if isinstance(value, (int, float)) else None
 
 
-def _unknown_intent(reason: str, spec_id: Optional[str], decision_id: Optional[str]) -> Dict[str, Any]:
+def _unknown_intent(
+    reason: str,
+    spec_id: Optional[str],
+    decision_id: Optional[str],
+    decision_status: Optional[str],
+    decision_risk: Optional[str],
+) -> Dict[str, Any]:
     return {
         "intent": "unknown",
         "sourceRef": {"specId": spec_id, "decisionId": decision_id},
         "reason": reason,
+        "outcome": {"decisionStatus": decision_status, "riskLevel": decision_risk},
     }
 
 
@@ -52,7 +59,7 @@ def build_execution_preview(packet: Dict[str, Any]) -> Dict[str, Any]:
                 "override": {"hasOverride": None},
             },
             "affectedSystems": [{"id": "unknown", "label": "Unknown system"}],
-            "executionIntents": [_unknown_intent("Packet data unavailable.", None, None)],
+            "executionIntents": [_unknown_intent("Packet data unavailable.", None, None, None, None)],
             "uiImpacts": [_unknown_ui_impact("unknown")],
             "auditImpacts": [_unknown_audit_impact()],
             "readiness": {
@@ -86,47 +93,86 @@ def build_execution_preview(packet: Dict[str, Any]) -> Dict[str, Any]:
     else:
         override_present = None
 
-    affected_systems: List[Dict[str, Any]] = []
-    if spec_id:
-        affected_systems.append({"id": "compliance", "label": "Compliance spec mapping"})
-    if decision_status:
-        affected_systems.append({"id": "workflow", "label": "Workflow decision"})
-    if packet.get("packetHash"):
-        affected_systems.append({"id": "audit", "label": "Audit packet"})
-
     intents: List[Dict[str, Any]] = []
     status_lower = decision_status.lower() if decision_status else ""
-    if decision_status:
-        if "block" in status_lower or "reject" in status_lower:
-            intents.append({
-                "intent": "block",
-                "sourceRef": {"specId": spec_id, "decisionId": decision_id},
-                "reason": "Decision status indicates a block.",
-            })
-        elif "needs_review" in status_lower or "queued_review" in status_lower or "review" in status_lower:
-            intents.append({
-                "intent": "manual_review",
-                "sourceRef": {"specId": spec_id, "decisionId": decision_id},
-                "reason": "Decision status requires manual review.",
-            })
-        elif "approved" in status_lower or "allow" in status_lower:
-            intents.append({
-                "intent": "emit_audit_event",
-                "sourceRef": {"specId": spec_id, "decisionId": decision_id},
-                "reason": "Decision status recorded for audit trail.",
-            })
-        else:
-            intents.append(_unknown_intent("Decision status not mapped.", spec_id, decision_id))
+    block_statuses = {"rejected", "deny", "blocked"}
+    review_statuses = {"needs_review", "flagged", "manual_review"}
 
-    if decision_risk and decision_risk.lower() in {"high", "medium", "critical"}:
+    if status_lower in block_statuses:
         intents.append({
-            "intent": "display_warning",
+            "intent": "block",
             "sourceRef": {"specId": spec_id, "decisionId": decision_id},
-            "reason": "Risk level requires a warning badge.",
+            "reason": "Decision status indicates a block.",
+            "outcome": {"decisionStatus": decision_status, "riskLevel": decision_risk},
+        })
+    if status_lower in review_statuses:
+        intents.append({
+            "intent": "manual_review",
+            "sourceRef": {"specId": spec_id, "decisionId": decision_id},
+            "reason": "Decision status requires manual review.",
+            "outcome": {"decisionStatus": decision_status, "riskLevel": decision_risk},
         })
 
+    has_human_events = bool(human_events)
+    if has_human_events or override_present:
+        intents.append({
+            "intent": "emit_audit_event",
+            "sourceRef": {"specId": spec_id, "decisionId": decision_id},
+            "reason": "Human-in-the-loop or audit event recorded.",
+            "outcome": {"decisionStatus": decision_status, "riskLevel": decision_risk},
+        })
+
+    risk_lower = decision_risk.lower() if decision_risk else ""
+    if risk_lower in {"high", "medium"}:
+        if status_lower in review_statuses:
+            intents.append({
+                "intent": "display_warning",
+                "sourceRef": {"specId": spec_id, "decisionId": decision_id},
+                "reason": "Medium/high risk requires warning during review.",
+                "outcome": {"decisionStatus": decision_status, "riskLevel": decision_risk},
+            })
+        elif status_lower in block_statuses:
+            intents.append({
+                "intent": "apply_restriction",
+                "sourceRef": {"specId": spec_id, "decisionId": decision_id},
+                "reason": "Medium/high risk requires restriction for blocked outcomes.",
+                "outcome": {"decisionStatus": decision_status, "riskLevel": decision_risk},
+            })
+        else:
+            intents.append({
+                "intent": "display_warning",
+                "sourceRef": {"specId": spec_id, "decisionId": decision_id},
+                "reason": "Medium/high risk requires warning.",
+                "outcome": {"decisionStatus": decision_status, "riskLevel": decision_risk},
+            })
+
     if not intents:
-        intents.append(_unknown_intent("Decision data unavailable.", spec_id, decision_id))
+        intents.append(_unknown_intent("Decision data unavailable.", spec_id, decision_id, decision_status, decision_risk))
+
+    affected_system_ids = set()
+    for intent in intents:
+        intent_name = _as_str(intent.get("intent")) or "unknown"
+        if intent_name in {"block", "manual_review"}:
+            affected_system_ids.add("workflow")
+        if intent_name == "display_warning":
+            affected_system_ids.add("ui")
+        if intent_name == "emit_audit_event":
+            affected_system_ids.add("audit")
+        if intent_name == "apply_restriction":
+            affected_system_ids.add("compliance")
+        if intent_name == "unknown":
+            affected_system_ids.add("unknown")
+
+    affected_systems: List[Dict[str, Any]] = []
+    labels = {
+        "workflow": "Workflow decision",
+        "ui": "User interface",
+        "audit": "Audit packet",
+        "compliance": "Compliance policy",
+        "unknown": "Unknown system",
+    }
+    for system_id in sorted(affected_system_ids):
+        affected_systems.append({"id": system_id, "label": labels.get(system_id, "Unknown system")})
 
     ui_mapping = {
         "block": ("blocking_modal", "UI blocks the action for blocked decisions."),
