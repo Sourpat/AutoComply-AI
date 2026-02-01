@@ -58,6 +58,11 @@
 
 ## Completed Tasks (Last 5)
 
+### T-018: Override feedback signal (Command 3)
+**Completed**: 2026-02-01
+**Commit**: (pending)
+**Summary**: Captured verifier override feedback as feature-flagged audit events with UI visibility.
+
 ### T-017: Spec trace foundations (Command 1)
 **Completed**: 2026-01-31
 **Commit**: (pending)
@@ -77,11 +82,6 @@
 **Completed**: 2026-01-31
 **Commit**: (pending)
 **Summary**: Added deterministic PDF export for audit diffs with premium formatting.
-
-### T-012: Audit packet view fallback UX
-**Completed**: 2026-01-31
-**Commit**: (pending)
-**Summary**: Added load-source badge, retry actions, and improved missing state in audit packet view.
 
 ---
 

@@ -90,9 +90,25 @@ export function AgentEventTimeline({ caseId, extraEvents = [] }: AgentEventTimel
   };
 
   const getPreview = (payload: Record<string, unknown>) => {
+    if (payload?.type === "override_feedback") {
+      const reason = String(payload?.reasonCategory ?? "override").replace(/_/g, " ");
+      const note = typeof payload?.note === "string" ? payload.note.trim() : "";
+      if (note) {
+        return `Override: ${reason} — ${note.length > 120 ? `${note.slice(0, 120)}…` : note}`;
+      }
+      return `Override: ${reason}`;
+    }
     const keys = Object.keys(payload ?? {}).slice(0, 6);
     if (keys.length === 0) return "No payload details";
     return `Keys: ${keys.join(", ")}${Object.keys(payload ?? {}).length > keys.length ? "…" : ""}`;
+  };
+
+  const getHumanLabel = (payload: Record<string, unknown>) => {
+    if (payload?.type === "override_feedback") {
+      const reason = String(payload?.reasonCategory ?? "override").replace(/_/g, " ");
+      return `Override: ${reason}`;
+    }
+    return String(payload?.type ?? "human_action");
   };
 
   useEffect(() => {
@@ -166,7 +182,7 @@ export function AgentEventTimeline({ caseId, extraEvents = [] }: AgentEventTimel
                     const details = isExpanded ? JSON.stringify(event.payload, null, 2) : getPreview(event.payload);
                     const showToggle = Object.keys(event.payload ?? {}).length > 0;
                     const isHuman = event.payload?.actor === "verifier";
-                    const label = isHuman ? String(event.payload?.type ?? "human_action") : event.type;
+                    const label = isHuman ? getHumanLabel(event.payload ?? {}) : event.type;
                     const tone = isHuman ? "secondary" : eventTone[event.type] ?? "secondary";
 
                     return (

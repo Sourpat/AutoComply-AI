@@ -86,6 +86,31 @@
 **Related**:
 - Tasks: T-017
 
+### [2026-02-01] Capture override feedback as governance signal
+
+**Context**: Reviewers need to record why they override AI decisions without altering execution logic.
+
+**Decision**: Capture override feedback as audit events gated by `FEATURE_OVERRIDE_FEEDBACK`, storing reason and notes in event payload only.
+
+**Rationale**:
+- Keeps override feedback additive and read-only
+- Reuses existing audit events persistence and idempotency
+- Avoids any impact on decision execution or hashing
+
+**Alternatives Considered**:
+- New override table: Rejected (unnecessary schema expansion)
+- Always-on logging: Rejected (feature-flag requirement)
+
+**Consequences**:
+- Positive: Governance signal captured with audit visibility
+- Negative: Requires a small UI flow to collect feedback
+- Neutral: No effect when feature flag is off
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-018
+
 ### [2026-01-31] Add deterministic demo seed for audit packets
 
 **Context**: Demos need instant sample packets to validate list, view, verify, diff, and export flows.

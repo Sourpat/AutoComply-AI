@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -14,6 +15,11 @@ router = APIRouter(prefix="/api/audit", tags=["audit"])
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _override_feedback_enabled() -> bool:
+    flag = os.getenv("FEATURE_OVERRIDE_FEEDBACK", "0").strip().lower()
+    return flag in {"1", "true", "yes", "on"}
 
 
 def _fetch_event_by_client_id(
@@ -49,6 +55,13 @@ async def create_audit_event(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     if event_payload is None or not isinstance(event_payload, dict):
         raise HTTPException(status_code=400, detail="payload must be a JSON object")
+
+    if event_type == "override_feedback":
+        if not _override_feedback_enabled():
+            raise HTTPException(status_code=403, detail="override feedback is disabled")
+        reason_category = event_payload.get("reasonCategory")
+        if not isinstance(reason_category, str) or not reason_category.strip():
+            raise HTTPException(status_code=400, detail="reasonCategory is required")
 
     if client_event_id:
         existing = _fetch_event_by_client_id(case_id, event_type, client_event_id)

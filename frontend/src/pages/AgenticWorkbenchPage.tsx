@@ -91,6 +91,23 @@ const workbenchTabs = [
   { value: "evidence", label: "Evidence" },
 ];
 
+const overrideReasonOptions = [
+  { value: "policy_exception", label: "Policy exception" },
+  { value: "false_positive", label: "False positive" },
+  { value: "false_negative", label: "False negative" },
+  { value: "insufficient_evidence", label: "Insufficient evidence" },
+  { value: "data_issue", label: "Data issue" },
+  { value: "other", label: "Other" },
+];
+
+const overrideDecisionOptions = [
+  { value: "approved", label: "Approve" },
+  { value: "rejected", label: "Reject" },
+  { value: "needs_input", label: "Needs input" },
+];
+
+const OVERRIDE_FEEDBACK_ENABLED = import.meta.env.VITE_FEATURE_OVERRIDE_FEEDBACK === "true";
+
 function formatAgeLabel(createdAt: string) {
   const created = new Date(createdAt);
   const diffMs = Date.now() - created.getTime();
@@ -191,6 +208,11 @@ export function AgenticWorkbenchPage() {
   const [traceOpen, setTraceOpen] = useState(false);
   const [humanEvents, setHumanEvents] = useState<HumanActionEvent[]>([]);
   const [serverEvents, setServerEvents] = useState<HumanActionEvent[]>([]);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("policy_exception");
+  const [overrideNote, setOverrideNote] = useState("");
+  const [overrideDecision, setOverrideDecision] = useState("approved");
+  const [overrideSubmitting, setOverrideSubmitting] = useState(false);
   const [packetHash, setPacketHash] = useState<string | null>(null);
   const [visibleEvidenceCount, setVisibleEvidenceCount] = useState(50);
   const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
@@ -430,6 +452,84 @@ export function AgenticWorkbenchPage() {
     }
   };
 
+  const formatHumanEventLabel = (event: HumanActionEvent) => {
+    if (event.type === "override_feedback") {
+      const reason = String(event.payload?.reasonCategory ?? "override");
+      return `Override: ${reason.replace(/_/g, " ")}`;
+    }
+    return event.type.replace(/_/g, " ");
+  };
+
+  const formatHumanEventNote = (event: HumanActionEvent) => {
+    if (event.type === "override_feedback") {
+      const note = event.payload?.note;
+      if (typeof note === "string" && note.trim()) {
+        return note.length > 120 ? `${note.slice(0, 120)}…` : note;
+      }
+    }
+    return "";
+  };
+
+  const handleOverrideSubmit = async () => {
+    if (!caseId || overrideSubmitting) return;
+    setOverrideSubmitting(true);
+
+    const payload = {
+      reasonCategory: overrideReason,
+      note: overrideNote.trim() || undefined,
+      previousDecisionStatus,
+      newDecisionStatus: overrideDecision,
+    };
+
+    const result = appendHumanEvent(caseId, {
+      caseId,
+      type: "override_feedback",
+      actor: "verifier",
+      payload,
+    });
+
+    if (result.event) {
+      setHumanEvents((prev) => [...prev, result.event]);
+    }
+
+    setOverrideSubmitting(false);
+    setOverrideOpen(false);
+    setOverrideNote("");
+
+    if (!result.event) {
+      if (result.error) {
+        toast.error(`Unable to log override: ${result.error}`);
+      }
+      return;
+    }
+
+    if (!OVERRIDE_FEEDBACK_ENABLED) {
+      toast.success("Override logged locally");
+      return;
+    }
+
+    const serverResult = await postAuditEvent({
+      caseId,
+      packetHash: packetHash ?? undefined,
+      actor: "verifier",
+      eventType: "override_feedback",
+      payload,
+      clientEventId: result.event.clientEventId,
+    });
+
+    if (!serverResult.ok) {
+      toast.error(`Override sync failed: ${serverResult.message}`);
+      return;
+    }
+
+    setHumanEvents((prev) =>
+      prev.map((event) =>
+        event.id === result.event?.id ? { ...event, source: "server" } : event
+      )
+    );
+    toast.success("Override logged");
+  };
+
   const evidenceItems = useMemo(() => {
     const eventEvidence = buildEvidenceFromEvents(events);
     const submissionEvidence = buildEvidenceFromSubmission(selectedCase);
@@ -511,6 +611,7 @@ export function AgenticWorkbenchPage() {
   }, [cases]);
 
   const decisionId = selectedCase ? toDecisionId(selectedCase.submission_id, selectedCase.updated_at) : "";
+  const previousDecisionStatus = plan?.status ?? selectedCase?.status ?? "unknown";
 
   const packetBase = useMemo(() => {
     if (!selectedCase) return null;
@@ -852,6 +953,17 @@ export function AgenticWorkbenchPage() {
           <p className="text-xs text-muted-foreground">
             Updated {selectedCase ? formatTimestamp(selectedCase.updated_at) : "--"}
           </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setOverrideDecision(selectedCase?.status ?? "approved");
+              setOverrideOpen(true);
+            }}
+            disabled={!selectedCase}
+          >
+            Override decision
+          </Button>
         </div>
 
         <div className="space-y-2">
@@ -967,7 +1079,12 @@ export function AgenticWorkbenchPage() {
                 {mergedHumanEvents.map((event) => (
                   <li key={event.id} className="rounded-md border border-border/60 bg-background p-2">
                     <div className="flex items-center justify-between">
-                      <span className="font-medium text-foreground">{event.type.replace(/_/g, " ")}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-foreground">{formatHumanEventLabel(event)}</span>
+                        {OVERRIDE_FEEDBACK_ENABLED && event.type === "override_feedback" && event.source !== "server" && (
+                          <Badge variant="warning">Not synced</Badge>
+                        )}
+                      </div>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -980,6 +1097,11 @@ export function AgenticWorkbenchPage() {
                     <p className="text-[11px] text-muted-foreground">
                       {formatTimestamp(event.timestamp)} {event.source === "server" ? "• server" : "• local"}
                     </p>
+                    {formatHumanEventNote(event) && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {formatHumanEventNote(event)}
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -1019,6 +1141,69 @@ export function AgenticWorkbenchPage() {
             <DialogTitle>Audit Packet</DialogTitle>
           </DialogHeader>
           {renderAuditPanel()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={overrideOpen} onOpenChange={setOverrideOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Override decision</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reason</p>
+              <Select value={overrideReason} onValueChange={setOverrideReason}>
+                <SelectTrigger aria-label="Override reason">
+                  <SelectValue placeholder="Select reason" />
+                </SelectTrigger>
+                <SelectContent>
+                  {overrideReasonOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">New decision</p>
+              <Select value={overrideDecision} onValueChange={setOverrideDecision}>
+                <SelectTrigger aria-label="New decision">
+                  <SelectValue placeholder="Select new decision" />
+                </SelectTrigger>
+                <SelectContent>
+                  {overrideDecisionOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                Previous: {previousDecisionStatus}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Note (optional)</p>
+              <textarea
+                value={overrideNote}
+                onChange={(event) => setOverrideNote(event.target.value)}
+                placeholder="Add context for the override"
+                className="min-h-[96px] w-full rounded-md border border-border/70 bg-background px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setOverrideOpen(false)}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleOverrideSubmit} disabled={overrideSubmitting}>
+                {overrideSubmitting ? "Saving..." : "Submit override"}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -42,7 +42,7 @@ export type SpecTrace = {
 export type HumanActionEvent = {
   id: string;
   caseId: string;
-  type: "NOTE_ADDED" | "EVIDENCE_REVIEWED" | "OVERRIDE_DECISION" | "EXPORT_JSON" | "EXPORT_PDF";
+  type: "NOTE_ADDED" | "EVIDENCE_REVIEWED" | "OVERRIDE_DECISION" | "EXPORT_JSON" | "EXPORT_PDF" | "override_feedback";
   actor: "verifier";
   timestamp: string;
   payload: Record<string, unknown>;
