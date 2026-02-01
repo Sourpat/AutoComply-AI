@@ -77,3 +77,5 @@ DEPLOYMENT_FIXES_SUMMARY.md
 VERCEL_UI_EMPTY_ROOT_CAUSE.md
 verify_deployment_fixes.ps1
 
+.vercel
+.env*.local
