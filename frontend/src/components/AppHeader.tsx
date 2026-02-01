@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { useRole, getRoleDisplayName, getRoleIcon, type UserRole } from "../context/RoleContext";
 import { API_BASE } from "../lib/api";
+import { getMostRecentPacketHash, seedDemoPackets } from "../lib/auditServer";
 import { ThemeToggle } from "./common/ThemeToggle";
-import { navConfig, isAdminUnlocked, isGovNarrativeEnabled, type NavItem } from "./common/navigation";
+import { navConfig, isAdminUnlocked, isGovNarrativeEnabled, isGovDemoEnabled, type NavItem } from "./common/navigation";
 
 type AppHeaderProps = {
   onToggleDevSupport?: () => void;
@@ -297,7 +299,9 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const handleStorageChange = () => {
@@ -317,6 +321,7 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
   }, []);
 
   const govNarrativeEnabled = isGovNarrativeEnabled();
+  const govDemoEnabled = isGovDemoEnabled() && govNarrativeEnabled;
 
   // Filter items based on admin unlock
   const baseItems = showAdmin ? navConfig : navConfig.filter(i => i.group !== "admin");
@@ -332,6 +337,33 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
   // Check if current path is in a group
   const isSuitesActive = suitesItems.some(item => location.pathname.startsWith(item.to));
   const isMoreActive = moreItems.some(item => location.pathname.startsWith(item.to));
+
+  const handleRunDemo = async () => {
+    if (demoLoading) return;
+    setDemoLoading(true);
+
+    const seedResult = await seedDemoPackets();
+    if (!seedResult.ok) {
+      toast.error(seedResult.message || "Unable to seed demo packets", {
+        action: { label: "Retry", onClick: handleRunDemo },
+      });
+      setDemoLoading(false);
+      return;
+    }
+
+    const hashResult = await getMostRecentPacketHash();
+    if (!hashResult.ok) {
+      toast.error(hashResult.message || "Unable to load demo packet", {
+        action: { label: "Retry", onClick: handleRunDemo },
+      });
+      setDemoLoading(false);
+      return;
+    }
+
+    toast.success("Demo packets seeded. Opening governance narrative.");
+    navigate(`/governance/narrative?hash=${encodeURIComponent(hashResult.hash)}`);
+    setDemoLoading(false);
+  };
 
   return (
     <header
@@ -472,6 +504,18 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
                 aria-label="Toggle developer support panel"
               >
                 DevSupport
+              </button>
+            )}
+
+            {govDemoEnabled && (
+              <button
+                type="button"
+                onClick={handleRunDemo}
+                disabled={demoLoading}
+                className="hidden sm:inline-flex items-center rounded-full px-3 py-1.5 text-xs font-semibold ring-1 bg-primary text-primary-foreground ring-primary/40 hover:bg-primary/90 transition-all disabled:opacity-60"
+                aria-label="Run governance demo"
+              >
+                {demoLoading ? "Running..." : "Run Demo"}
               </button>
             )}
 

@@ -24,6 +24,11 @@ export function isGovNarrativeEnabled(): boolean {
   return metaEnv.VITE_FEATURE_GOV_NARRATIVE === "true";
 }
 
+export function isGovDemoEnabled(): boolean {
+  const metaEnv = (import.meta as any)?.env ?? {};
+  return metaEnv.VITE_FEATURE_GOV_DEMO === "true";
+}
+
 export function isAdminUnlocked(): boolean {
   const metaEnv = (import.meta as any)?.env ?? {};
   const enableReviewQueue = metaEnv.VITE_ENABLE_REVIEW_QUEUE;

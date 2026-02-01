@@ -36,6 +36,31 @@
 
 ## Decisions
 
+### [2026-02-01] Add one-click governance narrative demo flow
+
+**Context**: Interview demos need a fast, reliable way to seed deterministic audit packets and open the governance narrative with a single action.
+
+**Decision**: Add a feature-flagged Run Demo action that seeds demo packets, fetches the newest packet hash, and navigates to the governance narrative with a talk-track panel.
+
+**Rationale**:
+- Keeps demo flow additive without backend changes
+- Reuses existing seed and packet index endpoints
+- Allows enablement only when VITE_FEATURE_GOV_DEMO is true
+
+**Alternatives Considered**:
+- Manual seed + copy/paste hash: Rejected (too slow for interviews)
+- Auto-seed on page load: Rejected (surprising behavior)
+
+**Consequences**:
+- Positive: One-click demo readiness with consistent narrative script
+- Negative: Slightly more header logic to maintain
+- Neutral: No impact when feature flag is off
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-020
+
 ### [2026-02-01] Add governance readiness signals and spec-trace empty states
 
 **Context**: Governance demos needed consistent read-only messaging and clear empty states when spec tracing is unavailable.

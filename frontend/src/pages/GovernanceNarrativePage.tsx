@@ -45,6 +45,7 @@ export function GovernanceNarrativePage() {
   const [hashInput, setHashInput] = useState(initialHash);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteValue, setPasteValue] = useState("");
+  const [talkTrackOpen, setTalkTrackOpen] = useState(true);
   const [overrideEvents, setOverrideEvents] = useState<
     Array<{
       id: string;
@@ -95,6 +96,10 @@ export function GovernanceNarrativePage() {
     if (!initialHash) return;
     loadByHash(initialHash).catch(() => setLoading(false));
   }, [initialHash, loadByHash]);
+
+  useEffect(() => {
+    setHashInput(initialHash);
+  }, [initialHash]);
 
   useEffect(() => {
     const loadOverrides = async () => {
@@ -340,6 +345,28 @@ export function GovernanceNarrativePage() {
         </div>
 
         <div className="space-y-4">
+          <Card>
+            <CardContent className="space-y-3 p-5">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">Demo Talk Track</h3>
+                  <p className="text-xs text-muted-foreground">Short script for interview walkthroughs.</p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setTalkTrackOpen((prev) => !prev)}>
+                  {talkTrackOpen ? "Hide" : "Show"}
+                </Button>
+              </div>
+              {talkTrackOpen && (
+                <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                  <li>Flow: Spec → Interpretation → Decision → Evidence → HITL → Audit.</li>
+                  <li>Drift badge flags when the decision used an older spec version.</li>
+                  <li>Override feedback is captured as a governance signal (no chain-of-thought exposed).</li>
+                  <li>Packet hash + verify link confirm audit integrity.</li>
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardContent className="space-y-4 p-5">
               <div>

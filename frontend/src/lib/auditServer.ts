@@ -96,6 +96,29 @@ export async function seedAuditDemoPackets(payload: { caseId?: string; count?: n
   }
 }
 
+export async function seedDemoPackets() {
+  return seedAuditDemoPackets({});
+}
+
+export async function getRecentPackets(limit = 1) {
+  return fetchAuditPacketIndex(limit);
+}
+
+export async function getMostRecentPacketHash() {
+  const response = await getRecentPackets(1);
+  if (!response.ok) {
+    return { ok: false, message: response.message || "Unable to load packets" };
+  }
+
+  const items = response.data as Array<{ packetHash?: string }>;
+  const hash = items?.[0]?.packetHash;
+  if (!hash) {
+    return { ok: false, message: "No audit packets available" };
+  }
+
+  return { ok: true, hash };
+}
+
 export async function verifyAuditPacketOnServer(packet: AuditPacket) {
   try {
     const response = await fetchWithTimeout(`${API_BASE}/api/audit/verify`, {
