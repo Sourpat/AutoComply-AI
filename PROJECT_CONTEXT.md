@@ -189,6 +189,14 @@ frontend/
 - Trace viewer UI with labeling
 - Request ID middleware
 
+## What SDX Is / Is Not
+
+- **Is**: A read-only Execution Preview derived at read-time.
+- **Is**: Feature-flagged (FEATURE_EXEC_PREVIEW + VITE_FEATURE_EXEC_PREVIEW).
+- **Is**: Demo-safe and deterministic, showing readiness signals.
+- **Is Not**: Automation or workflow execution.
+- **Is Not**: A change to decision logic or persistence.
+
 ## Governance Narrative Talk Track (Phase 4)
 
 - We start with a spec identifier, version used, and the latest available version to show drift awareness.

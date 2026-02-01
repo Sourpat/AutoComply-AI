@@ -255,7 +255,7 @@ export function DecisionTraceDrawer({ open, onOpenChange, events, specTrace, exe
                   {execPreviewEnabled && executionPreview ? (
                     <>
                       <Badge variant="secondary">
-                        Exec Confidence: {execScore !== null ? `${execScore}%` : "--"} ({execLabel})
+                        Execution Confidence: {execScore !== null ? `${execScore}%` : "--"} ({execLabel})
                       </Badge>
                       <Badge variant="outline">Intents: {intentCount}</Badge>
                     </>

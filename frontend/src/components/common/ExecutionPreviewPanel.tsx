@@ -27,8 +27,8 @@ export function ExecutionPreviewPanel({
 }: ExecutionPreviewPanelProps) {
   if (!preview) {
     const description = isFeatureEnabled
-      ? "Backend FEATURE_EXEC_PREVIEW is off. Start backend with FEATURE_EXEC_PREVIEW=1."
-      : "Enable VITE_FEATURE_EXEC_PREVIEW to view execution preview.";
+      ? "Backend FEATURE_EXEC_PREVIEW may be off. Start backend with FEATURE_EXEC_PREVIEW=1. If it is on, seed demo packets."
+      : "Enable VITE_FEATURE_EXEC_PREVIEW to view Execution Preview.";
     return (
       <div className="space-y-3">
         {demoMode && (
@@ -37,7 +37,7 @@ export function ExecutionPreviewPanel({
           </p>
         )}
         <EmptyState
-          title="Execution preview unavailable"
+          title="Execution Preview unavailable"
           description={description}
         />
         {isFeatureEnabled && showSeedCta && (
@@ -85,6 +85,8 @@ export function ExecutionPreviewPanel({
   const reasons = toArray(executionConfidence?.reasons);
   const showReasons = execLabel !== "HIGH" || reasons.length > 0 || execScore === null;
 
+  const stabilityLabel = driftDetected ? "Drift" : specStability?.drift === false ? "Stable" : "Unknown";
+
   return (
     <div className="space-y-4 text-xs text-muted-foreground">
       {demoMode && (
@@ -101,7 +103,7 @@ export function ExecutionPreviewPanel({
       </div>
 
       <div className="space-y-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Execution Readiness</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Spec Completeness</p>
         <div className="flex flex-wrap items-center gap-2">
           <Badge
             variant={
@@ -116,18 +118,26 @@ export function ExecutionPreviewPanel({
           >
             {completenessStatus}
           </Badge>
-          {completenessMissing.length > 0 && (
-            <span className="text-[11px] text-muted-foreground">
-              Missing: {completenessMissing.slice(0, 4).join(", ")}
-              {completenessMissing.length > 4 ? ` +${completenessMissing.length - 4} more` : ""}
+          <span className="text-[11px] text-muted-foreground">
+            Missing: {completenessMissing.length > 0
+              ? `${completenessMissing.slice(0, 4).join(", ")}${
+                  completenessMissing.length > 4 ? ` +${completenessMissing.length - 4} more` : ""
+                }`
+              : "Unknown"}
+          </span>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Spec Stability</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={driftDetected ? "warning" : "secondary"}>{stabilityLabel}</Badge>
+          {driftDetected && (
+            <span className="text-[11px] text-amber-600">
+              {toText(specStability?.versionUsed, "--")} → {toText(specStability?.latestVersion, "--")}
             </span>
           )}
         </div>
-        {driftDetected && (
-          <p className="text-[11px] text-amber-600">
-            Spec drift detected ({toText(specStability?.versionUsed, "--")} → {toText(specStability?.latestVersion, "--")})
-          </p>
-        )}
       </div>
 
       <div className="space-y-2">
@@ -252,7 +262,7 @@ export function ExecutionPreviewPanel({
               </Badge>
             ))
           ) : (
-            <Badge variant="outline">no missing signals</Badge>
+            <Badge variant="outline">{readinessStatus === "unknown" ? "Unknown" : "no missing signals"}</Badge>
           )}
         </div>
       </div>

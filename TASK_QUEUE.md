@@ -52,7 +52,7 @@
 
 ## P2 - Medium Priority (Backlog)
 
-### P8.9: SDX follow-up (TODO)
+### P9.1: Next phase (TODO)
 **Status**: pending
 **Assigned**: (none)
 **Goal**: TBD
@@ -65,6 +65,13 @@
 ---
 
 ## Completed Tasks (Last 5)
+
+**Phase 8 Status**: DONE
+
+### P8.9: Validation & polish (Phase 8.9)
+**Completed**: 2026-02-01
+**Commit**: (pending)
+**Summary**: Aligned SDX terminology, empty-state messaging, and confidence tooltip copy.
 
 ### P8.8: Feature flag & demo safety (Phase 8.8)
 **Completed**: 2026-02-01
@@ -85,21 +92,6 @@
 **Completed**: 2026-02-01
 **Commit**: (pending)
 **Summary**: Added execution confidence score and factor breakdown.
-
-### P8.4: Spec completeness & stability signals (Phase 8.4)
-**Completed**: 2026-02-01
-**Commit**: (pending)
-**Summary**: Added spec completeness and stability signals to execution preview.
-
-### P8.3: UI impact awareness layer (Phase 8.3)
-**Completed**: 2026-02-01
-**Commit**: (pending)
-**Summary**: Added UI impact mapping per intent and UI impact summary.
-
-### T-019: Governance narrative artifact (Command 4)
-**Completed**: 2026-02-01
-**Commit**: 1200295
-**Summary**: Added governance readiness signals, consistent read-only messaging, and spec-trace empty states with build verification.
 
 ---
 

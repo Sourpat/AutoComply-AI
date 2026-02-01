@@ -366,7 +366,7 @@ export function GovernanceNarrativePage() {
                       {executionPreview ? (
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge variant="secondary">
-                            Exec Confidence: {execConfidencePercent ?? "--"}% ({execConfidence?.label ?? "UNKNOWN"})
+                            Execution Confidence: {execConfidencePercent ?? "--"}% ({execConfidence?.label ?? "UNKNOWN"})
                           </Badge>
                           <Badge variant="outline">Intents: {execIntents.length}</Badge>
                         </div>
@@ -414,9 +414,9 @@ export function GovernanceNarrativePage() {
                           </div>
 
                           <div className="space-y-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Execution Readiness</p>
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Spec Completeness &amp; Spec Stability</p>
                             <div className="flex flex-wrap items-center gap-2">
-                              <Badge variant="secondary">{execCompleteness?.status ?? "UNKNOWN"}</Badge>
+                              <Badge variant="secondary">Spec Completeness: {execCompleteness?.status ?? "UNKNOWN"}</Badge>
                               <span className="text-[11px] text-muted-foreground">
                                 Missing: {(execCompleteness?.missingDimensions || []).length
                                   ? execCompleteness.missingDimensions.join(", ")
@@ -424,7 +424,7 @@ export function GovernanceNarrativePage() {
                               </span>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
-                              <Badge variant="outline">Stability: {stabilityStatus}</Badge>
+                              <Badge variant="outline">Spec Stability: {stabilityStatus}</Badge>
                               {execStability?.drift === true && (
                                 <span className="text-[11px] text-amber-600">
                                   Drift {execStability?.versionUsed ?? "--"} → {execStability?.latestVersion ?? "--"}
@@ -441,6 +441,7 @@ export function GovernanceNarrativePage() {
                               <Badge variant="outline">
                                 Decision Confidence: {decisionConfidencePercent ?? "--"}%
                               </Badge>
+                              <ConfidenceHelp size={12} />
                             </div>
                           </div>
 

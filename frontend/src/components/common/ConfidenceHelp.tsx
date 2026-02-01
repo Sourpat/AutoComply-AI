@@ -3,8 +3,8 @@ import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
 
 const BODY_TEXT =
-  "Confidence is a calibrated estimate of how likely the decision is correct, based on available inputs and rules. It is not certainty, and it can change if evidence or specs change.";
-const FOOTER_TEXT = "Always review flagged cases and overrides.";
+  "Execution Confidence reflects system readiness, not AI certainty. Decision Confidence is the model’s score.";
+const FOOTER_TEXT = "Read-only guidance for review conversations.";
 
 export function ConfidenceHelp({ className, size = 14 }: { className?: string; size?: number }) {
   const [open, setOpen] = useState(false);
