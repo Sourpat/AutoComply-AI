@@ -52,7 +52,7 @@
 
 ## P2 - Medium Priority (Backlog)
 
-### P8.4: Execution preview UX polish (TODO)
+### P8.5: Execution preview UX polish (TODO)
 **Status**: pending
 **Assigned**: (none)
 **Goal**: Improve execution preview display density without changing logic
@@ -65,6 +65,11 @@
 ---
 
 ## Completed Tasks (Last 5)
+
+### P8.4: Spec completeness & stability signals (Phase 8.4)
+**Completed**: 2026-02-01
+**Commit**: (pending)
+**Summary**: Added spec completeness and stability signals to execution preview.
 
 ### P8.3: UI impact awareness layer (Phase 8.3)
 **Completed**: 2026-02-01
@@ -80,11 +85,6 @@
 **Completed**: 2026-02-01
 **Commit**: (pending)
 **Summary**: Added read-time execution preview attachment and read-only UI panels behind feature flags.
-
-### T-020: Interview demo mode (Phase 7)
-**Completed**: 2026-02-01
-**Commit**: 70380e8
-**Summary**: Added one-click demo seeding, narrative auto-load, and talk-track panel behind VITE_FEATURE_GOV_DEMO.
 
 ### T-019: Governance narrative artifact (Command 4)
 **Completed**: 2026-02-01

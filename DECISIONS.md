@@ -84,6 +84,19 @@
 
 **Status**: Accepted
 
+### [2026-02-01] Add spec completeness and stability signals (Phase 8.4)
+
+**Context**: Phase 8.4 requires read-only execution readiness signals derived from spec and execution preview metadata.
+
+**Decision**: Compute `spec_completeness` and `spec_stability` in `execution_preview` using deterministic rules and existing drift metadata.
+
+**Consequences**:
+- Positive: Clear readiness and drift context without persistence
+- Negative: Additional read-time computation
+- Neutral: No effect when feature flag is off
+
+**Status**: Accepted
+
 ### [2026-02-01] Add one-click governance narrative demo flow
 
 **Context**: Interview demos need a fast, reliable way to seed deterministic audit packets and open the governance narrative with a single action.

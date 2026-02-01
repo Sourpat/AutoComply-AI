@@ -30,6 +30,11 @@ export function ExecutionPreviewPanel({ preview }: ExecutionPreviewPanelProps) {
   const uiImpactSummary = preview?.ui_impacts_summary ?? {};
   const uiImpactCount = toArray(uiImpactSummary?.impacts).length;
   const uiImpactPrimary = toText(uiImpactSummary?.primary, "unknown");
+  const specCompleteness = preview?.spec_completeness ?? {};
+  const completenessStatus = toText(specCompleteness?.status, "UNKNOWN");
+  const completenessMissing = toArray(specCompleteness?.missingDimensions);
+  const specStability = preview?.spec_stability ?? {};
+  const driftDetected = specStability?.drift === true;
 
   return (
     <div className="space-y-4 text-xs text-muted-foreground">
@@ -39,6 +44,36 @@ export function ExecutionPreviewPanel({ preview }: ExecutionPreviewPanelProps) {
           <Badge variant="secondary">Primary: {uiImpactPrimary}</Badge>
           <Badge variant="outline">{uiImpactCount} impact(s)</Badge>
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Execution Readiness</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge
+            variant={
+              completenessStatus === "COMPLETE"
+                ? "success"
+                : completenessStatus === "INCOMPLETE"
+                ? "destructive"
+                : completenessStatus === "PARTIAL"
+                ? "warning"
+                : "secondary"
+            }
+          >
+            {completenessStatus}
+          </Badge>
+          {completenessMissing.length > 0 && (
+            <span className="text-[11px] text-muted-foreground">
+              Missing: {completenessMissing.slice(0, 4).join(", ")}
+              {completenessMissing.length > 4 ? ` +${completenessMissing.length - 4} more` : ""}
+            </span>
+          )}
+        </div>
+        {driftDetected && (
+          <p className="text-[11px] text-amber-600">
+            Spec drift detected ({toText(specStability?.versionUsed, "--")} → {toText(specStability?.latestVersion, "--")})
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">

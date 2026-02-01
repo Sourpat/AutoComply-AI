@@ -131,11 +131,13 @@ def build_execution_preview(packet: Dict[str, Any]) -> Dict[str, Any]:
     decision_id = _as_str(decision.get("decisionId")) or _as_str(metadata.get("decisionId"))
 
     override_present: Optional[bool]
+    override_event_found = False
     if human_events:
-        override_present = any(
+        override_event_found = any(
             _as_str(event.get("type")) in {"override_feedback", "OVERRIDE_DECISION"}
             for event in human_events
         )
+        override_present = override_event_found
     else:
         override_present = None
 
@@ -289,6 +291,85 @@ def build_execution_preview(packet: Dict[str, Any]) -> Dict[str, Any]:
     if not intents or all((_as_str(intent.get("intent")) or "unknown") == "unknown" for intent in intents):
         missing_signals.append("execution_intents")
 
+    spec_has_conditions = None
+    if spec:
+        parsed_conditions = _as_list(spec.get("parsedConditions"))
+        rule_ids = _as_list(spec.get("ruleIdsUsed"))
+        rules_meta = _as_list(spec.get("rulesMeta"))
+        spec_has_conditions = bool(parsed_conditions or rule_ids or rules_meta)
+
+    intents_available = None
+    if intents:
+        intents_available = True
+    elif "execution_intents" in missing_signals:
+        intents_available = None
+    else:
+        intents_available = False
+
+    overrides_supported: Optional[bool]
+    if human_actions:
+        overrides_supported = override_event_found
+    else:
+        overrides_supported = None
+
+    audit_hooks_present: Optional[bool]
+    if packet.get("timelineEvents") is None and packet.get("packetHash") is None:
+        audit_hooks_present = None
+    else:
+        audit_hooks_present = any(
+            (_as_str(intent.get("intent")) or "") == "emit_audit_event" for intent in intents
+        ) or bool(packet.get("timelineEvents"))
+
+    ui_impact_declared: Optional[bool]
+    if not intents:
+        ui_impact_declared = None
+    else:
+        ui_impact_declared = any(
+            _as_list(intent.get("uiImpacts")) and _as_list(intent.get("uiImpacts")) != ["unknown"]
+            for intent in intents
+        )
+
+    dimensions = {
+        "conditions_defined": spec_has_conditions,
+        "outcomes_defined": intents_available,
+        "overrides_supported": overrides_supported,
+        "audit_hooks_present": audit_hooks_present,
+        "ui_impact_declared": ui_impact_declared,
+    }
+
+    missing_dimensions: List[str] = []
+    for key, value in dimensions.items():
+        if value is False:
+            missing_dimensions.append(key)
+        elif value is None:
+            missing_dimensions.append(f"unknown: {key}")
+
+    none_count = sum(1 for value in dimensions.values() if value is None)
+    false_count = sum(1 for value in dimensions.values() if value is False)
+
+    if none_count == len(dimensions):
+        completeness_status = "UNKNOWN"
+    elif false_count >= 2:
+        completeness_status = "INCOMPLETE"
+    elif false_count == 0 and none_count == 0:
+        completeness_status = "COMPLETE"
+    else:
+        completeness_status = "PARTIAL"
+
+    spec_completeness = {
+        "status": completeness_status,
+        "missingDimensions": missing_dimensions,
+        "dimensions": dimensions,
+        "notes": "Readiness derived from spec, intent, override, audit, and UI mappings.",
+    }
+
+    spec_stability = {
+        "drift": spec.get("drift") if spec else None,
+        "versionUsed": str(spec_version) if spec_version is not None else None,
+        "latestVersion": str(latest_version) if latest_version is not None else None,
+        "note": "Spec drift derived from spec trace metadata." if spec else "Spec trace unavailable.",
+    }
+
     return {
         "version": "v1",
         "source": {
@@ -310,6 +391,8 @@ def build_execution_preview(packet: Dict[str, Any]) -> Dict[str, Any]:
         "ui_impacts_summary": ui_impacts_summary,
         "auditImpacts": audit_impacts,
         "missingSignals": missing_signals,
+        "spec_completeness": spec_completeness,
+        "spec_stability": spec_stability,
         "readiness": {
             "missing": sorted(set(missing)),
             "status": readiness_status,
