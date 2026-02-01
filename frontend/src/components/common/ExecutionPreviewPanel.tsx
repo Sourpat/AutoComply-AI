@@ -6,6 +6,7 @@ import { ConfidenceHelp } from "./ConfidenceHelp";
 
 type ExecutionPreviewPanelProps = {
   preview: any | null;
+  decision?: any | null;
 };
 
 const toArray = (value: any) => (Array.isArray(value) ? value : []);

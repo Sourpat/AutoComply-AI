@@ -52,7 +52,7 @@
 
 ## P2 - Medium Priority (Backlog)
 
-### P8.6: Execution preview UX polish (TODO)
+### P8.7: Execution preview UX polish (TODO)
 **Status**: pending
 **Assigned**: (none)
 **Goal**: Improve execution preview display density without changing logic
@@ -65,6 +65,11 @@
 ---
 
 ## Completed Tasks (Last 5)
+
+### P8.6: Execution preview UI integration (Phase 8.6)
+**Completed**: 2026-02-01
+**Commit**: (pending)
+**Summary**: Added collapsed execution preview sections with summary chips and empty states.
 
 ### P8.5: Execution confidence vs decision confidence (Phase 8.5)
 **Completed**: 2026-02-01
@@ -80,11 +85,6 @@
 **Completed**: 2026-02-01
 **Commit**: (pending)
 **Summary**: Added UI impact mapping per intent and UI impact summary.
-
-### P8.2: Execution preview intent derivation (Phase 8.2)
-**Completed**: 2026-02-01
-**Commit**: (pending)
-**Summary**: Expanded deterministic intent derivation from decision status, risk, and audit events.
 
 ### T-019: Governance narrative artifact (Command 4)
 **Completed**: 2026-02-01

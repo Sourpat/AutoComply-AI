@@ -110,6 +110,19 @@
 
 **Status**: Accepted
 
+### [2026-02-01] Integrate execution preview via progressive disclosure (Phase 8.6)
+
+**Context**: Phase 8.6 requires read-only execution preview details to remain collapsed and uncluttered.
+
+**Decision**: Surface execution preview sections behind collapsible panels with summary chips and empty states, keeping behavior unchanged.
+
+**Consequences**:
+- Positive: Read-only data remains accessible without cluttering the trace UI
+- Negative: Requires small UI wiring in two surfaces
+- Neutral: No effect when feature flag is off
+
+**Status**: Accepted
+
 ### [2026-02-01] Add one-click governance narrative demo flow
 
 **Context**: Interview demos need a fast, reliable way to seed deterministic audit packets and open the governance narrative with a single action.

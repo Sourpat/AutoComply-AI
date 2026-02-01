@@ -1222,6 +1222,7 @@ export function AgenticWorkbenchPage() {
         events={events}
         specTrace={packetBase?.decision_trace?.spec}
         executionPreview={getExecutionPreview(packetBase)}
+        decision={packetBase?.decision ?? null}
       />
 
       <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)_360px]">

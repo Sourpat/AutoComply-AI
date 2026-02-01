@@ -328,17 +328,47 @@ export function GovernanceNarrativePage() {
                 )}
               </SectionCard>
 
-              {EXEC_PREVIEW_ENABLED && (
-                <SectionCard title="Execution Preview (Read-only)">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs text-muted-foreground">Collapsed by default.</p>
-                    <Button variant="ghost" size="sm" onClick={() => setExecPreviewOpen((prev) => !prev)}>
-                      {execPreviewOpen ? "Hide" : "Show"}
-                    </Button>
+              <SectionCard title="Execution Preview">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">
+                      Read-only. Derived from spec + decision trace. No system behavior changes.
+                    </p>
+                    {EXEC_PREVIEW_ENABLED && executionPreview ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary">
+                          Exec Confidence: {executionPreview?.execution_confidence?.score ?? "--"}% ({executionPreview?.execution_confidence?.label ?? "UNKNOWN"})
+                        </Badge>
+                        <Badge variant="outline">
+                          Intents: {Array.isArray(executionPreview?.executionIntents) ? executionPreview.executionIntents.length : 0}
+                        </Badge>
+                      </div>
+                    ) : (
+                      <Badge variant="outline">Not available</Badge>
+                    )}
                   </div>
-                  {execPreviewOpen && <ExecutionPreviewPanel preview={executionPreview} />}
-                </SectionCard>
-              )}
+                  <Button variant="ghost" size="sm" onClick={() => setExecPreviewOpen((prev) => !prev)}>
+                    {execPreviewOpen ? "Hide" : "Show"}
+                  </Button>
+                </div>
+                {execPreviewOpen && (
+                  <div className="mt-3">
+                    {EXEC_PREVIEW_ENABLED && executionPreview ? (
+                      <ExecutionPreviewPanel preview={executionPreview} decision={packet?.decision ?? null} />
+                    ) : (
+                      <div className="space-y-2">
+                        <EmptyState
+                          title="Execution preview not available"
+                          description="Enable VITE_FEATURE_EXEC_PREVIEW and backend FEATURE_EXEC_PREVIEW to compute this preview."
+                        />
+                        <Button variant="ghost" size="sm" disabled>
+                          See setup in .env.example
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </SectionCard>
 
               <SectionCard title="Audit artifact">
                 <div className="space-y-2 text-xs text-muted-foreground">
