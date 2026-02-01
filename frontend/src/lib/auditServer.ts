@@ -80,6 +80,22 @@ export async function fetchAuditPacketIndex(limit = 50) {
   }
 }
 
+export async function seedAuditDemoPackets(payload: { caseId?: string; count?: number }) {
+  try {
+    const response = await fetchWithTimeout(`${API_BASE}/api/audit/demo/seed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      return { ok: false, message: await readErrorMessage(response), status: response.status };
+    }
+    return { ok: true, data: await response.json() };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Network error" };
+  }
+}
+
 export async function verifyAuditPacketOnServer(packet: AuditPacket) {
   try {
     const response = await fetchWithTimeout(`${API_BASE}/api/audit/verify`, {

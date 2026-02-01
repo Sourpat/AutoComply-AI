@@ -43,6 +43,11 @@
 
 ## Completed Tasks (Last 5)
 
+### T-015: Audit demo seed packets
+**Completed**: 2026-01-31
+**Commit**: (pending)
+**Summary**: Added deterministic demo seed endpoint and UI trigger for audit packets.
+
 ### T-014: Audit packet index page
 **Completed**: 2026-01-31
 **Commit**: (pending)
@@ -62,11 +67,6 @@
 **Completed**: 2026-01-31
 **Commit**: (pending)
 **Summary**: Polished diff UI readability, deep-link navigation, and export metadata.
-
-### T-010: Audit diff report
-**Completed**: 2026-01-31
-**Commit**: 481b4bc
-**Summary**: Added audit diff route, deterministic matching, and exportable diff hash.
 
 ---
 

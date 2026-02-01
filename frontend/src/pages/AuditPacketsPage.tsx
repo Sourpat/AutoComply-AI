@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 
 import { EmptyState } from "../components/common/EmptyState";
 import { PageHeader } from "../components/common/PageHeader";
@@ -8,7 +9,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
-import { fetchAuditPacketIndex } from "../lib/auditServer";
+import { fetchAuditPacketIndex, seedAuditDemoPackets } from "../lib/auditServer";
 import { formatTimestamp } from "../lib/formatters";
 
 const hashPreview = (hash: string) => `${hash.slice(0, 8)}…${hash.slice(-6)}`;
@@ -27,6 +28,8 @@ export function AuditPacketsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [seedLoading, setSeedLoading] = useState(false);
+  const [seedCaseId, setSeedCaseId] = useState<string | null>(null);
 
   const loadPackets = async () => {
     setLoading(true);
@@ -38,6 +41,21 @@ export function AuditPacketsPage() {
       setError(response.message || "Unable to load packets");
     }
     setLoading(false);
+  };
+
+  const handleSeed = async () => {
+    setSeedLoading(true);
+    const response = await seedAuditDemoPackets({});
+    if (response.ok) {
+      const data = response.data as { caseId: string; seeded: number };
+      toast.success(`Seeded ${data.seeded} demo packets`);
+      setSeedCaseId(data.caseId);
+      setQuery(data.caseId);
+      await loadPackets();
+    } else {
+      toast.error(response.message || "Unable to seed demo packets");
+    }
+    setSeedLoading(false);
   };
 
   React.useEffect(() => {
@@ -77,11 +95,22 @@ export function AuditPacketsPage() {
         title="Audit Packets"
         subtitle="Recent persisted audit packets from the server."
         actions={
-          <Button variant="outline" size="sm" onClick={loadPackets} disabled={loading}>
-            Refresh
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={handleSeed} disabled={seedLoading}>
+              {seedLoading ? "Seeding..." : "Seed Demo Packets"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={loadPackets} disabled={loading}>
+              Refresh
+            </Button>
+          </div>
         }
       />
+
+      {seedCaseId && (
+        <div className="text-xs text-muted-foreground">
+          Seeded case: <span className="font-semibold text-foreground">{seedCaseId}</span>
+        </div>
+      )}
 
       <Card>
         <CardContent className="space-y-4 p-5">

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
@@ -27,6 +27,10 @@ def _packet_meta(row: Dict[str, Any]) -> Dict[str, Any]:
         "sizeBytes": row["size_bytes"],
         "packetVersion": row.get("packet_version", "v1"),
     }
+
+
+def _iso(ts: datetime) -> str:
+    return ts.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _decision_changes(left: Dict[str, Any], right: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -222,6 +226,181 @@ async def store_audit_packet(request: Request) -> Dict[str, Any]:
         "stored": True,
         "sizeBytes": stored["size_bytes"],
         "createdAt": stored["created_at"],
+    }
+
+
+@router.post("/demo/seed")
+async def seed_demo_packets(payload: Dict[str, Any]) -> Dict[str, Any]:
+    case_id = payload.get("caseId") or "CASE-DEMO"
+    count = payload.get("count") or 3
+    try:
+        count = int(count)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="count must be an integer")
+
+    count = max(1, min(count, 10))
+    base_ts = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+
+    statuses = ["submitted", "needs_review", "approved"]
+    confidences = [0.62, 0.78, 0.91]
+
+    evidence_base = [
+        {
+            "id": "evidence-01",
+            "type": "doc",
+            "source": "Demo Form",
+            "details": {"title": "Application Form"},
+        },
+        {
+            "id": "evidence-02",
+            "type": "external_check",
+            "source": "License Registry",
+            "details": {"title": "License Lookup"},
+        },
+        {
+            "id": "evidence-03",
+            "type": "user_attestation",
+            "source": "User Attestation",
+            "details": {"title": "Applicant Statement"},
+        },
+        {
+            "id": "evidence-04",
+            "type": "doc",
+            "source": "Supporting Docs",
+            "details": {"title": "Supporting Document"},
+        },
+        {
+            "id": "evidence-05",
+            "type": "external_check",
+            "source": "Sanctions List",
+            "details": {"title": "Sanctions Screening"},
+        },
+    ]
+
+    timeline_base = [
+        {"id": "evt-01", "type": "case_created", "payload": {"status": "submitted"}},
+        {"id": "evt-02", "type": "agent_plan", "payload": {"summary": "Initial plan"}},
+        {"id": "evt-03", "type": "evidence_collected", "payload": {"count": 2}},
+        {"id": "evt-04", "type": "risk_scored", "payload": {"risk": "medium"}},
+        {"id": "evt-05", "type": "decision_proposed", "payload": {"status": "needs_review"}},
+    ]
+
+    packet_hashes: List[str] = []
+
+    for index in range(count):
+        ts = base_ts + timedelta(minutes=5 * index)
+        decision_id = f"DECISION-{case_id}-{index + 1:02d}"
+        status = statuses[min(index, len(statuses) - 1)]
+        confidence = confidences[min(index, len(confidences) - 1)]
+
+        evidence_items = []
+        for item in evidence_base[: max(3, 3 + index)]:
+            evidence_items.append({
+                **item,
+                "timestamp": _iso(ts),
+            })
+
+        timeline_events = []
+        for event in timeline_base:
+            timeline_events.append({
+                "id": event["id"],
+                "type": event["type"],
+                "timestamp": _iso(ts),
+                "payload": event["payload"],
+            })
+
+        if index > 0:
+            timeline_events.append({
+                "id": f"evt-extra-{index:02d}",
+                "type": "decision_updated",
+                "timestamp": _iso(ts),
+                "payload": {"status": status},
+            })
+
+        human_events: List[Dict[str, Any]] = []
+        if index >= 1:
+            human_events.append({
+                "id": f"note-{index:02d}",
+                "caseId": case_id,
+                "type": "NOTE_ADDED",
+                "actor": "verifier",
+                "timestamp": _iso(ts),
+                "payload": {"note": f"Verifier note {index:02d}"},
+            })
+        if index >= 2:
+            human_events.append({
+                "id": f"export-{index:02d}",
+                "caseId": case_id,
+                "type": "EXPORT_JSON",
+                "actor": "verifier",
+                "timestamp": _iso(ts),
+                "payload": {"fileName": f"audit_packet_{case_id}_{index:02d}.json"},
+            })
+
+        packet: Dict[str, Any] = {
+            "metadata": {
+                "caseId": case_id,
+                "decisionId": decision_id,
+                "generatedAt": _iso(ts),
+            },
+            "caseSnapshot": {
+                "submissionId": case_id,
+                "tenant": "demo",
+                "formType": "csf",
+                "status": status,
+                "riskLevel": "medium",
+                "createdAt": _iso(base_ts),
+                "updatedAt": _iso(ts),
+                "title": f"Demo Case {case_id}",
+                "subtitle": "Audit demo packet",
+                "summary": f"Demo decision {index + 1} for {case_id}",
+                "traceId": "trace_demo_1",
+            },
+            "decision": {
+                "status": status,
+                "confidence": confidence,
+                "riskLevel": "medium",
+                "decisionId": decision_id,
+                "updatedAt": _iso(ts),
+            },
+            "explainability": {
+                "summary": f"Demo summary {index + 1}",
+                "traceId": "trace_demo_1",
+                "timestamp": _iso(ts),
+                "rulesEvaluated": [],
+                "modelNotes": [],
+            },
+            "timelineEvents": timeline_events,
+            "evidenceIndex": evidence_items,
+            "humanActions": {
+                "auditNotes": "",
+                "evidenceNotes": {},
+                "events": human_events,
+            },
+            "packetVersion": "v1",
+        }
+
+        packet_hash = compute_packet_hash(packet)
+        packet["packetHash"] = packet_hash
+        packet_hashes.append(packet_hash)
+
+        payload_row = {
+            "packet_hash": packet_hash,
+            "case_id": case_id,
+            "decision_id": decision_id,
+            "created_at": _iso(ts),
+            "packet_version": packet.get("packetVersion", "v1"),
+            "packet_json": json.dumps(packet),
+            "size_bytes": len(json.dumps(packet).encode("utf-8")),
+        }
+
+        upsert_audit_packet(payload_row)
+
+    return {
+        "caseId": case_id,
+        "seeded": count,
+        "packetHashes": packet_hashes,
+        "createdAt": _iso(base_ts),
     }
 
 

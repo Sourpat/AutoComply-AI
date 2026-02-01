@@ -36,6 +36,31 @@
 
 ## Decisions
 
+### [2026-01-31] Add deterministic demo seed for audit packets
+
+**Context**: Demos need instant sample packets to validate list, view, verify, diff, and export flows.
+
+**Decision**: Add a server endpoint that deterministically seeds a short sequence of audit packets with predictable timestamps and progressive changes.
+
+**Rationale**:
+- Enables quick demo setup without manual data
+- Keeps packet content deterministic for repeatable testing
+- Reuses existing packet persistence and hashing
+
+**Alternatives Considered**:
+- Client-only seeding: Rejected (no cross-device visibility)
+- Randomized seeding: Rejected (non-deterministic diffs)
+
+**Consequences**:
+- Positive: Faster demos and easier QA
+- Negative: Additional endpoint to secure in production
+- Neutral: No schema changes
+
+**Status**: Accepted
+
+**Related**:
+- Area: audit demo data
+
 ### [2026-01-31] Add audit packet index for server-stored packets
 
 **Context**: Reviewers need a central list of persisted audit packets with one-click navigation.
