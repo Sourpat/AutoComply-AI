@@ -58,6 +58,11 @@
 
 ## Completed Tasks (Last 5)
 
+### T-020: Interview demo mode (Phase 7)
+**Completed**: 2026-02-01
+**Commit**: 70380e8
+**Summary**: Added one-click demo seeding, narrative auto-load, and talk-track panel behind VITE_FEATURE_GOV_DEMO.
+
 ### T-019: Governance narrative artifact (Command 4)
 **Completed**: 2026-02-01
 **Commit**: 1200295
@@ -77,11 +82,6 @@
 **Completed**: 2026-01-31
 **Commit**: (pending)
 **Summary**: Added deterministic demo seed endpoint and UI trigger for audit packets.
-
-### T-014: Audit packet index page
-**Completed**: 2026-01-31
-**Commit**: (pending)
-**Summary**: Added audit packet index endpoint and UI list with view/verify/compare actions.
 
 ---
 
