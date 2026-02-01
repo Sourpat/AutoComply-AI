@@ -173,6 +173,19 @@ frontend/
 - Trace viewer UI with labeling
 - Request ID middleware
 
+## Governance Narrative Talk Track (Phase 4)
+
+- We start with a spec identifier, version used, and the latest available version to show drift awareness.
+- The system parses the spec into explicit conditions so governance can see what was interpreted.
+- The AI decision is presented as an outcome with confidence and severity, not chain-of-thought.
+- UI enforcement reflects the decision through badges and risk indicators, keeping operators aligned.
+- Evidence is summarized as metadata (title, source, date) to avoid exposing raw content.
+- Human override feedback is captured as a governance signal with reason and note.
+- All actions are stitched into an audit artifact with a packet hash and verification links.
+- Drift flags highlight when a decision used an older spec version.
+- HITL feedback is additive and does not change decision logic.
+- Feature flags keep narrative features read-only and demo-safe.
+
 ## Deployment Targets
 
 **Production**: (Placeholder - add Render/Railway URL when deployed)

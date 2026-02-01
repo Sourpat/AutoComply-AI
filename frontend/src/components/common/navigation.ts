@@ -15,8 +15,14 @@ export const navConfig: NavItem[] = [
   { to: "/csf", label: "CSF Suite", group: "suites" },
   { to: "/license", label: "License Suite", group: "suites" },
   { to: "/coverage", label: "Coverage", group: "more" },
+  { to: "/governance/narrative", label: "Governance Narrative", group: "more" },
   { to: "/analytics", label: "Analytics", group: "more" },
 ];
+
+export function isGovNarrativeEnabled(): boolean {
+  const metaEnv = (import.meta as any)?.env ?? {};
+  return metaEnv.VITE_FEATURE_GOV_NARRATIVE === "true";
+}
 
 export function isAdminUnlocked(): boolean {
   const metaEnv = (import.meta as any)?.env ?? {};

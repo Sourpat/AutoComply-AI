@@ -23,6 +23,7 @@ import { AuditDiffPage } from "./pages/AuditDiffPage";
 import { AuditPacketsPage } from "./pages/AuditPacketsPage";
 import { AuditVerifyPage } from "./pages/AuditVerifyPage";
 import { AuditPacketViewPage } from "./pages/AuditPacketViewPage";
+import { GovernanceNarrativePage } from "./pages/GovernanceNarrativePage";
 import CoverageDashboardPage from "./pages/CoverageDashboardPage";
 import { AnalyticsDashboardPage } from "./pages/AnalyticsDashboardPage";
 import { DiagnosticsBanner } from "./components/DiagnosticsBanner";
@@ -33,6 +34,8 @@ import { NyPharmacyLicenseSubmissionPage } from "./pages/NyPharmacyLicenseSubmis
 import { CsfFacilitySubmissionPage } from "./pages/CsfFacilitySubmissionPage";
 
 export default function App() {
+  const govNarrativeEnabled = import.meta.env.VITE_FEATURE_GOV_NARRATIVE === "true";
+
   return (
     <ErrorBoundary>
       <BrowserRouter
@@ -56,6 +59,9 @@ export default function App() {
             <Route path="/audit/packets" element={<AuditPacketsPage />} />
             <Route path="/audit/verify" element={<AuditVerifyPage />} />
             <Route path="/audit/view" element={<AuditPacketViewPage />} />
+            {govNarrativeEnabled && (
+              <Route path="/governance/narrative" element={<GovernanceNarrativePage />} />
+            )}
             <Route path="/coverage" element={<CoverageDashboardPage />} />
             <Route path="/analytics" element={<AnalyticsDashboardPage />} />
             <Route path="/license/ohio-tddd" element={<OhioTdddSandbox />} />

@@ -3,7 +3,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useRole, getRoleDisplayName, getRoleIcon, type UserRole } from "../context/RoleContext";
 import { API_BASE } from "../lib/api";
 import { ThemeToggle } from "./common/ThemeToggle";
-import { navConfig, isAdminUnlocked, type NavItem } from "./common/navigation";
+import { navConfig, isAdminUnlocked, isGovNarrativeEnabled, type NavItem } from "./common/navigation";
 
 type AppHeaderProps = {
   onToggleDevSupport?: () => void;
@@ -316,8 +316,13 @@ export function AppHeader({ onToggleDevSupport }: AppHeaderProps) {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const govNarrativeEnabled = isGovNarrativeEnabled();
+
   // Filter items based on admin unlock
-  const visibleItems = showAdmin ? navConfig : navConfig.filter(i => i.group !== "admin");
+  const baseItems = showAdmin ? navConfig : navConfig.filter(i => i.group !== "admin");
+  const visibleItems = govNarrativeEnabled
+    ? baseItems
+    : baseItems.filter(item => item.to !== "/governance/narrative");
   
   const primaryItems = visibleItems.filter(i => i.group === "primary");
   const adminItems = visibleItems.filter(i => i.group === "admin");
