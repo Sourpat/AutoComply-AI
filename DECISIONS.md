@@ -97,6 +97,19 @@
 
 **Status**: Accepted
 
+### [2026-02-01] Add execution confidence vs decision confidence (Phase 8.5)
+
+**Context**: Phase 8.5 requires a derived execution confidence score based on readiness signals, distinct from model confidence.
+
+**Decision**: Compute execution confidence using weighted readiness factors and expose decision confidence separately for comparison.
+
+**Consequences**:
+- Positive: Clear separation of model confidence vs system readiness
+- Negative: Additional read-time computation
+- Neutral: No effect when feature flag is off
+
+**Status**: Accepted
+
 ### [2026-02-01] Add one-click governance narrative demo flow
 
 **Context**: Interview demos need a fast, reliable way to seed deterministic audit packets and open the governance narrative with a single action.

@@ -370,6 +370,85 @@ def build_execution_preview(packet: Dict[str, Any]) -> Dict[str, Any]:
         "note": "Spec drift derived from spec trace metadata." if spec else "Spec trace unavailable.",
     }
 
+    def _spec_completeness_value(status: Optional[str]) -> Optional[float]:
+        if status == "COMPLETE":
+            return 1.0
+        if status == "PARTIAL":
+            return 0.6
+        if status == "INCOMPLETE":
+            return 0.3
+        if status in {"UNKNOWN", None}:
+            return None
+        return None
+
+    spec_value = _spec_completeness_value(spec_completeness.get("status"))
+    overrides_value = dimensions.get("overrides_supported")
+    audit_value = dimensions.get("audit_hooks_present")
+    ui_value = dimensions.get("ui_impact_declared")
+
+    def _map_dimension(value: Optional[bool]) -> Optional[float]:
+        if value is True:
+            return 1.0
+        if value is False:
+            return 0.4
+        return None
+
+    factors = {
+        "spec_completeness": {
+            "weight": 0.35,
+            "value": spec_value,
+            "note": "Spec completeness evaluated from readiness status.",
+        },
+        "override_coverage": {
+            "weight": 0.20,
+            "value": _map_dimension(overrides_value),
+            "note": "Override coverage derived from HITL signals.",
+        },
+        "audit_coverage": {
+            "weight": 0.20,
+            "value": _map_dimension(audit_value),
+            "note": "Audit hooks derived from audit intent coverage.",
+        },
+        "ui_impact_clarity": {
+            "weight": 0.25,
+            "value": _map_dimension(ui_value),
+            "note": "UI impact clarity derived from intent UI mappings.",
+        },
+    }
+
+    reasons: List[str] = []
+    total_weight = 0.0
+    weighted_sum = 0.0
+    for name, factor in factors.items():
+        value = factor.get("value")
+        weight = factor.get("weight")
+        if value is None:
+            reasons.append(f"{name.replace('_', ' ').title()} unknown.")
+            continue
+        if value < 1.0:
+            reasons.append(f"{name.replace('_', ' ').title()} reduced.")
+        total_weight += float(weight)
+        weighted_sum += float(weight) * float(value)
+
+    if total_weight == 0:
+        execution_score = None
+        execution_label = "UNKNOWN"
+    else:
+        execution_score = round(100 * (weighted_sum / total_weight))
+        if execution_score >= 80:
+            execution_label = "HIGH"
+        elif execution_score >= 50:
+            execution_label = "MEDIUM"
+        else:
+            execution_label = "LOW"
+
+    execution_explain = "Execution confidence reflects readiness signals across spec, overrides, audit, and UI mappings."
+    if execution_label == "UNKNOWN":
+        execution_explain = "Execution confidence is unknown due to missing readiness signals."
+
+    decision_confidence_score = round(decision_confidence * 100) if decision_confidence is not None else None
+    decision_confidence_note = "Model confidence for this decision, not system readiness."
+
     return {
         "version": "v1",
         "source": {
@@ -393,6 +472,17 @@ def build_execution_preview(packet: Dict[str, Any]) -> Dict[str, Any]:
         "missingSignals": missing_signals,
         "spec_completeness": spec_completeness,
         "spec_stability": spec_stability,
+        "execution_confidence": {
+            "score": execution_score,
+            "label": execution_label,
+            "factors": factors,
+            "reasons": reasons,
+            "explain": execution_explain,
+        },
+        "decision_confidence": {
+            "score": decision_confidence_score,
+            "note": decision_confidence_note,
+        },
         "readiness": {
             "missing": sorted(set(missing)),
             "status": readiness_status,

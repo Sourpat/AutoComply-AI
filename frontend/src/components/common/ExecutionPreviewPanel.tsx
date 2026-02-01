@@ -2,6 +2,7 @@ import React from "react";
 
 import { EmptyState } from "./EmptyState";
 import { Badge } from "../ui/badge";
+import { ConfidenceHelp } from "./ConfidenceHelp";
 
 type ExecutionPreviewPanelProps = {
   preview: any | null;
@@ -35,6 +36,26 @@ export function ExecutionPreviewPanel({ preview }: ExecutionPreviewPanelProps) {
   const completenessMissing = toArray(specCompleteness?.missingDimensions);
   const specStability = preview?.spec_stability ?? {};
   const driftDetected = specStability?.drift === true;
+  const executionConfidence = preview?.execution_confidence ?? {};
+  const decisionConfidence = preview?.decision_confidence ?? {};
+  const execScore = typeof executionConfidence?.score === "number" ? executionConfidence.score : null;
+  const execLabel = toText(executionConfidence?.label, "UNKNOWN");
+  const execExplain = toText(
+    executionConfidence?.explain,
+    "Execution confidence reflects readiness signals across spec, overrides, audit, and UI mappings."
+  );
+  const decisionScore = typeof decisionConfidence?.score === "number" ? decisionConfidence.score : null;
+  const factorEntries = Object.entries(executionConfidence?.factors ?? {});
+  const factorNotes = factorEntries
+    .map(([name, factor]: [string, any]) => ({
+      name,
+      value: factor?.value,
+      note: factor?.note,
+    }))
+    .filter((factor) => factor.note)
+    .slice(0, 4);
+  const reasons = toArray(executionConfidence?.reasons);
+  const showReasons = execLabel !== "HIGH" || reasons.length > 0 || execScore === null;
 
   return (
     <div className="space-y-4 text-xs text-muted-foreground">
@@ -72,6 +93,34 @@ export function ExecutionPreviewPanel({ preview }: ExecutionPreviewPanelProps) {
         {driftDetected && (
           <p className="text-[11px] text-amber-600">
             Spec drift detected ({toText(specStability?.versionUsed, "--")} → {toText(specStability?.latestVersion, "--")})
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Confidence</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">
+            Decision Confidence: {decisionScore !== null ? `${decisionScore}%` : "--"}
+          </Badge>
+          <Badge
+            variant={execLabel === "HIGH" ? "success" : execLabel === "LOW" ? "destructive" : execLabel === "MEDIUM" ? "warning" : "secondary"}
+            title={execExplain}
+          >
+            Execution Confidence: {execScore !== null ? `${execScore}%` : "--"} ({execLabel})
+          </Badge>
+          <ConfidenceHelp size={12} />
+        </div>
+        {factorNotes.length > 0 && (
+          <ul className="list-disc space-y-1 pl-5 text-[11px] text-muted-foreground">
+            {factorNotes.map((factor) => (
+              <li key={factor.name}>{toText(factor.note)}</li>
+            ))}
+          </ul>
+        )}
+        {showReasons && reasons.length > 0 && (
+          <p className="text-[11px] text-muted-foreground">
+            Reasons: {reasons.slice(0, 3).join(" ")}{reasons.length > 3 ? "…" : ""}
           </p>
         )}
       </div>

@@ -52,7 +52,7 @@
 
 ## P2 - Medium Priority (Backlog)
 
-### P8.5: Execution preview UX polish (TODO)
+### P8.6: Execution preview UX polish (TODO)
 **Status**: pending
 **Assigned**: (none)
 **Goal**: Improve execution preview display density without changing logic
@@ -65,6 +65,11 @@
 ---
 
 ## Completed Tasks (Last 5)
+
+### P8.5: Execution confidence vs decision confidence (Phase 8.5)
+**Completed**: 2026-02-01
+**Commit**: (pending)
+**Summary**: Added execution confidence score and factor breakdown.
 
 ### P8.4: Spec completeness & stability signals (Phase 8.4)
 **Completed**: 2026-02-01
@@ -80,11 +85,6 @@
 **Completed**: 2026-02-01
 **Commit**: (pending)
 **Summary**: Expanded deterministic intent derivation from decision status, risk, and audit events.
-
-### P8.1: Execution preview model foundation (Phase 8.1)
-**Completed**: 2026-02-01
-**Commit**: (pending)
-**Summary**: Added read-time execution preview attachment and read-only UI panels behind feature flags.
 
 ### T-019: Governance narrative artifact (Command 4)
 **Completed**: 2026-02-01
