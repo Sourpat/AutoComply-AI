@@ -43,6 +43,11 @@
 
 ## Completed Tasks (Last 5)
 
+### T-014: Audit packet index page
+**Completed**: 2026-01-31
+**Commit**: (pending)
+**Summary**: Added audit packet index endpoint and UI list with view/verify/compare actions.
+
 ### T-013: Audit diff PDF export
 **Completed**: 2026-01-31
 **Commit**: (pending)
@@ -62,11 +67,6 @@
 **Completed**: 2026-01-31
 **Commit**: 481b4bc
 **Summary**: Added audit diff route, deterministic matching, and exportable diff hash.
-
-### T-009: Audit events persistence + replay
-**Completed**: 2026-01-31
-**Commit**: 01d5cd7
-**Summary**: Added server-side audit events persistence and replay UI, with server-first merge.
 
 ---
 

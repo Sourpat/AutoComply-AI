@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from src.core.db import get_raw_connection, row_to_dict
 
@@ -75,3 +75,16 @@ def get_audit_packet(packet_hash: str) -> Optional[Dict[str, Any]]:
         cursor.close()
 
     return row_to_dict(row) if row else None
+
+
+def list_audit_packets(limit: int = 50) -> List[Dict[str, Any]]:
+    with get_raw_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM audit_packets ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+
+    return [row_to_dict(row) for row in rows]

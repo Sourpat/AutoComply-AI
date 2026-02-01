@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, HTTPException, Request
 
 from app.audit.hash import compute_packet_hash
-from app.audit.repo import get_audit_packet, init_audit_schema, upsert_audit_packet
+from app.audit.repo import get_audit_packet, init_audit_schema, list_audit_packets, upsert_audit_packet
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
@@ -163,6 +163,13 @@ def _build_diff(left_packet: Dict[str, Any], right_packet: Dict[str, Any], left_
 @router.on_event("startup")
 def ensure_audit_schema() -> None:
     init_audit_schema()
+
+
+@router.get("/packets")
+async def list_audit_packet_meta(limit: int = 50) -> List[Dict[str, Any]]:
+    safe_limit = max(1, min(limit, 200))
+    rows = list_audit_packets(safe_limit)
+    return [_packet_meta(row) for row in rows]
 
 
 @router.post("/packets")

@@ -36,6 +36,31 @@
 
 ## Decisions
 
+### [2026-01-31] Add audit packet index for server-stored packets
+
+**Context**: Reviewers need a central list of persisted audit packets with one-click navigation.
+
+**Decision**: Add a server-backed index endpoint and a new /audit/packets UI to list recent packets with view, verify, and compare actions.
+
+**Rationale**:
+- Improves discoverability of stored audit artifacts
+- Keeps the UI server-first with no localStorage dependency
+- Enables quick compare workflows per case
+
+**Alternatives Considered**:
+- Rely on manual hash entry: Rejected (poor UX)
+- Local-only index: Rejected (no cross-device visibility)
+
+**Consequences**:
+- Positive: Faster access to audit packets and comparisons
+- Negative: Adds a small list endpoint to backend
+- Neutral: No schema changes
+
+**Status**: Accepted
+
+**Related**:
+- Area: audit packets index
+
 ### [2026-01-31] Add deterministic audit diff PDF export
 
 **Context**: Audit diff exports needed a premium PDF option that stays deterministic and matches the diff JSON.

@@ -68,6 +68,18 @@ export async function fetchAuditPacketMeta(packetHash: string) {
   }
 }
 
+export async function fetchAuditPacketIndex(limit = 50) {
+  try {
+    const response = await fetchWithTimeout(`${API_BASE}/api/audit/packets?limit=${limit}`);
+    if (!response.ok) {
+      return { ok: false, message: await readErrorMessage(response), status: response.status };
+    }
+    return { ok: true, data: await response.json() };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Network error" };
+  }
+}
+
 export async function verifyAuditPacketOnServer(packet: AuditPacket) {
   try {
     const response = await fetchWithTimeout(`${API_BASE}/api/audit/verify`, {

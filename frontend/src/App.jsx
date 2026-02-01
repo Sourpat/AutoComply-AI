@@ -20,6 +20,7 @@ import { ProtectedAdminRoute } from "./components/ProtectedAdminRoute";
 import { ReviewQueuePage } from "./pages/ReviewQueuePage";
 import { AgenticWorkbenchPage } from "./pages/AgenticWorkbenchPage";
 import { AuditDiffPage } from "./pages/AuditDiffPage";
+import { AuditPacketsPage } from "./pages/AuditPacketsPage";
 import { AuditVerifyPage } from "./pages/AuditVerifyPage";
 import { AuditPacketViewPage } from "./pages/AuditPacketViewPage";
 import CoverageDashboardPage from "./pages/CoverageDashboardPage";
@@ -52,6 +53,7 @@ export default function App() {
             <Route path="/console/review-queue" element={<ReviewQueuePage />} />
             <Route path="/agentic/workbench" element={<AgenticWorkbenchPage />} />
             <Route path="/audit/diff" element={<AuditDiffPage />} />
+            <Route path="/audit/packets" element={<AuditPacketsPage />} />
             <Route path="/audit/verify" element={<AuditVerifyPage />} />
             <Route path="/audit/view" element={<AuditPacketViewPage />} />
             <Route path="/coverage" element={<CoverageDashboardPage />} />
