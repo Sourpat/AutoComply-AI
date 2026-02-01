@@ -2,7 +2,7 @@
 
 **Last Updated**: 2026-02-01
 
-**Active WIP**: 1 (T-019)
+**Active WIP**: 0
 
 ---
 
@@ -31,20 +31,6 @@
 
 ## P1 - High Priority (Do Next)
 
-### T-019: Governance narrative artifact (Command 4)
-**Status**: in-progress
-**Assigned**: GitHub Copilot
-**Goal**: Add a feature-flagged spec-to-audit narrative page for governance demos
-**Acceptance Criteria**:
-- [ ] Governance narrative page renders spec → interpretation → decision → evidence → HITL → audit sections
-- [ ] Feature flag gates navigation and route (VITE_FEATURE_GOV_NARRATIVE)
-- [ ] Demo mode supports hash and JSON paste
-- [ ] Frontend build passes
-**Verification**:
-- `npm run build`
-- Manual: load packet hash and confirm sections
-**Dependencies**: None
-
 ### T-016: Audit suite demo readiness
 **Status**: pending
 **Assigned**: GitHub Copilot
@@ -72,6 +58,11 @@
 
 ## Completed Tasks (Last 5)
 
+### T-019: Governance narrative artifact (Command 4)
+**Completed**: 2026-02-01
+**Commit**: (pending)
+**Summary**: Added governance readiness signals, consistent read-only messaging, and spec-trace empty states with build verification.
+
 ### T-018: Override feedback signal (Command 3)
 **Completed**: 2026-02-01
 **Commit**: (pending)
@@ -91,11 +82,6 @@
 **Completed**: 2026-01-31
 **Commit**: (pending)
 **Summary**: Added audit packet index endpoint and UI list with view/verify/compare actions.
-
-### T-013: Audit diff PDF export
-**Completed**: 2026-01-31
-**Commit**: (pending)
-**Summary**: Added deterministic PDF export for audit diffs with premium formatting.
 
 ---
 

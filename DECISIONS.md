@@ -36,6 +36,32 @@
 
 ## Decisions
 
+### [2026-02-01] Add governance readiness signals and spec-trace empty states
+
+**Context**: Governance demos needed consistent read-only messaging and clear empty states when spec tracing is unavailable.
+
+**Decision**: Add Governed AI badges and read-only copy in governance-facing views, plus a shared empty-state message for missing spec trace data (including Audit Packet view).
+
+**Rationale**:
+- Reinforces governance context without new logic changes
+- Keeps messaging consistent across audit and narrative surfaces
+- Provides clarity when spec tracing is disabled or unavailable
+
+**Alternatives Considered**:
+- Leave gaps when spec trace is missing: Rejected (confusing for demos)
+- Add backend-driven flags: Rejected (UI-only requirement)
+
+**Consequences**:
+- Positive: Clearer trust signals and consistent empty-state UX
+- Negative: Slightly more UI copy to maintain
+- Neutral: No backend changes
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-019
+
+
 ### [2026-01-31] Add audit suite landing and demo script
 
 **Context**: Recruiter demos require a single, repeatable entry point with clear steps to seed, compare, and export audit artifacts.

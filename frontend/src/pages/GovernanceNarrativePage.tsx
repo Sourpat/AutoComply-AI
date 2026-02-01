@@ -184,6 +184,12 @@ export function GovernanceNarrativePage() {
         subtitle="Spec-to-system narrative for governance, drift awareness, and audit readiness."
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="outline"
+              title="This decision flow is spec-driven, auditable, and supports human-in-the-loop governance."
+            >
+              Governed AI
+            </Badge>
             {packet?.packetHash && (
               <Badge variant="secondary">Packet {packet.packetHash.slice(0, 10)}…</Badge>
             )}
@@ -218,17 +224,25 @@ export function GovernanceNarrativePage() {
           {packet && (
             <>
               <SectionCard title="Specification">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="secondary">{specTrace?.specId ?? "No spec"}</Badge>
-                  <Badge variant="secondary">v{specTrace?.specVersionUsed ?? "--"}</Badge>
-                  {driftBadge && <Badge variant={driftBadge.variant}>{driftBadge.label}</Badge>}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {specTrace?.regulationRef ?? "No regulation reference"}
-                </p>
-                <p className="text-sm text-foreground">
-                  {specTrace?.snippet ?? "No spec snippet available."}
-                </p>
+                {specTrace ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary">{specTrace.specId}</Badge>
+                      <Badge variant="secondary">v{specTrace.specVersionUsed}</Badge>
+                      {driftBadge && <Badge variant={driftBadge.variant}>{driftBadge.label}</Badge>}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {specTrace.regulationRef ?? "No regulation reference"}
+                    </p>
+                    <p className="text-sm text-foreground">
+                      {specTrace.snippet ?? "No spec snippet available."}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    This decision was generated before spec tracing was enabled.
+                  </p>
+                )}
               </SectionCard>
 
               <SectionCard title="Interpretation">
@@ -301,7 +315,7 @@ export function GovernanceNarrativePage() {
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-xs text-muted-foreground">No override feedback logged.</p>
+                  <p className="text-xs text-muted-foreground">No human overrides recorded for this decision.</p>
                 )}
               </SectionCard>
 
@@ -377,6 +391,9 @@ export function GovernanceNarrativePage() {
               )}
             </CardContent>
           </Card>
+          <p className="text-[11px] text-muted-foreground">
+            This artifact is generated from recorded decision metadata.
+          </p>
         </div>
       </div>
     </div>

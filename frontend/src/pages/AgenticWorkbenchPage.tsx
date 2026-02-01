@@ -1122,6 +1122,12 @@ export function AgenticWorkbenchPage() {
         subtitle="Verifier-grade workstation for agentic decisions, evidence, and audit packets."
         actions={
           <div className="flex flex-wrap gap-2">
+            <Badge
+              variant="outline"
+              title="This decision flow is spec-driven, auditable, and supports human-in-the-loop governance."
+            >
+              Governed AI
+            </Badge>
             <Button variant="outline" size="sm" onClick={loadCases} disabled={loadingCases}>
               Refresh cases
             </Button>

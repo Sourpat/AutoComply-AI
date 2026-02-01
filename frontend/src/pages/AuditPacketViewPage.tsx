@@ -296,14 +296,14 @@ export function AuditPacketViewPage() {
         </CardContent>
       </Card>
 
-      {specTrace && (
-        <Card>
-          <CardContent className="space-y-4 p-6">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="space-y-1">
-                <h3 className="text-sm font-semibold text-foreground">Spec Trace</h3>
-                <p className="text-xs text-muted-foreground">Spec-driven governance metadata (read-only).</p>
-              </div>
+      <Card>
+        <CardContent className="space-y-4 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-foreground">Spec Trace</h3>
+              <p className="text-xs text-muted-foreground">Spec-driven governance metadata (read-only).</p>
+            </div>
+            {specTrace && (
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">{specTrace.specId}</Badge>
                 <Badge variant="secondary">v{specTrace.specVersionUsed}</Badge>
@@ -311,71 +311,77 @@ export function AuditPacketViewPage() {
                   <Badge variant={specVersionBadge.variant}>{specVersionBadge.label}</Badge>
                 )}
               </div>
-            </div>
-
-            {specTrace.drift && (
-              <p className="text-xs text-amber-600">Decision based on an older spec version.</p>
             )}
+          </div>
 
-            {(specTrace.regulationRef || specTrace.snippet) && (
-              <div className="rounded-md border border-border/70 bg-muted/20 p-3 text-xs">
-                {specTrace.regulationRef && (
-                  <p className="text-muted-foreground">Ref: {specTrace.regulationRef}</p>
-                )}
-                {specTrace.snippet && (
-                  <div className="mt-2 space-y-2">
-                    <p className="text-foreground">
-                      {specSnippetOpen || specTrace.snippet.length <= 160
-                        ? specTrace.snippet
-                        : `${specTrace.snippet.slice(0, 160)}…`}
-                    </p>
-                    {specTrace.snippet.length > 160 && (
-                      <Button variant="ghost" size="sm" onClick={() => setSpecSnippetOpen((prev) => !prev)}>
-                        {specSnippetOpen ? "Collapse snippet" : "Expand snippet"}
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+          {!specTrace && (
+            <p className="text-xs text-muted-foreground">
+              This decision was generated before spec tracing was enabled.
+            </p>
+          )}
 
-            {specTrace.rulesMeta.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {specTrace.rulesMeta.map((rule) => (
-                  <Badge key={rule.ruleId} variant={specBadgeVariant(rule.severity)}>
-                    {rule.ruleId} · {rule.severity}
-                  </Badge>
-                ))}
-              </div>
-            )}
+          {specTrace?.drift && (
+            <p className="text-xs text-amber-600">Decision based on an older spec version.</p>
+          )}
 
-            {specTrace.parsedConditions.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Parsed conditions</p>
-                  <Button variant="ghost" size="sm" onClick={() => setSpecConditionsOpen((prev) => !prev)}>
-                    {specConditionsOpen ? "Hide" : "Show"}
-                  </Button>
-                </div>
-                <ul className="space-y-2 text-xs">
-                  {(specConditionsOpen ? specTrace.parsedConditions : specTrace.parsedConditions.slice(0, 3)).map(
-                    (condition, index) => (
-                      <li key={index} className="rounded-md border border-border/70 bg-background p-2 text-muted-foreground">
-                        {JSON.stringify(condition)}
-                      </li>
-                    )
-                  )}
-                </ul>
-                {!specConditionsOpen && specTrace.parsedConditions.length > 3 && (
-                  <p className="text-xs text-muted-foreground">
-                    {specTrace.parsedConditions.length - 3} more conditions hidden.
+          {specTrace && (specTrace.regulationRef || specTrace.snippet) && (
+            <div className="rounded-md border border-border/70 bg-muted/20 p-3 text-xs">
+              {specTrace.regulationRef && (
+                <p className="text-muted-foreground">Ref: {specTrace.regulationRef}</p>
+              )}
+              {specTrace.snippet && (
+                <div className="mt-2 space-y-2">
+                  <p className="text-foreground">
+                    {specSnippetOpen || specTrace.snippet.length <= 160
+                      ? specTrace.snippet
+                      : `${specTrace.snippet.slice(0, 160)}…`}
                   </p>
-                )}
+                  {specTrace.snippet.length > 160 && (
+                    <Button variant="ghost" size="sm" onClick={() => setSpecSnippetOpen((prev) => !prev)}>
+                      {specSnippetOpen ? "Collapse snippet" : "Expand snippet"}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {specTrace?.rulesMeta?.length ? (
+            <div className="flex flex-wrap gap-2">
+              {specTrace.rulesMeta.map((rule) => (
+                <Badge key={rule.ruleId} variant={specBadgeVariant(rule.severity)}>
+                  {rule.ruleId} · {rule.severity}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
+
+          {specTrace?.parsedConditions?.length ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Parsed conditions</p>
+                <Button variant="ghost" size="sm" onClick={() => setSpecConditionsOpen((prev) => !prev)}>
+                  {specConditionsOpen ? "Hide" : "Show"}
+                </Button>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+              <ul className="space-y-2 text-xs">
+                {(specConditionsOpen ? specTrace.parsedConditions : specTrace.parsedConditions.slice(0, 3)).map(
+                  (condition, index) => (
+                    <li key={index} className="rounded-md border border-border/70 bg-background p-2 text-muted-foreground">
+                      {JSON.stringify(condition)}
+                    </li>
+                  )
+                )}
+              </ul>
+              {!specConditionsOpen && specTrace.parsedConditions.length > 3 && (
+                <p className="text-xs text-muted-foreground">
+                  {specTrace.parsedConditions.length - 3} more conditions hidden.
+                </p>
+              )}
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="space-y-4 p-6">
