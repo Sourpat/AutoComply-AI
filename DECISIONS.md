@@ -123,6 +123,19 @@
 
 **Status**: Accepted
 
+### [2026-02-01] Extend governance narrative with SDX sections (Phase 8.7)
+
+**Context**: Phase 8.7 requires governance narrative to surface SDX execution preview details without altering behavior or workflows.
+
+**Decision**: Add a collapsed SDX block that renders execution preview subsections (impact, readiness, UI implications, audit guarantees) using read-only execution preview fields.
+
+**Consequences**:
+- Positive: SDX details are visible in narrative form without adding new logic or persistence
+- Negative: Slightly more narrative content when expanded
+- Neutral: No effect when feature flag is off
+
+**Status**: Accepted
+
 ### [2026-02-01] Add one-click governance narrative demo flow
 
 **Context**: Interview demos need a fast, reliable way to seed deterministic audit packets and open the governance narrative with a single action.

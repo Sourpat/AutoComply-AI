@@ -52,12 +52,12 @@
 
 ## P2 - Medium Priority (Backlog)
 
-### P8.7: Execution preview UX polish (TODO)
+### P8.8: SDX follow-up (TODO)
 **Status**: pending
 **Assigned**: (none)
-**Goal**: Improve execution preview display density without changing logic
+**Goal**: TBD
 **Acceptance Criteria**:
-- [ ] Collapsed preview remains fast and readable
+- [ ] TBD
 **Verification**:
 - Manual review only
 **Dependencies**: None
@@ -65,6 +65,11 @@
 ---
 
 ## Completed Tasks (Last 5)
+
+### P8.7: Governance narrative SDX extension (Phase 8.7)
+**Completed**: 2026-02-01
+**Commit**: (pending)
+**Summary**: Extended governance narrative with SDX sections derived from execution preview.
 
 ### P8.6: Execution preview UI integration (Phase 8.6)
 **Completed**: 2026-02-01

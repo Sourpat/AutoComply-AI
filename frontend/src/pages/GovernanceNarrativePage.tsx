@@ -59,6 +59,26 @@ export function GovernanceNarrativePage() {
 
   const specTrace: SpecTrace | undefined = packet?.decision_trace?.spec;
   const executionPreview = getExecutionPreview(packet);
+  const execIntents = Array.isArray(executionPreview?.executionIntents) ? executionPreview.executionIntents : [];
+  const execAffected = Array.isArray(executionPreview?.affectedSystems) ? executionPreview.affectedSystems : [];
+  const execAuditImpacts = Array.isArray(executionPreview?.auditImpacts) ? executionPreview.auditImpacts : [];
+  const execUiSummary = executionPreview?.ui_impacts_summary ?? { impacts: [], primary: "unknown" };
+  const execCompleteness = executionPreview?.spec_completeness ?? { status: "UNKNOWN", missingDimensions: [] };
+  const execStability = executionPreview?.spec_stability ?? { drift: null, versionUsed: null, latestVersion: null };
+  const execConfidence = executionPreview?.execution_confidence ?? {};
+  const decisionConfidence = executionPreview?.decision_confidence ?? {};
+  const execConfidencePercent = execConfidence?.percent ?? execConfidence?.score;
+  const decisionConfidencePercent = decisionConfidence?.percent ?? decisionConfidence?.score;
+  const previousPacketHash =
+    (packet as any)?.decision_trace?.audit?.previousPacketHash ??
+    (packet as any)?.decision_trace?.audit?.previous_packet_hash ??
+    (packet as any)?.decision_trace?.previous_packet_hash ??
+    null;
+  const execUiImpactCounts = (execUiSummary.impacts || []).reduce((acc: Record<string, number>, impact: string) => {
+    acc[impact] = (acc[impact] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  const stabilityStatus = execStability.drift === true ? "DRIFT" : execStability.drift === false ? "STABLE" : "UNKNOWN";
 
   const loadByHash = useCallback(async (hash: string) => {
     if (!hash) return;
@@ -328,47 +348,165 @@ export function GovernanceNarrativePage() {
                 )}
               </SectionCard>
 
-              <SectionCard title="Execution Preview">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">
-                      Read-only. Derived from spec + decision trace. No system behavior changes.
-                    </p>
-                    {EXEC_PREVIEW_ENABLED && executionPreview ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary">
-                          Exec Confidence: {executionPreview?.execution_confidence?.score ?? "--"}% ({executionPreview?.execution_confidence?.label ?? "UNKNOWN"})
-                        </Badge>
-                        <Badge variant="outline">
-                          Intents: {Array.isArray(executionPreview?.executionIntents) ? executionPreview.executionIntents.length : 0}
-                        </Badge>
-                      </div>
-                    ) : (
-                      <Badge variant="outline">Not available</Badge>
-                    )}
+              {EXEC_PREVIEW_ENABLED && (
+                <SectionCard title="Spec-Driven Execution Preview (SDX)">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">
+                        Read-only. Derived from spec + decision trace. No system behavior changes.
+                      </p>
+                      {executionPreview ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="secondary">
+                            Exec Confidence: {execConfidencePercent ?? "--"}% ({execConfidence?.label ?? "UNKNOWN"})
+                          </Badge>
+                          <Badge variant="outline">Intents: {execIntents.length}</Badge>
+                        </div>
+                      ) : (
+                        <Badge variant="outline">Not available</Badge>
+                      )}
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setExecPreviewOpen((prev) => !prev)}>
+                      {execPreviewOpen ? "Hide" : "Show"}
+                    </Button>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => setExecPreviewOpen((prev) => !prev)}>
-                    {execPreviewOpen ? "Hide" : "Show"}
-                  </Button>
-                </div>
-                {execPreviewOpen && (
-                  <div className="mt-3">
-                    {EXEC_PREVIEW_ENABLED && executionPreview ? (
-                      <ExecutionPreviewPanel preview={executionPreview} decision={packet?.decision ?? null} />
-                    ) : (
-                      <div className="space-y-2">
-                        <EmptyState
-                          title="Execution preview not available"
-                          description="Enable VITE_FEATURE_EXEC_PREVIEW and backend FEATURE_EXEC_PREVIEW to compute this preview."
-                        />
-                        <Button variant="ghost" size="sm" disabled>
-                          See setup in .env.example
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </SectionCard>
+                  {execPreviewOpen && (
+                    <div className="mt-3 space-y-4 text-xs text-muted-foreground">
+                      {executionPreview ? (
+                        <>
+                          <div className="space-y-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Expected System Impact</p>
+                            {execAffected.length ? (
+                              <div className="flex flex-wrap gap-2">
+                                {execAffected.map((system: any, index: number) => (
+                                  <Badge key={`${system?.id ?? "system"}-${index}`} variant="secondary">
+                                    {system?.label ?? "Unknown"}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <p>Unknown affected systems.</p>
+                            )}
+                            {execIntents.length ? (
+                              <ul className="space-y-2">
+                                {execIntents.map((intent: any, index: number) => (
+                                  <li key={`${intent?.intent ?? "intent"}-${index}`} className="rounded-md border border-border/70 bg-muted/20 p-2">
+                                    <p className="font-medium text-foreground">{intent?.intent ?? "unknown"}</p>
+                                    <p>{intent?.outcome?.decisionStatus ?? "--"} · Risk {intent?.outcome?.riskLevel ?? "--"}</p>
+                                    <p>
+                                      Spec: {intent?.sourceRef?.specId ?? "--"} · Decision: {intent?.sourceRef?.decisionId ?? "--"}
+                                    </p>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p>Unknown intents.</p>
+                            )}
+                            <p className="text-[11px] text-muted-foreground">Derived preview only. No automation executed.</p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Execution Readiness</p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="secondary">{execCompleteness?.status ?? "UNKNOWN"}</Badge>
+                              <span className="text-[11px] text-muted-foreground">
+                                Missing: {(execCompleteness?.missingDimensions || []).length
+                                  ? execCompleteness.missingDimensions.join(", ")
+                                  : "Unknown"}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="outline">Stability: {stabilityStatus}</Badge>
+                              {execStability?.drift === true && (
+                                <span className="text-[11px] text-amber-600">
+                                  Drift {execStability?.versionUsed ?? "--"} → {execStability?.latestVersion ?? "--"}
+                                </span>
+                              )}
+                              {execStability?.note && (
+                                <span className="text-[11px] text-muted-foreground">{execStability.note}</span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="secondary">
+                                Execution Confidence: {execConfidencePercent ?? "--"}% ({execConfidence?.label ?? "UNKNOWN"})
+                              </Badge>
+                              <Badge variant="outline">
+                                Decision Confidence: {decisionConfidencePercent ?? "--"}%
+                              </Badge>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Frontend Implications</p>
+                            {Object.keys(execUiImpactCounts).length ? (
+                              <div className="flex flex-wrap gap-2">
+                                {Object.entries(execUiImpactCounts).map(([impact, count]) => (
+                                  <Badge key={impact} variant="outline">
+                                    {impact}: {count}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <p>Unknown UI impacts.</p>
+                            )}
+                            {execIntents.length ? (
+                              <ul className="space-y-2">
+                                {execIntents.slice(0, 4).map((intent: any, index: number) => (
+                                  <li key={`${intent?.intent ?? "intent"}-ui-${index}`} className="rounded-md border border-border/70 bg-muted/20 p-2">
+                                    <p className="font-medium text-foreground">{intent?.intent ?? "unknown"}</p>
+                                    <p>{(intent?.uiImpacts || []).join(", ") || "unknown"}</p>
+                                    {intent?.uiNote && <p className="text-[11px] text-muted-foreground">{intent.uiNote}</p>}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Audit Guarantees</p>
+                            {execAuditImpacts.length ? (
+                              <div className="flex flex-wrap gap-2">
+                                {execAuditImpacts.map((impact: any, index: number) => (
+                                  <Badge key={`${impact?.type ?? "audit"}-${index}`} variant="outline">
+                                    {impact?.type ?? "unknown"}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <p>Unknown audit impacts.</p>
+                            )}
+                            <p>
+                              Override feedback: {overrideEvents.length ? "Recorded" : "Not recorded"}
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              <Button asChild variant="outline" size="sm">
+                                <Link to={`/audit/view?hash=${packet.packetHash ?? ""}`}>Open Audit View</Link>
+                              </Button>
+                              {previousPacketHash && packet.packetHash ? (
+                                <Button asChild variant="outline" size="sm">
+                                  <Link to={`/audit/diff?left=${previousPacketHash}&right=${packet.packetHash}`}>Open Audit Diff</Link>
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Preview Details</p>
+                            <ExecutionPreviewPanel preview={executionPreview} decision={packet?.decision ?? null} />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="space-y-2">
+                          <EmptyState
+                            title="Execution preview not available"
+                            description="Enable backend FEATURE_EXEC_PREVIEW to compute this preview."
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </SectionCard>
+              )}
 
               <SectionCard title="Audit artifact">
                 <div className="space-y-2 text-xs text-muted-foreground">
