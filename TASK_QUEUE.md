@@ -52,7 +52,7 @@
 
 ## P2 - Medium Priority (Backlog)
 
-### P8.8: SDX follow-up (TODO)
+### P8.9: SDX follow-up (TODO)
 **Status**: pending
 **Assigned**: (none)
 **Goal**: TBD
@@ -65,6 +65,11 @@
 ---
 
 ## Completed Tasks (Last 5)
+
+### P8.8: Feature flag & demo safety (Phase 8.8)
+**Completed**: 2026-02-01
+**Commit**: (pending)
+**Summary**: Hardened SDX demo seeding, list response enrichment, and empty-state messaging.
 
 ### P8.7: Governance narrative SDX extension (Phase 8.7)
 **Completed**: 2026-02-01

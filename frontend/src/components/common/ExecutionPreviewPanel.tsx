@@ -1,24 +1,51 @@
 import React from "react";
+import { Link } from "react-router-dom";
 
 import { EmptyState } from "./EmptyState";
 import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import { ConfidenceHelp } from "./ConfidenceHelp";
 
 type ExecutionPreviewPanelProps = {
   preview: any | null;
   decision?: any | null;
+  isFeatureEnabled?: boolean;
+  showSeedCta?: boolean;
+  seedHref?: string;
+  demoMode?: boolean;
 };
 
 const toArray = (value: any) => (Array.isArray(value) ? value : []);
 const toText = (value: any, fallback = "--") => (typeof value === "string" ? value : fallback);
 
-export function ExecutionPreviewPanel({ preview }: ExecutionPreviewPanelProps) {
+export function ExecutionPreviewPanel({
+  preview,
+  isFeatureEnabled,
+  showSeedCta,
+  seedHref = "/audit/packets",
+  demoMode,
+}: ExecutionPreviewPanelProps) {
   if (!preview) {
+    const description = isFeatureEnabled
+      ? "Backend FEATURE_EXEC_PREVIEW is off. Start backend with FEATURE_EXEC_PREVIEW=1."
+      : "Enable VITE_FEATURE_EXEC_PREVIEW to view execution preview.";
     return (
-      <EmptyState
-        title="Execution preview unavailable"
-        description="Execution preview unavailable (flag off or missing signals)."
-      />
+      <div className="space-y-3">
+        {demoMode && (
+          <p className="text-[11px] text-muted-foreground">
+            This is demo data generated locally. SDX is computed at read-time.
+          </p>
+        )}
+        <EmptyState
+          title="Execution preview unavailable"
+          description={description}
+        />
+        {isFeatureEnabled && showSeedCta && (
+          <Button asChild variant="outline" size="sm">
+            <Link to={seedHref}>Seed demo packets</Link>
+          </Button>
+        )}
+      </div>
     );
   }
 
@@ -60,6 +87,11 @@ export function ExecutionPreviewPanel({ preview }: ExecutionPreviewPanelProps) {
 
   return (
     <div className="space-y-4 text-xs text-muted-foreground">
+      {demoMode && (
+        <p className="text-[11px] text-muted-foreground">
+          This is demo data generated locally. SDX is computed at read-time.
+        </p>
+      )}
       <div className="space-y-2">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">UI Impact Summary</p>
         <div className="flex flex-wrap items-center gap-2">

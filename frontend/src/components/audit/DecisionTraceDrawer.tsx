@@ -5,7 +5,6 @@ import type { CaseEvent } from "../../contracts/agentic";
 import { formatTimestamp } from "../../lib/formatters";
 import { groupTraceEvents, getTraceMeta, getTraceLabel, type SpecTrace } from "../../lib/agenticAudit";
 import { ExecutionPreviewPanel } from "../common/ExecutionPreviewPanel";
-import { EmptyState } from "../common/EmptyState";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -40,6 +39,7 @@ type DecisionTraceDrawerProps = {
   specTrace?: SpecTrace;
   executionPreview?: any | null;
   decision?: any | null;
+  packetMeta?: { tenant?: string; caseId?: string } | null;
 };
 
 function getSummary(event: CaseEvent) {
@@ -53,7 +53,7 @@ function getSummary(event: CaseEvent) {
   return JSON.stringify(payload).slice(0, 160);
 }
 
-export function DecisionTraceDrawer({ open, onOpenChange, events, specTrace, executionPreview, decision }: DecisionTraceDrawerProps) {
+export function DecisionTraceDrawer({ open, onOpenChange, events, specTrace, executionPreview, decision, packetMeta }: DecisionTraceDrawerProps) {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -67,6 +67,9 @@ export function DecisionTraceDrawer({ open, onOpenChange, events, specTrace, exe
   const execScore = typeof execConfidence?.score === "number" ? execConfidence.score : null;
   const execLabel = typeof execConfidence?.label === "string" ? execConfidence.label : "UNKNOWN";
   const intentCount = Array.isArray(executionPreview?.executionIntents) ? executionPreview.executionIntents.length : 0;
+  const demoMode =
+    packetMeta?.tenant === "demo" ||
+    (packetMeta?.caseId ?? "").toString().startsWith("CASE-DEMO");
 
   const filteredEvents = useMemo(() => {
     return events.filter((event) => {
@@ -242,6 +245,11 @@ export function DecisionTraceDrawer({ open, onOpenChange, events, specTrace, exe
                   <p className="text-xs text-muted-foreground">
                     Read-only. Derived from spec + decision trace. No system behavior changes.
                   </p>
+                  {demoMode && (
+                    <p className="text-[11px] text-muted-foreground">
+                      This is demo data generated locally. SDX is computed at read-time.
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {execPreviewEnabled && executionPreview ? (
@@ -259,23 +267,20 @@ export function DecisionTraceDrawer({ open, onOpenChange, events, specTrace, exe
                   </Button>
                 </div>
               </div>
-              {execPreviewOpen && (
-                <div className="mt-3">
-                  {execPreviewEnabled && executionPreview ? (
-                    <ExecutionPreviewPanel preview={executionPreview ?? null} decision={decision ?? null} />
-                  ) : (
-                    <div className="space-y-2">
-                      <EmptyState
-                        title="Execution preview not available"
-                        description="Enable VITE_FEATURE_EXEC_PREVIEW and backend FEATURE_EXEC_PREVIEW to compute this preview."
+                {execPreviewOpen && (
+                  <div className="mt-3">
+                    {execPreviewEnabled && executionPreview ? (
+                      <ExecutionPreviewPanel preview={executionPreview ?? null} decision={decision ?? null} />
+                    ) : (
+                      <ExecutionPreviewPanel
+                        preview={null}
+                        isFeatureEnabled={execPreviewEnabled}
+                        showSeedCta
+                        seedHref="/audit/packets"
                       />
-                      <Button variant="ghost" size="sm" disabled>
-                        See setup in .env.example
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                  </div>
+                )}
             </div>
             {visibleGroups.map((group) => {
               const isExpanded = expanded[group.id];

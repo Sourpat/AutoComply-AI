@@ -69,6 +69,9 @@ export function GovernanceNarrativePage() {
   const decisionConfidence = executionPreview?.decision_confidence ?? {};
   const execConfidencePercent = execConfidence?.percent ?? execConfidence?.score;
   const decisionConfidencePercent = decisionConfidence?.percent ?? decisionConfidence?.score;
+  const demoMode =
+    packet?.metadata?.tenant === "demo" ||
+    (packet?.metadata?.caseId ?? packet?.caseId ?? "").toString().startsWith("CASE-DEMO");
   const previousPacketHash =
     (packet as any)?.decision_trace?.audit?.previousPacketHash ??
     (packet as any)?.decision_trace?.audit?.previous_packet_hash ??
@@ -355,6 +358,11 @@ export function GovernanceNarrativePage() {
                       <p className="text-xs text-muted-foreground">
                         Read-only. Derived from spec + decision trace. No system behavior changes.
                       </p>
+                      {demoMode && (
+                        <p className="text-[11px] text-muted-foreground">
+                          This is demo data generated locally. SDX is computed at read-time.
+                        </p>
+                      )}
                       {executionPreview ? (
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge variant="secondary">
@@ -496,12 +504,12 @@ export function GovernanceNarrativePage() {
                           </div>
                         </>
                       ) : (
-                        <div className="space-y-2">
-                          <EmptyState
-                            title="Execution preview not available"
-                            description="Enable backend FEATURE_EXEC_PREVIEW to compute this preview."
-                          />
-                        </div>
+                        <ExecutionPreviewPanel
+                          preview={null}
+                          isFeatureEnabled={EXEC_PREVIEW_ENABLED}
+                          showSeedCta
+                          seedHref="/audit/packets"
+                        />
                       )}
                     </div>
                   )}

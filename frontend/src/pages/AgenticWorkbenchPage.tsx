@@ -1223,6 +1223,10 @@ export function AgenticWorkbenchPage() {
         specTrace={packetBase?.decision_trace?.spec}
         executionPreview={getExecutionPreview(packetBase)}
         decision={packetBase?.decision ?? null}
+        packetMeta={{
+          tenant: packetBase?.metadata?.tenant,
+          caseId: packetBase?.metadata?.caseId ?? packetBase?.caseId,
+        }}
       />
 
       <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)_360px]">

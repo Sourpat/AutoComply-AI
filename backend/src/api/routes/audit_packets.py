@@ -25,6 +25,8 @@ class AuditPacketMeta(BaseModel):
     createdAt: str
     sizeBytes: int
     packetVersion: str
+    previousPacketHash: str | None = None
+    execution_preview: Dict[str, Any] | None = None
 
 
 def _now_iso() -> str:
@@ -227,7 +229,31 @@ def ensure_audit_schema() -> None:
 @router.get("/audit/packets", response_model=List[AuditPacketMeta])
 async def list_audit_packet_meta(limit: int = Query(50, ge=1, le=200)) -> List[Dict[str, Any]]:
     rows = list_audit_packets(limit)
-    return [_packet_meta(row) for row in rows]
+    previous_by_hash: Dict[str, str | None] = {}
+    last_by_case: Dict[str, str] = {}
+    for row in reversed(rows):
+        case_id = row.get("case_id")
+        packet_hash = row.get("packet_hash")
+        if isinstance(case_id, str) and isinstance(packet_hash, str):
+            previous_by_hash[packet_hash] = last_by_case.get(case_id)
+            last_by_case[case_id] = packet_hash
+
+    results: List[Dict[str, Any]] = []
+    include_preview = _exec_preview_enabled()
+    for row in rows:
+        meta = _packet_meta(row)
+        meta["previousPacketHash"] = previous_by_hash.get(row.get("packet_hash"))
+        if include_preview:
+            try:
+                packet = json.loads(row.get("packet_json") or "{}")
+            except json.JSONDecodeError:
+                packet = {}
+            if isinstance(packet, dict):
+                packet = _attach_spec_trace(packet)
+                packet = _attach_execution_preview(packet)
+                meta["execution_preview"] = packet.get("execution_preview")
+        results.append(meta)
+    return results
 
 
 @router.post("/audit/packets")
@@ -295,8 +321,8 @@ async def seed_demo_packets(payload: Dict[str, Any]) -> Dict[str, Any]:
     count = max(1, min(count, 10))
     base_ts = datetime.now(timezone.utc).replace(second=0, microsecond=0)
 
-    statuses = ["submitted", "needs_review", "approved"]
-    confidences = [0.62, 0.78, 0.91]
+    statuses = ["submitted", "needs_review", "rejected", "approved"]
+    confidences = [0.62, 0.78, 0.54, 0.91]
 
     evidence_base = [
         {
@@ -390,12 +416,21 @@ async def seed_demo_packets(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "timestamp": _iso(ts),
                 "payload": {"fileName": f"audit_packet_{case_id}_{index:02d}.json"},
             })
+            human_events.append({
+                "id": f"override-{index:02d}",
+                "caseId": case_id,
+                "type": "override_feedback",
+                "actor": "verifier",
+                "timestamp": _iso(ts),
+                "payload": {"reason": "Demo override feedback", "note": f"Override note {index:02d}"},
+            })
 
         packet: Dict[str, Any] = {
             "metadata": {
                 "caseId": case_id,
                 "decisionId": decision_id,
                 "generatedAt": _iso(ts),
+                "tenant": "demo",
             },
             "caseSnapshot": {
                 "submissionId": case_id,
@@ -433,6 +468,10 @@ async def seed_demo_packets(payload: Dict[str, Any]) -> Dict[str, Any]:
             },
             "packetVersion": "v1",
         }
+
+        spec_trace = resolve_spec_for_packet(packet)
+        if spec_trace:
+            packet["decision_trace"] = {"spec": spec_trace}
 
         packet_hash = compute_packet_hash(packet)
         packet["packetHash"] = packet_hash

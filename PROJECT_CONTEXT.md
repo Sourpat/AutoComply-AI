@@ -61,6 +61,22 @@ cd frontend
 npm run dev
 ```
 
+### How to demo SDX in < 60 seconds
+
+```bash
+# Backend (enable SDX + spec trace)
+cd backend
+$env:FEATURE_EXEC_PREVIEW="1"; $env:FEATURE_SPEC_TRACE="1"; .venv/Scripts/python -m uvicorn src.api.main:app --reload --host 127.0.0.1 --port 8001
+
+# Seed demo packets (PowerShell)
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8001/api/audit/demo/seed -Body '{"caseId":"CASE-DEMO","count":3}' -ContentType "application/json"
+```
+
+**Routes**:
+- /audit/packets (confirm execution_preview in list)
+- /governance/narrative?hash=<packetHash>
+- /agentic/workbench (Decision Trace drawer)
+
 **URLs**:
 - Frontend: http://localhost:5173
 - Backend API: http://localhost:8001
