@@ -49,6 +49,52 @@ def _unknown_audit_impact() -> Dict[str, Any]:
     }
 
 
+def _ui_impacts_for_intent(intent: str) -> Dict[str, Any]:
+    mapping = {
+        "block": {
+            "impacts": ["blocking_modal", "disabled_action", "informational_copy"],
+            "note": "Blocked outcomes require UI blocking and guidance.",
+        },
+        "manual_review": {
+            "impacts": ["badge_warning", "informational_copy"],
+            "note": "Review-required outcomes display warnings and guidance.",
+        },
+        "display_warning": {
+            "impacts": ["badge_warning", "inline_validation", "informational_copy"],
+            "note": "Warning outcomes show badges and inline validation.",
+        },
+        "apply_restriction": {
+            "impacts": ["disabled_action", "informational_copy"],
+            "note": "Restricted outcomes disable actions with guidance.",
+        },
+        "emit_audit_event": {
+            "impacts": ["none"],
+            "note": "Audit event intents do not require UI change.",
+        },
+        "unknown": {
+            "impacts": ["unknown"],
+            "note": "UI impact mapping unavailable.",
+        },
+    }
+    return mapping.get(intent, mapping["unknown"])
+
+
+def _select_primary_ui_impact(impacts: List[str]) -> str:
+    priority = [
+        "blocking_modal",
+        "disabled_action",
+        "badge_warning",
+        "inline_validation",
+        "informational_copy",
+        "none",
+        "unknown",
+    ]
+    for impact in priority:
+        if impact in impacts:
+            return impact
+    return "unknown"
+
+
 def build_execution_preview(packet: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(packet, dict):
         return {
@@ -174,24 +220,25 @@ def build_execution_preview(packet: Dict[str, Any]) -> Dict[str, Any]:
     for system_id in sorted(affected_system_ids):
         affected_systems.append({"id": system_id, "label": labels.get(system_id, "Unknown system")})
 
-    ui_mapping = {
-        "block": ("blocking_modal", "UI blocks the action for blocked decisions."),
-        "manual_review": ("disabled_action", "UI disables automated actions pending review."),
-        "emit_audit_event": ("info_copy", "UI shows audit-ready copy for the decision."),
-        "apply_restriction": ("inline_validation", "UI applies inline restriction messaging."),
-        "display_warning": ("badge_warning", "UI displays a warning badge for elevated risk."),
-        "unknown": ("unknown", "UI impact mapping unavailable."),
-    }
-
     ui_impacts: List[Dict[str, Any]] = []
+    unique_ui_impacts: List[str] = []
     for intent in intents:
         intent_name = _as_str(intent.get("intent")) or "unknown"
-        impact_type, notes = ui_mapping.get(intent_name, ui_mapping["unknown"])
-        ui_impacts.append({
-            "type": impact_type,
-            "linkedIntent": intent_name,
-            "notes": notes,
-        })
+        ui_data = _ui_impacts_for_intent(intent_name)
+        intent["uiImpacts"] = ui_data["impacts"]
+        intent["uiNote"] = ui_data["note"]
+        for impact in ui_data["impacts"]:
+            if impact not in unique_ui_impacts:
+                unique_ui_impacts.append(impact)
+        if intent_name == "unknown":
+            ui_impacts = []
+        else:
+            for impact in ui_data["impacts"]:
+                ui_impacts.append({
+                    "type": impact,
+                    "linkedIntent": intent_name,
+                    "notes": ui_data["note"],
+                })
 
     if any(impact.get("type") != "unknown" for impact in ui_impacts):
         affected_systems.append({"id": "ui", "label": "User interface"})
@@ -233,6 +280,15 @@ def build_execution_preview(packet: Dict[str, Any]) -> Dict[str, Any]:
     else:
         readiness_status = "partial"
 
+    ui_impacts_summary = {
+        "impacts": unique_ui_impacts,
+        "primary": _select_primary_ui_impact(unique_ui_impacts),
+    }
+
+    missing_signals: List[str] = []
+    if not intents or all((_as_str(intent.get("intent")) or "unknown") == "unknown" for intent in intents):
+        missing_signals.append("execution_intents")
+
     return {
         "version": "v1",
         "source": {
@@ -251,7 +307,9 @@ def build_execution_preview(packet: Dict[str, Any]) -> Dict[str, Any]:
         "affectedSystems": affected_systems,
         "executionIntents": intents,
         "uiImpacts": ui_impacts,
+        "ui_impacts_summary": ui_impacts_summary,
         "auditImpacts": audit_impacts,
+        "missingSignals": missing_signals,
         "readiness": {
             "missing": sorted(set(missing)),
             "status": readiness_status,

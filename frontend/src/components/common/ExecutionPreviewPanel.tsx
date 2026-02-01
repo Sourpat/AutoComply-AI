@@ -27,9 +27,20 @@ export function ExecutionPreviewPanel({ preview }: ExecutionPreviewPanelProps) {
   const readiness = preview?.readiness ?? {};
   const readinessMissing = toArray(readiness?.missing);
   const readinessStatus = toText(readiness?.status, "unknown");
+  const uiImpactSummary = preview?.ui_impacts_summary ?? {};
+  const uiImpactCount = toArray(uiImpactSummary?.impacts).length;
+  const uiImpactPrimary = toText(uiImpactSummary?.primary, "unknown");
 
   return (
     <div className="space-y-4 text-xs text-muted-foreground">
+      <div className="space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">UI Impact Summary</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">Primary: {uiImpactPrimary}</Badge>
+          <Badge variant="outline">{uiImpactCount} impact(s)</Badge>
+        </div>
+      </div>
+
       <div className="space-y-2">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Affected systems</p>
         <div className="flex flex-wrap gap-2">
@@ -59,6 +70,18 @@ export function ExecutionPreviewPanel({ preview }: ExecutionPreviewPanelProps) {
                 <p className="text-[11px] text-muted-foreground">
                   Outcome: {toText(intent?.outcome?.decisionStatus, "--")} · Risk {toText(intent?.outcome?.riskLevel, "--")}
                 </p>
+                {toArray(intent?.uiImpacts).length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {toArray(intent?.uiImpacts).map((impact: string, impactIndex: number) => (
+                      <Badge key={`${impact}-${impactIndex}`} variant="outline">
+                        {impact}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                {intent?.uiNote && (
+                  <p className="mt-2 text-[11px] text-muted-foreground">{toText(intent?.uiNote)}</p>
+                )}
               </div>
             ))
           ) : (

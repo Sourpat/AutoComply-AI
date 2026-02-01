@@ -71,6 +71,19 @@
 
 **Status**: Accepted
 
+### [2026-02-01] Add UI impact awareness mapping (Phase 8.3)
+
+**Context**: Phase 8.3 requires deterministic UI impact awareness derived from execution intents without changing logic or persistence.
+
+**Decision**: Attach UI impact enums and notes per intent plus a top-level UI impact summary in `execution_preview` under the existing feature flag.
+
+**Consequences**:
+- Positive: Clear UI impact awareness for demo and audit context
+- Negative: Additional mapping logic to maintain
+- Neutral: No effect when feature flag is off
+
+**Status**: Accepted
+
 ### [2026-02-01] Add one-click governance narrative demo flow
 
 **Context**: Interview demos need a fast, reliable way to seed deterministic audit packets and open the governance narrative with a single action.

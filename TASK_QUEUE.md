@@ -52,7 +52,7 @@
 
 ## P2 - Medium Priority (Backlog)
 
-### P8.3: Execution preview UX polish (TODO)
+### P8.4: Execution preview UX polish (TODO)
 **Status**: pending
 **Assigned**: (none)
 **Goal**: Improve execution preview display density without changing logic
@@ -65,6 +65,11 @@
 ---
 
 ## Completed Tasks (Last 5)
+
+### P8.3: UI impact awareness layer (Phase 8.3)
+**Completed**: 2026-02-01
+**Commit**: (pending)
+**Summary**: Added UI impact mapping per intent and UI impact summary.
 
 ### P8.2: Execution preview intent derivation (Phase 8.2)
 **Completed**: 2026-02-01
@@ -85,11 +90,6 @@
 **Completed**: 2026-02-01
 **Commit**: 1200295
 **Summary**: Added governance readiness signals, consistent read-only messaging, and spec-trace empty states with build verification.
-
-### T-018: Override feedback signal (Command 3)
-**Completed**: 2026-02-01
-**Commit**: (pending)
-**Summary**: Captured verifier override feedback as feature-flagged audit events with UI visibility.
 
 ---
 
