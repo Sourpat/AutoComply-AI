@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { EmptyState } from "../components/common/EmptyState";
 import { ErrorState } from "../components/common/ErrorState";
 import { PageHeader } from "../components/common/PageHeader";
+import { ConfidenceHelp } from "../components/common/ConfidenceHelp";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -233,11 +234,9 @@ export function GovernanceNarrativePage() {
               <SectionCard title="Interpretation">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="secondary">Parsed conditions</Badge>
-                  <Badge
-                    variant="outline"
-                    title="Confidence is a calibrated estimate, not certainty."
-                  >
+                  <Badge variant="outline" className="inline-flex items-center gap-1">
                     Confidence {confidenceLabel}
+                    <ConfidenceHelp size={12} />
                   </Badge>
                 </div>
                 {specTrace?.parsedConditions?.length ? (

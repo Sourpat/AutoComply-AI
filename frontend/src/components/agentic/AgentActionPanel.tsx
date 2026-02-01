@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import type { AgentAction, AgentPlan, JSONSchema } from "../../contracts/agentic";
 import { useAgentPlan } from "../../hooks/useAgentPlan";
+import { ConfidenceHelp } from "../common/ConfidenceHelp";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
@@ -157,7 +158,10 @@ export function AgentActionPanel({ caseId }: { caseId: string }) {
                 {plan?.status ?? "draft"}
               </Badge>
               <div className="flex items-center gap-2 rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
-                <span>Confidence</span>
+                <span className="inline-flex items-center gap-1">
+                  Confidence
+                  <ConfidenceHelp size={12} />
+                </span>
                 <span className="font-medium text-foreground">{confidenceLabel}</span>
                 <span className="h-1.5 w-16 rounded-full bg-muted">
                   <span

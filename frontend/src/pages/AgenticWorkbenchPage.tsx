@@ -9,6 +9,7 @@ import { AgentEventTimeline } from "../components/agentic/AgentEventTimeline";
 import { EmptyState } from "../components/common/EmptyState";
 import { ErrorState } from "../components/common/ErrorState";
 import { PageHeader } from "../components/common/PageHeader";
+import { ConfidenceHelp } from "../components/common/ConfidenceHelp";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -946,8 +947,9 @@ export function AgenticWorkbenchPage() {
             <Badge variant={riskTone[normalizeRisk(selectedCase?.risk_level)] ?? "secondary"}>
               Risk {normalizeRisk(selectedCase?.risk_level)}
             </Badge>
-            <Badge variant="secondary">
+            <Badge variant="secondary" className="inline-flex items-center gap-1">
               Confidence {plan ? `${Math.round(plan.confidence * 100)}%` : "--"}
+              <ConfidenceHelp size={12} />
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -1362,8 +1364,9 @@ export function AgenticWorkbenchPage() {
                         <Badge variant={statusTone[selectedCase.status] ?? "secondary"}>
                           {selectedCase.status}
                         </Badge>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                           Confidence {plan ? `${Math.round(plan.confidence * 100)}%` : "--"}
+                          <ConfidenceHelp size={12} />
                         </p>
                       </CardContent>
                     </Card>
