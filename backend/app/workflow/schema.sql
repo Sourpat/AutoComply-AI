@@ -181,6 +181,21 @@ CREATE TABLE IF NOT EXISTS spec_registry (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS spec_registry_versions (
+    spec_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    effective_at TEXT NOT NULL,
+    regulation_ref TEXT NULL,
+    snippet TEXT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (spec_id, version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_spec_registry_versions_spec_id ON spec_registry_versions(spec_id);
+
 CREATE TABLE IF NOT EXISTS spec_rules (
     rule_id TEXT PRIMARY KEY NOT NULL,
     spec_id TEXT NOT NULL,

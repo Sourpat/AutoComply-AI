@@ -71,6 +71,8 @@ class SpecRuleMeta(BaseModel):
 class SpecTrace(BaseModel):
     specId: str
     specVersionUsed: int
+    latestSpecVersion: Optional[int] = None
+    drift: Optional[bool] = None
     regulationRef: Optional[str] = None
     snippet: Optional[str] = None
     ruleIdsUsed: List[str] = Field(default_factory=list)

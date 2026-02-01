@@ -28,6 +28,8 @@ export type SpecRuleMeta = {
 export type SpecTrace = {
   specId: string;
   specVersionUsed: number;
+  latestSpecVersion?: number | null;
+  drift?: boolean | null;
   regulationRef?: string | null;
   snippet?: string | null;
   ruleIdsUsed: string[];

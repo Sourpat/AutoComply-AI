@@ -94,6 +94,15 @@ export function DecisionTraceDrawer({ open, onOpenChange, events, specTrace }: D
     return "secondary" as const;
   };
 
+  const specVersionBadge = specTrace?.drift !== null && specTrace?.drift !== undefined
+    ? {
+        label: specTrace.drift && specTrace.latestSpecVersion !== null && specTrace.latestSpecVersion !== undefined
+          ? `Spec v${specTrace.specVersionUsed}, latest v${specTrace.latestSpecVersion}`
+          : `Spec v${specTrace.specVersionUsed} (latest)`,
+        variant: (specTrace.drift ? "warning" : "secondary") as "warning" | "secondary",
+      }
+    : null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl">
@@ -140,8 +149,15 @@ export function DecisionTraceDrawer({ open, onOpenChange, events, specTrace }: D
                     {specTrace.regulationRef && (
                       <Badge variant="outline">{specTrace.regulationRef}</Badge>
                     )}
+                    {specVersionBadge && (
+                      <Badge variant={specVersionBadge.variant}>{specVersionBadge.label}</Badge>
+                    )}
                   </div>
                 </div>
+
+                {specTrace.drift && (
+                  <p className="mt-2 text-xs text-amber-600">Decision based on an older spec version.</p>
+                )}
 
                 {specTrace.snippet && (
                   <div className="mt-3 space-y-2">

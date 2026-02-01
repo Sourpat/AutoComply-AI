@@ -8,20 +8,20 @@ from src.core.db import get_raw_connection
 
 
 FORM_SPEC_MAP = {
-    "csf": "SPEC-CSF-001",
-    "csf_practitioner": "SPEC-CSF-001",
-    "csf_facility": "SPEC-CSF-001",
-    "csf_hospital": "SPEC-CSF-001",
-    "csf_researcher": "SPEC-CSF-001",
-    "csf_ems": "SPEC-CSF-001",
-    "ohio_tddd": "SPEC-LICENSE-001",
-    "license": "SPEC-LICENSE-001",
+    "csf": "spec_csf",
+    "csf_practitioner": "spec_csf",
+    "csf_facility": "spec_csf",
+    "csf_hospital": "spec_csf",
+    "csf_researcher": "spec_csf",
+    "csf_ems": "spec_csf",
+    "ohio_tddd": "spec_license",
+    "license": "spec_license",
 }
 
 
 DEMO_SPECS = [
     {
-        "spec_id": "SPEC-CSF-001",
+        "spec_id": "spec_csf",
         "name": "CSF Practitioner Spec",
         "version": 1,
         "status": "active",
@@ -30,7 +30,16 @@ DEMO_SPECS = [
         "snippet": "Ensure practitioner credentials and shipping state are consistent.",
     },
     {
-        "spec_id": "SPEC-LICENSE-001",
+        "spec_id": "spec_csf",
+        "name": "CSF Practitioner Spec",
+        "version": 2,
+        "status": "active",
+        "effective_at": "2026-02-01T00:00:00Z",
+        "regulation_ref": "OH-CSF-10.1",
+        "snippet": "Updated CSF guidance: confirm credentials, shipping state, and scope alignment.",
+    },
+    {
+        "spec_id": "spec_license",
         "name": "License Validation Spec",
         "version": 1,
         "status": "active",
@@ -44,7 +53,7 @@ DEMO_SPECS = [
 DEMO_RULES = [
     {
         "rule_id": "RULE-CSF-001-A",
-        "spec_id": "SPEC-CSF-001",
+        "spec_id": "spec_csf",
         "rule_version": 1,
         "severity": "high",
         "conditions_json": json.dumps({"field": "state_license_number", "required": True}),
@@ -52,7 +61,7 @@ DEMO_RULES = [
     },
     {
         "rule_id": "RULE-CSF-001-B",
-        "spec_id": "SPEC-CSF-001",
+        "spec_id": "spec_csf",
         "rule_version": 1,
         "severity": "medium",
         "conditions_json": json.dumps({"field": "dea_number", "required": True}),
@@ -60,7 +69,7 @@ DEMO_RULES = [
     },
     {
         "rule_id": "RULE-LIC-001-A",
-        "spec_id": "SPEC-LICENSE-001",
+        "spec_id": "spec_license",
         "rule_version": 1,
         "severity": "high",
         "conditions_json": json.dumps({"field": "expiration_date", "status": "active"}),
@@ -68,7 +77,7 @@ DEMO_RULES = [
     },
     {
         "rule_id": "RULE-LIC-001-B",
-        "spec_id": "SPEC-LICENSE-001",
+        "spec_id": "spec_license",
         "rule_version": 1,
         "severity": "medium",
         "conditions_json": json.dumps({"field": "ship_to_state", "required": True}),
@@ -95,9 +104,42 @@ def _parse_json(value: Optional[str]) -> Optional[Dict[str, Any]]:
 
 def ensure_demo_specs() -> None:
     now = _now_iso()
+    latest_specs: Dict[str, Dict[str, Any]] = {}
+    for spec in DEMO_SPECS:
+        current = latest_specs.get(spec["spec_id"])
+        if not current or spec["version"] > current["version"]:
+            latest_specs[spec["spec_id"]] = spec
     with get_raw_connection() as conn:
         cursor = conn.cursor()
         for spec in DEMO_SPECS:
+            cursor.execute(
+                """
+                INSERT INTO spec_registry_versions (
+                    spec_id, name, version, status, effective_at,
+                    regulation_ref, snippet, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(spec_id, version) DO UPDATE SET
+                    name = excluded.name,
+                    version = excluded.version,
+                    status = excluded.status,
+                    effective_at = excluded.effective_at,
+                    regulation_ref = excluded.regulation_ref,
+                    snippet = excluded.snippet,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    spec["spec_id"],
+                    spec["name"],
+                    spec["version"],
+                    spec["status"],
+                    spec["effective_at"],
+                    spec["regulation_ref"],
+                    spec["snippet"],
+                    now,
+                    now,
+                ),
+            )
+        for spec in latest_specs.values():
             cursor.execute(
                 """
                 INSERT INTO spec_registry (
@@ -171,6 +213,40 @@ def get_latest_spec(spec_id: str) -> Optional[Dict[str, Any]]:
         return dict(row) if row else None
 
 
+def get_spec_version(spec_id: str, version: int) -> Optional[Dict[str, Any]]:
+    with get_raw_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT spec_id, name, version, status, effective_at,
+                   regulation_ref, snippet, created_at, updated_at
+            FROM spec_registry_versions
+            WHERE spec_id = ? AND version = ?
+            LIMIT 1
+            """,
+            (spec_id, version),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def get_latest_spec_version(spec_id: str) -> Optional[int]:
+    with get_raw_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT MAX(version) AS version
+            FROM spec_registry_versions
+            WHERE spec_id = ?
+            """,
+            (spec_id,),
+        )
+        row = cursor.fetchone()
+        if row and row["version"] is not None:
+            return int(row["version"])
+        return None
+
+
 def get_rules_for_spec(spec_id: str) -> List[Dict[str, Any]]:
     with get_raw_connection() as conn:
         cursor = conn.cursor()
@@ -197,9 +273,18 @@ def resolve_spec_for_packet(packet: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not spec_id:
         return None
 
-    spec = get_latest_spec(spec_id)
+    latest_spec_version = get_latest_spec_version(spec_id)
+    spec_version_used = 1 if spec_id == "spec_csf" else latest_spec_version
+    spec = None
+    if spec_version_used is not None:
+        spec = get_spec_version(spec_id, spec_version_used)
     if not spec:
-        return None
+        spec = get_latest_spec(spec_id)
+        if not spec:
+            return None
+        spec_version_used = spec.get("version")
+    if latest_spec_version is None and spec.get("version") is not None:
+        latest_spec_version = spec.get("version")
 
     rules = get_rules_for_spec(spec_id)
     rule_ids = [rule["rule_id"] for rule in rules]
@@ -221,9 +306,15 @@ def resolve_spec_for_packet(packet: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if (parsed := _parse_json(rule.get("mapping_json")))
     ]
 
+    drift: Optional[bool] = None
+    if spec_version_used is not None and latest_spec_version is not None:
+        drift = spec_version_used != latest_spec_version
+
     return {
         "specId": spec["spec_id"],
-        "specVersionUsed": spec["version"],
+        "specVersionUsed": spec_version_used,
+        "latestSpecVersion": latest_spec_version,
+        "drift": drift,
         "regulationRef": spec.get("regulation_ref"),
         "snippet": spec.get("snippet"),
         "ruleIdsUsed": rule_ids,

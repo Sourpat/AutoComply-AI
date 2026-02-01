@@ -54,6 +54,15 @@ export function AuditPacketViewPage() {
     return "secondary" as const;
   };
 
+  const specVersionBadge = specTrace?.drift !== null && specTrace?.drift !== undefined
+    ? {
+        label: specTrace.drift && specTrace.latestSpecVersion !== null && specTrace.latestSpecVersion !== undefined
+          ? `Spec v${specTrace.specVersionUsed}, latest v${specTrace.latestSpecVersion}`
+          : `Spec v${specTrace.specVersionUsed} (latest)`,
+        variant: (specTrace.drift ? "warning" : "secondary") as "warning" | "secondary",
+      }
+    : null;
+
   const loadFromServer = useCallback(
     async (options?: { preserveCurrent?: boolean }) => {
       if (!hash) return;
@@ -298,8 +307,15 @@ export function AuditPacketViewPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">{specTrace.specId}</Badge>
                 <Badge variant="secondary">v{specTrace.specVersionUsed}</Badge>
+                {specVersionBadge && (
+                  <Badge variant={specVersionBadge.variant}>{specVersionBadge.label}</Badge>
+                )}
               </div>
             </div>
+
+            {specTrace.drift && (
+              <p className="text-xs text-amber-600">Decision based on an older spec version.</p>
+            )}
 
             {(specTrace.regulationRef || specTrace.snippet) && (
               <div className="rounded-md border border-border/70 bg-muted/20 p-3 text-xs">
