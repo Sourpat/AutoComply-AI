@@ -27,6 +27,7 @@ class AuditPacketMeta(BaseModel):
     packetVersion: str
     previousPacketHash: str | None = None
     execution_preview: Dict[str, Any] | None = None
+    decision_trace: Dict[str, Any] | None = None
 
 
 def _now_iso() -> str:
@@ -251,6 +252,7 @@ async def list_audit_packet_meta(limit: int = Query(50, ge=1, le=200)) -> List[D
             if isinstance(packet, dict):
                 packet = _attach_spec_trace(packet)
                 packet = _attach_execution_preview(packet)
+                meta["decision_trace"] = packet.get("decision_trace")
                 meta["execution_preview"] = packet.get("execution_preview")
         results.append(meta)
     return results

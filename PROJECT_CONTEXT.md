@@ -197,6 +197,19 @@ frontend/
 - **Is Not**: Automation or workflow execution.
 - **Is Not**: A change to decision logic or persistence.
 
+## Phase 8 Demo Checklist
+
+- Backend flags: FEATURE_EXEC_PREVIEW=1, FEATURE_SPEC_TRACE=1, FEATURE_OVERRIDE_FEEDBACK=1
+- Frontend flags: VITE_FEATURE_EXEC_PREVIEW=true, VITE_FEATURE_GOV_NARRATIVE=true, VITE_FEATURE_OVERRIDE_FEEDBACK=true
+- Start backend on port 8001 (see commands below)
+- Seed demo packets: POST /api/audit/demo/seed (caseId CASE-DEMO, count 3)
+- Open /audit/packets and confirm SDX data appears
+- Open /audit/view?hash=<latest> and note Execution Preview section
+- Open /audit/diff?left=<prev>&right=<latest> for history compare
+- Open /agentic/workbench and expand Decision Trace → Execution Preview
+- Open /governance/narrative and expand SDX block
+- 90s talk track: Spec → Decision → Execution Preview → Audit evidence → Overrides
+
 ## Governance Narrative Talk Track (Phase 4)
 
 - We start with a spec identifier, version used, and the latest available version to show drift awareness.
