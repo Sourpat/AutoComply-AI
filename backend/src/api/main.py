@@ -80,6 +80,9 @@ from app.workflow.scheduled_exports_router import router as scheduled_exports_ro
 # Admin Operations - ⚠️ DANGEROUS ⚠️
 from app.admin.router import router as admin_router
 
+# Spec Trace registry
+from app.audit.spec_registry import ensure_demo_specs
+
 # Phase 7.33: Request ID Middleware
 from app.middleware import RequestIDMiddleware
 
@@ -151,6 +154,9 @@ async def startup_event():
     # Initialize database (fast - only runs CREATE TABLE IF NOT EXISTS)
     logger.info("Initializing database schema...")
     init_db()
+
+    # Seed demo spec registry entries (idempotent)
+    ensure_demo_specs()
     
     # Auto-seed demo data if enabled
     if settings.DEMO_SEED:

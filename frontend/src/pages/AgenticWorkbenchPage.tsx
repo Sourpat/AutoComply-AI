@@ -1022,7 +1022,12 @@ export function AgenticWorkbenchPage() {
         </DialogContent>
       </Dialog>
 
-      <DecisionTraceDrawer open={traceOpen} onOpenChange={setTraceOpen} events={events} />
+      <DecisionTraceDrawer
+        open={traceOpen}
+        onOpenChange={setTraceOpen}
+        events={events}
+        specTrace={packetBase?.decision_trace?.spec}
+      />
 
       <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)_360px]">
         <Card className="h-full">

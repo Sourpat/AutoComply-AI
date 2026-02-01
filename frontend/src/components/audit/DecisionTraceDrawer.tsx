@@ -3,7 +3,7 @@ import { toast } from "sonner";
 
 import type { CaseEvent } from "../../contracts/agentic";
 import { formatTimestamp } from "../../lib/formatters";
-import { groupTraceEvents, getTraceMeta, getTraceLabel } from "../../lib/agenticAudit";
+import { groupTraceEvents, getTraceMeta, getTraceLabel, type SpecTrace } from "../../lib/agenticAudit";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -35,6 +35,7 @@ type DecisionTraceDrawerProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   events: CaseEvent[];
+  specTrace?: SpecTrace;
 };
 
 function getSummary(event: CaseEvent) {
@@ -48,11 +49,13 @@ function getSummary(event: CaseEvent) {
   return JSON.stringify(payload).slice(0, 160);
 }
 
-export function DecisionTraceDrawer({ open, onOpenChange, events }: DecisionTraceDrawerProps) {
+export function DecisionTraceDrawer({ open, onOpenChange, events, specTrace }: DecisionTraceDrawerProps) {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [visibleCount, setVisibleCount] = useState(40);
+  const [specSnippetOpen, setSpecSnippetOpen] = useState(false);
+  const [specConditionsOpen, setSpecConditionsOpen] = useState(false);
 
   const filteredEvents = useMemo(() => {
     return events.filter((event) => {
@@ -81,6 +84,14 @@ export function DecisionTraceDrawer({ open, onOpenChange, events }: DecisionTrac
     } catch {
       toast.error("Unable to copy payload");
     }
+  };
+
+  const specBadgeVariant = (severity?: string) => {
+    if (!severity) return "secondary" as const;
+    const normalized = severity.toLowerCase();
+    if (normalized === "high" || normalized === "critical") return "destructive" as const;
+    if (normalized === "medium") return "warning" as const;
+    return "secondary" as const;
   };
 
   return (
@@ -114,6 +125,79 @@ export function DecisionTraceDrawer({ open, onOpenChange, events }: DecisionTrac
           </div>
 
           <div className="max-h-[520px] space-y-3 overflow-auto pr-2">
+            {specTrace && (
+              <div className="rounded-lg border border-border/70 bg-background p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-foreground">Spec Trace</p>
+                    <p className="text-xs text-muted-foreground">
+                      {specTrace.specId} • v{specTrace.specVersionUsed}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary">{specTrace.specId}</Badge>
+                    <Badge variant="secondary">v{specTrace.specVersionUsed}</Badge>
+                    {specTrace.regulationRef && (
+                      <Badge variant="outline">{specTrace.regulationRef}</Badge>
+                    )}
+                  </div>
+                </div>
+
+                {specTrace.snippet && (
+                  <div className="mt-3 space-y-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSpecSnippetOpen((prev) => !prev)}
+                    >
+                      {specSnippetOpen ? "Hide" : "View"} regulation snippet
+                    </Button>
+                    {specSnippetOpen && (
+                      <div className="rounded-md border border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
+                        {specTrace.snippet}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {specTrace.rulesMeta?.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">Rules applied</p>
+                    <div className="flex flex-wrap gap-2">
+                      {specTrace.rulesMeta.map((rule) => (
+                        <Badge key={rule.ruleId} variant={specBadgeVariant(rule.severity)}>
+                          {rule.ruleId} • {rule.severity}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {specTrace.parsedConditions?.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSpecConditionsOpen((prev) => !prev)}
+                    >
+                      {specConditionsOpen ? "Hide" : "View"} parsed conditions
+                    </Button>
+                    {specConditionsOpen && (
+                      <div className="space-y-2">
+                        {specTrace.parsedConditions.map((condition, idx) => (
+                          <pre
+                            key={`${specTrace.specId}-condition-${idx}`}
+                            className="whitespace-pre-wrap rounded-md border border-border/70 bg-muted/20 p-3 text-xs text-muted-foreground"
+                          >
+                            {JSON.stringify(condition, null, 2)}
+                          </pre>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             {visibleGroups.map((group) => {
               const isExpanded = expanded[group.id];
               const summary = group.meta.summary ?? JSON.stringify(group.payload).slice(0, 160);

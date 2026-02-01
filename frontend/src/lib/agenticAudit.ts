@@ -19,6 +19,24 @@ export type EvidenceState = Record<
   }
 >;
 
+export type SpecRuleMeta = {
+  ruleId: string;
+  severity: string;
+  ruleVersion: number;
+};
+
+export type SpecTrace = {
+  specId: string;
+  specVersionUsed: number;
+  regulationRef?: string | null;
+  snippet?: string | null;
+  ruleIdsUsed: string[];
+  rulesMeta: SpecRuleMeta[];
+  parsedConditions: Array<Record<string, unknown>>;
+  ruleMappingUsed: Array<Record<string, unknown>>;
+  constraintsTriggered: string[];
+};
+
 export type HumanActionEvent = {
   id: string;
   caseId: string;
@@ -83,6 +101,9 @@ export type AuditPacket = {
     auditNotes?: string;
     evidenceNotes: EvidenceState;
     events: HumanActionEvent[];
+  };
+  decision_trace?: {
+    spec?: SpecTrace;
   };
 };
 

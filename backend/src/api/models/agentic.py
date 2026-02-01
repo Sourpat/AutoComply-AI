@@ -62,6 +62,28 @@ class AgentTrace(BaseModel):
     modelNotes: List[str]
 
 
+class SpecRuleMeta(BaseModel):
+    ruleId: str
+    severity: str
+    ruleVersion: int
+
+
+class SpecTrace(BaseModel):
+    specId: str
+    specVersionUsed: int
+    regulationRef: Optional[str] = None
+    snippet: Optional[str] = None
+    ruleIdsUsed: List[str] = Field(default_factory=list)
+    rulesMeta: List[SpecRuleMeta] = Field(default_factory=list)
+    parsedConditions: List[Dict[str, Any]] = Field(default_factory=list)
+    ruleMappingUsed: List[Dict[str, Any]] = Field(default_factory=list)
+    constraintsTriggered: List[str] = Field(default_factory=list)
+
+
+class DecisionTraceMeta(BaseModel):
+    spec: Optional[SpecTrace] = None
+
+
 class CaseEvent(BaseModel):
     id: str
     caseId: str

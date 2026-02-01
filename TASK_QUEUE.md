@@ -1,6 +1,6 @@
 # Task Queue
 
-**Last Updated**: 2026-01-31
+**Last Updated**: 2026-02-01
 
 **Active WIP**: 0 (no tasks in progress)
 
@@ -32,7 +32,7 @@
 ## P1 - High Priority (Do Next)
 
 ### T-016: Audit suite demo readiness
-**Status**: in-progress
+**Status**: pending
 **Assigned**: GitHub Copilot
 **Goal**: Finalize audit suite nav, landing, demo script, and UX consistency for recruiter demo
 **Acceptance Criteria**:
@@ -58,6 +58,11 @@
 
 ## Completed Tasks (Last 5)
 
+### T-017: Spec trace foundations (Command 1)
+**Completed**: 2026-01-31
+**Commit**: (pending)
+**Summary**: Added spec registry seed data and feature-flagged spec trace metadata in audit packets with UI rendering.
+
 ### T-015: Audit demo seed packets
 **Completed**: 2026-01-31
 **Commit**: (pending)
@@ -77,11 +82,6 @@
 **Completed**: 2026-01-31
 **Commit**: (pending)
 **Summary**: Added load-source badge, retry actions, and improved missing state in audit packet view.
-
-### T-011: Audit diff UX polish
-**Completed**: 2026-01-31
-**Commit**: (pending)
-**Summary**: Polished diff UI readability, deep-link navigation, and export metadata.
 
 ---
 

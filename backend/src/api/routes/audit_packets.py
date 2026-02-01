@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
@@ -9,6 +10,7 @@ from pydantic import BaseModel
 
 from app.audit.hash import compute_packet_hash
 from app.audit.repo import get_audit_packet, init_audit_schema, list_audit_packets, upsert_audit_packet
+from app.audit.spec_registry import resolve_spec_for_packet
 
 router = APIRouter(prefix="/api", tags=["audit"])
 
@@ -41,6 +43,32 @@ def _packet_meta(row: Dict[str, Any]) -> Dict[str, Any]:
 
 def _iso(ts: datetime) -> str:
     return ts.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _spec_trace_enabled() -> bool:
+    flag = os.getenv("FEATURE_SPEC_TRACE", "0").strip().lower()
+    return flag in {"1", "true", "yes", "on"}
+
+
+def _attach_spec_trace(packet: Dict[str, Any]) -> Dict[str, Any]:
+    if not _spec_trace_enabled():
+        return packet
+    if not isinstance(packet, dict):
+        return packet
+
+    decision_trace = packet.get("decision_trace")
+    if isinstance(decision_trace, dict) and decision_trace.get("spec"):
+        return packet
+
+    spec = resolve_spec_for_packet(packet)
+    if not spec:
+        return packet
+
+    if not isinstance(decision_trace, dict):
+        decision_trace = {}
+    decision_trace["spec"] = spec
+    packet["decision_trace"] = decision_trace
+    return packet
 
 
 def _decision_changes(left: Dict[str, Any], right: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -420,7 +448,10 @@ async def fetch_audit_packet(packet_hash: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Audit packet not found")
 
     try:
-        return json.loads(row["packet_json"])
+        packet = json.loads(row["packet_json"])
+        if isinstance(packet, dict):
+            return _attach_spec_trace(packet)
+        return packet
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="Stored audit packet is corrupted")
 

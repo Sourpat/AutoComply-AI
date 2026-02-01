@@ -36,6 +36,56 @@
 
 ## Decisions
 
+### [2026-01-31] Add audit suite landing and demo script
+
+**Context**: Recruiter demos require a single, repeatable entry point with clear steps to seed, compare, and export audit artifacts.
+
+**Decision**: Add an Audit Suite landing card on Home, a collapsible demo script panel on Audit Packets, and align audit pages with shared loading/empty/error states.
+
+**Rationale**:
+- Keeps demo flow discoverable without redesigning core workflows
+- Uses shared UI primitives for consistent states and minimal changes
+- Ensures seeded cases deep-link directly into filtered packets
+
+**Alternatives Considered**:
+- Separate /audit landing page: Rejected (extra navigation for a small script)
+- Long-form docs only: Rejected (demo needs in-app guidance)
+
+**Consequences**:
+- Positive: Faster, repeatable demos with clear next steps
+- Negative: Slightly more UI copy to maintain
+- Neutral: No backend changes
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-016
+
+### [2026-01-31] Add feature-flagged spec trace metadata
+
+**Context**: Governance demos need a lightweight, spec-driven trace attached to audit packets without altering decision outcomes.
+
+**Decision**: Add a minimal spec registry + spec trace resolver and attach spec metadata to audit packets only when `FEATURE_SPEC_TRACE=1`.
+
+**Rationale**:
+- Keeps spec trace additive and non-invasive
+- Reuses existing audit packet structure without changing logic or hashes
+- Allows progressive population with demo-only specs
+
+**Alternatives Considered**:
+- Always-on spec trace: Rejected (risk of unintended changes)
+- Embed spec definitions in packets: Rejected (larger payload, harder to maintain)
+
+**Consequences**:
+- Positive: Governance metadata available for demos
+- Negative: Requires maintaining a small registry table
+- Neutral: No effect when feature flag is off
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-017
+
 ### [2026-01-31] Add deterministic demo seed for audit packets
 
 **Context**: Demos need instant sample packets to validate list, view, verify, diff, and export flows.

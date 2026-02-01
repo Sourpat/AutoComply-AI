@@ -166,6 +166,33 @@ CREATE INDEX IF NOT EXISTS idx_audit_packets_decision_id ON audit_packets(decisi
 CREATE INDEX IF NOT EXISTS idx_audit_packets_created_at ON audit_packets(created_at);
 
 -- ============================================================================
+-- Spec Registry (Spec Trace Foundations)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS spec_registry (
+    spec_id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    effective_at TEXT NOT NULL,
+    regulation_ref TEXT NULL,
+    snippet TEXT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS spec_rules (
+    rule_id TEXT PRIMARY KEY NOT NULL,
+    spec_id TEXT NOT NULL,
+    rule_version INTEGER NOT NULL,
+    severity TEXT NOT NULL,
+    conditions_json TEXT NOT NULL,
+    mapping_json TEXT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(spec_id) REFERENCES spec_registry(spec_id)
+);
+
+-- ============================================================================
 -- Attachments Table (Phase 6.1)
 -- ============================================================================
 

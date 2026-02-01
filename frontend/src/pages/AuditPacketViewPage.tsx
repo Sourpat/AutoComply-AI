@@ -2,12 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import { EmptyState } from "../components/common/EmptyState";
+import { ErrorState } from "../components/common/ErrorState";
 import { PageHeader } from "../components/common/PageHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
-import { loadAuditPacket, saveAuditPacket, type AuditPacket } from "../lib/agenticAudit";
+import { loadAuditPacket, saveAuditPacket, type AuditPacket, type SpecTrace } from "../lib/agenticAudit";
 import { fetchAuditPacketFromServer } from "../lib/auditServer";
 import { getAuditEvents } from "../lib/auditEventsServer";
 import { formatTimestamp } from "../lib/formatters";
@@ -30,6 +31,8 @@ export function AuditPacketViewPage() {
   const [serverAttempted, setServerAttempted] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteValue, setPasteValue] = useState("");
+  const [specSnippetOpen, setSpecSnippetOpen] = useState(false);
+  const [specConditionsOpen, setSpecConditionsOpen] = useState(false);
   const [serverEvents, setServerEvents] = useState<
     Array<{
       id: string;
@@ -41,6 +44,15 @@ export function AuditPacketViewPage() {
   >([]);
 
   const packetResult = useMemo(() => (hash ? loadAuditPacket(hash) : null), [hash]);
+  const specTrace: SpecTrace | undefined = packet?.decision_trace?.spec;
+
+  const specBadgeVariant = (severity?: string) => {
+    if (!severity) return "secondary" as const;
+    const normalized = severity.toLowerCase();
+    if (normalized === "high" || normalized === "critical") return "destructive" as const;
+    if (normalized === "medium") return "warning" as const;
+    return "secondary" as const;
+  };
 
   const loadFromServer = useCallback(
     async (options?: { preserveCurrent?: boolean }) => {
@@ -114,9 +126,10 @@ export function AuditPacketViewPage() {
 
   if (error) {
     return (
-      <EmptyState
+      <ErrorState
         title="Local storage unavailable"
         description={error}
+        onRetry={() => loadFromServer()}
       />
     );
   }
@@ -273,6 +286,80 @@ export function AuditPacketViewPage() {
           </ul>
         </CardContent>
       </Card>
+
+      {specTrace && (
+        <Card>
+          <CardContent className="space-y-4 p-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold text-foreground">Spec Trace</h3>
+                <p className="text-xs text-muted-foreground">Spec-driven governance metadata (read-only).</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary">{specTrace.specId}</Badge>
+                <Badge variant="secondary">v{specTrace.specVersionUsed}</Badge>
+              </div>
+            </div>
+
+            {(specTrace.regulationRef || specTrace.snippet) && (
+              <div className="rounded-md border border-border/70 bg-muted/20 p-3 text-xs">
+                {specTrace.regulationRef && (
+                  <p className="text-muted-foreground">Ref: {specTrace.regulationRef}</p>
+                )}
+                {specTrace.snippet && (
+                  <div className="mt-2 space-y-2">
+                    <p className="text-foreground">
+                      {specSnippetOpen || specTrace.snippet.length <= 160
+                        ? specTrace.snippet
+                        : `${specTrace.snippet.slice(0, 160)}…`}
+                    </p>
+                    {specTrace.snippet.length > 160 && (
+                      <Button variant="ghost" size="sm" onClick={() => setSpecSnippetOpen((prev) => !prev)}>
+                        {specSnippetOpen ? "Collapse snippet" : "Expand snippet"}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {specTrace.rulesMeta.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {specTrace.rulesMeta.map((rule) => (
+                  <Badge key={rule.ruleId} variant={specBadgeVariant(rule.severity)}>
+                    {rule.ruleId} · {rule.severity}
+                  </Badge>
+                ))}
+              </div>
+            )}
+
+            {specTrace.parsedConditions.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Parsed conditions</p>
+                  <Button variant="ghost" size="sm" onClick={() => setSpecConditionsOpen((prev) => !prev)}>
+                    {specConditionsOpen ? "Hide" : "Show"}
+                  </Button>
+                </div>
+                <ul className="space-y-2 text-xs">
+                  {(specConditionsOpen ? specTrace.parsedConditions : specTrace.parsedConditions.slice(0, 3)).map(
+                    (condition, index) => (
+                      <li key={index} className="rounded-md border border-border/70 bg-background p-2 text-muted-foreground">
+                        {JSON.stringify(condition)}
+                      </li>
+                    )
+                  )}
+                </ul>
+                {!specConditionsOpen && specTrace.parsedConditions.length > 3 && (
+                  <p className="text-xs text-muted-foreground">
+                    {specTrace.parsedConditions.length - 3} more conditions hidden.
+                  </p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="space-y-4 p-6">
