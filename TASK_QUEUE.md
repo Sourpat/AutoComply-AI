@@ -43,6 +43,11 @@
 
 ## Completed Tasks (Last 5)
 
+### T-013: Audit diff PDF export
+**Completed**: 2026-01-31
+**Commit**: (pending)
+**Summary**: Added deterministic PDF export for audit diffs with premium formatting.
+
 ### T-012: Audit packet view fallback UX
 **Completed**: 2026-01-31
 **Commit**: (pending)
@@ -62,11 +67,6 @@
 **Completed**: 2026-01-31
 **Commit**: 01d5cd7
 **Summary**: Added server-side audit events persistence and replay UI, with server-first merge.
-
-### T-008: Trace normalization UI
-**Completed**: 2026-01-31
-**Commit**: (pending)
-**Summary**: Grouped repeated plan snapshots and truncated trace previews in audit panel and drawer.
 
 ---
 

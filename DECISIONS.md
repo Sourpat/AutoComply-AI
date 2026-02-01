@@ -36,6 +36,31 @@
 
 ## Decisions
 
+### [2026-01-31] Add deterministic audit diff PDF export
+
+**Context**: Audit diff exports needed a premium PDF option that stays deterministic and matches the diff JSON.
+
+**Decision**: Generate a lightweight PDF report from diff JSON using pdf-lib with stable content ordering and top-N summaries.
+
+**Rationale**:
+- Provides shareable reports without backend changes
+- Ensures deterministic content derived from diff JSON
+- Keeps UI exports aligned with audit requirements
+
+**Alternatives Considered**:
+- Server-side PDF rendering: Rejected (out of scope)
+- HTML-to-PDF in browser: Rejected (less deterministic)
+
+**Consequences**:
+- Positive: Executive-ready artifact with consistent content
+- Negative: Slight client-side CPU usage
+- Neutral: No API changes
+
+**Status**: Accepted
+
+**Related**:
+- Area: audit diff export
+
 ### [2026-01-31] Add explicit audit packet load-source badges
 
 **Context**: Audit packet view needed clearer indication of local vs server load and a more helpful missing state.

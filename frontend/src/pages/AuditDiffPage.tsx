@@ -8,6 +8,8 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+
 import { CheckCircle2, ChevronDown } from "../lib/lucide-react";
 import { formatTimestamp } from "../lib/formatters";
 import { loadAuditPacket, type AuditPacket } from "../lib/agenticAudit";
@@ -83,6 +85,7 @@ export function AuditDiffPage() {
   const [sameHashInfo, setSameHashInfo] = useState<SameHashInfo | null>(null);
   const [leftError, setLeftError] = useState<string | null>(null);
   const [rightError, setRightError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [evidenceTab, setEvidenceTab] = useState<EvidenceTab>("added");
   const [expandedSections, setExpandedSections] = useState<Record<SectionKey, boolean>>({
@@ -202,11 +205,13 @@ export function AuditDiffPage() {
   }, [searchParams, runComparison]);
 
   const handleCompare = async () => {
+    setExportError(null);
     await runComparison(leftHash, rightHash);
   };
 
   const handleExport = async () => {
     if (!diff) return;
+    setExportError(null);
     const comparedAt = new Date().toISOString();
     const diffHash = await computeAuditDiffHash(diff);
     const payload = {
@@ -226,6 +231,150 @@ export function AuditDiffPage() {
     anchor.download = `autocomply_audit_diff_${diff.left.caseId}_${timestamp}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleExportPdf = async () => {
+    if (!diff) return;
+    setExportError(null);
+    try {
+      const comparedAt = new Date().toISOString();
+      const diffHash = await computeAuditDiffHash(diff);
+
+      const pdfDoc = await PDFDocument.create();
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const pageSize: [number, number] = [612, 792];
+      const margin = 48;
+      const lineHeight = 14;
+
+      let page = pdfDoc.addPage(pageSize);
+      let y = page.getHeight() - margin;
+
+      const addPage = () => {
+        page = pdfDoc.addPage(pageSize);
+        y = page.getHeight() - margin;
+      };
+
+      const writeLine = (text: string, options?: { bold?: boolean; size?: number; color?: [number, number, number] }) => {
+        if (y < margin + lineHeight * 2) {
+          addPage();
+        }
+        const size = options?.size ?? 11;
+        page.drawText(text, {
+          x: margin,
+          y,
+          size,
+          font: options?.bold ? fontBold : font,
+          color: options?.color ? rgb(...options.color) : rgb(0.15, 0.16, 0.18),
+        });
+        y -= lineHeight + (size > 12 ? 2 : 0);
+      };
+
+      const writeSectionTitle = (text: string) => {
+        y -= 6;
+        writeLine(text, { bold: true, size: 12, color: [0.12, 0.35, 0.6] });
+      };
+
+      const summaryCounts = {
+        decision: diff.changes.decision.length,
+        evidence: diff.summary.evidenceChanges,
+        human: diff.summary.humanActionChanges,
+        timeline: diff.changes.timeline.addedTypes.length,
+      };
+
+      writeLine("AutoComply AI Audit Diff Report", { bold: true, size: 16 });
+      writeLine(`Case ID: ${diff.left.caseId}`);
+      writeLine(`Left hash: ${diff.left.packetHash}`);
+      writeLine(`Right hash: ${diff.right.packetHash}`);
+      writeLine(`Compared at: ${formatTimestamp(comparedAt)}`);
+      writeLine(`Diff hash: ${diffHash}`);
+
+      writeSectionTitle("Summary");
+      writeLine(`Decision changes: ${summaryCounts.decision}`);
+      writeLine(`Evidence changes: ${summaryCounts.evidence}`);
+      writeLine(`Human actions: ${summaryCounts.human}`);
+      writeLine(`Timeline changes: ${summaryCounts.timeline}`);
+
+      writeSectionTitle("Decision changes (top)");
+      if (diff.changes.decision.length === 0) {
+        writeLine("No decision changes.");
+      } else {
+        visibleItems(diff.changes.decision, "decision").forEach((change) => {
+          writeLine(`${change.field}: ${formatValue(change.left)} → ${formatValue(change.right)}`);
+        });
+      }
+
+      writeSectionTitle("Evidence added (top)");
+      if (diff.changes.evidence.added.length === 0) {
+        writeLine("No evidence added.");
+      } else {
+        visibleItems(diff.changes.evidence.added, "evidence-added").forEach((item) => {
+          const label = [item.type ?? "Evidence", item.source ?? "--"].filter(Boolean).join(" • ");
+          writeLine(`${label} (${formatTimestamp(item.timestamp ?? "")})`);
+        });
+      }
+
+      writeSectionTitle("Evidence removed (top)");
+      if (diff.changes.evidence.removed.length === 0) {
+        writeLine("No evidence removed.");
+      } else {
+        visibleItems(diff.changes.evidence.removed, "evidence-removed").forEach((item) => {
+          const label = [item.type ?? "Evidence", item.source ?? "--"].filter(Boolean).join(" • ");
+          writeLine(`${label} (${formatTimestamp(item.timestamp ?? "")})`);
+        });
+      }
+
+      writeSectionTitle("Evidence changed (top)");
+      if (diff.changes.evidence.changed.length === 0) {
+        writeLine("No evidence changes.");
+      } else {
+        visibleItems(diff.changes.evidence.changed, "evidence-changed").forEach((item) => {
+          writeLine(`${item.left.type ?? "Evidence"}: ${item.left.source ?? "--"} → ${item.right.source ?? "--"}`);
+        });
+      }
+
+      writeSectionTitle("Human actions (top)");
+      if (diff.changes.humanActions.added.length === 0 && diff.changes.humanActions.removed.length === 0) {
+        writeLine("No human action changes.");
+      } else {
+        visibleItems(diff.changes.humanActions.added, "human-added").forEach((event) => {
+          writeLine(`Added: ${event.type ?? "Action"} (${formatTimestamp(event.timestamp ?? "")})`);
+        });
+        visibleItems(diff.changes.humanActions.removed, "human-removed").forEach((event) => {
+          writeLine(`Removed: ${event.type ?? "Action"} (${formatTimestamp(event.timestamp ?? "")})`);
+        });
+      }
+
+      writeSectionTitle("Timeline changes (top)");
+      if (diff.changes.timeline.addedTypes.length === 0) {
+        writeLine("No new event types.");
+      } else {
+        visibleItems(diff.changes.timeline.addedTypes, "timeline").forEach((value) => {
+          writeLine(value.replace(/_/g, " "));
+        });
+      }
+
+      const footerText = `Generated by AutoComply AI • ${formatTimestamp(comparedAt)}`;
+      page.drawText(footerText, {
+        x: margin,
+        y: margin / 2,
+        size: 9,
+        font,
+        color: rgb(0.4, 0.45, 0.5),
+      });
+
+      const pdfBytes = await pdfDoc.save();
+      const blob = new Blob([pdfBytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const timestamp = formatFileTimestamp(new Date());
+      anchor.href = url;
+      anchor.download = `autocomply_audit_diff_${diff.left.caseId}_${timestamp}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError("PDF export failed. Please try again.");
+    }
   };
 
   const toggleSection = (key: SectionKey) => {
@@ -281,6 +430,18 @@ export function AuditDiffPage() {
               title="Compare audit packets"
               description="Enter two packet hashes to generate an audit-grade diff report."
             />
+          )}
+
+          {!diff && !sameHashInfo && !loading && (
+            <p className="text-xs text-muted-foreground">
+              Export Diff PDF is available after a comparison completes.
+            </p>
+          )}
+
+          {!diff && !sameHashInfo && !loading && (
+            <Button variant="outline" size="sm" disabled>
+              Export Diff PDF
+            </Button>
           )}
 
           {sameHashInfo && (
@@ -341,8 +502,12 @@ export function AuditDiffPage() {
                       <Button variant="outline" size="sm" onClick={handleExport}>
                         Export Diff JSON
                       </Button>
+                      <Button variant="outline" size="sm" onClick={handleExportPdf}>
+                        Export Diff PDF
+                      </Button>
                     </div>
                   </div>
+                  {exportError && <p className="text-xs text-destructive">{exportError}</p>}
 
                   <div className="flex flex-wrap gap-2 text-xs">
                     <Badge variant={diff.changes.decision.length ? "warning" : "secondary"}>
