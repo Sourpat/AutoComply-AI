@@ -31,7 +31,22 @@
 
 ## P1 - High Priority (Do Next)
 
-*No tasks currently in P1*
+### T-016: Audit suite demo readiness
+**Status**: in-progress
+**Assigned**: GitHub Copilot
+**Goal**: Finalize audit suite nav, landing, demo script, and UX consistency for recruiter demo
+**Acceptance Criteria**:
+- [ ] Audit suite nav links are stable with active styling
+- [ ] Home has Audit Suite card with seed + prefilter behavior
+- [ ] Audit Packets shows collapsible demo script panel
+- [ ] Audit pages share loading/empty/error UX with retry
+- [ ] Demo script documented in PROJECT_CONTEXT.md
+- [ ] Frontend build passes
+**Verification**:
+- `npm run build` (frontend)
+- Manual: /audit/packets, /audit/verify, /audit/diff
+- Backend: GET /api/audit/packets?limit=5 returns array
+**Dependencies**: None
 
 ---
 

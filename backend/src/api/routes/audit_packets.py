@@ -4,14 +4,24 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel
 
 from app.audit.hash import compute_packet_hash
 from app.audit.repo import get_audit_packet, init_audit_schema, list_audit_packets, upsert_audit_packet
 
-router = APIRouter(prefix="/api/audit", tags=["audit"])
+router = APIRouter(prefix="/api", tags=["audit"])
 
 MAX_PACKET_BYTES = 2 * 1024 * 1024
+
+
+class AuditPacketMeta(BaseModel):
+    packetHash: str
+    caseId: str
+    decisionId: str
+    createdAt: str
+    sizeBytes: int
+    packetVersion: str
 
 
 def _now_iso() -> str:
@@ -169,14 +179,13 @@ def ensure_audit_schema() -> None:
     init_audit_schema()
 
 
-@router.get("/packets")
-async def list_audit_packet_meta(limit: int = 50) -> List[Dict[str, Any]]:
-    safe_limit = max(1, min(limit, 200))
-    rows = list_audit_packets(safe_limit)
+@router.get("/audit/packets", response_model=List[AuditPacketMeta])
+async def list_audit_packet_meta(limit: int = Query(50, ge=1, le=200)) -> List[Dict[str, Any]]:
+    rows = list_audit_packets(limit)
     return [_packet_meta(row) for row in rows]
 
 
-@router.post("/packets")
+@router.post("/audit/packets")
 async def store_audit_packet(request: Request) -> Dict[str, Any]:
     raw = await request.body()
     if len(raw) > MAX_PACKET_BYTES:
@@ -229,7 +238,7 @@ async def store_audit_packet(request: Request) -> Dict[str, Any]:
     }
 
 
-@router.post("/demo/seed")
+@router.post("/audit/demo/seed")
 async def seed_demo_packets(payload: Dict[str, Any]) -> Dict[str, Any]:
     case_id = payload.get("caseId") or "CASE-DEMO"
     count = payload.get("count") or 3
@@ -404,7 +413,7 @@ async def seed_demo_packets(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-@router.get("/packets/{packet_hash}")
+@router.get("/audit/packets/{packet_hash}")
 async def fetch_audit_packet(packet_hash: str) -> Dict[str, Any]:
     row = get_audit_packet(packet_hash)
     if not row:
@@ -416,7 +425,7 @@ async def fetch_audit_packet(packet_hash: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Stored audit packet is corrupted")
 
 
-@router.get("/packets/{packet_hash}/meta")
+@router.get("/audit/packets/{packet_hash}/meta")
 async def fetch_audit_packet_meta(packet_hash: str) -> Dict[str, Any]:
     row = get_audit_packet(packet_hash)
     if not row:
@@ -424,7 +433,7 @@ async def fetch_audit_packet_meta(packet_hash: str) -> Dict[str, Any]:
     return _packet_meta(row)
 
 
-@router.post("/diff")
+@router.post("/audit/diff")
 async def diff_audit_packets(payload: Dict[str, Any]) -> Dict[str, Any]:
     left_hash = payload.get("leftHash")
     right_hash = payload.get("rightHash")
@@ -454,7 +463,7 @@ async def diff_audit_packets(payload: Dict[str, Any]) -> Dict[str, Any]:
     return _build_diff(left_packet, right_packet, left_row, right_row)
 
 
-@router.post("/verify")
+@router.post("/audit/verify")
 async def verify_audit_packet(request: Request) -> Dict[str, Any]:
     raw = await request.body()
     if len(raw) > MAX_PACKET_BYTES:
