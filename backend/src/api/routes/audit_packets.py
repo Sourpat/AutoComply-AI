@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from app.audit.execution_preview import build_execution_preview
 from app.audit.hash import compute_packet_hash
 from app.audit.repo import get_audit_packet, init_audit_schema, list_audit_packets, upsert_audit_packet
 from app.audit.spec_registry import resolve_spec_for_packet
@@ -50,6 +51,11 @@ def _spec_trace_enabled() -> bool:
     return flag in {"1", "true", "yes", "on"}
 
 
+def _exec_preview_enabled() -> bool:
+    flag = os.getenv("FEATURE_EXEC_PREVIEW", "0").strip().lower()
+    return flag in {"1", "true", "yes", "on"}
+
+
 def _attach_spec_trace(packet: Dict[str, Any]) -> Dict[str, Any]:
     if not _spec_trace_enabled():
         return packet
@@ -68,6 +74,17 @@ def _attach_spec_trace(packet: Dict[str, Any]) -> Dict[str, Any]:
         decision_trace = {}
     decision_trace["spec"] = spec
     packet["decision_trace"] = decision_trace
+    return packet
+
+
+def _attach_execution_preview(packet: Dict[str, Any]) -> Dict[str, Any]:
+    if not _exec_preview_enabled():
+        return packet
+    if not isinstance(packet, dict):
+        return packet
+    if packet.get("execution_preview") is not None:
+        return packet
+    packet["execution_preview"] = build_execution_preview(packet)
     return packet
 
 
@@ -450,7 +467,8 @@ async def fetch_audit_packet(packet_hash: str) -> Dict[str, Any]:
     try:
         packet = json.loads(row["packet_json"])
         if isinstance(packet, dict):
-            return _attach_spec_trace(packet)
+            packet = _attach_spec_trace(packet)
+            return _attach_execution_preview(packet)
         return packet
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="Stored audit packet is corrupted")

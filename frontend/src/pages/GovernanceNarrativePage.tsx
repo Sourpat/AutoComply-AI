@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { EmptyState } from "../components/common/EmptyState";
 import { ErrorState } from "../components/common/ErrorState";
+import { ExecutionPreviewPanel } from "../components/common/ExecutionPreviewPanel";
 import { PageHeader } from "../components/common/PageHeader";
 import { ConfidenceHelp } from "../components/common/ConfidenceHelp";
 import { Badge } from "../components/ui/badge";
@@ -10,12 +11,13 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
-import { loadAuditPacket, saveAuditPacket, type AuditPacket, type SpecTrace } from "../lib/agenticAudit";
+import { getExecutionPreview, loadAuditPacket, saveAuditPacket, type AuditPacket, type SpecTrace } from "../lib/agenticAudit";
 import { fetchAuditPacketFromServer } from "../lib/auditServer";
 import { getAuditEvents } from "../lib/auditEventsServer";
 import { formatTimestamp } from "../lib/formatters";
 
 const GOV_NARRATIVE_ENABLED = import.meta.env.VITE_FEATURE_GOV_NARRATIVE === "true";
+const EXEC_PREVIEW_ENABLED = import.meta.env.VITE_FEATURE_EXEC_PREVIEW === "true";
 
 function useQuery() {
   const { search } = useLocation();
@@ -46,6 +48,7 @@ export function GovernanceNarrativePage() {
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteValue, setPasteValue] = useState("");
   const [talkTrackOpen, setTalkTrackOpen] = useState(true);
+  const [execPreviewOpen, setExecPreviewOpen] = useState(false);
   const [overrideEvents, setOverrideEvents] = useState<
     Array<{
       id: string;
@@ -55,6 +58,7 @@ export function GovernanceNarrativePage() {
   >([]);
 
   const specTrace: SpecTrace | undefined = packet?.decision_trace?.spec;
+  const executionPreview = getExecutionPreview(packet);
 
   const loadByHash = useCallback(async (hash: string) => {
     if (!hash) return;
@@ -323,6 +327,18 @@ export function GovernanceNarrativePage() {
                   <p className="text-xs text-muted-foreground">No human overrides recorded for this decision.</p>
                 )}
               </SectionCard>
+
+              {EXEC_PREVIEW_ENABLED && (
+                <SectionCard title="Execution Preview (Read-only)">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">Collapsed by default.</p>
+                    <Button variant="ghost" size="sm" onClick={() => setExecPreviewOpen((prev) => !prev)}>
+                      {execPreviewOpen ? "Hide" : "Show"}
+                    </Button>
+                  </div>
+                  {execPreviewOpen && <ExecutionPreviewPanel preview={executionPreview} />}
+                </SectionCard>
+              )}
 
               <SectionCard title="Audit artifact">
                 <div className="space-y-2 text-xs text-muted-foreground">

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import type { CaseEvent } from "../../contracts/agentic";
 import { formatTimestamp } from "../../lib/formatters";
 import { groupTraceEvents, getTraceMeta, getTraceLabel, type SpecTrace } from "../../lib/agenticAudit";
+import { ExecutionPreviewPanel } from "../common/ExecutionPreviewPanel";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -36,6 +37,7 @@ type DecisionTraceDrawerProps = {
   onOpenChange: (open: boolean) => void;
   events: CaseEvent[];
   specTrace?: SpecTrace;
+  executionPreview?: any | null;
 };
 
 function getSummary(event: CaseEvent) {
@@ -49,13 +51,16 @@ function getSummary(event: CaseEvent) {
   return JSON.stringify(payload).slice(0, 160);
 }
 
-export function DecisionTraceDrawer({ open, onOpenChange, events, specTrace }: DecisionTraceDrawerProps) {
+export function DecisionTraceDrawer({ open, onOpenChange, events, specTrace, executionPreview }: DecisionTraceDrawerProps) {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [visibleCount, setVisibleCount] = useState(40);
   const [specSnippetOpen, setSpecSnippetOpen] = useState(false);
   const [specConditionsOpen, setSpecConditionsOpen] = useState(false);
+  const [execPreviewOpen, setExecPreviewOpen] = useState(false);
+
+  const execPreviewEnabled = import.meta.env.VITE_FEATURE_EXEC_PREVIEW === "true";
 
   const filteredEvents = useMemo(() => {
     return events.filter((event) => {
@@ -223,6 +228,27 @@ export function DecisionTraceDrawer({ open, onOpenChange, events, specTrace }: D
                 </div>
               ) : null}
             </div>
+
+            {execPreviewEnabled && (
+              <div className="rounded-lg border border-border/70 bg-background p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-foreground">Execution Preview</p>
+                    <p className="text-xs text-muted-foreground">
+                      Read-only execution signals derived from existing trace data.
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setExecPreviewOpen((prev) => !prev)}>
+                    {execPreviewOpen ? "Hide" : "Show"}
+                  </Button>
+                </div>
+                {execPreviewOpen && (
+                  <div className="mt-3">
+                    <ExecutionPreviewPanel preview={executionPreview ?? null} />
+                  </div>
+                )}
+              </div>
+            )}
             {visibleGroups.map((group) => {
               const isExpanded = expanded[group.id];
               const summary = group.meta.summary ?? JSON.stringify(group.payload).slice(0, 160);

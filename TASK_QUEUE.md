@@ -52,11 +52,34 @@
 
 ## P2 - Medium Priority (Backlog)
 
-*No tasks currently in P2*
+### P8.2: Execution preview enrichment (TODO)
+**Status**: pending
+**Assigned**: (none)
+**Goal**: Extend SDX execution preview mapping for additional governance signals
+**Acceptance Criteria**:
+- [ ] Mapping covers additional intents and UI/audit impacts
+**Verification**:
+- Manual review only
+**Dependencies**: None
+
+### P8.3: Execution preview UX polish (TODO)
+**Status**: pending
+**Assigned**: (none)
+**Goal**: Improve execution preview display density without changing logic
+**Acceptance Criteria**:
+- [ ] Collapsed preview remains fast and readable
+**Verification**:
+- Manual review only
+**Dependencies**: None
 
 ---
 
 ## Completed Tasks (Last 5)
+
+### P8.1: Execution preview model foundation (Phase 8.1)
+**Completed**: 2026-02-01
+**Commit**: (pending)
+**Summary**: Added read-time execution preview attachment and read-only UI panels behind feature flags.
 
 ### T-020: Interview demo mode (Phase 7)
 **Completed**: 2026-02-01
@@ -77,11 +100,6 @@
 **Completed**: 2026-01-31
 **Commit**: (pending)
 **Summary**: Added spec registry seed data and feature-flagged spec trace metadata in audit packets with UI rendering.
-
-### T-015: Audit demo seed packets
-**Completed**: 2026-01-31
-**Commit**: (pending)
-**Summary**: Added deterministic demo seed endpoint and UI trigger for audit packets.
 
 ---
 

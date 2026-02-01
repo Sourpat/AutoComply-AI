@@ -36,6 +36,24 @@
 
 ## Decisions
 
+### [2026-02-01] Add read-time execution preview (Phase 8.1)
+
+**Context**: Phase 8.1 requires a read-only SDX execution preview derived from existing audit packet signals without changing decision logic.
+
+**Decision**: Compute `execution_preview` at read-time only when FEATURE_EXEC_PREVIEW is enabled; never persist, and default unknown-safe when signals are missing.
+
+**Rationale**:
+- Preserves packet hash and decision logic
+- Keeps data additive and feature-flagged
+- Avoids new tables or write paths
+
+**Consequences**:
+- Positive: SDX preview available for demos with zero persistence risk
+- Negative: Requires read-time computation on packet fetch
+- Neutral: No effect when feature flag is off
+
+**Status**: Accepted
+
 ### [2026-02-01] Add one-click governance narrative demo flow
 
 **Context**: Interview demos need a fast, reliable way to seed deterministic audit packets and open the governance narrative with a single action.

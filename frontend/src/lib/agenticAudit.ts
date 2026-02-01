@@ -107,6 +107,7 @@ export type AuditPacket = {
   decision_trace?: {
     spec?: SpecTrace;
   };
+  execution_preview?: any;
 };
 
 export type TraceMeta = {
@@ -190,6 +191,10 @@ export function groupTraceEvents(events: CaseEvent[]): TraceGroup[] {
 export function toDecisionId(caseId: string, updatedAt: string) {
   const sanitized = updatedAt.replace(/[-:]/g, "").replace("T", "_").slice(0, 13);
   return `decision_${caseId}_${sanitized}`;
+}
+
+export function getExecutionPreview(packet?: AuditPacket | null) {
+  return packet?.execution_preview ?? null;
 }
 
 export function buildAuditPacket(params: {

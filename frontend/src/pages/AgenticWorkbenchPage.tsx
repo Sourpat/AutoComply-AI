@@ -33,6 +33,7 @@ import {
   buildAuditPacket,
   buildAuditPdf,
   computePacketHash,
+  getExecutionPreview,
   getHumanEvents,
   getTraceLabel,
   groupTraceEvents,
@@ -1220,6 +1221,7 @@ export function AgenticWorkbenchPage() {
         onOpenChange={setTraceOpen}
         events={events}
         specTrace={packetBase?.decision_trace?.spec}
+        executionPreview={getExecutionPreview(packetBase)}
       />
 
       <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)_360px]">
