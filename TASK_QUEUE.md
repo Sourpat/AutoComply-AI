@@ -1,6 +1,6 @@
 # Task Queue
 
-**Last Updated**: 2026-02-01
+**Last Updated**: 2026-02-02
 
 **Active WIP**: 0
 
@@ -104,6 +104,16 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 9.7 — Governance evidence + audit trail
+**Completed**: 2026-02-02
+**Commit**: (pending)
+**Summary**: Logged policy overrides as audit events and included governance metadata in exports.
+
+### Phase 9.6 — Policy override workflow
+**Completed**: 2026-02-02
+**Commit**: (pending)
+**Summary**: Added override persistence, API workflow, and UI controls.
+
 ### Phase 9.5 — Safe failure modes + UI surfacing
 **Completed**: 2026-02-02
 **Commit**: (pending)
@@ -118,16 +128,6 @@
 **Completed**: 2026-02-01
 **Commit**: (pending)
 **Summary**: Aligned SDX terminology, empty-state messaging, and confidence tooltip copy.
-
-### P8.7: Governance narrative SDX extension (Phase 8.7)
-**Completed**: 2026-02-01
-**Commit**: (pending)
-**Summary**: Extended governance narrative with SDX sections derived from execution preview.
-
-### Phase 9.1 — AI Decision Contract (Core Artifact)
-**Completed**: 2026-02-02
-**Commit**: (pending)
-**Summary**: Delivered AI decision contract schema, seed, read-only APIs, and startup migration safeguards.
 
 ---
 

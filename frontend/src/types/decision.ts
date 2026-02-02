@@ -30,6 +30,20 @@ export interface SafeFailureDetail {
   recommended_next_step?: string | null;
 }
 
+export type PolicyOverrideAction = "approve" | "block" | "require_review";
+
+export interface PolicyOverrideDetail {
+  id: string;
+  trace_id: string;
+  submission_id: string;
+  override_action: PolicyOverrideAction;
+  rationale: string;
+  reviewer: string;
+  created_at: string;
+  before_status?: string | null;
+  after_status?: string | null;
+}
+
 export interface RegulatoryReference {
   id: string;
   jurisdiction?: string | null;
@@ -48,4 +62,5 @@ export interface DecisionOutcome {
   debug_info?: Record<string, unknown> | null;
   policy_trace?: PolicyTrace | null;
   safe_failure?: SafeFailureDetail | null;
+  policy_override?: PolicyOverrideDetail | null;
 }

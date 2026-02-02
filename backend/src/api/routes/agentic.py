@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from app.workflow.repo import get_case as get_workflow_case
 from app.data.agentic_cases import (
@@ -15,7 +16,16 @@ from app.data.agentic_cases import (
     list_cases as list_agentic_cases,
     upsert_case,
 )
-from src.core.db import get_raw_connection
+from src.core.db import execute_sql, get_raw_connection
+from src.autocomply.audit.decision_log import get_decision_log
+from src.autocomply.domain.submissions_store import get_submission_store
+from src.policy.overrides import (
+    PolicyOverrideAction,
+    create_policy_override,
+    get_policy_override_for_submission,
+    list_policy_overrides,
+    override_action_to_status,
+)
 from src.api.models.agentic import (
     AgentAction,
     AgentActionIntent,
@@ -37,6 +47,35 @@ router = APIRouter(prefix="/api/agentic", tags=["agentic"])
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _resolve_trace_id(submission_id: str) -> Optional[str]:
+    store = get_submission_store()
+    submission = store.get_submission(submission_id)
+    if submission and submission.trace_id:
+        return submission.trace_id
+
+    rows = execute_sql(
+        "SELECT trace_id FROM cases WHERE submission_id = :submission_id LIMIT 1",
+        {"submission_id": submission_id},
+    )
+    if rows:
+        trace_id = rows[0].get("trace_id")
+        if isinstance(trace_id, str) and trace_id.strip():
+            return trace_id
+    return None
+
+
+class PolicyOverrideRequest(BaseModel):
+    action: PolicyOverrideAction
+    rationale: str = Field(..., min_length=1)
+    reviewer: str = Field(..., min_length=1)
+
+
+class PolicyOverrideResponse(BaseModel):
+    override: Dict[str, str]
+    before_status: Optional[str] = None
+    after_status: Optional[str] = None
 
 
 def _trace(case_id: str, case_exists: bool, summary_present: bool, notes: Optional[list[str]] = None) -> AgentTrace:
@@ -427,6 +466,80 @@ def review_decision(case_id: str, payload: ReviewDecisionRequest) -> AgentPlan:
     )
     _save_agentic_state(case_id, status, status, None)
     return _build_plan(case_id, note=f"review_decision -> {status.value}")
+
+
+@router.post(
+    "/cases/{submission_id}/policy-override",
+    response_model=PolicyOverrideResponse,
+)
+def apply_policy_override(
+    submission_id: str, payload: PolicyOverrideRequest
+) -> PolicyOverrideResponse:
+    trace_id = _resolve_trace_id(submission_id)
+    if not trace_id:
+        raise HTTPException(status_code=404, detail="Trace ID not found for submission")
+
+    action = payload.action
+    rationale = payload.rationale.strip()
+    reviewer = payload.reviewer.strip()
+
+    if not rationale or not reviewer:
+        raise HTTPException(status_code=400, detail="rationale and reviewer are required")
+
+    decision_log = get_decision_log()
+    entries = decision_log.get_entries_for_trace(trace_id)
+    before_status = None
+    if entries:
+        before_status = entries[-1].status
+
+    after_status = override_action_to_status(action).value
+
+    override = create_policy_override(
+        trace_id=trace_id,
+        submission_id=submission_id,
+        override_action=action,
+        rationale=rationale,
+        reviewer=reviewer,
+    )
+
+    decision_log.record_policy_override(
+        trace_id=trace_id,
+        override=override,
+        before_status=before_status,
+        after_status=after_status,
+    )
+
+    return PolicyOverrideResponse(
+        override=override,
+        before_status=before_status,
+        after_status=after_status,
+    )
+
+
+@router.get(
+    "/cases/{submission_id}/policy-override",
+    response_model=PolicyOverrideResponse,
+)
+def get_policy_override(submission_id: str) -> PolicyOverrideResponse:
+    override = get_policy_override_for_submission(submission_id)
+    if not override:
+        return PolicyOverrideResponse(override={}, before_status=None, after_status=None)
+
+    after_status = None
+    action = override.get("override_action")
+    if action in {"approve", "block", "require_review"}:
+        after_status = override_action_to_status(action).value
+
+    return PolicyOverrideResponse(
+        override=override,
+        before_status=override.get("before_status"),
+        after_status=after_status,
+    )
+
+
+@router.get("/policy-overrides/recent", response_model=list[Dict[str, str]])
+def list_recent_policy_overrides(limit: int = 200) -> list[Dict[str, str]]:
+    return list_policy_overrides(limit=limit)
 
 
 @router.post("/demo/seed", response_model=list[AgentCaseSummary])

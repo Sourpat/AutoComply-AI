@@ -38,6 +38,7 @@ async def get_decisions_for_trace(trace_id: str) -> List[DecisionAuditEntryModel
         )
         models.append(
             DecisionAuditEntryModel(
+                event_type=getattr(entry, "event_type", None),
                 trace_id=entry.trace_id,
                 engine_family=entry.engine_family,
                 decision_type=entry.decision_type,
@@ -46,6 +47,7 @@ async def get_decisions_for_trace(trace_id: str) -> List[DecisionAuditEntryModel
                 risk_level=entry.risk_level,
                 created_at=entry.created_at.isoformat(),
                 decision=entry.decision,
+                override=getattr(entry, "override", None),
                 policy_contract_version_used=used_version,
                 policy_contract_version_active=active_version,
                 policy_drift=drift,

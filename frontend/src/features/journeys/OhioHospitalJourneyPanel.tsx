@@ -227,6 +227,7 @@ export const OhioHospitalJourneyPanel: React.FC = () => {
                   status={decision.status}
                   policyTrace={decision.policy_trace}
                   safeFailure={decision.safe_failure}
+                  policyOverride={decision.policy_override}
                 />
                 <RiskPill riskLevel={decision.risk_level ?? undefined} />
               </div>

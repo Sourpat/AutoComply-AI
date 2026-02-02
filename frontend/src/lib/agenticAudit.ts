@@ -76,6 +76,10 @@ export type AuditPacket = {
     riskLevel: string | null;
     decisionId: string;
     updatedAt: string;
+    policy_trace?: Record<string, unknown> | null;
+    safe_failure?: Record<string, unknown> | null;
+    policy_override?: Record<string, unknown> | null;
+    contract_version_used?: string | null;
   };
   explainability: {
     summary?: string;
@@ -206,9 +210,35 @@ export function buildAuditPacket(params: {
   humanEvents: HumanActionEvent[];
   auditNotes?: string;
   packetHash?: string;
+  policyTrace?: Record<string, unknown> | null;
+  safeFailure?: Record<string, unknown> | null;
+  policyOverride?: Record<string, unknown> | null;
+  contractVersionUsed?: string | null;
 }): AuditPacket {
-  const { caseItem, plan, events, evidenceItems, evidenceState, auditNotes, humanEvents, packetHash } = params;
+  const {
+    caseItem,
+    plan,
+    events,
+    evidenceItems,
+    evidenceState,
+    auditNotes,
+    humanEvents,
+    packetHash,
+    policyTrace,
+    safeFailure,
+    policyOverride,
+    contractVersionUsed,
+  } = params;
   const decisionId = toDecisionId(caseItem.submission_id, caseItem.updated_at);
+  const payloadDecision = (caseItem.payload as Record<string, any>)?.decision ?? null;
+  const fallbackTrace = payloadDecision?.policy_trace ?? (caseItem.payload as any)?.policy_trace ?? null;
+  const fallbackFailure = payloadDecision?.safe_failure ?? (caseItem.payload as any)?.safe_failure ?? null;
+  const fallbackOverride = payloadDecision?.policy_override ?? (caseItem.payload as any)?.policy_override ?? null;
+  const fallbackContract =
+    payloadDecision?.contract_version_used ??
+    payloadDecision?.policy_trace?.contract_version_used ??
+    (caseItem.payload as any)?.policy_trace?.contract_version_used ??
+    null;
 
   return {
     metadata: {
@@ -236,6 +266,10 @@ export function buildAuditPacket(params: {
       riskLevel: caseItem.risk_level ?? null,
       decisionId,
       updatedAt: caseItem.updated_at,
+      policy_trace: policyTrace ?? fallbackTrace,
+      safe_failure: safeFailure ?? fallbackFailure,
+      policy_override: policyOverride ?? fallbackOverride,
+      contract_version_used: contractVersionUsed ?? fallbackContract,
     },
     explainability: {
       summary: plan?.summary,
@@ -424,6 +458,38 @@ export async function buildAuditPdf(packet: AuditPacket, hash: string) {
 
   writeLine("Decision Summary", true, 12);
   wrapText(packet.explainability.summary ?? "No summary available.");
+  writeLine("");
+
+  writeLine("Policy Governance", true, 12);
+  const policyTrace = (packet.decision as any)?.policy_trace as Record<string, any> | undefined;
+  const safeFailure = (packet.decision as any)?.safe_failure as Record<string, any> | undefined;
+  const policyOverride = (packet.decision as any)?.policy_override as Record<string, any> | undefined;
+  const contractVersionUsed = (packet.decision as any)?.contract_version_used as string | undefined;
+
+  if (contractVersionUsed) {
+    writeLine(`Contract version used: ${contractVersionUsed}`, false, 10);
+  }
+  if (policyTrace?.allowed_action) {
+    writeLine(`Policy allowed action: ${policyTrace.allowed_action}`, false, 10);
+  }
+  if (safeFailure?.summary) {
+    writeLine(`Safe failure: ${safeFailure.summary}`, false, 10);
+  }
+  if (policyOverride?.override_action) {
+    writeLine(`Override action: ${policyOverride.override_action}`, false, 10);
+    if (policyOverride?.reviewer) {
+      writeLine(`Reviewer: ${policyOverride.reviewer}`, false, 10);
+    }
+    if (policyOverride?.rationale) {
+      wrapText(`Rationale: ${policyOverride.rationale}`, 10, false);
+    }
+    if (policyOverride?.before_status && policyOverride?.after_status) {
+      writeLine(`Status: ${policyOverride.before_status} → ${policyOverride.after_status}`, false, 10);
+    }
+  }
+  if (!contractVersionUsed && !policyTrace?.allowed_action && !safeFailure?.summary && !policyOverride?.override_action) {
+    writeLine("No policy governance metadata captured.", false, 10);
+  }
   writeLine("");
 
   writeLine("Decision Trace (Top 20)", true, 12);

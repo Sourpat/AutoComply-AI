@@ -55,9 +55,11 @@ class DecisionOutcome(BaseModel):
     debug_info: Optional[Dict[str, Any]] = None
     policy_trace: Optional[Dict[str, Any]] = None
     safe_failure: Optional[Dict[str, Any]] = None
+    policy_override: Optional[Dict[str, Any]] = None
 
 
 class DecisionAuditEntryModel(BaseModel):
+    event_type: Optional[str] = None
     trace_id: str
     engine_family: str
     decision_type: str
@@ -66,6 +68,7 @@ class DecisionAuditEntryModel(BaseModel):
     risk_level: Optional[str] = None
     created_at: str
     decision: DecisionOutcome
+    override: Optional[Dict[str, Any]] = None
     policy_contract_version_used: Optional[str] = None
     policy_contract_version_active: Optional[str] = None
     policy_drift: Optional[bool] = None

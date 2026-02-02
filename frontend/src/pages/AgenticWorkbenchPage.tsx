@@ -24,10 +24,15 @@ import {
 } from "../components/ui/select";
 import { Skeleton } from "../components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import type { PolicyTrace } from "../types/decision";
+import type { PolicyOverrideDetail, PolicyOverrideAction, PolicyTrace } from "../types/decision";
 import type { CaseEvent } from "../contracts/agentic";
 import { useAgentPlan } from "../hooks/useAgentPlan";
 import { API_BASE } from "../lib/api";
+import {
+  applyPolicyOverride,
+  getPolicyOverride,
+  listPolicyOverrides,
+} from "../api/policyOverrides";
 import {
   appendHumanEvent,
   buildAuditFileName,
@@ -104,9 +109,9 @@ const overrideReasonOptions = [
 ];
 
 const overrideDecisionOptions = [
-  { value: "approved", label: "Approve" },
-  { value: "rejected", label: "Reject" },
-  { value: "needs_input", label: "Needs input" },
+  { value: "approve", label: "Approve" },
+  { value: "block", label: "Block" },
+  { value: "require_review", label: "Require review" },
 ];
 
 const OVERRIDE_FEEDBACK_ENABLED = import.meta.env.VITE_FEATURE_OVERRIDE_FEEDBACK === "true";
@@ -214,8 +219,11 @@ export function AgenticWorkbenchPage() {
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideReason, setOverrideReason] = useState("policy_exception");
   const [overrideNote, setOverrideNote] = useState("");
-  const [overrideDecision, setOverrideDecision] = useState("approved");
+  const [overrideDecision, setOverrideDecision] = useState<PolicyOverrideAction>("approve");
   const [overrideSubmitting, setOverrideSubmitting] = useState(false);
+  const [policyOverride, setPolicyOverride] = useState<PolicyOverrideDetail | null>(null);
+  const [policyOverrideOnly, setPolicyOverrideOnly] = useState(false);
+  const [overrideTraceIds, setOverrideTraceIds] = useState<Set<string>>(new Set());
   const [packetHash, setPacketHash] = useState<string | null>(null);
   const [visibleEvidenceCount, setVisibleEvidenceCount] = useState(50);
   const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
@@ -388,6 +396,25 @@ export function AgenticWorkbenchPage() {
   }, [loadCases]);
 
   useEffect(() => {
+    let active = true;
+    listPolicyOverrides(200)
+      .then((items) => {
+        if (!active) return;
+        const traceIds = new Set<string>();
+        items.forEach((item) => {
+          if (item?.trace_id) traceIds.add(item.trace_id);
+        });
+        setOverrideTraceIds(traceIds);
+      })
+      .catch(() => {
+        if (active) setOverrideTraceIds(new Set());
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (caseId) {
       loadEvents();
     }
@@ -420,6 +447,33 @@ export function AgenticWorkbenchPage() {
       setEvidenceState({});
     }
   }, [caseId]);
+
+  useEffect(() => {
+    if (!selectedCase?.submission_id) {
+      setPolicyOverride(null);
+      return;
+    }
+    let active = true;
+    getPolicyOverride(selectedCase.submission_id)
+      .then((result) => {
+        if (!active) return;
+        const rawOverride = result.data?.override as PolicyOverrideDetail | undefined;
+        const override = rawOverride && "override_action" in rawOverride
+          ? {
+              ...rawOverride,
+              before_status: result.data?.before_status ?? rawOverride.before_status,
+              after_status: result.data?.after_status ?? rawOverride.after_status,
+            }
+          : null;
+        setPolicyOverride(override);
+      })
+      .catch(() => {
+        if (active) setPolicyOverride(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedCase?.submission_id]);
 
   useEffect(() => {
     setVisibleEvidenceCount(50);
@@ -564,50 +618,82 @@ export function AgenticWorkbenchPage() {
   };
 
   const handleOverrideSubmit = async () => {
-    if (!caseId || overrideSubmitting) return;
+    if (!selectedCase?.submission_id || overrideSubmitting) return;
     setOverrideSubmitting(true);
 
-    const payload = {
-      reasonCategory: overrideReason,
-      note: overrideNote.trim() || undefined,
-      previousDecisionStatus,
-      newDecisionStatus: overrideDecision,
-    };
-
-    const result = appendHumanEvent(caseId, {
-      caseId,
-      type: "override_feedback",
-      actor: "verifier",
-      payload,
-    });
-
-    if (result.event) {
-      setHumanEvents((prev) => [...prev, result.event]);
+    const rationale = overrideNote.trim();
+    if (!rationale) {
+      setOverrideSubmitting(false);
+      toast.error("Rationale is required.");
+      return;
     }
+
+    const result = await applyPolicyOverride(selectedCase.submission_id, {
+      action: overrideDecision,
+      rationale,
+      reviewer: "verifier",
+    });
 
     setOverrideSubmitting(false);
     setOverrideOpen(false);
     setOverrideNote("");
 
-    if (!result.event) {
-      if (result.error) {
-        toast.error(`Unable to log override: ${result.error}`);
-      }
+    if (!result.ok || !result.data) {
+      toast.error(`Override failed: ${result.message}`);
       return;
     }
 
+    const rawOverride = result.data.override as PolicyOverrideDetail;
+    const override = rawOverride
+      ? {
+          ...rawOverride,
+          before_status: result.data.before_status ?? rawOverride.before_status,
+          after_status: result.data.after_status ?? rawOverride.after_status,
+        }
+      : null;
+    setPolicyOverride(override);
+    if (override?.trace_id) {
+      setOverrideTraceIds((prev) => new Set(prev).add(override.trace_id));
+    }
+
+    const payload = {
+      overrideAction: override?.override_action ?? overrideDecision,
+      rationale,
+      reviewer: override?.reviewer ?? "verifier",
+      previousDecisionStatus: result.data.before_status ?? previousDecisionStatus,
+      newDecisionStatus: result.data.after_status ?? overrideDecision,
+    };
+
+    const eventResult = appendHumanEvent(selectedCase.submission_id, {
+      caseId: selectedCase.submission_id,
+      type: "override_feedback",
+      actor: "verifier",
+      payload,
+    });
+
+    if (eventResult.event) {
+      setHumanEvents((prev) => [...prev, eventResult.event]);
+    }
+
     if (!OVERRIDE_FEEDBACK_ENABLED) {
-      toast.success("Override logged locally");
+      toast.success("Override applied");
+      await loadCases();
+      return;
+    }
+
+    if (!eventResult.event) {
+      toast.success("Override applied");
+      await loadCases();
       return;
     }
 
     const serverResult = await postAuditEvent({
-      caseId,
+      caseId: selectedCase.submission_id,
       packetHash: packetHash ?? undefined,
       actor: "verifier",
       eventType: "override_feedback",
       payload,
-      clientEventId: result.event.clientEventId,
+      clientEventId: eventResult.event.clientEventId,
     });
 
     if (!serverResult.ok) {
@@ -617,10 +703,11 @@ export function AgenticWorkbenchPage() {
 
     setHumanEvents((prev) =>
       prev.map((event) =>
-        event.id === result.event?.id ? { ...event, source: "server" } : event
+        event.id === eventResult.event?.id ? { ...event, source: "server" } : event
       )
     );
-    toast.success("Override logged");
+    toast.success("Override applied");
+    await loadCases();
   };
 
   const evidenceItems = useMemo(() => {
@@ -660,6 +747,10 @@ export function AgenticWorkbenchPage() {
       filtered = filtered.filter((item) => item.csf_type === formFilter);
     }
 
+    if (policyOverrideOnly) {
+      filtered = filtered.filter((item) => overrideTraceIds.has(item.trace_id));
+    }
+
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter((item) =>
@@ -696,7 +787,7 @@ export function AgenticWorkbenchPage() {
     }
 
     return filtered;
-  }, [cases, formFilter, riskFilter, searchQuery, sortBy, statusFilter]);
+  }, [cases, formFilter, overrideTraceIds, policyOverrideOnly, riskFilter, searchQuery, sortBy, statusFilter]);
 
   const formTypes = useMemo(() => {
     const types = Array.from(new Set(cases.map((item) => item.csf_type).filter(Boolean)));
@@ -705,6 +796,24 @@ export function AgenticWorkbenchPage() {
 
   const decisionId = selectedCase ? toDecisionId(selectedCase.submission_id, selectedCase.updated_at) : "";
   const previousDecisionStatus = plan?.status ?? selectedCase?.status ?? "unknown";
+
+  const policyTrace = useMemo<PolicyTrace | null>(() => {
+    const payload = selectedCase?.payload as { decision?: { policy_trace?: PolicyTrace } } | null;
+    const payloadTrace = payload?.decision?.policy_trace ?? (payload as any)?.policy_trace;
+    return payloadTrace ?? null;
+  }, [selectedCase]);
+
+  const safeFailure = useMemo(() => {
+    const payload = selectedCase?.payload as { decision?: { safe_failure?: any } } | null;
+    const payloadFailure = payload?.decision?.safe_failure ?? (payload as any)?.safe_failure;
+    return payloadFailure ?? null;
+  }, [selectedCase]);
+
+  const contractVersionUsed = useMemo(() => {
+    if (policyTrace?.contract_version_used) return String(policyTrace.contract_version_used);
+    if (safeFailure?.contract_version) return String(safeFailure.contract_version);
+    return null;
+  }, [policyTrace, safeFailure]);
 
   const packetBase = useMemo(() => {
     if (!selectedCase) return null;
@@ -717,22 +826,12 @@ export function AgenticWorkbenchPage() {
       auditNotes,
       humanEvents,
       packetHash: undefined,
+      policyTrace: policyTrace ?? undefined,
+      safeFailure: safeFailure ?? undefined,
+      policyOverride: policyOverride ?? undefined,
+      contractVersionUsed,
     });
-  }, [auditNotes, evidenceItems, evidenceState, events, humanEvents, plan, selectedCase]);
-
-  const policyTrace = useMemo<PolicyTrace | null>(() => {
-    const payload = selectedCase?.payload as { decision?: { policy_trace?: PolicyTrace } } | null;
-    const payloadTrace = payload?.decision?.policy_trace ?? (payload as any)?.policy_trace;
-    const packetTrace = (packetBase as any)?.decision?.policy_trace as PolicyTrace | undefined;
-    return payloadTrace ?? packetTrace ?? null;
-  }, [packetBase, selectedCase]);
-
-  const safeFailure = useMemo(() => {
-    const payload = selectedCase?.payload as { decision?: { safe_failure?: any } } | null;
-    const payloadFailure = payload?.decision?.safe_failure ?? (payload as any)?.safe_failure;
-    const packetFailure = (packetBase as any)?.decision?.safe_failure as any;
-    return payloadFailure ?? packetFailure ?? null;
-  }, [packetBase, selectedCase]);
+  }, [auditNotes, contractVersionUsed, evidenceItems, evidenceState, events, humanEvents, plan, policyOverride, policyTrace, safeFailure, selectedCase]);
 
   useEffect(() => {
     let active = true;
@@ -1084,6 +1183,11 @@ export function AgenticWorkbenchPage() {
               <Badge variant="secondary">Policy {policyTrace.allowed_action.replace("_", " ")}</Badge>
             )}
             {policyDrift && <Badge variant="warning">Policy Drift</Badge>}
+            {policyOverride && (
+              <Badge variant="warning" title={policyOverride.rationale}>
+                Override: {policyOverride.override_action.replace("_", " ")}
+              </Badge>
+            )}
             <Badge variant={riskTone[normalizeRisk(selectedCase?.risk_level)] ?? "secondary"}>
               Risk {normalizeRisk(selectedCase?.risk_level)}
             </Badge>
@@ -1099,7 +1203,7 @@ export function AgenticWorkbenchPage() {
             variant="outline"
             size="sm"
             onClick={() => {
-              setOverrideDecision(selectedCase?.status ?? "approved");
+              setOverrideDecision("require_review");
               setOverrideOpen(true);
             }}
             disabled={!selectedCase}
@@ -1449,11 +1553,11 @@ export function AgenticWorkbenchPage() {
             </div>
 
             <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Note (optional)</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Rationale (required)</p>
               <textarea
                 value={overrideNote}
                 onChange={(event) => setOverrideNote(event.target.value)}
-                placeholder="Add context for the override"
+                placeholder="Explain why this override is warranted"
                 className="min-h-[96px] w-full rounded-md border border-border/70 bg-background px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
               />
             </div>
@@ -1543,6 +1647,13 @@ export function AgenticWorkbenchPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <Button
+                  variant={policyOverrideOnly ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setPolicyOverrideOnly((prev) => !prev)}
+                >
+                  Overridden only
+                </Button>
               </div>
             </div>
 
@@ -1592,6 +1703,9 @@ export function AgenticWorkbenchPage() {
                         <Badge variant={statusTone[item.status] ?? "secondary"}>{item.status}</Badge>
                         <Badge variant={riskTone[risk] ?? "secondary"}>Risk {risk}</Badge>
                         <Badge variant="secondary">{item.csf_type}</Badge>
+                        {overrideTraceIds.has(item.trace_id) && (
+                          <Badge variant="warning">Overridden</Badge>
+                        )}
                       </div>
                       <p className="mt-2 text-xs text-muted-foreground">
                         Updated {formatTimestamp(item.updated_at)}

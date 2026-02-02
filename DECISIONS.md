@@ -36,6 +36,29 @@
 
 ## Decisions
 
+### [2026-02-02] Policy override workflow + governance audit trail (Phase 9.6-9.7)
+
+**Context**: Phase 9.6-9.7 requires a human override workflow with persistence, auditability, and UI controls, plus exportable governance evidence.
+
+**Decision**: Add a policy override table and API to record reviewer overrides per submission/trace, apply overrides at read-time for decision outputs, log a first-class audit timeline event, and include override metadata in audit exports (JSON/PDF).
+
+**Rationale**:
+- Keeps the override workflow explicit and auditable
+- Ensures review actions are persisted and traceable across sessions
+- Provides deterministic precedence in decision rendering
+
+**Precedence Order**:
+1. **Policy override (human)**: If an override exists for the trace, it forces decision status.
+2. **Policy enforcement**: Safe-failure and policy gates can downgrade auto decisions.
+3. **Engine output**: Base decision produced by the domain engine.
+
+**Consequences**:
+- Positive: Human governance is durable, visible, and exportable
+- Negative: Adds an additional persistence table and audit mapping logic
+- Neutral: Does not alter core engine evaluation algorithms
+
+**Status**: Accepted
+
 ### [2026-02-02] Add safe failure modes for policy overrides (Phase 9.5)
 
 **Context**: Recruiter demos need explicit, auditable explanations when AI wants to auto-decide but policy blocks/escalates.

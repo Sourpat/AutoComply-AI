@@ -85,6 +85,11 @@ export const DecisionAuditTimelinePanel: React.FC = () => {
 
     const decision: DecisionOutcome = entry.decision;
     const policyDrift = entry.policy_drift === true;
+    const overrideMeta = entry.override ?? decision.policy_override;
+    const isOverrideEvent = entry.event_type === "policy_override_applied";
+    const overrideSummary = overrideMeta
+      ? `Override by ${overrideMeta.reviewer ?? "reviewer"}: ${overrideMeta.rationale ?? ""}`
+      : null;
 
     return (
       <div key={`${entry.engine_family}-${entry.decision_type}-${index}`} className="flex gap-3">
@@ -109,6 +114,7 @@ export const DecisionAuditTimelinePanel: React.FC = () => {
                 status={decision.status}
                 policyTrace={decision.policy_trace}
                 safeFailure={decision.safe_failure}
+                policyOverride={(decision.policy_override ?? overrideMeta) ?? undefined}
               />
               <RiskPill riskLevel={decision.risk_level ?? undefined} />
               {policyDrift && (
@@ -116,10 +122,23 @@ export const DecisionAuditTimelinePanel: React.FC = () => {
                   Policy Drift
                 </span>
               )}
+              {isOverrideEvent && (
+                <span className="rounded-full border px-2 py-0.5 text-[10px] font-semibold bg-amber-950/60 text-amber-200 border-amber-700/70">
+                  Policy Override Applied
+                </span>
+              )}
             </div>
           </div>
 
           <p className="mt-1 text-[11px] text-zinc-300">{entry.reason}</p>
+          {overrideSummary && (
+            <p className="mt-1 text-[11px] text-amber-200">
+              {overrideSummary}
+              {overrideMeta?.before_status && overrideMeta?.after_status
+                ? ` (${overrideMeta.before_status} → ${overrideMeta.after_status})`
+                : ""}
+            </p>
+          )}
 
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-zinc-500">
             <span>{formatTimestamp(entry.created_at)}</span>

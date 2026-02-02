@@ -23,6 +23,8 @@ import { viewStore } from "../lib/viewStore";
 import type { QueueView, SortField, SortDirection } from "../types/views";
 import { AdminResetPanel } from "../features/admin/AdminResetPanel";
 import { BackendHealthBanner } from "../components/BackendHealthBanner";
+import { listPolicyOverrides } from "../api/policyOverrides";
+import type { PolicyOverrideDetail } from "../types/decision";
 
 type DecisionStatus = "ok_to_ship" | "blocked" | "needs_review";
 type ActiveSection = "dashboard" | "csf" | "licenses" | "orders" | "settings" | "about";
@@ -123,6 +125,8 @@ interface WorkQueueItem {
   priorityColor: string;
   policyOverride?: boolean;
   policyOverrideLabel?: string;
+  policySafeFailure?: boolean;
+  policySafeFailureLabel?: string;
   // Fields from API CaseRecord - no need to look up demoStore
   status: 'new' | 'in_review' | 'needs_info' | 'approved' | 'blocked' | 'closed';
   assignedTo: string | null;
@@ -837,31 +841,55 @@ const ConsoleDashboard: React.FC = () => {
       // Fetch from API (excludes cancelled by default, ordered by created_at DESC)
       const response = await listCases({ limit: 1000 });
 
-      let policyOverridesByTrace = new Map<string, { policy_action?: string; summary?: string }>();
+      let policySafeFailuresByTrace = new Map<string, { policy_action?: string; summary?: string }>();
+      let policyOverridesBySubmission = new Map<string, PolicyOverrideDetail>();
       try {
         const safeFailures = await apiFetch<Array<{ trace_id: string; safe_failure: { policy_action?: string; summary?: string } }>>(
           "/api/policy/safe-failures/recent?limit=200"
         );
-        policyOverridesByTrace = new Map(
+        policySafeFailuresByTrace = new Map(
           safeFailures.map((item) => [item.trace_id, item.safe_failure])
         );
       } catch (err) {
         console.warn("[ConsoleDashboard] Failed to load policy safe failures:", err);
       }
+
+      try {
+        const overrides = await listPolicyOverrides(200);
+        policyOverridesBySubmission = new Map(
+          overrides.map((item) => [item.submission_id, item])
+        );
+      } catch (err) {
+        console.warn("[ConsoleDashboard] Failed to load policy overrides:", err);
+      }
       
       // Map CaseRecord[] to WorkQueueItem[] display format - includes all fields, no need for demoStore lookup
       const displayItems: WorkQueueItem[] = response.items.map(caseRecord => {
         const traceId = caseRecord.submissionId || '';
-        const override = policyOverridesByTrace.get(traceId);
+        const safeFailure = policySafeFailuresByTrace.get(traceId);
+        const override = caseRecord.submissionId
+          ? policyOverridesBySubmission.get(caseRecord.submissionId)
+          : undefined;
+        let safeFailureLabel: string | undefined;
         let overrideLabel: string | undefined;
-        if (override?.policy_action === "block") {
-          overrideLabel = "Policy blocked AI";
-        } else if (override?.policy_action === "require_human") {
-          overrideLabel = "Policy forced review";
-        } else if (override?.policy_action === "escalate") {
-          overrideLabel = "Policy escalated AI";
+        if (safeFailure?.policy_action === "block") {
+          safeFailureLabel = "Policy blocked AI";
+        } else if (safeFailure?.policy_action === "require_human") {
+          safeFailureLabel = "Policy forced review";
+        } else if (safeFailure?.policy_action === "escalate") {
+          safeFailureLabel = "Policy escalated AI";
+        } else if (safeFailure) {
+          safeFailureLabel = "Policy override";
+        }
+
+        if (override?.override_action === "approve") {
+          overrideLabel = "Override: approve";
+        } else if (override?.override_action === "block") {
+          overrideLabel = "Override: block";
+        } else if (override?.override_action === "require_review") {
+          overrideLabel = "Override: review";
         } else if (override) {
-          overrideLabel = "Policy override";
+          overrideLabel = "Override applied";
         }
 
         return {
@@ -874,6 +902,8 @@ const ConsoleDashboard: React.FC = () => {
         priorityColor: 'text-slate-600',
         policyOverride: Boolean(override),
         policyOverrideLabel: overrideLabel,
+        policySafeFailure: Boolean(safeFailure),
+        policySafeFailureLabel: safeFailureLabel,
         // API fields - prevents need to look up demoStore
         status: caseRecord.status,
         assignedTo: caseRecord.assignedTo,
@@ -2184,9 +2214,14 @@ const ConsoleDashboard: React.FC = () => {
                                  '✓ OK'}
                               </span>
                             )}
+                            {item.policySafeFailure && (
+                              <span className="px-2 py-0.5 text-xs font-medium rounded bg-amber-100 text-amber-800" title={item.policySafeFailureLabel}>
+                                {item.policySafeFailureLabel ?? "Policy override"}
+                              </span>
+                            )}
                             {item.policyOverride && (
-                              <span className="px-2 py-0.5 text-xs font-medium rounded bg-amber-100 text-amber-800" title={item.policyOverrideLabel}>
-                                {item.policyOverrideLabel ?? "Policy override"}
+                              <span className="px-2 py-0.5 text-xs font-medium rounded bg-purple-100 text-purple-800" title={item.policyOverrideLabel}>
+                                {item.policyOverrideLabel ?? "Override applied"}
                               </span>
                             )}
                           </div>

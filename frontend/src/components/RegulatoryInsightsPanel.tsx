@@ -53,6 +53,7 @@ export const RegulatoryInsightsPanel: React.FC<RegulatoryInsightsPanelProps> = (
             status={status}
             policyTrace={decision.policy_trace}
             safeFailure={decision.safe_failure}
+              policyOverride={decision.policy_override}
           />
           <RiskPill riskLevel={risk_level ?? undefined} />
         </div>

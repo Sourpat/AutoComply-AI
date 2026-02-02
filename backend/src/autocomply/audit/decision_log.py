@@ -6,6 +6,7 @@ from typing import Dict, List, Literal, Optional
 
 from src.api.models.decision import DecisionOutcome, DecisionStatus
 from src.policy.integration import apply_policy
+from src.policy.overrides import apply_policy_override, get_policy_override_for_trace
 
 DecisionEngineFamily = Literal["csf", "license", "order"]
 
@@ -19,12 +20,14 @@ class DecisionAuditEntry:
     external log sink without changing the public API.
     """
 
+    event_type: Optional[str]
     trace_id: str
     engine_family: DecisionEngineFamily
     decision_type: str
     status: str
     reason: str
     risk_level: Optional[str]
+    override: Optional[Dict[str, str]]
     policy_contract_version_used: Optional[str]
     created_at: datetime
     decision: DecisionOutcome
@@ -62,6 +65,9 @@ class DecisionLog:
             return
 
         decision = apply_policy(decision, decision_type=decision_type)
+        override = get_policy_override_for_trace(trace_id)
+        if override:
+            decision = apply_policy_override(decision, override)
 
         policy_contract_version_used: Optional[str] = None
         policy_trace = decision.policy_trace
@@ -71,13 +77,67 @@ class DecisionLog:
                 policy_contract_version_used = str(used_value)
 
         entry = DecisionAuditEntry(
+            event_type="decision_recorded",
             trace_id=trace_id,
             engine_family=engine_family,
             decision_type=decision_type,
             status=decision.status.value if hasattr(decision.status, "value") else str(decision.status),
             reason=decision.reason,
             risk_level=decision.risk_level,
+            override=override,
             policy_contract_version_used=policy_contract_version_used,
+            created_at=datetime.now(timezone.utc),
+            decision=decision,
+        )
+        self._by_trace.setdefault(trace_id, []).append(entry)
+
+    def record_policy_override(
+        self,
+        *,
+        trace_id: str,
+        override: Dict[str, str],
+        before_status: Optional[str],
+        after_status: Optional[str],
+    ) -> None:
+        if not trace_id:
+            return
+
+        entries = self._by_trace.get(trace_id, [])
+        last_entry = entries[-1] if entries else None
+
+        if last_entry is not None:
+            decision = last_entry.decision.model_copy(deep=True)
+            engine_family = last_entry.engine_family
+            decision_type = last_entry.decision_type
+            risk_level = last_entry.risk_level
+        else:
+            decision = DecisionOutcome(
+                status=DecisionStatus.NEEDS_REVIEW,
+                reason="Policy override applied",
+                trace_id=trace_id,
+            )
+            engine_family = "csf"
+            decision_type = "unknown"
+            risk_level = None
+
+        override_payload = {
+            **override,
+            "before_status": before_status,
+            "after_status": after_status,
+        }
+
+        decision = apply_policy_override(decision, override_payload)
+
+        entry = DecisionAuditEntry(
+            event_type="policy_override_applied",
+            trace_id=trace_id,
+            engine_family=engine_family,
+            decision_type=decision_type,
+            status=decision.status.value if hasattr(decision.status, "value") else str(decision.status),
+            reason=decision.reason,
+            risk_level=risk_level,
+            override=override_payload,
+            policy_contract_version_used=getattr(last_entry, "policy_contract_version_used", None) if last_entry else None,
             created_at=datetime.now(timezone.utc),
             decision=decision,
         )

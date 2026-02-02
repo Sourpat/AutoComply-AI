@@ -71,6 +71,7 @@ def _to_models(entries: list) -> list[DecisionAuditEntryModel]:
     for entry in entries:
         models.append(
             DecisionAuditEntryModel(
+                event_type=getattr(entry, "event_type", None),
                 trace_id=entry.trace_id,
                 engine_family=entry.engine_family,
                 decision_type=entry.decision_type,
@@ -79,6 +80,7 @@ def _to_models(entries: list) -> list[DecisionAuditEntryModel]:
                 risk_level=entry.risk_level,
                 created_at=getattr(entry.created_at, "isoformat", lambda: "")(),
                 decision=entry.decision,
+                override=getattr(entry, "override", None),
                 policy_contract_version_used=getattr(
                     entry, "policy_contract_version_used", None
                 ),

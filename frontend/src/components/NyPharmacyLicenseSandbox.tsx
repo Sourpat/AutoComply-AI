@@ -500,6 +500,7 @@ export function NyPharmacyLicenseSandbox() {
                 riskLevel={decision.risk_level ?? undefined}
                 policyTrace={(decision as { policy_trace?: any }).policy_trace}
                 safeFailure={(decision as any)?.safe_failure ?? null}
+                policyOverride={(decision as any)?.policy_override ?? null}
               />
             </p>
             <p>

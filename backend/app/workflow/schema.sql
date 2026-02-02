@@ -148,6 +148,24 @@ CREATE INDEX IF NOT EXISTS idx_agentic_events_case_id ON agentic_case_events(cas
 CREATE INDEX IF NOT EXISTS idx_agentic_events_timestamp ON agentic_case_events(timestamp);
 
 -- ============================================================================
+-- Policy Overrides (Phase 9.6)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS policy_overrides (
+    id TEXT PRIMARY KEY NOT NULL,
+    trace_id TEXT NOT NULL,
+    submission_id TEXT NOT NULL,
+    override_action TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    reviewer TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_policy_overrides_trace_id ON policy_overrides(trace_id);
+CREATE INDEX IF NOT EXISTS idx_policy_overrides_submission_id ON policy_overrides(submission_id);
+CREATE INDEX IF NOT EXISTS idx_policy_overrides_created_at ON policy_overrides(created_at);
+
+-- ============================================================================
 -- Audit Packets (Cross-device Sharing)
 -- ============================================================================
 

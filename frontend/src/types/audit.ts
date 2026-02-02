@@ -1,6 +1,7 @@
-import type { DecisionOutcome } from "./decision";
+import type { DecisionOutcome, PolicyOverrideDetail } from "./decision";
 
 export interface DecisionAuditEntry {
+  event_type?: string | null;
   trace_id: string;
   engine_family: string;
   decision_type: string;
@@ -9,6 +10,7 @@ export interface DecisionAuditEntry {
   risk_level?: string | null;
   created_at: string; // ISO string
   decision: DecisionOutcome;
+  override?: PolicyOverrideDetail | null;
   policy_contract_version_used?: string | null;
   policy_contract_version_active?: string | null;
   policy_drift?: boolean | null;
