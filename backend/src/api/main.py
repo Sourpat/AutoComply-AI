@@ -89,6 +89,7 @@ from app.middleware import RequestIDMiddleware
 
 # Database initialization
 from src.core.db import init_db
+from src.policy.migrations import ensure_ai_decision_contract
 
 # Get settings
 settings = get_settings()
@@ -166,6 +167,14 @@ async def startup_event():
 
     # Seed demo spec registry entries (idempotent)
     ensure_demo_specs()
+
+    # Ensure AI decision contract schema + seed (idempotent)
+    try:
+        logger.info("Ensuring AI decision contract schema...")
+        ensure_ai_decision_contract()
+    except Exception:
+        logger.exception("Failed to initialize AI decision contract schema")
+        raise
     
     # Auto-seed demo data if enabled
     if settings.DEMO_SEED:
