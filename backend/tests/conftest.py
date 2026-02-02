@@ -22,6 +22,7 @@ def _configure_test_db() -> str:
     os.environ["DB_PATH"] = str(db_path)
     os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
     os.environ["EXPORT_DIR"] = str(temp_dir / "exports")
+    os.environ["POLICY_ENFORCEMENT_MODE"] = "observe"
 
     return str(db_path)
 
@@ -39,6 +40,16 @@ core_db._SessionLocal = None
 from src.core.db import init_db, get_raw_connection
 
 init_db()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _apply_test_migrations() -> None:
+    """Ensure required migrations run against the test DB (idempotent)."""
+    from scripts.migrate_add_ai_decision_contract import migrate as migrate_ai_decision_contract
+    from scripts.migrate_add_trace_fields import migrate as migrate_trace_fields
+
+    migrate_ai_decision_contract()
+    migrate_trace_fields()
 
 
 def ensure_test_schema():

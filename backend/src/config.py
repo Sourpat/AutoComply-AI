@@ -120,6 +120,11 @@ class Settings(BaseSettings):
         default=None,  # Will be computed based on APP_ENV if not explicitly set
         description="Enable manual /dev/seed endpoint. Auto-disabled in prod unless explicitly enabled."
     )
+
+    POLICY_ENFORCEMENT_MODE: str = Field(
+        default="enforce",
+        description="Policy enforcement mode: enforce | observe | off",
+    )
     
     # DEV_SEED_TOKEN: Optional token for protecting manual POST /dev/seed endpoint
     # - If set, POST /dev/seed requires Authorization: Bearer <token> header

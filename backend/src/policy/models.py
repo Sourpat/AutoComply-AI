@@ -45,15 +45,17 @@ class DecisionContext(BaseModel):
 
 
 class PolicyGate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     gate_name: str
     input: Any
-    passed: bool
+    pass_: bool = Field(alias="pass")
     explanation: str
 
 
 class PolicyResult(BaseModel):
     allowed_action: Literal["auto_decide", "require_human", "escalate", "block"]
+    contract_version_used: str
     reason_codes: List[str] = Field(default_factory=list)
     gates: List[PolicyGate] = Field(default_factory=list)
-    contract_version_used: Optional[str] = None
     fail_safe: bool = False

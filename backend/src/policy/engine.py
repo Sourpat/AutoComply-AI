@@ -40,16 +40,16 @@ def evaluate_policy(
     if not contract:
         return PolicyResult(
             allowed_action="require_human",
+            contract_version_used="missing",
             reason_codes=["missing_contract"],
             gates=[
                 PolicyGate(
                     gate_name="contract_present",
                     input=None,
-                    passed=False,
+                    pass_=False,
                     explanation="No active AI decision contract found.",
                 )
             ],
-            contract_version_used=None,
             fail_safe=True,
         )
 
@@ -61,7 +61,7 @@ def evaluate_policy(
         PolicyGate(
             gate_name="auto_decision_allowed",
             input=rules.auto_decision_allowed,
-            passed=rules.auto_decision_allowed,
+            pass_=rules.auto_decision_allowed,
             explanation="Auto-decision allowed by contract.",
         )
     )
@@ -72,7 +72,7 @@ def evaluate_policy(
         PolicyGate(
             gate_name="human_review_required",
             input=rules.human_review_required,
-            passed=not rules.human_review_required,
+            pass_=not rules.human_review_required,
             explanation="Human review required by contract.",
         )
     )
@@ -92,7 +92,7 @@ def evaluate_policy(
                     "threshold": rules.confidence_threshold,
                     "confidence": decision_context.model_confidence,
                 },
-                passed=confidence_passed,
+                pass_=confidence_passed,
                 explanation="Model confidence meets contract threshold.",
             )
         )
@@ -107,7 +107,7 @@ def evaluate_policy(
             PolicyGate(
                 gate_name="override_mandatory",
                 input={"override_present": override_present},
-                passed=override_gate_passed,
+                pass_=override_gate_passed,
                 explanation="Override required before auto-decision.",
             )
         )
@@ -120,7 +120,7 @@ def evaluate_policy(
             PolicyGate(
                 gate_name="block_on",
                 input=rules.block_on,
-                passed=not block_match,
+                pass_=not block_match,
                 explanation="Block conditions evaluated.",
             )
         )
@@ -133,7 +133,7 @@ def evaluate_policy(
             PolicyGate(
                 gate_name="escalate_on",
                 input=rules.escalate_on,
-                passed=not escalate_match,
+                pass_=not escalate_match,
                 explanation="Escalation conditions evaluated.",
             )
         )
@@ -150,8 +150,8 @@ def evaluate_policy(
 
     return PolicyResult(
         allowed_action=allowed_action,
+        contract_version_used=contract.version,
         reason_codes=reason_codes,
         gates=gates,
-        contract_version_used=contract.version,
         fail_safe=False,
     )

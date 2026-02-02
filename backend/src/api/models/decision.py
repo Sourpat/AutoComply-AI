@@ -53,6 +53,7 @@ class DecisionOutcome(BaseModel):
     rag_sources: Optional[List[RagSource]] = None
     trace_id: Optional[str] = None
     debug_info: Optional[Dict[str, Any]] = None
+    policy_trace: Optional[Dict[str, Any]] = None
 
 
 class DecisionAuditEntryModel(BaseModel):

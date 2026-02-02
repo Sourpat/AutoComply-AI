@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Literal, Optional
 
 from src.api.models.decision import DecisionOutcome, DecisionStatus
+from src.policy.integration import apply_policy
 
 DecisionEngineFamily = Literal["csf", "license", "order"]
 
@@ -58,6 +59,8 @@ class DecisionLog:
         if not trace_id:
             # We only log meaningful traces; anonymous decisions can be skipped.
             return
+
+        decision = apply_policy(decision, decision_type=decision_type)
 
         entry = DecisionAuditEntry(
             trace_id=trace_id,
