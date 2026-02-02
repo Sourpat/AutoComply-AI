@@ -121,6 +121,8 @@ interface WorkQueueItem {
   age: string;
   priority: "High" | "Medium" | "Low";
   priorityColor: string;
+  policyOverride?: boolean;
+  policyOverrideLabel?: string;
   // Fields from API CaseRecord - no need to look up demoStore
   status: 'new' | 'in_review' | 'needs_info' | 'approved' | 'blocked' | 'closed';
   assignedTo: string | null;
@@ -783,6 +785,7 @@ const ConsoleDashboard: React.FC = () => {
   const [bulkRequestInfoMessage, setBulkRequestInfoMessage] = useState("");
   const [showBulkRequestInfoModal, setShowBulkRequestInfoModal] = useState(false);
   const [bulkActionSummary, setBulkActionSummary] = useState<{ success: number; failed: number; errors: string[] } | null>(null);
+  const [policyOverrideOnly, setPolicyOverrideOnly] = useState(false);
   
   // Step 2.3: Queue search, sorting, and saved views
   const [searchParams, setSearchParams] = useSearchParams();
@@ -833,16 +836,44 @@ const ConsoleDashboard: React.FC = () => {
     try {
       // Fetch from API (excludes cancelled by default, ordered by created_at DESC)
       const response = await listCases({ limit: 1000 });
+
+      let policyOverridesByTrace = new Map<string, { policy_action?: string; summary?: string }>();
+      try {
+        const safeFailures = await apiFetch<Array<{ trace_id: string; safe_failure: { policy_action?: string; summary?: string } }>>(
+          "/api/policy/safe-failures/recent?limit=200"
+        );
+        policyOverridesByTrace = new Map(
+          safeFailures.map((item) => [item.trace_id, item.safe_failure])
+        );
+      } catch (err) {
+        console.warn("[ConsoleDashboard] Failed to load policy safe failures:", err);
+      }
       
       // Map CaseRecord[] to WorkQueueItem[] display format - includes all fields, no need for demoStore lookup
-      const displayItems: WorkQueueItem[] = response.items.map(caseRecord => ({
+      const displayItems: WorkQueueItem[] = response.items.map(caseRecord => {
+        const traceId = caseRecord.submissionId || '';
+        const override = policyOverridesByTrace.get(traceId);
+        let overrideLabel: string | undefined;
+        if (override?.policy_action === "block") {
+          overrideLabel = "Policy blocked AI";
+        } else if (override?.policy_action === "require_human") {
+          overrideLabel = "Policy forced review";
+        } else if (override?.policy_action === "escalate") {
+          overrideLabel = "Policy escalated AI";
+        } else if (override) {
+          overrideLabel = "Policy override";
+        }
+
+        return {
         id: caseRecord.id, // STABLE KEY - use case.id not index
-        trace_id: caseRecord.submissionId || '',
+        trace_id: traceId,
         facility: caseRecord.title,
         reason: caseRecord.summary || '',
         age: formatAgeShort(new Date(caseRecord.createdAt)),
         priority: 'Medium', // Cases don't have priority field yet
         priorityColor: 'text-slate-600',
+        policyOverride: Boolean(override),
+        policyOverrideLabel: overrideLabel,
         // API fields - prevents need to look up demoStore
         status: caseRecord.status,
         assignedTo: caseRecord.assignedTo,
@@ -851,7 +882,8 @@ const ConsoleDashboard: React.FC = () => {
         createdAt: caseRecord.createdAt,
         age_hours: caseRecord.age_hours,
         sla_status: caseRecord.sla_status
-      }));
+      };
+      });
       
       // Ensure no duplicates by using Map with id as key
       const deduped = Array.from(
@@ -1062,6 +1094,10 @@ const ConsoleDashboard: React.FC = () => {
     if (decisionTypeFilter !== 'all') {
       items = items.filter((i) => i.decisionType === decisionTypeFilter);
     }
+
+    if (policyOverrideOnly) {
+      items = items.filter((i) => i.policyOverride);
+    }
     
     // Apply search query (multi-token AND logic)
     if (searchQuery.trim()) {
@@ -1123,7 +1159,7 @@ const ConsoleDashboard: React.FC = () => {
     });
 
     return items;
-  }, [workQueueItems, queueFilter, slaFilter, decisionTypeFilter, searchQuery, sortField, sortDirection, currentUser]);
+  }, [workQueueItems, queueFilter, slaFilter, decisionTypeFilter, policyOverrideOnly, searchQuery, sortField, sortDirection, currentUser]);
 
   // Helper to refresh work queue display from API
   const refreshWorkQueue = async () => {
@@ -1839,6 +1875,16 @@ const ConsoleDashboard: React.FC = () => {
                 >
                   Overdue
                 </button>
+                <button
+                  onClick={() => setPolicyOverrideOnly((prev) => !prev)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    policyOverrideOnly
+                      ? "bg-amber-600 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  Policy overrides
+                </button>
               </div>
               
               {/* Step 2.15: Decision Type Filters */}
@@ -2091,12 +2137,12 @@ const ConsoleDashboard: React.FC = () => {
                     Retry
                   </button>
                 </div>
-              ) : workQueueItems.length === 0 ? (
+              ) : filteredAndSortedItems.length === 0 ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="text-sm text-slate-500">No items in verification queue</div>
                 </div>
               ) : (
-                workQueueItems.map((item) => {
+                filteredAndSortedItems.map((item) => {
                   // Use item fields directly from API - no demoStore lookup needed
                   const allowedTransitions = getAllowedTransitions(item.status as WorkflowStatus, role);
                   
@@ -2136,6 +2182,11 @@ const ConsoleDashboard: React.FC = () => {
                                 {item.sla_status === 'breach' ? '🔴 Breach' :
                                  item.sla_status === 'warning' ? '⚠️ Aging' :
                                  '✓ OK'}
+                              </span>
+                            )}
+                            {item.policyOverride && (
+                              <span className="px-2 py-0.5 text-xs font-medium rounded bg-amber-100 text-amber-800" title={item.policyOverrideLabel}>
+                                {item.policyOverrideLabel ?? "Policy override"}
                               </span>
                             )}
                           </div>

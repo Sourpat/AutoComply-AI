@@ -54,6 +54,8 @@ def apply_policy(
 
     policy_result: PolicyResult = evaluate_policy(contract, context)
     decision.policy_trace = policy_result.model_dump(by_alias=True)
+    if policy_result.safe_failure:
+        decision.safe_failure = policy_result.safe_failure.model_dump()
 
     if enforcement_mode == "off":
         return decision

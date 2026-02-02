@@ -5,6 +5,8 @@ from typing import Any, Dict, List, Optional, Literal
 from pydantic import BaseModel, Field, field_validator
 from pydantic.config import ConfigDict
 
+from src.policy.safe_failures import SafeFailureDetail
+
 
 class ContractRuleSet(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -59,3 +61,4 @@ class PolicyResult(BaseModel):
     reason_codes: List[str] = Field(default_factory=list)
     gates: List[PolicyGate] = Field(default_factory=list)
     fail_safe: bool = False
+    safe_failure: Optional[SafeFailureDetail] = None

@@ -1,6 +1,6 @@
 import React from "react";
 
-import type { DecisionStatus, PolicyTrace } from "../types/decision";
+import type { DecisionStatus, PolicyTrace, SafeFailureDetail } from "../types/decision";
 import { RiskPill } from "./RiskPill";
 
 interface DecisionStatusBadgeProps {
@@ -8,6 +8,7 @@ interface DecisionStatusBadgeProps {
   labelPrefix?: string;
   riskLevel?: string | null;
   policyTrace?: PolicyTrace | null;
+  safeFailure?: SafeFailureDetail | null;
 }
 
 /**
@@ -19,6 +20,7 @@ export function DecisionStatusBadge({
   labelPrefix,
   riskLevel,
   policyTrace,
+  safeFailure,
 }: DecisionStatusBadgeProps) {
   if (!status) {
     return <span className="badge badge-unknown">unknown</span>;
@@ -63,6 +65,14 @@ export function DecisionStatusBadge({
       {policyAction && (
         <span className={policyClassMap[policyAction] ?? "badge badge-unknown"}>
           {policyLabelMap[policyAction] ?? "Policy"}
+        </span>
+      )}
+      {safeFailure && (
+        <span
+          className="badge badge-degraded"
+          title={safeFailure.summary}
+        >
+          Policy Override
         </span>
       )}
       {riskLevel && <RiskPill riskLevel={riskLevel} />}

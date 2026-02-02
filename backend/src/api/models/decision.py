@@ -54,6 +54,7 @@ class DecisionOutcome(BaseModel):
     trace_id: Optional[str] = None
     debug_info: Optional[Dict[str, Any]] = None
     policy_trace: Optional[Dict[str, Any]] = None
+    safe_failure: Optional[Dict[str, Any]] = None
 
 
 class DecisionAuditEntryModel(BaseModel):

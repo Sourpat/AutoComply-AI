@@ -19,6 +19,17 @@ export interface PolicyTrace {
   fail_safe: boolean;
 }
 
+export interface SafeFailureDetail {
+  mode: string;
+  summary: string;
+  ai_intent?: string | null;
+  policy_action?: string | null;
+  confidence?: number | null;
+  contract_version?: string | null;
+  reason_codes?: string[];
+  recommended_next_step?: string | null;
+}
+
 export interface RegulatoryReference {
   id: string;
   jurisdiction?: string | null;
@@ -36,4 +47,5 @@ export interface DecisionOutcome {
   trace_id?: string | null;
   debug_info?: Record<string, unknown> | null;
   policy_trace?: PolicyTrace | null;
+  safe_failure?: SafeFailureDetail | null;
 }

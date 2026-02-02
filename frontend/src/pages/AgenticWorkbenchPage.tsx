@@ -727,6 +727,13 @@ export function AgenticWorkbenchPage() {
     return payloadTrace ?? packetTrace ?? null;
   }, [packetBase, selectedCase]);
 
+  const safeFailure = useMemo(() => {
+    const payload = selectedCase?.payload as { decision?: { safe_failure?: any } } | null;
+    const payloadFailure = payload?.decision?.safe_failure ?? (payload as any)?.safe_failure;
+    const packetFailure = (packetBase as any)?.decision?.safe_failure as any;
+    return payloadFailure ?? packetFailure ?? null;
+  }, [packetBase, selectedCase]);
+
   useEffect(() => {
     let active = true;
     if (!policyTrace?.contract_version_used) {
@@ -1162,6 +1169,59 @@ export function AgenticWorkbenchPage() {
             </div>
           </div>
         )}
+
+        <div className="space-y-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Safe Failure Mode</h4>
+          <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-xs">
+            {safeFailure ? (
+              <div className="space-y-2">
+                <div>
+                  <p className="text-[11px] text-muted-foreground">Mode</p>
+                  <p className="text-sm font-semibold text-foreground">{safeFailure.mode}</p>
+                  <p className="text-xs text-muted-foreground">{safeFailure.summary}</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">AI intent</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {safeFailure.ai_intent ?? "--"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">Policy action</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {safeFailure.policy_action ?? "--"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">Contract version</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {safeFailure.contract_version ?? "--"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">Confidence</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {typeof safeFailure.confidence === "number"
+                        ? `${Math.round(safeFailure.confidence * 100)}%`
+                        : "--"}
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] text-muted-foreground">Recommended next step</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {safeFailure.recommended_next_step ?? "--"}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                No policy override occurred for this decision.
+              </p>
+            )}
+          </div>
+        </div>
 
         <div className="space-y-2">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Audit analytics</h4>

@@ -223,7 +223,11 @@ export const OhioHospitalJourneyPanel: React.FC = () => {
             <div className="text-xs font-semibold text-zinc-50">{title}</div>
             {decision && (
               <div className="flex items-center gap-2">
-                <DecisionStatusBadge status={decision.status} policyTrace={decision.policy_trace} />
+                <DecisionStatusBadge
+                  status={decision.status}
+                  policyTrace={decision.policy_trace}
+                  safeFailure={decision.safe_failure}
+                />
                 <RiskPill riskLevel={decision.risk_level ?? undefined} />
               </div>
             )}

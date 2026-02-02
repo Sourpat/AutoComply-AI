@@ -36,6 +36,24 @@
 
 ## Decisions
 
+### [2026-02-02] Add safe failure modes for policy overrides (Phase 9.5)
+
+**Context**: Recruiter demos need explicit, auditable explanations when AI wants to auto-decide but policy blocks/escalates.
+
+**Decision**: Introduce safe failure models in the policy engine, attach them to decisions, expose read-only safe-failure endpoints, and surface Policy Override context in Workbench and the audit timeline.
+
+**Rationale**:
+- Keeps policy contract schema intact while making overrides explicit
+- Provides recruiter-friendly explanations without changing decision behavior
+- Adds minimal UI badges/panels for visibility
+
+**Consequences**:
+- Positive: Clear, auditable reasons for policy overrides
+- Negative: Additional model + API mapping to maintain
+- Neutral: No changes to deployment configuration
+
+**Status**: Accepted
+
 ### [2026-02-02] Surface policy drift in audit + Workbench
 
 **Context**: Phase 9.4 requires highlighting when historical decisions were made under a different AI decision contract than the current active contract.

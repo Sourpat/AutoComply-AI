@@ -49,7 +49,11 @@ export const RegulatoryInsightsPanel: React.FC<RegulatoryInsightsPanelProps> = (
           <span className="font-semibold text-zinc-100">{title}</span>
         </div>
         <div className="flex items-center gap-2">
-          <DecisionStatusBadge status={status} policyTrace={decision.policy_trace} />
+          <DecisionStatusBadge
+            status={status}
+            policyTrace={decision.policy_trace}
+            safeFailure={decision.safe_failure}
+          />
           <RiskPill riskLevel={risk_level ?? undefined} />
         </div>
       </div>

@@ -1410,6 +1410,7 @@ export function FacilityCsfSandbox() {
               <DecisionStatusBadge
                 status={decision.status}
                 riskLevel={decision.risk_level ?? undefined}
+                safeFailure={decision.safe_failure}
               />
               <p className="text-[11px] text-slate-400">
                 This comes from the last run of{" "}

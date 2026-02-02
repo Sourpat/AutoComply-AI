@@ -44,6 +44,22 @@
 **Dependencies**: None
 **Notes**: Blocked pending backend restart verification for /api/workflow and /api/console aliases.
 
+### Phase 9.5 — Safe failure modes + UI surfacing
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Model policy overrides of AI auto-decisions and surface safe-failure context in APIs and UI
+**Acceptance Criteria**:
+- [x] Safe failure models + PolicyResult extension
+- [x] Safe failure attached to DecisionOutcome
+- [x] Safe failure endpoints (recent + by trace)
+- [x] Safe failure tests
+- [x] Workbench panel + Policy Override badge
+- [x] Console work queue indicator + optional filter
+**Verification**:
+- `npm -C frontend run build`
+- `C:/Python314/python.exe -m pytest tests/test_safe_failure_modes.py -v`
+**Dependencies**: None
+
 ### Phase 9.4 — Policy Drift surfacing
 **Status**: completed
 **Assigned**: GitHub Copilot
@@ -88,6 +104,11 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 9.5 — Safe failure modes + UI surfacing
+**Completed**: 2026-02-02
+**Commit**: (pending)
+**Summary**: Added safe failure model, policy endpoints, UI panel/badges, and tests.
+
 ### Phase 9.4 — Policy Drift surfacing
 **Completed**: 2026-02-02
 **Commit**: (pending)
@@ -97,11 +118,6 @@
 **Completed**: 2026-02-01
 **Commit**: (pending)
 **Summary**: Aligned SDX terminology, empty-state messaging, and confidence tooltip copy.
-
-### P8.8: Feature flag & demo safety (Phase 8.8)
-**Completed**: 2026-02-01
-**Commit**: (pending)
-**Summary**: Hardened SDX demo seeding, list response enrichment, and empty-state messaging.
 
 ### P8.7: Governance narrative SDX extension (Phase 8.7)
 **Completed**: 2026-02-01
