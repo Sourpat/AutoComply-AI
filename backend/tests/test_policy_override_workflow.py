@@ -49,6 +49,7 @@ def test_policy_override_persists_and_updates_audit() -> None:
             "rationale": "Manual override for test",
             "reviewer": "tester@example.com",
         },
+        headers={"X-AutoComply-Role": "verifier"},
     )
 
     assert response.status_code == 200
@@ -76,3 +77,53 @@ def test_policy_override_persists_and_updates_audit() -> None:
     assert last_entry["override"]["rationale"] == "Manual override for test"
     assert last_entry["override"]["before_status"] == "ok_to_ship"
     assert last_entry["override"]["after_status"] == "blocked"
+
+
+def test_policy_override_requires_rationale_length() -> None:
+    trace_id = "trace-policy-override-002"
+    submission_id = _create_submission(trace_id)
+
+    response = client.post(
+        f"/api/agentic/cases/{submission_id}/policy-override",
+        json={
+            "action": "approve",
+            "rationale": "too short",
+            "reviewer": "tester@example.com",
+        },
+        headers={"X-AutoComply-Role": "verifier"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_policy_override_append_only() -> None:
+    trace_id = "trace-policy-override-003"
+    submission_id = _create_submission(trace_id)
+
+    response_one = client.post(
+        f"/api/agentic/cases/{submission_id}/policy-override",
+        json={
+            "action": "approve",
+            "rationale": "First override rationale for append-only test",
+            "reviewer": "tester@example.com",
+        },
+        headers={"X-AutoComply-Role": "verifier"},
+    )
+    assert response_one.status_code == 200
+
+    response_two = client.post(
+        f"/api/agentic/cases/{submission_id}/policy-override",
+        json={
+            "action": "block",
+            "rationale": "Second override rationale for append-only test",
+            "reviewer": "tester@example.com",
+        },
+        headers={"X-AutoComply-Role": "verifier"},
+    )
+    assert response_two.status_code == 200
+
+    recent = client.get("/api/agentic/policy-overrides/recent?limit=10")
+    assert recent.status_code == 200
+    items = recent.json()
+    matches = [item for item in items if item.get("submission_id") == submission_id]
+    assert len(matches) >= 2

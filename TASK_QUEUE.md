@@ -104,6 +104,16 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 9.9 — Override analytics
+**Completed**: 2026-02-02
+**Commit**: (pending)
+**Summary**: Added override metrics endpoint and Console dashboard section.
+
+### Phase 9.8 — Override RBAC hardening
+**Completed**: 2026-02-02
+**Commit**: (pending)
+**Summary**: Enforced role gating and rationale validation for overrides.
+
 ### Phase 9.7 — Governance evidence + audit trail
 **Completed**: 2026-02-02
 **Commit**: (pending)

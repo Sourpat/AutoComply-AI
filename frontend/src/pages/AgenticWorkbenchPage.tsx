@@ -53,6 +53,7 @@ import { saveAuditPacketToServer } from "../lib/auditServer";
 import { getAuditEvents, postAuditEvent } from "../lib/auditEventsServer";
 import { formatTimestamp } from "../lib/formatters";
 import { cn } from "../lib/utils";
+import { useRole } from "../context/RoleContext";
 
 const statusFilterOptions = [
   { value: "all", label: "All" },
@@ -227,6 +228,8 @@ export function AgenticWorkbenchPage() {
   const [packetHash, setPacketHash] = useState<string | null>(null);
   const [visibleEvidenceCount, setVisibleEvidenceCount] = useState(50);
   const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
+  const { role } = useRole();
+  const canOverride = ["verifier", "admin", "devsupport"].includes(role as string);
   const [activeContractVersion, setActiveContractVersion] = useState<string | null>(null);
   const navigate = useNavigate();
 
@@ -618,7 +621,7 @@ export function AgenticWorkbenchPage() {
   };
 
   const handleOverrideSubmit = async () => {
-    if (!selectedCase?.submission_id || overrideSubmitting) return;
+    if (!selectedCase?.submission_id || overrideSubmitting || !canOverride) return;
     setOverrideSubmitting(true);
 
     const rationale = overrideNote.trim();
@@ -1206,7 +1209,8 @@ export function AgenticWorkbenchPage() {
               setOverrideDecision("require_review");
               setOverrideOpen(true);
             }}
-            disabled={!selectedCase}
+            disabled={!selectedCase || !canOverride}
+            title={!canOverride ? "Override access required" : undefined}
           >
             Override decision
           </Button>

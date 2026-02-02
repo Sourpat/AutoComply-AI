@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.workflow.repo import get_case as get_workflow_case
@@ -19,6 +19,7 @@ from app.data.agentic_cases import (
 from src.core.db import execute_sql, get_raw_connection
 from src.autocomply.audit.decision_log import get_decision_log
 from src.autocomply.domain.submissions_store import get_submission_store
+from src.api.dependencies.auth import require_override_role
 from src.policy.overrides import (
     PolicyOverrideAction,
     create_policy_override,
@@ -68,7 +69,7 @@ def _resolve_trace_id(submission_id: str) -> Optional[str]:
 
 class PolicyOverrideRequest(BaseModel):
     action: PolicyOverrideAction
-    rationale: str = Field(..., min_length=1)
+    rationale: str = Field(..., min_length=15)
     reviewer: str = Field(..., min_length=1)
 
 
@@ -473,7 +474,9 @@ def review_decision(case_id: str, payload: ReviewDecisionRequest) -> AgentPlan:
     response_model=PolicyOverrideResponse,
 )
 def apply_policy_override(
-    submission_id: str, payload: PolicyOverrideRequest
+    submission_id: str,
+    payload: PolicyOverrideRequest,
+    role: str = Depends(require_override_role),
 ) -> PolicyOverrideResponse:
     trace_id = _resolve_trace_id(submission_id)
     if not trace_id:
@@ -481,7 +484,7 @@ def apply_policy_override(
 
     action = payload.action
     rationale = payload.rationale.strip()
-    reviewer = payload.reviewer.strip()
+    reviewer = payload.reviewer.strip() or role
 
     if not rationale or not reviewer:
         raise HTTPException(status_code=400, detail="rationale and reviewer are required")

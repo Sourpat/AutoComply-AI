@@ -59,6 +59,24 @@
 
 **Status**: Accepted
 
+### [2026-02-02] Override RBAC + append-only analytics (Phase 9.8-9.9)
+
+**Context**: Phase 9.8-9.9 requires hardening override workflow access and adding analytics for governance oversight.
+
+**Decision**: Enforce override RBAC server-side (roles: verifier, devsupport, admin), require rationale length validation, and keep overrides append-only (new rows per override). Add metrics endpoint to summarize overrides within a time window.
+
+**Rationale**:
+- Prevents unauthorized override actions
+- Preserves immutable audit trail
+- Enables governance reporting without modifying historical records
+
+**Consequences**:
+- Positive: Stronger access controls and auditability
+- Negative: Requires role propagation in clients
+- Neutral: No change to policy evaluation logic
+
+**Status**: Accepted
+
 ### [2026-02-02] Add safe failure modes for policy overrides (Phase 9.5)
 
 **Context**: Recruiter demos need explicit, auditable explanations when AI wants to auto-decide but policy blocks/escalates.

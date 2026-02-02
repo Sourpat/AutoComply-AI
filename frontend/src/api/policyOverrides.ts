@@ -1,4 +1,5 @@
 import { API_BASE } from "../lib/api";
+import { getAuthHeaders, getJsonHeaders } from "../lib/authHeaders";
 import type { PolicyOverrideAction, PolicyOverrideDetail } from "../types/decision";
 
 export type PolicyOverrideRequest = {
@@ -33,7 +34,7 @@ export async function applyPolicyOverride(
       `${API_BASE}/api/agentic/cases/${submissionId}/policy-override`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getJsonHeaders(),
         body: JSON.stringify(payload),
       }
     );
@@ -51,7 +52,8 @@ export async function getPolicyOverride(
 ): Promise<{ ok: boolean; data?: PolicyOverrideResponse; message?: string }> {
   try {
     const response = await fetch(
-      `${API_BASE}/api/agentic/cases/${submissionId}/policy-override`
+      `${API_BASE}/api/agentic/cases/${submissionId}/policy-override`,
+      { headers: getAuthHeaders() }
     );
     if (!response.ok) {
       return { ok: false, message: await readErrorMessage(response) };
@@ -64,7 +66,8 @@ export async function getPolicyOverride(
 
 export async function listPolicyOverrides(limit: number = 200): Promise<PolicyOverrideDetail[]> {
   const response = await fetch(
-    `${API_BASE}/api/agentic/policy-overrides/recent?limit=${limit}`
+    `${API_BASE}/api/agentic/policy-overrides/recent?limit=${limit}`,
+    { headers: getAuthHeaders() }
   );
   if (!response.ok) {
     throw new Error(await readErrorMessage(response));

@@ -25,9 +25,27 @@ import { AdminResetPanel } from "../features/admin/AdminResetPanel";
 import { BackendHealthBanner } from "../components/BackendHealthBanner";
 import { listPolicyOverrides } from "../api/policyOverrides";
 import type { PolicyOverrideDetail } from "../types/decision";
+import { getAuthHeaders } from "../lib/authHeaders";
+import { getAuthHeaders } from "../lib/authHeaders";
 
 type DecisionStatus = "ok_to_ship" | "blocked" | "needs_review";
 type ActiveSection = "dashboard" | "csf" | "licenses" | "orders" | "settings" | "about";
+
+type OverrideMetrics = {
+  window: string;
+  total: number;
+  by_action: Record<string, number>;
+  by_reviewer: Record<string, number>;
+  recent: Array<{
+    id: string;
+    trace_id: string;
+    submission_id: string;
+    override_action: string;
+    rationale: string;
+    reviewer: string;
+    created_at: string;
+  }>;
+};
 
 // ============================================================================
 // localStorage Cache Helpers
@@ -516,6 +534,8 @@ const ConsoleDashboard: React.FC = () => {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [overrideMetrics, setOverrideMetrics] = useState<OverrideMetrics | null>(null);
+  const [overrideMetricsError, setOverrideMetricsError] = useState<string | null>(null);
   
   // Case requests for submitter (Phase 4.1)
   const [caseRequests, setCaseRequests] = useState<Map<string, any>>(new Map());
@@ -652,6 +672,26 @@ const ConsoleDashboard: React.FC = () => {
       window.removeEventListener('focus', handleFocus);
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (activeSection !== "dashboard") return;
+    apiFetch<OverrideMetrics>("/api/console/override-metrics?window=24h", {
+      headers: getAuthHeaders(),
+    })
+      .then((data) => {
+        if (!active) return;
+        setOverrideMetrics(data);
+        setOverrideMetricsError(null);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setOverrideMetricsError(err instanceof Error ? err.message : "Failed to load override metrics");
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeSection]);
 
   // Handle submission deletion
   const handleDeleteSubmission = async (submissionId: string) => {
@@ -1743,6 +1783,76 @@ const ConsoleDashboard: React.FC = () => {
             <p className="console-kpi-subtext">
               DEA, TDDD, and state pharmacy licenses monitored for expiry windows.
             </p>
+          </div>
+        </section>
+
+        <section className="console-section">
+          <div className="console-card">
+            <div className="console-card-header">
+              <div>
+                <h2 className="console-card-title">Override Metrics</h2>
+                <p className="console-card-subtitle">Last 24 hours</p>
+              </div>
+              {overrideMetricsError && (
+                <span className="text-xs text-red-600">{overrideMetricsError}</span>
+              )}
+            </div>
+
+            {!overrideMetrics && !overrideMetricsError && (
+              <p className="text-xs text-slate-500">Loading override metrics...</p>
+            )}
+
+            {overrideMetrics && (
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs text-slate-500">Total overrides</div>
+                  <div className="text-2xl font-semibold text-slate-900">{overrideMetrics.total}</div>
+                  <div className="mt-2 space-y-1 text-xs text-slate-600">
+                    {Object.entries(overrideMetrics.by_action).map(([action, count]) => (
+                      <div key={action} className="flex items-center justify-between">
+                        <span>{action.replace(/_/g, " ")}</span>
+                        <span className="font-semibold">{count}</span>
+                      </div>
+                    ))}
+                    {!Object.keys(overrideMetrics.by_action).length && (
+                      <div>No overrides yet.</div>
+                    )}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs text-slate-500">Top reviewers</div>
+                  <div className="mt-2 space-y-1 text-xs text-slate-600">
+                    {Object.entries(overrideMetrics.by_reviewer).slice(0, 5).map(([reviewer, count]) => (
+                      <div key={reviewer} className="flex items-center justify-between">
+                        <span className="truncate" title={reviewer}>{reviewer}</span>
+                        <span className="font-semibold">{count}</span>
+                      </div>
+                    ))}
+                    {!Object.keys(overrideMetrics.by_reviewer).length && (
+                      <div>No reviewers yet.</div>
+                    )}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs text-slate-500">Recent overrides</div>
+                  <div className="mt-2 space-y-2 text-xs text-slate-600">
+                    {overrideMetrics.recent.slice(0, 10).map((item) => (
+                      <div key={item.id} className="rounded-md border border-slate-200 bg-white p-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold">{item.override_action.replace(/_/g, " ")}</span>
+                          <span className="text-[10px] text-slate-400">{new Date(item.created_at).toLocaleString()}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500">{item.reviewer}</div>
+                        <div className="text-[11px] text-slate-600 line-clamp-2">{item.rationale}</div>
+                      </div>
+                    ))}
+                    {!overrideMetrics.recent.length && (
+                      <div>No recent overrides.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 

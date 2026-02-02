@@ -6,7 +6,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-export type UserRole = 'submitter' | 'verifier' | 'admin';
+export type UserRole = 'submitter' | 'verifier' | 'admin' | 'devsupport';
 
 interface RoleContextValue {
   role: UserRole;
@@ -27,7 +27,7 @@ const DEFAULT_ROLE: UserRole = 'verifier';
 function getStoredRole(): UserRole {
   try {
     const stored = localStorage.getItem(ROLE_STORAGE_KEY);
-    if (stored === 'submitter' || stored === 'verifier' || stored === 'admin') {
+    if (stored === 'submitter' || stored === 'verifier' || stored === 'admin' || stored === 'devsupport') {
       return stored;
     }
   } catch (error) {
@@ -95,7 +95,8 @@ export function getRoleDisplayName(role: UserRole): string {
   const names: Record<UserRole, string> = {
     submitter: 'Submitter',
     verifier: 'Verifier',
-    admin: 'Admin'
+    admin: 'Admin',
+    devsupport: 'Dev Support'
   };
   return names[role];
 }
@@ -107,7 +108,8 @@ export function getRoleIcon(role: UserRole): string {
   const icons: Record<UserRole, string> = {
     submitter: '📝',
     verifier: '✅',
-    admin: '⚙️'
+    admin: '⚙️',
+    devsupport: '🛠️'
   };
   return icons[role];
 }

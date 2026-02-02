@@ -5,7 +5,8 @@ Provides endpoints for the Compliance Console dashboard to fetch
 real-time verification work queue, statistics, and trace data.
 """
 
-from typing import List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -15,6 +16,7 @@ from src.autocomply.domain.submissions_store import (
     SubmissionStatus,
     get_submission_store,
 )
+from src.core.db import execute_sql
 
 router = APIRouter(prefix="/console", tags=["console"])
 
@@ -43,6 +45,23 @@ class UpdateSubmissionRequest(BaseModel):
     reviewed_by: Optional[str] = Field(
         "admin", description="Username/email of reviewer (defaults to 'admin')"
     )
+
+
+class OverrideMetricsResponse(BaseModel):
+    window: str
+    total: int
+    by_action: Dict[str, int]
+    by_reviewer: Dict[str, int]
+    recent: List[Dict[str, str]]
+
+
+def _parse_window(window: str) -> timedelta:
+    value = window.strip().lower()
+    if value.endswith("h"):
+        return timedelta(hours=int(value[:-1]))
+    if value.endswith("d"):
+        return timedelta(days=int(value[:-1]))
+    raise ValueError("window must be like '24h' or '7d'")
 
 
 @router.get("/work-queue", response_model=WorkQueueResponse)
@@ -186,3 +205,61 @@ async def _update_submission_impl(
         )
 
     return submission
+
+
+@router.get("/override-metrics", response_model=OverrideMetricsResponse)
+async def get_override_metrics(window: str = Query("24h")) -> OverrideMetricsResponse:
+    try:
+        delta = _parse_window(window)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid window; use '24h' or '7d'")
+
+    cutoff = (datetime.now(timezone.utc) - delta).isoformat().replace("+00:00", "Z")
+
+    total_rows = execute_sql(
+        "SELECT COUNT(*) as total FROM policy_overrides WHERE created_at >= :cutoff",
+        {"cutoff": cutoff},
+    )
+    total = int(total_rows[0]["total"]) if total_rows else 0
+
+    action_rows = execute_sql(
+        """
+        SELECT override_action, COUNT(*) as count
+        FROM policy_overrides
+        WHERE created_at >= :cutoff
+        GROUP BY override_action
+        """,
+        {"cutoff": cutoff},
+    )
+    by_action = {row["override_action"]: int(row["count"]) for row in action_rows}
+
+    reviewer_rows = execute_sql(
+        """
+        SELECT reviewer, COUNT(*) as count
+        FROM policy_overrides
+        WHERE created_at >= :cutoff
+        GROUP BY reviewer
+        ORDER BY count DESC
+        """,
+        {"cutoff": cutoff},
+    )
+    by_reviewer = {row["reviewer"]: int(row["count"]) for row in reviewer_rows}
+
+    recent_rows = execute_sql(
+        """
+        SELECT id, trace_id, submission_id, override_action, rationale, reviewer, created_at
+        FROM policy_overrides
+        WHERE created_at >= :cutoff
+        ORDER BY created_at DESC
+        LIMIT 20
+        """,
+        {"cutoff": cutoff},
+    )
+
+    return OverrideMetricsResponse(
+        window=window,
+        total=total,
+        by_action=by_action,
+        by_reviewer=by_reviewer,
+        recent=[dict(row) for row in recent_rows],
+    )

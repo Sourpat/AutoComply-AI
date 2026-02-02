@@ -8,7 +8,11 @@
 /**
  * Get the user's current role based on admin_unlocked state
  */
-export function getCurrentRole(): 'admin' | 'verifier' {
+export function getCurrentRole(): 'admin' | 'verifier' | 'submitter' | 'devsupport' {
+  const stored = localStorage.getItem('acai.role.v1');
+  if (stored === 'submitter' || stored === 'verifier' || stored === 'admin' || stored === 'devsupport') {
+    return stored;
+  }
   return localStorage.getItem('admin_unlocked') === 'true' ? 'admin' : 'verifier';
 }
 

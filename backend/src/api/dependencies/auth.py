@@ -7,7 +7,7 @@ Frontend sets this header based on localStorage 'admin_unlocked' state.
 """
 
 from fastapi import Header, HTTPException, status
-from typing import Annotated
+from typing import Annotated, Iterable
 
 
 def require_admin_role(
@@ -44,3 +44,39 @@ def require_admin_role(
         )
     
     return x_user_role
+
+
+def _normalize_role(*values: str | None) -> str | None:
+    for value in values:
+        if value and str(value).strip():
+            return str(value).strip().lower()
+    return None
+
+
+def require_roles(
+    allowed_roles: Iterable[str],
+    x_user_role: Annotated[str | None, Header()] = None,
+    x_autocomply_role: Annotated[str | None, Header(alias="X-AutoComply-Role")] = None,
+) -> str:
+    role = _normalize_role(x_autocomply_role, x_user_role)
+    allowed = {r.lower() for r in allowed_roles}
+    if not role or role not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "role_not_allowed",
+                "message": "This endpoint requires an authorized role.",
+            },
+        )
+    return role
+
+
+def require_override_role(
+    x_user_role: Annotated[str | None, Header()] = None,
+    x_autocomply_role: Annotated[str | None, Header(alias="X-AutoComply-Role")] = None,
+) -> str:
+    return require_roles(
+        {"verifier", "devsupport", "admin"},
+        x_user_role=x_user_role,
+        x_autocomply_role=x_autocomply_role,
+    )
