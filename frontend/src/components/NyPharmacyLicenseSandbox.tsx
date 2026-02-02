@@ -58,7 +58,7 @@ const NY_PHARMACY_DECISION_TYPE = "license_ny_pharmacy";
 const NY_PHARMACY_SANDBOX_ID = "ny_pharmacy";
 
 const NY_PHARMACY_EXAMPLES: NyPharmacyFormData[] = [
-              safeFailure={decision.safe_failure}
+  {
     pharmacyName: "Manhattan Pharmacy",
     accountNumber: "900123456",
     shipToState: "NY",
@@ -499,6 +499,7 @@ export function NyPharmacyLicenseSandbox() {
                 status={decision.status}
                 riskLevel={decision.risk_level ?? undefined}
                 policyTrace={(decision as { policy_trace?: any }).policy_trace}
+                safeFailure={(decision as any)?.safe_failure ?? null}
               />
             </p>
             <p>
