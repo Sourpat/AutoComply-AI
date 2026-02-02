@@ -36,6 +36,24 @@
 
 ## Decisions
 
+### [2026-02-02] Startup migrations + DB health checks (Phase 10.0)
+
+**Context**: Phase 10.0 requires deployment stability by ensuring schema readiness on startup and providing a health endpoint that validates required tables and columns.
+
+**Decision**: Add a consolidated `startup_migrations()` hook that enforces contract, trace, override, and intelligence history schemas at app startup, and introduce `/health/db` to validate required tables/columns. Surface build SHA in `/health/full` to support deployment diagnostics.
+
+**Rationale**:
+- Prevents runtime failures due to missing tables/columns
+- Provides a lightweight schema readiness signal for deployments
+- Keeps migrations idempotent and safe for repeated startups
+
+**Consequences**:
+- Positive: Faster diagnosis of schema drift and startup stability
+- Negative: Additional startup checks (minimal overhead)
+- Neutral: No changes to business logic
+
+**Status**: Accepted
+
 ### [2026-02-02] Policy override workflow + governance audit trail (Phase 9.6-9.7)
 
 **Context**: Phase 9.6-9.7 requires a human override workflow with persistence, auditability, and UI controls, plus exportable governance evidence.

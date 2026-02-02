@@ -5,6 +5,7 @@ import {
   type ReviewQueueItem,
   type ReviewQueueListResponse,
 } from "../api/reviewQueueClient";
+import { API_BASE } from "../lib/api";
 import { calculateChatMetrics, inferChatRiskLevel } from "../lib/metrics";
 import { ReviewQueueLayout } from "../pages/review-queue/ui/ReviewQueueLayout";
 import { FiltersPanel } from "../pages/review-queue/ui/FiltersPanel";
@@ -40,7 +41,7 @@ export function ReviewQueueList() {
 
     setResetting(true);
     try {
-      const response = await fetch("http://localhost:8001/api/v1/demo/reset", {
+      const response = await fetch(`${API_BASE}/api/v1/demo/reset`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

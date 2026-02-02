@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8001";
+import { API_BASE } from "../lib/api";
 
 /**
  * Generic API wrapper for AutoComply AI

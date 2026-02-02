@@ -27,6 +27,7 @@
 **Notes**: Related to Phase 7.29 SLA issue
 ```
 
+
 ### BUG-201: Fix Workbench cases loading
 **Status**: blocked
 **Assigned**: GitHub Copilot
@@ -104,6 +105,11 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 10.0 — Deployment Stability + Data Consistency Hardening
+**Completed**: 2026-02-02
+**Commit**: (pending)
+**Summary**: Added startup migrations, /health/db checks, env indicator, and smoke tests.
+
 ### Phase 9.9 — Override analytics
 **Completed**: 2026-02-02
 **Commit**: (pending)
@@ -123,21 +129,6 @@
 **Completed**: 2026-02-02
 **Commit**: (pending)
 **Summary**: Added override persistence, API workflow, and UI controls.
-
-### Phase 9.5 — Safe failure modes + UI surfacing
-**Completed**: 2026-02-02
-**Commit**: (pending)
-**Summary**: Added safe failure model, policy endpoints, UI panel/badges, and tests.
-
-### Phase 9.4 — Policy Drift surfacing
-**Completed**: 2026-02-02
-**Commit**: (pending)
-**Summary**: Added contract version capture, drift metadata in audit/trace APIs, and Policy Drift badges in Workbench + audit timeline.
-
-### P8.9: Validation & polish (Phase 8.9)
-**Completed**: 2026-02-01
-**Commit**: (pending)
-**Summary**: Aligned SDX terminology, empty-state messaging, and confidence tooltip copy.
 
 ---
 

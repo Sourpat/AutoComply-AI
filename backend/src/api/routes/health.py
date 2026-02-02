@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timezone
 
 from ...config import validate_runtime_config
+from ...core.db import execute_sql
 
 
 class HealthStatus(BaseModel):
@@ -106,9 +107,76 @@ async def health_full() -> dict:
         else "degraded"
     )
 
+    build_sha = os.getenv("GIT_SHA", "unknown")
+
     return {
         "status": overall_status,
+        "build_sha": build_sha,
         "components": components,
+    }
+
+
+@router.get("/health/db", summary="Database schema health")
+async def health_db() -> dict:
+    required_tables = [
+        "cases",
+        "submissions",
+        "audit_events",
+        "intelligence_history",
+        "policy_overrides",
+        "ai_decision_contract",
+    ]
+
+    required_columns = {
+        "cases": ["trace_id", "submission_id"],
+        "audit_events": ["payload_json"],
+        "intelligence_history": [
+            "trace_id",
+            "span_id",
+            "parent_span_id",
+            "span_name",
+            "span_kind",
+            "duration_ms",
+            "error_text",
+            "trace_metadata_json",
+        ],
+        "policy_overrides": [
+            "trace_id",
+            "submission_id",
+            "override_action",
+            "rationale",
+            "reviewer",
+            "created_at",
+        ],
+        "ai_decision_contract": [
+            "version",
+            "status",
+            "effective_from",
+            "rules_json",
+        ],
+    }
+
+    existing_tables = execute_sql(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    )
+    table_names = {row.get("name") for row in existing_tables if row.get("name")}
+    missing_tables = [table for table in required_tables if table not in table_names]
+
+    missing_columns: list[str] = []
+    for table, columns in required_columns.items():
+        if table in missing_tables:
+            continue
+        rows = execute_sql(f"PRAGMA table_info({table})")
+        existing_columns = {row.get("name") for row in rows if row.get("name")}
+        for column in columns:
+            if column not in existing_columns:
+                missing_columns.append(f"{table}.{column}")
+
+    ok = not missing_tables and not missing_columns
+    return {
+        "ok": ok,
+        "missing_tables": missing_tables,
+        "missing_columns": missing_columns,
     }
 
 

@@ -89,11 +89,144 @@ from app.audit.spec_registry import ensure_demo_specs
 from app.middleware import RequestIDMiddleware
 
 # Database initialization
-from src.core.db import init_db
+from src.core.db import execute_sql, execute_update, init_db
 from src.policy.migrations import ensure_ai_decision_contract
 
 # Get settings
 settings = get_settings()
+
+
+def _table_exists(table_name: str) -> bool:
+    rows = execute_sql(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name = :table_name",
+        {"table_name": table_name},
+    )
+    return bool(rows)
+
+
+def _get_table_columns(table_name: str) -> set[str]:
+    rows = execute_sql(f"PRAGMA table_info({table_name})")
+    return {row.get("name") for row in rows if row.get("name")}
+
+
+def _ensure_intelligence_history_schema() -> None:
+    execute_update(
+        """
+        CREATE TABLE IF NOT EXISTS intelligence_history (
+            id TEXT PRIMARY KEY NOT NULL,
+            case_id TEXT NOT NULL,
+            computed_at TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            actor TEXT,
+            reason TEXT,
+            FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+        );
+        """
+    )
+
+    execute_update(
+        """
+        CREATE INDEX IF NOT EXISTS idx_intelligence_history_case_id
+        ON intelligence_history(case_id, computed_at DESC);
+        """
+    )
+    execute_update(
+        """
+        CREATE INDEX IF NOT EXISTS idx_intelligence_history_created_at
+        ON intelligence_history(created_at DESC);
+        """
+    )
+
+
+def _ensure_trace_fields_schema() -> None:
+    if not _table_exists("intelligence_history"):
+        return
+
+    existing_columns = _get_table_columns("intelligence_history")
+    trace_columns = {
+        "trace_id": "TEXT",
+        "span_id": "TEXT",
+        "parent_span_id": "TEXT",
+        "span_name": "TEXT",
+        "span_kind": "TEXT",
+        "duration_ms": "INTEGER",
+        "error_text": "TEXT",
+        "trace_metadata_json": "TEXT",
+    }
+
+    for column_name, column_type in trace_columns.items():
+        if column_name not in existing_columns:
+            execute_update(
+                f"ALTER TABLE intelligence_history ADD COLUMN {column_name} {column_type};"
+            )
+
+    execute_update(
+        """
+        CREATE INDEX IF NOT EXISTS idx_intelligence_history_trace_id
+        ON intelligence_history(trace_id);
+        """
+    )
+    execute_update(
+        """
+        CREATE INDEX IF NOT EXISTS idx_intelligence_history_span_id
+        ON intelligence_history(span_id);
+        """
+    )
+    execute_update(
+        """
+        CREATE INDEX IF NOT EXISTS idx_intelligence_history_parent_span
+        ON intelligence_history(parent_span_id);
+        """
+    )
+
+
+def _ensure_policy_overrides_schema() -> None:
+    execute_update(
+        """
+        CREATE TABLE IF NOT EXISTS policy_overrides (
+            id TEXT PRIMARY KEY NOT NULL,
+            trace_id TEXT NOT NULL,
+            submission_id TEXT NOT NULL,
+            override_action TEXT NOT NULL,
+            rationale TEXT NOT NULL,
+            reviewer TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        """
+    )
+    execute_update(
+        """
+        CREATE INDEX IF NOT EXISTS idx_policy_overrides_trace_id
+        ON policy_overrides(trace_id);
+        """
+    )
+    execute_update(
+        """
+        CREATE INDEX IF NOT EXISTS idx_policy_overrides_submission_id
+        ON policy_overrides(submission_id);
+        """
+    )
+    execute_update(
+        """
+        CREATE INDEX IF NOT EXISTS idx_policy_overrides_created_at
+        ON policy_overrides(created_at);
+        """
+    )
+
+
+def _ensure_safe_failure_schema() -> None:
+    # Safe failure payloads are embedded in decision/audit JSON; no schema changes required.
+    return
+
+
+def startup_migrations() -> None:
+    init_db()
+    _ensure_intelligence_history_schema()
+    _ensure_trace_fields_schema()
+    _ensure_policy_overrides_schema()
+    ensure_ai_decision_contract()
+    _ensure_safe_failure_schema()
 
 app = FastAPI(
     title="AutoComply AI – Compliance API",
@@ -162,20 +295,16 @@ async def startup_event():
     logger.info(f"  📊 Workflow API: http://127.0.0.1:{settings.PORT}/workflow")
     logger.info(f"")
     
-    # Initialize database (fast - only runs CREATE TABLE IF NOT EXISTS)
+    # Initialize database and run startup migrations
     logger.info("Initializing database schema...")
-    init_db()
+    try:
+        startup_migrations()
+    except Exception:
+        logger.exception("Failed during startup migrations")
+        raise
 
     # Seed demo spec registry entries (idempotent)
     ensure_demo_specs()
-
-    # Ensure AI decision contract schema + seed (idempotent)
-    try:
-        logger.info("Ensuring AI decision contract schema...")
-        ensure_ai_decision_contract()
-    except Exception:
-        logger.exception("Failed to initialize AI decision contract schema")
-        raise
     
     # Auto-seed demo data if enabled
     if settings.DEMO_SEED:

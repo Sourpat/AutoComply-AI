@@ -116,6 +116,10 @@ const overrideDecisionOptions = [
 ];
 
 const OVERRIDE_FEEDBACK_ENABLED = import.meta.env.VITE_FEATURE_OVERRIDE_FEEDBACK === "true";
+const buildTimestamp =
+  (import.meta as any).env?.VITE_BUILD_TIME ||
+  (import.meta as any).env?.VITE_BUILD_TIMESTAMP ||
+  (import.meta as any).env?.VITE_BUILD_DATE;
 
 function formatAgeLabel(createdAt: string) {
   const created = new Date(createdAt);
@@ -198,6 +202,14 @@ function buildEvidenceFromSubmission(submission: WorkQueueSubmission | null): Ev
 }
 
 export function AgenticWorkbenchPage() {
+  const backendHost = useMemo(() => {
+    if (!API_BASE) return "";
+    try {
+      return new URL(API_BASE).host;
+    } catch {
+      return API_BASE.replace(/^https?:\/\//, "");
+    }
+  }, []);
   const [cases, setCases] = useState<WorkQueueSubmission[]>([]);
   const [loadingCases, setLoadingCases] = useState(true);
   const [casesError, setCasesError] = useState<string | null>(null);
@@ -1484,13 +1496,19 @@ export function AgenticWorkbenchPage() {
         title="Agentic Workbench"
         subtitle="Verifier-grade workstation for agentic decisions, evidence, and audit packets."
         actions={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge
               variant="outline"
               title="This decision flow is spec-driven, auditable, and supports human-in-the-loop governance."
             >
               Governed AI
             </Badge>
+            {backendHost && (
+              <div className="flex flex-wrap items-center gap-2 rounded border border-border bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground">
+                <span>Backend: {backendHost}</span>
+                {buildTimestamp ? <span>Build: {buildTimestamp}</span> : null}
+              </div>
+            )}
             <Button variant="outline" size="sm" onClick={loadCases} disabled={loadingCases}>
               Refresh cases
             </Button>

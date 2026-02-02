@@ -26,7 +26,6 @@ import { BackendHealthBanner } from "../components/BackendHealthBanner";
 import { listPolicyOverrides } from "../api/policyOverrides";
 import type { PolicyOverrideDetail } from "../types/decision";
 import { getAuthHeaders } from "../lib/authHeaders";
-import { getAuthHeaders } from "../lib/authHeaders";
 
 type DecisionStatus = "ok_to_ship" | "blocked" | "needs_review";
 type ActiveSection = "dashboard" | "csf" | "licenses" | "orders" | "settings" | "about";
