@@ -34,9 +34,12 @@ COPY . /app
 # Create data directories
 RUN mkdir -p /app/data/exports
 
+# Ensure start script is executable
+RUN chmod +x /app/start.sh
+
 # Expose FastAPI port
 EXPOSE 8001
 
 # ---------- Run ----------
 # NOTE: main:app must match backend/src/api/main.py (app = FastAPI())
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["/app/start.sh"]

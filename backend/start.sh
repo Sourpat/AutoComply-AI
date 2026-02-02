@@ -22,5 +22,8 @@ export APP_ENV=prod
 # Use PORT from environment, default to 8001
 PORT=${PORT:-8001}
 
+# Ensure AI decision contract table + seed exist (idempotent)
+python scripts/migrate_add_ai_decision_contract.py
+
 # Start uvicorn on all interfaces (0.0.0.0) to accept external connections
 exec python -m uvicorn src.api.main:app --host 0.0.0.0 --port $PORT
