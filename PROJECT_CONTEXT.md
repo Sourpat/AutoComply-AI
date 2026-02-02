@@ -132,7 +132,7 @@ frontend/
 
 **Required**:
 - `DATABASE_URL` - SQLite connection (default: sqlite:///src/data/autocomply.db)
-- `AUDIT_SIGNING_SECRET` - Audit log HMAC secret (change in production!)
+- `AUDIT_SIGNING_KEY` - Audit log HMAC secret (change in production!)
 
 **Optional**:
 - `OPENAI_API_KEY` - For LLM intelligence features

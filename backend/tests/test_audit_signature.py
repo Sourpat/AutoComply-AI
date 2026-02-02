@@ -2,6 +2,7 @@ from starlette.testclient import TestClient
 
 from app.audit.hash import compute_packet_hash, compute_packet_signature
 from src.api.main import app
+from src.config import get_settings
 
 
 client = TestClient(app)
@@ -53,6 +54,7 @@ def _base_packet():
 
 
 def test_audit_signature_verify_round_trip(monkeypatch) -> None:
+    get_settings.cache_clear()
     monkeypatch.setenv("AUDIT_SIGNING_KEY", "test-signing-key")
 
     packet = _base_packet()
@@ -67,9 +69,11 @@ def test_audit_signature_verify_round_trip(monkeypatch) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["valid"] is True
+    get_settings.cache_clear()
 
 
 def test_audit_signature_verify_detects_tampering(monkeypatch) -> None:
+    get_settings.cache_clear()
     monkeypatch.setenv("AUDIT_SIGNING_KEY", "test-signing-key")
 
     packet = _base_packet()
@@ -87,3 +91,4 @@ def test_audit_signature_verify_detects_tampering(monkeypatch) -> None:
     payload = response.json()
     assert payload["valid"] is False
     assert payload["reason"] in {"hash_mismatch", "signature_mismatch"}
+    get_settings.cache_clear()

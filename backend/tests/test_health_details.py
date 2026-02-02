@@ -122,12 +122,12 @@ def test_validate_runtime_config_dev_audit_secret_in_dev(monkeypatch):
 
     # Set to dev environment with dev secret
     monkeypatch.setenv("APP_ENV", "dev")
-    monkeypatch.setenv("AUDIT_SIGNING_SECRET", "dev-insecure-audit-signing-secret-change-in-production")
+    monkeypatch.setenv("AUDIT_SIGNING_KEY", "dev-insecure-audit-signing-secret-change-in-production")
 
     validation = validate_runtime_config()
 
     # In dev, should be warning not error
-    assert "AUDIT_SIGNING_SECRET" not in validation["missing_env"]
+    assert "AUDIT_SIGNING_KEY" not in validation["missing_env"]
     assert any("dev audit signing secret" in w for w in validation["warnings"])
 
     get_settings.cache_clear()
@@ -139,13 +139,13 @@ def test_validate_runtime_config_dev_audit_secret_in_prod(monkeypatch):
 
     # Set to production environment with dev secret
     monkeypatch.setenv("APP_ENV", "prod")
-    monkeypatch.setenv("AUDIT_SIGNING_SECRET", "dev-insecure-audit-signing-secret-change-in-production")
+    monkeypatch.setenv("AUDIT_SIGNING_KEY", "dev-insecure-audit-signing-secret-change-in-production")
 
     validation = validate_runtime_config()
 
     # In prod, should be error
     assert not validation["ok"]
-    assert "AUDIT_SIGNING_SECRET" in validation["missing_env"]
+    assert "AUDIT_SIGNING_KEY" in validation["missing_env"]
 
     get_settings.cache_clear()
 
@@ -205,7 +205,7 @@ def test_validate_runtime_config_fully_valid_production(monkeypatch):
     # Set all required production env vars
     monkeypatch.setenv("APP_ENV", "prod")
     monkeypatch.setenv("DATABASE_URL", "sqlite:///./prod.db")
-    monkeypatch.setenv("AUDIT_SIGNING_SECRET", "secure-production-secret-12345")
+    monkeypatch.setenv("AUDIT_SIGNING_KEY", "secure-production-secret-12345")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
     monkeypatch.setenv("DEV_SEED_TOKEN", "prod-seed-token")
     monkeypatch.setenv("CORS_ORIGINS", "https://app.example.com")

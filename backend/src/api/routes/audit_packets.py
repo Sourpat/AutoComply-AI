@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import hmac
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
@@ -11,6 +12,7 @@ from pydantic import BaseModel
 
 from app.audit.execution_preview import build_execution_preview
 from app.audit.hash import compute_packet_hash, compute_packet_signature
+from src.config import get_settings
 from app.audit.repo import get_audit_packet, init_audit_schema, list_audit_packets, upsert_audit_packet
 from app.audit.spec_registry import resolve_spec_for_packet
 
@@ -93,16 +95,24 @@ def _attach_execution_preview(packet: Dict[str, Any]) -> Dict[str, Any]:
     return packet
 
 
-def _get_signing_key() -> str | None:
-    key = os.getenv("AUDIT_SIGNING_KEY") or os.getenv("AUDIT_SIGNING_SECRET")
-    if key is None:
+def _resolve_signing_key(settings) -> str | None:
+    key = (settings.AUDIT_SIGNING_KEY or "").strip()
+    dev_default = "dev-insecure-audit-signing-secret-change-in-production"
+    if not key:
         return None
-    key = key.strip()
-    return key or None
+    if settings.is_production and key == dev_default:
+        return None
+    return key
+
+
+def _key_fingerprint(signing_key: str) -> str:
+    digest = hashlib.sha256(signing_key.encode("utf-8")).hexdigest()
+    return digest[:8]
 
 
 def _attach_signature(packet: Dict[str, Any]) -> Dict[str, Any]:
-    signing_key = _get_signing_key()
+    settings = get_settings()
+    signing_key = _resolve_signing_key(settings)
     if not signing_key:
         return packet
 
@@ -602,7 +612,14 @@ async def verify_audit_packet(request: Request) -> Dict[str, Any]:
     if not isinstance(packet, dict):
         raise HTTPException(status_code=400, detail="Audit packet must be a JSON object")
 
-    signing_key = _get_signing_key()
+    settings = get_settings()
+    signing_key = _resolve_signing_key(settings)
+    if not signing_key and settings.is_production:
+        raise HTTPException(
+            status_code=400,
+            detail="AUDIT_SIGNING_KEY is required in production",
+        )
+
     claimed = packet.get("packetHash") or packet.get("packet_hash")
     provided_signature = packet.get("packet_signature") or packet.get("packetSignature")
 
@@ -624,3 +641,20 @@ async def verify_audit_packet(request: Request) -> Dict[str, Any]:
         return {"valid": False, "reason": "signature_mismatch", "expected_hash": computed}
 
     return {"valid": True, "expected_hash": computed}
+
+
+@router.get("/audit/signing/status")
+async def audit_signing_status() -> Dict[str, Any]:
+    settings = get_settings()
+    signing_key = _resolve_signing_key(settings)
+    key_present = bool(signing_key)
+    enabled = key_present
+    fingerprint = _key_fingerprint(signing_key) if signing_key else None
+
+    return {
+        "enabled": enabled,
+        "key_present": key_present,
+        "key_fingerprint": fingerprint,
+        "last_rotated": None,
+        "environment": settings.APP_ENV,
+    }

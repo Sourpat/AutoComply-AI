@@ -36,6 +36,24 @@
 
 ## Decisions
 
+### [2026-02-02] Signing status endpoint + prod enforcement (Phase 10.2)
+
+**Context**: Phase 10.2 requires deploy parity for audit signing, a status endpoint, and stricter production behavior when signing is disabled.
+
+**Decision**: Standardize on `AUDIT_SIGNING_KEY`, expose `/api/audit/signing/status` with a fingerprint, show signing status in the Workbench, and enforce a 400 response on `/api/audit/verify` when signing is missing in production.
+
+**Rationale**:
+- Prevents silent unsigned verification in production
+- Provides a non-sensitive indicator of signing key presence
+- Keeps verification behavior transparent for operators
+
+**Consequences**:
+- Positive: Clear signing status and stronger production enforcement
+- Negative: Requires key configuration for prod verification
+- Neutral: No change to packet format
+
+**Status**: Accepted
+
 ### [2026-02-02] Signed audit packets + verification workflow (Phase 10.1)
 
 **Context**: Phase 10.1 requires cryptographic integrity for audit packets, a verification endpoint, and signed exports for governance.

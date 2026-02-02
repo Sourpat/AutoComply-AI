@@ -137,25 +137,14 @@ class Settings(BaseSettings):
 
     # Audit Signing (Phase 7.26)
     # =============================================================================
-    # AUDIT_SIGNING_SECRET: Secret key for HMAC-SHA256 signing of audit exports
+    # AUDIT_SIGNING_KEY: Secret key for HMAC-SHA256 signing of audit exports
     # - REQUIRED in production for tamper-proof audit trails
     # - Defaults to insecure dev key in development (set proper secret in prod)
     # - Use a strong random string (e.g., openssl rand -hex 32)
-    # - Rotate key via AUDIT_SIGNING_KEY_ID when changing secret
     # =============================================================================
-    AUDIT_SIGNING_SECRET: str = Field(
+    AUDIT_SIGNING_KEY: str = Field(
         default="dev-insecure-audit-signing-secret-change-in-production",
         description="HMAC secret for signing audit exports (MUST change in production)"
-    )
-    
-    AUDIT_SIGNING_KEY_ID: str = Field(
-        default="k1",
-        description="Key identifier for audit signing (increment when rotating keys)"
-    )
-    
-    AUDIT_SIGNING_ALG: str = Field(
-        default="HMAC-SHA256",
-        description="Signing algorithm for audit exports (fixed to HMAC-SHA256)"
     )
 
     # Runtime (legacy)
@@ -248,7 +237,7 @@ def validate_runtime_config() -> dict:
 
     Critical env vars (production must-have):
     - DATABASE_URL: Must be set and non-default
-    - AUDIT_SIGNING_SECRET: Must NOT be dev default value in production
+    - AUDIT_SIGNING_KEY: Must NOT be dev default value in production
 
     Important env vars (warn if missing):
     - OPENAI_API_KEY or GEMINI_API_KEY: At least one should be present for LLM features
@@ -264,11 +253,11 @@ def validate_runtime_config() -> dict:
     if not settings.DATABASE_URL or settings.DATABASE_URL == "":
         missing.append("DATABASE_URL")
 
-    # AUDIT_SIGNING_SECRET must not be dev default in production
+    # AUDIT_SIGNING_KEY must not be dev default in production
     dev_audit_secret = "dev-insecure-audit-signing-secret-change-in-production"
-    if settings.AUDIT_SIGNING_SECRET == dev_audit_secret:
+    if settings.AUDIT_SIGNING_KEY == dev_audit_secret:
         if settings.is_production:
-            missing.append("AUDIT_SIGNING_SECRET")
+            missing.append("AUDIT_SIGNING_KEY")
         else:
             warnings.append("Using dev audit signing secret (not for production)")
 
@@ -286,8 +275,8 @@ def validate_runtime_config() -> dict:
     # Build config status (booleans only, never leak actual secrets)
     config_status = {
         "database_configured": bool(settings.DATABASE_URL),
-        "audit_signing_enabled": bool(settings.AUDIT_SIGNING_SECRET),
-        "audit_signing_is_dev_default": settings.AUDIT_SIGNING_SECRET == dev_audit_secret,
+        "audit_signing_enabled": bool(settings.AUDIT_SIGNING_KEY),
+        "audit_signing_is_dev_default": settings.AUDIT_SIGNING_KEY == dev_audit_secret,
         "openai_key_present": bool(settings.OPENAI_API_KEY),
         "gemini_key_present": bool(settings.GEMINI_API_KEY),
         "dev_seed_token_present": bool(settings.DEV_SEED_TOKEN),

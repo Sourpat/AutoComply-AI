@@ -106,6 +106,11 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 10.2 — Deploy parity + signing verification hardening
+**Completed**: 2026-02-02
+**Commit**: (pending)
+**Summary**: Standardized AUDIT_SIGNING_KEY, added signing status endpoint + badge, and prod enforcement test.
+
 ### Phase 10.1 — Audit Packet Integrity + Signed Exports
 **Completed**: 2026-02-02
 **Commit**: (pending)
@@ -125,11 +130,6 @@
 **Completed**: 2026-02-02
 **Commit**: (pending)
 **Summary**: Enforced role gating and rationale validation for overrides.
-
-### Phase 9.7 — Governance evidence + audit trail
-**Completed**: 2026-02-02
-**Commit**: (pending)
-**Summary**: Logged policy overrides as audit events and included governance metadata in exports.
 
 
 ---

@@ -1066,8 +1066,7 @@ def export_audit_trail(
     # Phase 7.26: Sign the FINAL redacted export
     signed_export = sign_audit_export(
         export_data,
-        secret=settings.AUDIT_SIGNING_SECRET,
-        key_id=settings.AUDIT_SIGNING_KEY_ID
+        secret=settings.AUDIT_SIGNING_KEY,
     )
     
     return signed_export
@@ -1245,7 +1244,7 @@ async def verify_audit_export_endpoint(request: Request = None):  # Optional for
         raise HTTPException(status_code=400, detail=f"Failed to parse request body: {str(e)}")
     
     # Verify signature
-    signature_result = verify_audit_export(signed_export, settings.AUDIT_SIGNING_SECRET)
+    signature_result = verify_audit_export(signed_export, settings.AUDIT_SIGNING_KEY)
     
     # Also verify integrity chain if history is present
     integrity_valid = True
@@ -1329,7 +1328,7 @@ def verify_case_audit_trail(case_id: str, request: Request):  # Phase 7.27: Adde
     signed_export = export_audit_trail(case_id, request, include_payload=False, include_evidence=False)
     
     # Verify signature
-    signature_result = verify_audit_export(signed_export, settings.AUDIT_SIGNING_SECRET)
+    signature_result = verify_audit_export(signed_export, settings.AUDIT_SIGNING_KEY)
     
     # Verify integrity
     history_entries = get_intelligence_history(case_id, limit=1000)

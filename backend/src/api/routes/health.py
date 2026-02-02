@@ -186,7 +186,7 @@ async def health_details() -> HealthDetails:
     Comprehensive production health endpoint with environment validation and diagnostics.
 
     This endpoint:
-    - Validates critical environment variables (DATABASE_URL, AUDIT_SIGNING_SECRET)
+    - Validates critical environment variables (DATABASE_URL, AUDIT_SIGNING_KEY)
     - Reports configuration status without leaking secrets (boolean flags only)
     - Always returns 200 status code if service is up
     - Sets ok=false when critical env vars are missing or invalid

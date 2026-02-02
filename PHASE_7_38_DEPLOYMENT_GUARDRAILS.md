@@ -62,7 +62,7 @@ Centralized validation logic that checks:
 
 **Critical (production must-have)**:
 - `DATABASE_URL` - Must be set and non-empty
-- `AUDIT_SIGNING_SECRET` - Must NOT be dev default value in production
+- `AUDIT_SIGNING_KEY` - Must NOT be dev default value in production
 
 **Important (warnings)**:
 - `OPENAI_API_KEY` or `GEMINI_API_KEY` - At least one should be present for LLM features
@@ -223,7 +223,7 @@ Invoke-RestMethod -Uri 'http://127.0.0.1:8001/health/details' -Method GET | Conv
 **Critical (must set)**:
 ```bash
 DATABASE_URL=sqlite:///./prod.db  # Or PostgreSQL connection string
-AUDIT_SIGNING_SECRET=<secure-random-secret>  # MUST change from dev default
+AUDIT_SIGNING_KEY=<secure-random-secret>  # MUST change from dev default
 ```
 
 **Important (should set)**:

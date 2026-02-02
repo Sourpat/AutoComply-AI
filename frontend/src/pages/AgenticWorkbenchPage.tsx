@@ -242,6 +242,7 @@ export function AgenticWorkbenchPage() {
   const [signatureAlg, setSignatureAlg] = useState<string | null>(null);
   const [verifyStatus, setVerifyStatus] = useState<"idle" | "verifying" | "valid" | "invalid">("idle");
   const [verifyReason, setVerifyReason] = useState<string | null>(null);
+  const [signingEnabled, setSigningEnabled] = useState<boolean | null>(null);
   const [visibleEvidenceCount, setVisibleEvidenceCount] = useState(50);
   const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
   const { role } = useRole();
@@ -910,6 +911,22 @@ export function AgenticWorkbenchPage() {
     };
   }, [packetBase]);
 
+  useEffect(() => {
+    let active = true;
+    fetch(`${API_BASE}/api/audit/signing/status`)
+      .then((resp) => (resp.ok ? resp.json() : null))
+      .then((data) => {
+        if (!active) return;
+        setSigningEnabled(typeof data?.enabled === "boolean" ? data.enabled : null);
+      })
+      .catch(() => {
+        if (active) setSigningEnabled(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const buildSignedPacket = useCallback(async () => {
     if (!packetBase) return { packet: null as typeof packetBase | null, serverResult: null as any };
     const hash = packetHash ?? (await computePacketHash(packetBase));
@@ -1205,6 +1222,14 @@ export function AgenticWorkbenchPage() {
             >
               {verifyStatus === "verifying" ? "Verifying..." : "Verify packet"}
             </Button>
+            {signingEnabled !== null && (
+              <Badge
+                variant={signingEnabled ? "success" : "secondary"}
+                title="Signing status reflects backend audit signing key availability."
+              >
+                Signing: {signingEnabled ? "Enabled" : "Disabled"}
+              </Badge>
+            )}
             <Button
               variant="outline"
               size="sm"
