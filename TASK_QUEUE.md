@@ -2,7 +2,7 @@
 
 **Last Updated**: 2026-02-01
 
-**Active WIP**: 0
+**Active WIP**: 1
 
 ---
 
@@ -27,13 +27,27 @@
 **Notes**: Related to Phase 7.29 SLA issue
 ```
 
+### Phase 9.1 — AI Decision Contract (Core Artifact)
+**Status**: in-progress
+**Assigned**: GitHub Copilot
+**Goal**: Establish the AI decision contract as the source of truth with schema validation, versioning, seeding, and read-only APIs
+**Acceptance Criteria**:
+- [ ] Contract model/entity defined
+- [ ] Schema validation enforced for contract payload
+- [ ] Versioning + active contract resolution
+- [ ] Seed v1 active contract
+- [ ] Read-only APIs for contract access
+**Verification**:
+- Manual review of contract API responses
+**Dependencies**: None
+
 ---
 
 ## P1 - High Priority (Do Next)
 
 ### T-016: Audit suite demo readiness
-**Status**: pending
-**Assigned**: GitHub Copilot
+**Status**: deferred
+**Assigned**: (none)
 **Goal**: Finalize audit suite nav, landing, demo script, and UX consistency for recruiter demo
 **Acceptance Criteria**:
 - [ ] Audit suite nav links are stable with active styling
@@ -51,16 +65,6 @@
 ---
 
 ## P2 - Medium Priority (Backlog)
-
-### P9.1: Next phase (TODO)
-**Status**: pending
-**Assigned**: (none)
-**Goal**: TBD
-**Acceptance Criteria**:
-- [ ] TBD
-**Verification**:
-- Manual review only
-**Dependencies**: None
 
 ---
 
