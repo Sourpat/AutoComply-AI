@@ -57,6 +57,11 @@ export type AuditPacket = {
     generatedAt: string;
   };
   packetHash?: string;
+  packet_hash?: string;
+  packetSignature?: string;
+  packet_signature?: string;
+  signatureAlg?: string;
+  signature_alg?: string;
   caseSnapshot: {
     submissionId: string;
     tenant: string;
@@ -352,7 +357,15 @@ export function stableStringify(input: unknown): string {
 }
 
 export function canonicalizeForHash(packet: AuditPacket) {
-  const { packetHash, ...rest } = packet;
+  const {
+    packetHash,
+    packet_hash,
+    packetSignature,
+    packet_signature,
+    signatureAlg,
+    signature_alg,
+    ...rest
+  } = packet;
   const { metadata, ...restData } = rest;
   const { generatedAt, ...metadataStable } = metadata;
   return {
@@ -443,6 +456,13 @@ export async function buildAuditPdf(packet: AuditPacket, hash: string) {
     if (line) writeLine(line, bold, size);
   };
 
+  const signature = packet.packet_signature ?? packet.packetSignature ?? "";
+  const signatureAlg = packet.signature_alg ?? packet.signatureAlg ?? "HMAC-SHA256";
+
+  pdfDoc.setTitle("AutoComply AI Audit Packet");
+  pdfDoc.setSubject(`Packet Hash: ${hash} | Signature: ${signature || "missing"}`);
+  pdfDoc.setKeywords(["audit", "packet", hash, signatureAlg]);
+
   writeLine("AutoComply AI Audit Packet", true, 16);
   writeLine("");
 
@@ -532,6 +552,23 @@ export async function buildAuditPdf(packet: AuditPacket, hash: string) {
 
   writeLine("");
   writeLine(`Packet Hash (SHA-256): ${hash}`, false, 9);
+  writeLine(`Packet Signature (${signatureAlg}): ${signature || "missing"}`, false, 9);
+
+  // Footer with integrity metadata
+  page.drawText(`Hash: ${hash}`, {
+    x: margin,
+    y: margin / 2,
+    size: 8,
+    font,
+    color: rgb(0.35, 0.35, 0.38),
+  });
+  page.drawText(`Signature: ${signature || "missing"}`, {
+    x: margin,
+    y: margin / 2 - 10,
+    size: 8,
+    font,
+    color: rgb(0.35, 0.35, 0.38),
+  });
 
   return pdfDoc.save();
 }

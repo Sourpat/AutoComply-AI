@@ -49,7 +49,7 @@ import {
   type HumanActionEvent,
   toDecisionId,
 } from "../lib/agenticAudit";
-import { saveAuditPacketToServer } from "../lib/auditServer";
+import { saveAuditPacketToServer, verifyAuditPacketOnServer } from "../lib/auditServer";
 import { getAuditEvents, postAuditEvent } from "../lib/auditEventsServer";
 import { formatTimestamp } from "../lib/formatters";
 import { cn } from "../lib/utils";
@@ -238,6 +238,10 @@ export function AgenticWorkbenchPage() {
   const [policyOverrideOnly, setPolicyOverrideOnly] = useState(false);
   const [overrideTraceIds, setOverrideTraceIds] = useState<Set<string>>(new Set());
   const [packetHash, setPacketHash] = useState<string | null>(null);
+  const [packetSignature, setPacketSignature] = useState<string | null>(null);
+  const [signatureAlg, setSignatureAlg] = useState<string | null>(null);
+  const [verifyStatus, setVerifyStatus] = useState<"idle" | "verifying" | "valid" | "invalid">("idle");
+  const [verifyReason, setVerifyReason] = useState<string | null>(null);
   const [visibleEvidenceCount, setVisibleEvidenceCount] = useState(50);
   const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
   const { role } = useRole();
@@ -882,10 +886,18 @@ export function AgenticWorkbenchPage() {
     let active = true;
     if (!packetBase) {
       setPacketHash(null);
+      setPacketSignature(null);
+      setSignatureAlg(null);
+      setVerifyStatus("idle");
+      setVerifyReason(null);
       return () => {
         active = false;
       };
     }
+    setPacketSignature(null);
+    setSignatureAlg(null);
+    setVerifyStatus("idle");
+    setVerifyReason(null);
     computePacketHash(packetBase)
       .then((hash) => {
         if (active) setPacketHash(hash);
@@ -898,19 +910,61 @@ export function AgenticWorkbenchPage() {
     };
   }, [packetBase]);
 
+  const buildSignedPacket = useCallback(async () => {
+    if (!packetBase) return { packet: null as typeof packetBase | null, serverResult: null as any };
+    const hash = packetHash ?? (await computePacketHash(packetBase));
+    let packet: any = { ...packetBase, packetHash: hash, packet_hash: hash };
+
+    if (packetSignature) {
+      packet = {
+        ...packet,
+        packetSignature,
+        packet_signature: packetSignature,
+        signatureAlg: signatureAlg ?? "HMAC-SHA256",
+        signature_alg: signatureAlg ?? "HMAC-SHA256",
+      };
+      return { packet, serverResult: null };
+    }
+
+    const serverResult = await saveAuditPacketToServer(packet);
+    if (serverResult.ok) {
+      const signature = serverResult.data?.packetSignature ?? serverResult.data?.packet_signature;
+      const alg = serverResult.data?.signatureAlg ?? serverResult.data?.signature_alg;
+      if (signature) {
+        setPacketSignature(signature);
+        setSignatureAlg(alg ?? "HMAC-SHA256");
+        packet = {
+          ...packet,
+          packetSignature: signature,
+          packet_signature: signature,
+          signatureAlg: alg ?? "HMAC-SHA256",
+          signature_alg: alg ?? "HMAC-SHA256",
+        };
+      }
+    }
+    return { packet, serverResult };
+  }, [packetBase, packetHash, packetSignature, signatureAlg]);
+
   const handleExportJson = async () => {
     if (!selectedCase || !packetBase) return;
-    const hash = packetHash ?? (await computePacketHash(packetBase));
-    const packet = { ...packetBase, packetHash: hash };
+    const { packet, serverResult } = await buildSignedPacket();
+    if (!packet) return;
+    const hash = packet.packetHash ?? packet.packet_hash;
+    const signature = packet.packet_signature ?? packet.packetSignature;
+    if (!signature) {
+      toast.error("Unable to sign audit packet. Ensure AUDIT_SIGNING_KEY is configured on the backend.");
+      return;
+    }
     const saveResult = saveAuditPacket(packet, hash);
     if (!saveResult.ok && saveResult.error) {
       toast.error(`Local storage error: ${saveResult.error}`);
     }
-    const serverResult = await saveAuditPacketToServer(packet);
-    if (serverResult.ok) {
-      toast.success("Saved to server");
-    } else {
-      toast.error(`Saved locally, server save failed: ${serverResult.message}`);
+    if (serverResult) {
+      if (serverResult.ok) {
+        toast.success("Saved to server");
+      } else {
+        toast.error(`Saved locally, server save failed: ${serverResult.message}`);
+      }
     }
     const blob = new Blob([JSON.stringify(packet, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -947,17 +1001,24 @@ export function AgenticWorkbenchPage() {
 
   const handleExportPdf = async () => {
     if (!selectedCase || !packetBase) return;
-    const hash = packetHash ?? (await computePacketHash(packetBase));
-    const packet = { ...packetBase, packetHash: hash };
+    const { packet, serverResult } = await buildSignedPacket();
+    if (!packet) return;
+    const hash = packet.packetHash ?? packet.packet_hash;
+    const signature = packet.packet_signature ?? packet.packetSignature;
+    if (!signature) {
+      toast.error("Unable to sign audit packet. Ensure AUDIT_SIGNING_KEY is configured on the backend.");
+      return;
+    }
     const saveResult = saveAuditPacket(packet, hash);
     if (!saveResult.ok && saveResult.error) {
       toast.error(`Local storage error: ${saveResult.error}`);
     }
-    const serverResult = await saveAuditPacketToServer(packet);
-    if (serverResult.ok) {
-      toast.success("Saved to server");
-    } else {
-      toast.error(`Saved locally, server save failed: ${serverResult.message}`);
+    if (serverResult) {
+      if (serverResult.ok) {
+        toast.success("Saved to server");
+      } else {
+        toast.error(`Saved locally, server save failed: ${serverResult.message}`);
+      }
     }
     const pdfBytes = await buildAuditPdf(packet, hash);
     const blob = new Blob([pdfBytes], { type: "application/pdf" });
@@ -995,18 +1056,20 @@ export function AgenticWorkbenchPage() {
 
   const handleCopyShareLink = async () => {
     if (!selectedCase || !packetBase) return;
-    const hash = packetHash ?? (await computePacketHash(packetBase));
-    const packet = { ...packetBase, packetHash: hash };
+    const { packet, serverResult } = await buildSignedPacket();
+    if (!packet) return;
+    const hash = packet.packetHash ?? packet.packet_hash;
     const saveResult = saveAuditPacket(packet, hash);
     if (!saveResult.ok && saveResult.error) {
       toast.error(`Local storage error: ${saveResult.error}`);
       return;
     }
-    const serverResult = await saveAuditPacketToServer(packet);
-    if (serverResult.ok) {
-      toast.success("Saved to server");
-    } else {
-      toast.error(`Saved locally, server save failed: ${serverResult.message}`);
+    if (serverResult) {
+      if (serverResult.ok) {
+        toast.success("Saved to server");
+      } else {
+        toast.error(`Saved locally, server save failed: ${serverResult.message}`);
+      }
     }
     const url = new URL(window.location.origin);
     url.pathname = "/audit/view";
@@ -1018,6 +1081,32 @@ export function AgenticWorkbenchPage() {
       toast.success("Share link copied");
     } catch {
       toast.error("Unable to copy share link");
+    }
+  };
+
+  const handleVerifyPacket = async () => {
+    if (!selectedCase || !packetBase) return;
+    setVerifyStatus("verifying");
+    setVerifyReason(null);
+    const { packet } = await buildSignedPacket();
+    if (!packet) {
+      setVerifyStatus("invalid");
+      setVerifyReason("Unable to build audit packet");
+      return;
+    }
+    const result = await verifyAuditPacketOnServer(packet);
+    if (!result.ok) {
+      setVerifyStatus("invalid");
+      setVerifyReason(result.message ?? "Verification failed");
+      return;
+    }
+    const valid = Boolean(result.data?.valid);
+    setVerifyStatus(valid ? "valid" : "invalid");
+    setVerifyReason(result.data?.reason ?? null);
+    if (valid) {
+      toast.success("Audit packet verified");
+    } else {
+      toast.error(`Audit packet invalid${result.data?.reason ? `: ${result.data.reason}` : ""}`);
     }
   };
 
@@ -1107,8 +1196,14 @@ export function AgenticWorkbenchPage() {
             <p className="text-xs text-muted-foreground">Verifier-grade traceability bundle.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/audit/verify">Verify packet</Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleVerifyPacket}
+              disabled={!selectedCase || !packetBase || verifyStatus === "verifying"}
+              title="Verification confirms the packet hash and signature match the server signing key."
+            >
+              {verifyStatus === "verifying" ? "Verifying..." : "Verify packet"}
             </Button>
             <Button
               variant="outline"
@@ -1168,6 +1263,32 @@ export function AgenticWorkbenchPage() {
             </Button>
           </div>
           <p className="mt-1 break-all text-foreground">{packetHash ?? "--"}</p>
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-muted-foreground">Packet Signature</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => copyId(packetSignature ?? "")}
+              aria-label="Copy packet signature"
+              disabled={!packetSignature}
+            >
+              Copy
+            </Button>
+          </div>
+          <p className="mt-1 break-all text-foreground">
+            {packetSignature ? `${signatureAlg ?? "HMAC-SHA256"} • ${packetSignature}` : "--"}
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-muted-foreground" title="Verification checks the packet hash + HMAC signature using the backend signing key.">
+              Verification status
+            </span>
+            {verifyStatus === "valid" && <Badge variant="success">Verified</Badge>}
+            {verifyStatus === "invalid" && <Badge variant="destructive">Invalid</Badge>}
+            {verifyStatus === "verifying" && <Badge variant="secondary">Verifying</Badge>}
+          </div>
+          {verifyStatus === "invalid" && verifyReason && (
+            <p className="mt-1 text-xs text-destructive">{verifyReason}</p>
+          )}
         </div>
 
         <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-xs">

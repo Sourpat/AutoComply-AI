@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import hmac
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
@@ -9,13 +10,14 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.audit.execution_preview import build_execution_preview
-from app.audit.hash import compute_packet_hash
+from app.audit.hash import compute_packet_hash, compute_packet_signature
 from app.audit.repo import get_audit_packet, init_audit_schema, list_audit_packets, upsert_audit_packet
 from app.audit.spec_registry import resolve_spec_for_packet
 
 router = APIRouter(prefix="/api", tags=["audit"])
 
 MAX_PACKET_BYTES = 2 * 1024 * 1024
+SIGNATURE_ALG = "HMAC-SHA256"
 
 
 class AuditPacketMeta(BaseModel):
@@ -88,6 +90,30 @@ def _attach_execution_preview(packet: Dict[str, Any]) -> Dict[str, Any]:
     if packet.get("execution_preview") is not None:
         return packet
     packet["execution_preview"] = build_execution_preview(packet)
+    return packet
+
+
+def _get_signing_key() -> str | None:
+    key = os.getenv("AUDIT_SIGNING_KEY") or os.getenv("AUDIT_SIGNING_SECRET")
+    if key is None:
+        return None
+    key = key.strip()
+    return key or None
+
+
+def _attach_signature(packet: Dict[str, Any]) -> Dict[str, Any]:
+    signing_key = _get_signing_key()
+    if not signing_key:
+        return packet
+
+    packet_hash = compute_packet_hash(packet)
+    signature = compute_packet_signature(packet, signing_key)
+    packet["packetHash"] = packet_hash
+    packet["packet_hash"] = packet_hash
+    packet["packetSignature"] = signature
+    packet["packet_signature"] = signature
+    packet["signatureAlg"] = SIGNATURE_ALG
+    packet["signature_alg"] = SIGNATURE_ALG
     return packet
 
 
@@ -283,6 +309,10 @@ async def store_audit_packet(request: Request) -> Dict[str, Any]:
             detail={"message": "packetHash mismatch", "claimed": claimed_hash, "computed": computed},
         )
 
+    packet = _attach_signature(packet)
+    signature = packet.get("packet_signature")
+    signature_alg = packet.get("signature_alg")
+
     metadata = packet.get("metadata") or {}
     case_id = metadata.get("caseId") or packet.get("caseId") or packet.get("case_id")
     decision_id = metadata.get("decisionId") or packet.get("decisionId") or packet.get("decision_id")
@@ -303,6 +333,11 @@ async def store_audit_packet(request: Request) -> Dict[str, Any]:
 
     return {
         "packetHash": stored["packet_hash"],
+        "packet_hash": stored["packet_hash"],
+        "packetSignature": signature,
+        "packet_signature": signature,
+        "signatureAlg": signature_alg,
+        "signature_alg": signature_alg,
         "caseId": stored["case_id"],
         "decisionId": stored["decision_id"],
         "stored": True,
@@ -475,8 +510,8 @@ async def seed_demo_packets(payload: Dict[str, Any]) -> Dict[str, Any]:
         if spec_trace:
             packet["decision_trace"] = {"spec": spec_trace}
 
-        packet_hash = compute_packet_hash(packet)
-        packet["packetHash"] = packet_hash
+        packet = _attach_signature(packet)
+        packet_hash = packet.get("packetHash") or compute_packet_hash(packet)
         packet_hashes.append(packet_hash)
 
         payload_row = {
@@ -567,11 +602,25 @@ async def verify_audit_packet(request: Request) -> Dict[str, Any]:
     if not isinstance(packet, dict):
         raise HTTPException(status_code=400, detail="Audit packet must be a JSON object")
 
-    claimed = packet.get("packetHash")
-    computed = compute_packet_hash(packet)
+    signing_key = _get_signing_key()
+    claimed = packet.get("packetHash") or packet.get("packet_hash")
+    provided_signature = packet.get("packet_signature") or packet.get("packetSignature")
 
-    return {
-        "claimed": claimed,
-        "computed": computed,
-        "match": bool(claimed and claimed == computed),
-    }
+    computed = compute_packet_hash(packet)
+    if not claimed:
+        return {"valid": False, "reason": "missing_packet_hash", "expected_hash": computed}
+
+    if claimed != computed:
+        return {"valid": False, "reason": "hash_mismatch", "expected_hash": computed}
+
+    if not signing_key:
+        return {"valid": False, "reason": "signing_key_missing", "expected_hash": computed}
+
+    if not provided_signature:
+        return {"valid": False, "reason": "missing_signature", "expected_hash": computed}
+
+    expected_signature = compute_packet_signature(packet, signing_key)
+    if not hmac.compare_digest(provided_signature, expected_signature):
+        return {"valid": False, "reason": "signature_mismatch", "expected_hash": computed}
+
+    return {"valid": True, "expected_hash": computed}

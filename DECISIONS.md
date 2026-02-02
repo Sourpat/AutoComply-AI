@@ -36,6 +36,24 @@
 
 ## Decisions
 
+### [2026-02-02] Signed audit packets + verification workflow (Phase 10.1)
+
+**Context**: Phase 10.1 requires cryptographic integrity for audit packets, a verification endpoint, and signed exports for governance.
+
+**Decision**: Canonicalize audit packet serialization, compute a SHA-256 packet hash, and sign the canonical payload using HMAC-SHA256 with `AUDIT_SIGNING_KEY`. Attach hash + signature to packets and exports, and add `/api/audit/verify` to validate packets server-side.
+
+**Rationale**:
+- Ensures tamper-evident audit artifacts
+- Enables lightweight integrity checks without external dependencies
+- Keeps signing server-side only to protect keys
+
+**Consequences**:
+- Positive: Signed exports and verification improve audit trustworthiness
+- Negative: Requires signing key configuration in deployments
+- Neutral: No changes to decision logic
+
+**Status**: Accepted
+
 ### [2026-02-02] Startup migrations + DB health checks (Phase 10.0)
 
 **Context**: Phase 10.0 requires deployment stability by ensuring schema readiness on startup and providing a health endpoint that validates required tables and columns.

@@ -28,6 +28,7 @@
 ```
 
 
+
 ### BUG-201: Fix Workbench cases loading
 **Status**: blocked
 **Assigned**: GitHub Copilot
@@ -105,6 +106,11 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 10.1 — Audit Packet Integrity + Signed Exports
+**Completed**: 2026-02-02
+**Commit**: (pending)
+**Summary**: Added canonical packet signing, verify endpoint, and signed export UI.
+
 ### Phase 10.0 — Deployment Stability + Data Consistency Hardening
 **Completed**: 2026-02-02
 **Commit**: (pending)
@@ -125,10 +131,6 @@
 **Commit**: (pending)
 **Summary**: Logged policy overrides as audit events and included governance metadata in exports.
 
-### Phase 9.6 — Policy override workflow
-**Completed**: 2026-02-02
-**Commit**: (pending)
-**Summary**: Added override persistence, API workflow, and UI controls.
 
 ---
 
