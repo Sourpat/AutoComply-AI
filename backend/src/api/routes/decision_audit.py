@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from src.autocomply.audit.decision_log import get_decision_log
 from src.api.models.decision import DecisionAuditEntryModel
+from src.policy.contracts import get_active_contract
 
 router = APIRouter()
 
@@ -21,11 +22,20 @@ async def get_decisions_for_trace(trace_id: str) -> List[DecisionAuditEntryModel
     log = get_decision_log()
     entries = log.get_by_trace(trace_id)
 
+    active_contract = get_active_contract()
+    active_version = active_contract.version if active_contract else None
+
     if not entries:
         return []
 
     models: List[DecisionAuditEntryModel] = []
     for entry in entries:
+        used_version = entry.policy_contract_version_used
+        drift = (
+            bool(used_version and active_version and used_version != active_version)
+            if used_version or active_version
+            else None
+        )
         models.append(
             DecisionAuditEntryModel(
                 trace_id=entry.trace_id,
@@ -36,6 +46,9 @@ async def get_decisions_for_trace(trace_id: str) -> List[DecisionAuditEntryModel
                 risk_level=entry.risk_level,
                 created_at=entry.created_at.isoformat(),
                 decision=entry.decision,
+                policy_contract_version_used=used_version,
+                policy_contract_version_active=active_version,
+                policy_drift=drift,
             )
         )
     return models

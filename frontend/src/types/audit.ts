@@ -9,6 +9,9 @@ export interface DecisionAuditEntry {
   risk_level?: string | null;
   created_at: string; // ISO string
   decision: DecisionOutcome;
+  policy_contract_version_used?: string | null;
+  policy_contract_version_active?: string | null;
+  policy_drift?: boolean | null;
 }
 
 /**

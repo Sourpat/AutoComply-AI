@@ -25,6 +25,7 @@ class DecisionAuditEntry:
     status: str
     reason: str
     risk_level: Optional[str]
+    policy_contract_version_used: Optional[str]
     created_at: datetime
     decision: DecisionOutcome
 
@@ -62,6 +63,13 @@ class DecisionLog:
 
         decision = apply_policy(decision, decision_type=decision_type)
 
+        policy_contract_version_used: Optional[str] = None
+        policy_trace = decision.policy_trace
+        if isinstance(policy_trace, dict):
+            used_value = policy_trace.get("contract_version_used")
+            if used_value is not None:
+                policy_contract_version_used = str(used_value)
+
         entry = DecisionAuditEntry(
             trace_id=trace_id,
             engine_family=engine_family,
@@ -69,6 +77,7 @@ class DecisionLog:
             status=decision.status.value if hasattr(decision.status, "value") else str(decision.status),
             reason=decision.reason,
             risk_level=decision.risk_level,
+            policy_contract_version_used=policy_contract_version_used,
             created_at=datetime.now(timezone.utc),
             decision=decision,
         )

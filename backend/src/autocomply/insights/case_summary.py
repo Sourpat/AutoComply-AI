@@ -79,6 +79,9 @@ def _to_models(entries: list) -> list[DecisionAuditEntryModel]:
                 risk_level=entry.risk_level,
                 created_at=getattr(entry.created_at, "isoformat", lambda: "")(),
                 decision=entry.decision,
+                policy_contract_version_used=getattr(
+                    entry, "policy_contract_version_used", None
+                ),
             )
         )
     return models

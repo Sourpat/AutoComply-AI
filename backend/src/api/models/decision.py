@@ -65,3 +65,6 @@ class DecisionAuditEntryModel(BaseModel):
     risk_level: Optional[str] = None
     created_at: str
     decision: DecisionOutcome
+    policy_contract_version_used: Optional[str] = None
+    policy_contract_version_active: Optional[str] = None
+    policy_drift: Optional[bool] = None

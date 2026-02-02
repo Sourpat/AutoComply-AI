@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
-import { getWorkQueue, type WorkQueueSubmission } from "../api/consoleClient";
+import type { WorkQueueResponse, WorkQueueSubmission } from "../api/consoleClient";
 import { DecisionTraceDrawer } from "../components/audit/DecisionTraceDrawer";
 import { AgentActionPanel } from "../components/agentic/AgentActionPanel";
 import { AgentEventTimeline } from "../components/agentic/AgentEventTimeline";
@@ -24,6 +24,7 @@ import {
 } from "../components/ui/select";
 import { Skeleton } from "../components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import type { PolicyTrace } from "../types/decision";
 import type { CaseEvent } from "../contracts/agentic";
 import { useAgentPlan } from "../hooks/useAgentPlan";
 import { API_BASE } from "../lib/api";
@@ -218,6 +219,7 @@ export function AgenticWorkbenchPage() {
   const [packetHash, setPacketHash] = useState<string | null>(null);
   const [visibleEvidenceCount, setVisibleEvidenceCount] = useState(50);
   const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
+  const [activeContractVersion, setActiveContractVersion] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const caseId = selectedCaseId ?? "";
@@ -258,21 +260,110 @@ export function AgenticWorkbenchPage() {
     [cases, selectedCaseId]
   );
 
+  const normalizeWorkQueueItem = useCallback(
+    (item: Record<string, any>, index: number): WorkQueueSubmission => {
+      const createdAt =
+        item.created_at ??
+        item.createdAt ??
+        item.created ??
+        item.updated_at ??
+        item.updatedAt ??
+        new Date().toISOString();
+      const updatedAt = item.updated_at ?? item.updatedAt ?? createdAt;
+      const submissionId =
+        item.submission_id ??
+        item.submissionId ??
+        item.case_id ??
+        item.caseId ??
+        item.id ??
+        `case-${index}`;
+      return {
+        submission_id: String(submissionId),
+        csf_type: item.csf_type ?? item.csfType ?? item.decisionType ?? item.decision_type ?? "csf",
+        tenant: item.tenant ?? item.organization ?? item.org ?? "unknown",
+        status: item.status ?? item.state ?? "submitted",
+        priority: item.priority ?? item.sla_status ?? "medium",
+        created_at: String(createdAt),
+        updated_at: String(updatedAt),
+        title: item.title ?? item.name ?? `Case ${submissionId}`,
+        subtitle: item.subtitle ?? item.summary ?? "",
+        summary: item.summary ?? null,
+        trace_id: item.trace_id ?? item.traceId ?? item.trace ?? "",
+        payload: (item.payload ?? {}) as Record<string, unknown>,
+        decision_status: item.decision_status ?? item.decisionStatus ?? null,
+        risk_level: item.risk_level ?? item.riskLevel ?? null,
+        reviewer_notes: item.reviewer_notes ?? item.reviewerNotes ?? null,
+        reviewed_by: item.reviewed_by ?? item.reviewedBy ?? null,
+        reviewed_at: item.reviewed_at ?? item.reviewedAt ?? null,
+      };
+    },
+    []
+  );
+
+  const normalizeWorkQueueResponse = useCallback(
+    (data: any): WorkQueueResponse => {
+      if (data && Array.isArray(data.items)) {
+        const items = data.items.map((item: any, index: number) =>
+          item?.submission_id ? (item as WorkQueueSubmission) : normalizeWorkQueueItem(item, index)
+        );
+        return {
+          items,
+          statistics: data.statistics ?? {},
+          total: data.total ?? items.length,
+        };
+      }
+
+      if (Array.isArray(data)) {
+        const items = data.map((item: any, index: number) => normalizeWorkQueueItem(item, index));
+        return {
+          items,
+          statistics: {},
+          total: items.length,
+        };
+      }
+
+      return { items: [], statistics: {}, total: 0 };
+    },
+    [normalizeWorkQueueItem]
+  );
+
   const loadCases = useCallback(async () => {
     setLoadingCases(true);
     setCasesError(null);
+    const endpoints = [
+      `${API_BASE}/api/workflow/cases?limit=50`,
+      `${API_BASE}/api/agentic/cases?limit=50`,
+      `${API_BASE}/api/console/work-queue?limit=50`,
+    ];
+    let lastError: string | null = null;
+
     try {
-      const response = await getWorkQueue(undefined, undefined, 200);
-      setCases(response.items ?? []);
-      if (!selectedCaseId && response.items.length > 0) {
-        setSelectedCaseId(response.items[0].submission_id);
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(endpoint);
+          if (!response.ok) {
+            console.warn(`[AgenticWorkbench] Cases endpoint failed (${response.status}): ${endpoint}`);
+            lastError = `Failed to load cases (${response.status})`;
+            continue;
+          }
+          const data = await response.json();
+          const normalized = normalizeWorkQueueResponse(data);
+          setCases(normalized.items ?? []);
+          if (!selectedCaseId && normalized.items.length > 0) {
+            setSelectedCaseId(normalized.items[0].submission_id);
+          }
+          return;
+        } catch (err) {
+          console.warn(`[AgenticWorkbench] Cases endpoint failed: ${endpoint}`);
+          lastError = err instanceof Error ? err.message : "Failed to load cases";
+        }
       }
-    } catch (err) {
-      setCasesError(err instanceof Error ? err.message : "Failed to load cases");
+      setCases([]);
+      setCasesError(lastError ?? "Failed to load cases");
     } finally {
       setLoadingCases(false);
     }
-  }, [selectedCaseId]);
+  }, [normalizeWorkQueueResponse, selectedCaseId]);
 
   const loadEvents = useCallback(async () => {
     if (!caseId) return;
@@ -629,6 +720,43 @@ export function AgenticWorkbenchPage() {
     });
   }, [auditNotes, evidenceItems, evidenceState, events, humanEvents, plan, selectedCase]);
 
+  const policyTrace = useMemo<PolicyTrace | null>(() => {
+    const payload = selectedCase?.payload as { decision?: { policy_trace?: PolicyTrace } } | null;
+    const payloadTrace = payload?.decision?.policy_trace ?? (payload as any)?.policy_trace;
+    const packetTrace = (packetBase as any)?.decision?.policy_trace as PolicyTrace | undefined;
+    return payloadTrace ?? packetTrace ?? null;
+  }, [packetBase, selectedCase]);
+
+  useEffect(() => {
+    let active = true;
+    if (!policyTrace?.contract_version_used) {
+      setActiveContractVersion(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    fetch(`${API_BASE}/api/policy/contracts/active`)
+      .then((resp) => (resp.ok ? resp.json() : null))
+      .then((data) => {
+        if (!active) return;
+        const version = data?.version ? String(data.version) : null;
+        setActiveContractVersion(version);
+      })
+      .catch(() => {
+        if (active) setActiveContractVersion(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [policyTrace?.contract_version_used]);
+
+  const policyDrift = useMemo(() => {
+    if (!policyTrace?.contract_version_used || !activeContractVersion) return false;
+    return policyTrace.contract_version_used !== activeContractVersion;
+  }, [activeContractVersion, policyTrace]);
+
   useEffect(() => {
     let active = true;
     if (!packetBase) {
@@ -945,6 +1073,10 @@ export function AgenticWorkbenchPage() {
             <Badge variant={statusTone[selectedCase?.status ?? "submitted"] ?? "secondary"}>
               {selectedCase?.status ?? "unknown"}
             </Badge>
+            {policyTrace?.allowed_action && (
+              <Badge variant="secondary">Policy {policyTrace.allowed_action.replace("_", " ")}</Badge>
+            )}
+            {policyDrift && <Badge variant="warning">Policy Drift</Badge>}
             <Badge variant={riskTone[normalizeRisk(selectedCase?.risk_level)] ?? "secondary"}>
               Risk {normalizeRisk(selectedCase?.risk_level)}
             </Badge>
@@ -968,6 +1100,68 @@ export function AgenticWorkbenchPage() {
             Override decision
           </Button>
         </div>
+
+        {policyTrace && (
+          <div className="space-y-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Policy Trace</h4>
+            <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-xs">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div>
+                  <p className="text-[11px] text-muted-foreground">Allowed action</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {policyTrace.allowed_action}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-muted-foreground">Contract version</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {policyTrace.contract_version_used}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-muted-foreground">Fail safe</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {policyTrace.fail_safe ? "Yes" : "No"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-muted-foreground">Reason codes</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {policyTrace.reason_codes?.length ? policyTrace.reason_codes.join(", ") : "--"}
+                  </p>
+                </div>
+              </div>
+
+              {policyTrace.gates?.length ? (
+                <div className="mt-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Gates
+                  </p>
+                  <div className="mt-2 overflow-x-auto">
+                    <table className="w-full text-left text-[11px]">
+                      <thead className="text-[10px] uppercase text-muted-foreground">
+                        <tr>
+                          <th className="pb-1 pr-3">Gate</th>
+                          <th className="pb-1 pr-3">Pass</th>
+                          <th className="pb-1">Explanation</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {policyTrace.gates.map((gate, idx) => (
+                          <tr key={`${gate.gate_name}-${idx}`} className="border-t border-border/50">
+                            <td className="py-1 pr-3 text-foreground">{gate.gate_name}</td>
+                            <td className="py-1 pr-3 text-foreground">{gate.pass ? "Yes" : "No"}</td>
+                            <td className="py-1 text-muted-foreground">{gate.explanation}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
 
         <div className="space-y-2">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Audit analytics</h4>

@@ -254,6 +254,7 @@ app.include_router(decision_insights.router)
 app.include_router(case_summary.router)
 app.include_router(tenant_debug.router)
 app.include_router(console.router)
+app.include_router(console.router, prefix="/api")
 
 # Learn After First Unknown routes
 app.include_router(chat.router)
@@ -272,6 +273,7 @@ app.include_router(policy_contracts.router)
 
 # Workflow Console - Step 2.10
 app.include_router(workflow_router)
+app.include_router(workflow_router, prefix="/api")
 
 # Intelligence - Phase 7.1
 app.include_router(intelligence_router)

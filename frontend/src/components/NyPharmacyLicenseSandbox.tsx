@@ -498,6 +498,7 @@ export function NyPharmacyLicenseSandbox() {
               <DecisionStatusBadge
                 status={decision.status}
                 riskLevel={decision.risk_level ?? undefined}
+                policyTrace={(decision as { policy_trace?: any }).policy_trace}
               />
             </p>
             <p>

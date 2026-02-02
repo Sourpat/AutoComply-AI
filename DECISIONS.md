@@ -36,6 +36,42 @@
 
 ## Decisions
 
+### [2026-02-02] Surface policy drift in audit + Workbench
+
+**Context**: Phase 9.4 requires highlighting when historical decisions were made under a different AI decision contract than the current active contract.
+
+**Decision**: Persist `contract_version_used` per decision audit entry, compute drift against the active contract in audit/trace APIs, and surface a Policy Drift badge in Workbench and the decision audit timeline.
+
+**Rationale**:
+- Keeps decision records immutable while providing current-policy context
+- Avoids schema changes by computing drift at read time
+- Minimal UI update for demo clarity
+
+**Consequences**:
+- Positive: Clear drift visibility for auditors and demos
+- Negative: Additional API mapping logic for audit endpoints
+- Neutral: No change to decision logic or persistence layer
+
+**Status**: Accepted
+
+### [2026-02-02] Add Workbench case endpoint fallback + API aliases
+
+**Context**: Agentic Workbench cases were not loading reliably due to inconsistent API route prefixes across console/workflow/agentic endpoints.
+
+**Decision**: Add frontend fallback to try /api/workflow/cases, /api/agentic/cases, and /api/console/work-queue in order, and add backend alias routes for /api/workflow/cases and /api/console/work-queue.
+
+**Rationale**:
+- Avoids breaking existing routes while improving resilience
+- Keeps changes additive with no schema updates
+- Aligns Workbench with existing workflow and console sources
+
+**Consequences**:
+- Positive: Workbench can load cases across deployments with differing route prefixes
+- Negative: Additional mapping logic in the Workbench loader
+- Neutral: Existing endpoints remain unchanged
+
+**Status**: Accepted
+
 ### [2026-02-01] Add read-time execution preview (Phase 8.1)
 
 **Context**: Phase 8.1 requires a read-only SDX execution preview derived from existing audit packet signals without changing decision logic.

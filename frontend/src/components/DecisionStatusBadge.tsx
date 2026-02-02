@@ -1,12 +1,13 @@
 import React from "react";
 
-import type { DecisionStatus } from "../types/decision";
+import type { DecisionStatus, PolicyTrace } from "../types/decision";
 import { RiskPill } from "./RiskPill";
 
 interface DecisionStatusBadgeProps {
   status: DecisionStatus | null | undefined;
   labelPrefix?: string;
   riskLevel?: string | null;
+  policyTrace?: PolicyTrace | null;
 }
 
 /**
@@ -17,6 +18,7 @@ export function DecisionStatusBadge({
   status,
   labelPrefix,
   riskLevel,
+  policyTrace,
 }: DecisionStatusBadgeProps) {
   if (!status) {
     return <span className="badge badge-unknown">unknown</span>;
@@ -41,14 +43,29 @@ export function DecisionStatusBadge({
     </span>
   );
 
-  if (!riskLevel) {
-    return badge;
-  }
+  const policyAction = policyTrace?.allowed_action;
+  const policyLabelMap: Record<string, string> = {
+    auto_decide: "Policy: Auto",
+    require_human: "Policy: Review",
+    escalate: "Policy: Escalate",
+    block: "Policy: Block",
+  };
+  const policyClassMap: Record<string, string> = {
+    auto_decide: "badge badge-ok",
+    require_human: "badge badge-degraded",
+    escalate: "badge badge-degraded",
+    block: "badge badge-down",
+  };
 
   return (
     <span className="inline-flex items-center gap-2">
       {badge}
-      <RiskPill riskLevel={riskLevel} />
+      {policyAction && (
+        <span className={policyClassMap[policyAction] ?? "badge badge-unknown"}>
+          {policyLabelMap[policyAction] ?? "Policy"}
+        </span>
+      )}
+      {riskLevel && <RiskPill riskLevel={riskLevel} />}
     </span>
   );
 }

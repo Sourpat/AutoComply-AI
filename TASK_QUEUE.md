@@ -2,7 +2,7 @@
 
 **Last Updated**: 2026-02-01
 
-**Active WIP**: 1
+**Active WIP**: 0
 
 ---
 
@@ -27,18 +27,34 @@
 **Notes**: Related to Phase 7.29 SLA issue
 ```
 
-### Phase 9.1 — AI Decision Contract (Core Artifact)
-**Status**: in-progress
+### BUG-201: Fix Workbench cases loading
+**Status**: blocked
 **Assigned**: GitHub Copilot
-**Goal**: Establish the AI decision contract as the source of truth with schema validation, versioning, seeding, and read-only APIs
+**Goal**: Ensure the Agentic Workbench case list loads reliably via API fallback + alias routes
 **Acceptance Criteria**:
-- [ ] Contract model/entity defined
-- [ ] Schema validation enforced for contract payload
-- [ ] Versioning + active contract resolution
-- [ ] Seed v1 active contract
-- [ ] Read-only APIs for contract access
+- [ ] Workbench tries /api/workflow/cases, /api/agentic/cases, /api/console/work-queue in order
+- [ ] Failed endpoint logs one clear console warning
+- [ ] /api/console/work-queue alias returns work queue payload
+- [ ] /api/workflow/cases alias returns workflow cases payload
+- [ ] No DB schema changes
 **Verification**:
-- Manual review of contract API responses
+- `npm -C frontend run build`
+- `Invoke-RestMethod http://127.0.0.1:8001/api/workflow/cases?limit=10`
+- `Invoke-RestMethod http://127.0.0.1:8001/api/agentic/cases?limit=10`
+**Dependencies**: None
+**Notes**: Blocked pending backend restart verification for /api/workflow and /api/console aliases.
+
+### Phase 9.4 — Policy Drift surfacing
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Persist contract version per decision, compute drift vs active contract, and surface Policy Drift in Workbench + audit timeline
+**Acceptance Criteria**:
+- [x] Decision audit entries store `contract_version_used`
+- [x] Audit/trace APIs return drift fields vs active contract
+- [x] Workbench shows Policy Drift badge
+- [x] Audit timeline shows Policy Drift badge
+**Verification**:
+- `npm -C frontend run build`
 **Dependencies**: None
 
 ---
@@ -72,6 +88,11 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 9.4 — Policy Drift surfacing
+**Completed**: 2026-02-02
+**Commit**: (pending)
+**Summary**: Added contract version capture, drift metadata in audit/trace APIs, and Policy Drift badges in Workbench + audit timeline.
+
 ### P8.9: Validation & polish (Phase 8.9)
 **Completed**: 2026-02-01
 **Commit**: (pending)
@@ -87,15 +108,10 @@
 **Commit**: (pending)
 **Summary**: Extended governance narrative with SDX sections derived from execution preview.
 
-### P8.6: Execution preview UI integration (Phase 8.6)
-**Completed**: 2026-02-01
+### Phase 9.1 — AI Decision Contract (Core Artifact)
+**Completed**: 2026-02-02
 **Commit**: (pending)
-**Summary**: Added collapsed execution preview sections with summary chips and empty states.
-
-### P8.5: Execution confidence vs decision confidence (Phase 8.5)
-**Completed**: 2026-02-01
-**Commit**: (pending)
-**Summary**: Added execution confidence score and factor breakdown.
+**Summary**: Delivered AI decision contract schema, seed, read-only APIs, and startup migration safeguards.
 
 ---
 

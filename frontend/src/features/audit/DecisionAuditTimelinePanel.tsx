@@ -84,6 +84,7 @@ export const DecisionAuditTimelinePanel: React.FC = () => {
       FAMILY_BADGE_CLASS[family] ?? "bg-zinc-900/60 text-zinc-200 border-zinc-700/70";
 
     const decision: DecisionOutcome = entry.decision;
+    const policyDrift = entry.policy_drift === true;
 
     return (
       <div key={`${entry.engine_family}-${entry.decision_type}-${index}`} className="flex gap-3">
@@ -104,8 +105,13 @@ export const DecisionAuditTimelinePanel: React.FC = () => {
               <span className="text-[11px] text-zinc-400">{entry.decision_type}</span>
             </div>
             <div className="flex items-center gap-2">
-              <DecisionStatusBadge status={decision.status} />
+              <DecisionStatusBadge status={decision.status} policyTrace={decision.policy_trace} />
               <RiskPill riskLevel={decision.risk_level ?? undefined} />
+              {policyDrift && (
+                <span className="rounded-full border px-2 py-0.5 text-[10px] font-semibold bg-amber-950/60 text-amber-200 border-amber-700/70">
+                  Policy Drift
+                </span>
+              )}
             </div>
           </div>
 

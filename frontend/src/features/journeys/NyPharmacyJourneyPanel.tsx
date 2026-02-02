@@ -162,7 +162,7 @@ export const NyPharmacyJourneyPanel: React.FC = () => {
             <div className="text-xs font-semibold text-zinc-50">{title}</div>
             {decision && (
               <div className="flex items-center gap-2">
-                <DecisionStatusBadge status={decision.status} />
+                <DecisionStatusBadge status={decision.status} policyTrace={decision.policy_trace} />
                 <RiskPill riskLevel={decision.risk_level ?? undefined} />
               </div>
             )}
