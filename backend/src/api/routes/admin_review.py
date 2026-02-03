@@ -46,6 +46,7 @@ class ReviewQueueItemResponse(BaseModel):
     draft_answer: Optional[str] = None
     draft_metadata: Optional[dict] = None  # Triage, top_matches, scores
     final_answer: Optional[str] = None
+    notes: Optional[str] = None
     assigned_to: Optional[str] = None
     tags: Optional[List[str]] = None
     priority: int
@@ -150,6 +151,7 @@ async def list_review_items(
             draft_answer=item.draft_answer,
             draft_metadata=item.draft_metadata,
             final_answer=item.final_answer,
+            notes=item.notes,
             assigned_to=item.assigned_to,
             tags=item.tags,
             priority=item.priority,
@@ -195,6 +197,7 @@ async def get_review_item(
         draft_answer=item.draft_answer,
         draft_metadata=item.draft_metadata,
         final_answer=item.final_answer,
+        notes=item.notes,
         assigned_to=item.assigned_to,
         tags=item.tags,
         priority=item.priority,

@@ -3,7 +3,7 @@
 SQLite database connection and session management for Learn After First Unknown feature.
 """
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from pathlib import Path
@@ -49,3 +49,15 @@ def init_db():
     """
     from src.database import models  # Import here to avoid circular dependency
     Base.metadata.create_all(bind=engine)
+    _ensure_review_queue_notes_schema()
+
+
+def _ensure_review_queue_notes_schema() -> None:
+    with engine.connect() as conn:
+        columns = conn.execute(text("PRAGMA table_info(review_queue_items)")).fetchall()
+        if not columns:
+            return
+        existing = {row[1] for row in columns}
+        if "notes" not in existing:
+            conn.execute(text("ALTER TABLE review_queue_items ADD COLUMN notes TEXT"))
+            conn.commit()

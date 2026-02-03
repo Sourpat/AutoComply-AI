@@ -169,7 +169,7 @@ export function ChatBot() {
     } catch (error) {
       console.error("Chat error:", error);
       setErrorDetails(toApiErrorDetails(error, { url: "/api/chat/ask" }));
-      const errorMessage: Message = { role: "assistant", content: "Sorry, an error occurred. Please try again." };
+      const errorMessage: Message = { role: "assistant", content: "Backend failed to queue item. Please try again." };
       updateConversation(activeConversationId, { messages: [...updatedMessages, errorMessage] });
     } finally {
       setLoading(false);

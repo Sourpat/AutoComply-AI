@@ -34,6 +34,7 @@ class ReviewQueueService:
         question_event_id: int,
         draft_answer: Optional[str] = None,
         draft_metadata: Optional[dict] = None,
+        notes: Optional[str] = None,
         tags: Optional[List[str]] = None,
         priority: int = 0
     ) -> ReviewQueueItem:
@@ -45,6 +46,7 @@ class ReviewQueueService:
             status=ReviewStatus.OPEN,
             draft_answer=draft_answer,
             draft_metadata=draft_metadata,
+            notes=notes,
             tags=tags,
             priority=priority
         )

@@ -217,6 +217,15 @@ def _ensure_policy_overrides_schema() -> None:
     )
 
 
+def _ensure_review_queue_notes_schema() -> None:
+    if not _table_exists("review_queue_items"):
+        return
+
+    existing_columns = _get_table_columns("review_queue_items")
+    if "notes" not in existing_columns:
+        execute_update("ALTER TABLE review_queue_items ADD COLUMN notes TEXT;")
+
+
 def _ensure_safe_failure_schema() -> None:
     # Safe failure payloads are embedded in decision/audit JSON; no schema changes required.
     return
@@ -227,6 +236,7 @@ def startup_migrations() -> None:
     _ensure_intelligence_history_schema()
     _ensure_trace_fields_schema()
     _ensure_policy_overrides_schema()
+    _ensure_review_queue_notes_schema()
     ensure_ai_decision_contract()
     _ensure_safe_failure_schema()
 

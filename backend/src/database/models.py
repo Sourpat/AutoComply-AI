@@ -138,6 +138,7 @@ class ReviewQueueItem(Base):
     draft_answer = Column(Text, nullable=True)  # AI-generated draft (marked as draft)
     draft_metadata = Column(JSON, nullable=True)  # Draft context: top_matches, scores, triage
     final_answer = Column(Text, nullable=True)  # Human-approved answer
+    notes = Column(Text, nullable=True)  # Internal notes for reviewers/system
     assigned_to = Column(String(255), nullable=True)  # Reviewer username/email
     
     # Metadata

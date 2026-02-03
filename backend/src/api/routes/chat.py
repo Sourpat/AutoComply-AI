@@ -531,7 +531,7 @@ async def _ask_question_internal(
         # Create review queue item
         queue_item = review_service.create_review_item(
             question_event_id=question_event.id,
-            priority="normal",
+            priority=0,
             notes="RAG features disabled - manual answer needed"
         )
         
@@ -593,7 +593,7 @@ async def _ask_question_internal(
         
         queue_item = review_service.create_review_item(
             question_event_id=question_event.id,
-            priority="normal",
+            priority=0,
             notes=f"Import error: {str(e)}"
         )
         
