@@ -49,6 +49,7 @@ export function ReviewQueuePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<ApiErrorDetails | null>(null);
+  const [isLocked, setIsLocked] = useState(false);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [notesModal, setNotesModal] = useState<{ open: boolean; submission: WorkQueueSubmission | null }>({ 
     open: false, 
@@ -66,21 +67,42 @@ export function ReviewQueuePage() {
 
   // Fetch work queue items
   async function fetchItems() {
+    if (!isAdmin) {
+      setIsLocked(true);
+      setLoading(false);
+      setError(null);
+      setErrorDetails(null);
+      return;
+    }
     setLoading(true);
     setError(null);
     setErrorDetails(null);
+    setIsLocked(false);
     try {
       const response = await getWorkQueue(undefined, "submitted,in_review", 100);
       setItems(response.items);
     } catch (err) {
+      const details = toApiErrorDetails(err);
+      const message = details.message.toLowerCase();
+      const isForbidden = details.status === 403 || message.includes("forbidden") || message.includes("admin_access_required");
+      if (isForbidden) {
+        setIsLocked(true);
+        setError(null);
+        setErrorDetails(null);
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to load review queue");
-      setErrorDetails(toApiErrorDetails(err));
+      setErrorDetails(details);
     } finally {
       setLoading(false);
     }
   }
 
   async function fetchAgenticCases() {
+    if (!isAdmin) {
+      setAgenticLoading(false);
+      return;
+    }
     setAgenticLoading(true);
     setAgenticError(null);
     setAgenticErrorDetails(null);
@@ -99,6 +121,10 @@ export function ReviewQueuePage() {
   }
 
   async function seedDemoCases() {
+    if (!isAdmin) {
+      toast.error("Admin mode required to seed demo cases");
+      return;
+    }
     try {
       await apiFetch("/api/agentic/demo/seed", { method: "POST" });
       toast.success("Demo cases created");
@@ -110,11 +136,11 @@ export function ReviewQueuePage() {
 
   useEffect(() => {
     fetchItems();
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     fetchAgenticCases();
-  }, []);
+  }, [isAdmin]);
 
   // Admin state sync
   useEffect(() => {
@@ -230,7 +256,7 @@ export function ReviewQueuePage() {
   };
 
   // If not admin, show access denied
-  if (!isAdmin) {
+  if (!isAdmin || isLocked) {
     return (
       <div className="space-y-6">
         <PageHeader

@@ -5,6 +5,7 @@ Review Queue service for managing human-in-the-loop workflow.
 
 from typing import List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError
 from datetime import datetime, timezone
 import logging
 
@@ -50,9 +51,28 @@ class ReviewQueueService:
             tags=tags,
             priority=priority
         )
-        
-        self.db.add(review_item)
-        self.db.commit()
+
+        try:
+            self.db.add(review_item)
+            self.db.commit()
+        except OperationalError as exc:
+            self.db.rollback()
+            message = str(exc).lower()
+            if "review_queue_items" in message and "notes" in message:
+                review_item = ReviewQueueItem(
+                    question_event_id=question_event_id,
+                    status=ReviewStatus.OPEN,
+                    draft_answer=draft_answer,
+                    draft_metadata=draft_metadata,
+                    notes=None,
+                    tags=tags,
+                    priority=priority
+                )
+                self.db.add(review_item)
+                self.db.commit()
+            else:
+                raise
+
         self.db.refresh(review_item)
         
         logger.info(f"Created review queue item {review_item.id} for question event {question_event_id}")

@@ -168,8 +168,14 @@ export function ChatBot() {
       });
     } catch (error) {
       console.error("Chat error:", error);
-      setErrorDetails(toApiErrorDetails(error, { url: "/api/chat/ask" }));
-      const errorMessage: Message = { role: "assistant", content: "Backend failed to queue item. Please try again." };
+      const details = toApiErrorDetails(error, { url: "/api/chat/ask" });
+      setErrorDetails(details);
+      const errorMessage: Message = {
+        role: "assistant",
+        content: details.status === 422
+          ? "Please enter a valid question."
+          : "Backend failed to queue item. Please try again.",
+      };
       updateConversation(activeConversationId, { messages: [...updatedMessages, errorMessage] });
     } finally {
       setLoading(false);

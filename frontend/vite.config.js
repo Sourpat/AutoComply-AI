@@ -65,7 +65,7 @@ export default defineConfig({
       "/workflow": { target: "http://127.0.0.1:8001", changeOrigin: true },
       "/rag": { target: "http://127.0.0.1:8001", changeOrigin: true },
       "/api/analytics": { target: "http://127.0.0.1:8001", changeOrigin: true },
-      "/admin": { target: "http://127.0.0.1:8001", changeOrigin: true },
+      // "/admin" is a SPA route. Keep it on the frontend.
       "/submissions": { target: "http://127.0.0.1:8001", changeOrigin: true },
       "/api": { target: "http://127.0.0.1:8001", changeOrigin: true },
       "/csf/practitioner": { target: "http://127.0.0.1:8001", changeOrigin: true },
@@ -83,8 +83,7 @@ export default defineConfig({
       "/console/stats": { target: "http://127.0.0.1:8001", changeOrigin: true },
       "/ai/decisions": { target: "http://127.0.0.1:8001", changeOrigin: true },
       "/cases": { target: "http://127.0.0.1:8001", changeOrigin: true },
-      "/chat": { target: "http://127.0.0.1:8001", changeOrigin: true },
-      "/admin-review": { target: "http://127.0.0.1:8001", changeOrigin: true },
+      // NOTE: Do not proxy SPA routes like /chat or /admin/*; Vite should serve index.html.
       "/metrics": { target: "http://127.0.0.1:8001", changeOrigin: true },
       "/kb-admin": { target: "http://127.0.0.1:8001", changeOrigin: true },
       "/demo": { target: "http://127.0.0.1:8001", changeOrigin: true },
