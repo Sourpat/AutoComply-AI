@@ -5,11 +5,12 @@
  * Handles all API communication with the backend analytics service.
  */
 
-import { API_BASE } from '../lib/api';
+import { API_BASE, apiFetch } from '../lib/api';
 import { getAuthHeaders } from '../lib/authHeaders';
 import { cachedFetchJson } from './apiCache';
 
 const ANALYTICS_BASE = `${API_BASE}/api/analytics`;
+const CONSOLE_ANALYTICS_BASE = "/api/console/analytics";
 
 // ============================================================================
 // Types
@@ -68,6 +69,22 @@ export interface AnalyticsResponse {
   verifierActivity: VerifierActivityItem[];
   evidenceTags: EvidenceTagItem[];
   requestInfoReasons: RequestInfoBreakdownItem[];
+}
+
+export interface ConsoleAnalyticsSummaryResponse {
+  total_cases: number;
+  open_cases: number;
+  closed_cases: number;
+  overdue_cases: number;
+  due_24h: number;
+  status_breakdown: Array<{ name: string; count: number }>;
+  decision_type_breakdown: Array<{ name: string; count: number }>;
+  cases_created_daily: Array<{ date: string; count: number }>;
+  cases_closed_daily: Array<{ date: string; count: number }>;
+  top_event_types: Array<{ name: string; count: number }>;
+  verifier_activity: Array<{ name: string; count: number }>;
+  top_evidence_tags: Array<{ name: string; count: number }>;
+  request_info_reasons: Array<{ name: string; count: number }>;
 }
 
 export interface SLAMetrics {
@@ -184,4 +201,15 @@ export async function getAnalyticsEvidence(): Promise<EvidenceMetrics> {
   return cachedFetchJson<EvidenceMetrics>(`${ANALYTICS_BASE}/evidence`, {
     headers: getAuthHeaders(),
   });
+}
+
+/**
+ * Console analytics summary (Phase 10.5)
+ */
+export async function getConsoleAnalyticsSummary(days: number = 30): Promise<ConsoleAnalyticsSummaryResponse> {
+  const params = new URLSearchParams({ days: String(days) });
+  return apiFetch<ConsoleAnalyticsSummaryResponse>(
+    `${CONSOLE_ANALYTICS_BASE}/summary?${params.toString()}`,
+    { headers: getAuthHeaders() }
+  );
 }

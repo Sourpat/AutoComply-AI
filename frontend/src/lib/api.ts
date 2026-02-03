@@ -1,75 +1,73 @@
 // frontend/src/lib/api.ts
-// Centralized API base URL and fetch wrapper with timeout + error handling
+// Centralized API base URL and fetch wrapper with timeout + diagnostics
 
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- * API Base URL Configuration
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Single source of truth for backend API location. All API clients import
- * API_BASE from this module to ensure consistent configuration.
- * 
- * USAGE:
- * ------
- * Development (with Vite proxy):
- *   - Leave VITE_API_BASE_URL empty in .env
- *   - Vite dev server proxies API requests to http://127.0.0.1:8001
- *   - This file auto-detects localhost and uses http://127.0.0.1:8001
- * 
- * Development (without proxy):
- *   - Set VITE_API_BASE_URL=http://127.0.0.1:8001 in .env
- *   - Direct API calls to backend (no proxy)
- * 
- * Production (hosted deployment):
- *   - Set VITE_API_BASE_URL=https://your-backend-url.onrender.com in .env.production
- *   - Or set via platform environment variables (Render, Vercel, Netlify, etc.)
- *   - REQUIRED: Must be set at build time for production deployments
- * 
- * CRITICAL: Empty string env vars (VITE_API_BASE_URL="") should NOT override
- * the localhost fallback. This was causing "Request timeout" errors in local dev.
- * 
- * Resolution order:
- * 1. Non-empty VITE_API_BASE_URL or VITE_API_BASE env var (production)
- * 2. http://127.0.0.1:8001 for localhost/127.0.0.1 hostnames (development)
- * 3. Same-origin (window.location) for deployed environments without env var
+ * Single source of truth for backend API location.
+ *
+ * Use VITE_API_BASE_URL at build time. If empty, fall back to same-origin
+ * by keeping API_BASE as an empty string.
  */
-function getApiBase(): string {
-  const metaEnv = (import.meta as any)?.env ?? {};
-  
-  // Production: Use VITE_API_BASE_URL from environment (set at build time)
-  // Example: VITE_API_BASE_URL=https://autocomply-ai.onrender.com
-  const envBase = metaEnv.VITE_API_BASE_URL || metaEnv.VITE_API_BASE;
-  if (envBase && envBase.trim()) {
-    return envBase.trim();
-  }
-  
-  // Development: Auto-detect localhost and use backend on port 8001
-  // Works with or without Vite proxy configuration
-  if (
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1")
-  ) {
-    return "http://127.0.0.1:8001";
-  }
-  
-  // Production fallback: Use Render backend if no env var set
-  // TODO: Replace with actual Render backend URL once deployed
-  if (typeof window !== "undefined") {
-    return "https://autocomply-ai.onrender.com";
-  }
-  
-  // SSR fallback
-  return "https://autocomply-ai.onrender.com";
-}
-
-export const API_BASE = getApiBase();
-const metaEnv = (import.meta as any).env || {};
+const metaEnv = (import.meta as any)?.env ?? {};
+export const API_BASE = (metaEnv.VITE_API_BASE_URL ?? "").trim();
 const isDev = metaEnv.DEV;
 
 // Log resolved API_BASE for debugging (dev only)
 if (isDev && typeof window !== "undefined") {
-  console.info("[AutoComply API] Backend URL:", API_BASE);
+  console.info("[AutoComply API] Backend URL:", API_BASE || "(same-origin)");
+}
+
+export type ApiErrorDetails = {
+  message: string;
+  url: string;
+  status?: number;
+  statusText?: string;
+  bodySnippet?: string;
+  requestId?: string | null;
+  correlationId?: string | null;
+  traceId?: string | null;
+};
+
+export class ApiRequestError extends Error {
+  details: ApiErrorDetails;
+
+  constructor(details: ApiErrorDetails) {
+    super(details.message);
+    this.name = "ApiRequestError";
+    this.details = details;
+  }
+}
+
+export function toApiErrorDetails(
+  error: unknown,
+  fallback?: Partial<ApiErrorDetails>
+): ApiErrorDetails {
+  if (error instanceof ApiRequestError) {
+    return error.details;
+  }
+
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      url: fallback?.url || "",
+      status: fallback?.status,
+      statusText: fallback?.statusText,
+      bodySnippet: fallback?.bodySnippet,
+      requestId: fallback?.requestId,
+      correlationId: fallback?.correlationId,
+      traceId: fallback?.traceId,
+    };
+  }
+
+  return {
+    message: "Unknown API error",
+    url: fallback?.url || "",
+    status: fallback?.status,
+    statusText: fallback?.statusText,
+    bodySnippet: fallback?.bodySnippet,
+    requestId: fallback?.requestId,
+    correlationId: fallback?.correlationId,
+    traceId: fallback?.traceId,
+  };
 }
 
 export interface ApiFetchOptions extends RequestInit {
@@ -126,6 +124,8 @@ export async function apiFetch<T = any>(
 
     // Phase 7.33: Capture X-Request-Id from response for tracing
     const requestId = response.headers.get("X-Request-Id");
+    const correlationId = response.headers.get("X-Correlation-Id");
+    const traceId = response.headers.get("X-Trace-Id");
     if (requestId && isDev) {
       console.log(`[API Request-Id] ${requestId}`);
     }
@@ -138,47 +138,62 @@ export async function apiFetch<T = any>(
     if (!response.ok) {
       let errorDetail = "";
       let errorData: any = null;
-      
+      let rawBody = "";
+
       try {
+        rawBody = await response.text();
         const contentType = response.headers.get("content-type");
-        if (contentType?.includes("application/json")) {
-          errorData = await response.json();
-          
-          // Handle FastAPI validation errors (detail array)
-          if (Array.isArray(errorData.detail)) {
+        if (contentType?.includes("application/json") && rawBody) {
+          try {
+            errorData = JSON.parse(rawBody);
+          } catch {
+            errorData = null;
+          }
+
+          if (errorData && Array.isArray(errorData.detail)) {
             const validationErrors = errorData.detail
               .map((err: any) => {
-                const field = err.loc?.slice(1).join('.') || 'field';
+                const field = err.loc?.slice(1).join(".") || "field";
                 return `${field}: ${err.msg}`;
               })
-              .join('; ');
+              .join("; ");
             errorDetail = `Validation error - ${validationErrors}`;
-          } else if (errorData.detail) {
+          } else if (errorData?.detail) {
             errorDetail = errorData.detail;
-          } else if (errorData.message) {
+          } else if (errorData?.message) {
             errorDetail = errorData.message;
-          } else {
+          } else if (errorData) {
             errorDetail = JSON.stringify(errorData);
           }
-        } else {
-          errorDetail = await response.text();
+        } else if (rawBody) {
+          errorDetail = rawBody;
         }
-      } catch (parseErr) {
+      } catch {
         errorDetail = response.statusText;
       }
 
-      const errorMessage = `${response.status} ${response.statusText}${errorDetail ? `: ${errorDetail}` : ''}`;
-      
-      if (isDev) {
-        console.error(`[API Error] ${options.method || "GET"} ${url}`, {
-          status: response.status,
-          statusText: response.statusText,
-          detail: errorDetail,
-          data: errorData,
-        });
-      }
-      
-      throw new Error(errorMessage);
+      const bodySnippet = rawBody ? rawBody.slice(0, 500) : undefined;
+      const errorMessage = `${response.status} ${response.statusText}${errorDetail ? `: ${errorDetail}` : ""}`;
+
+      console.error(`[API Failure] ${options.method || "GET"} ${url}`, {
+        status: response.status,
+        statusText: response.statusText,
+        bodySnippet,
+        requestId,
+        correlationId,
+        traceId,
+      });
+
+      throw new ApiRequestError({
+        message: errorMessage,
+        url,
+        status: response.status,
+        statusText: response.statusText,
+        bodySnippet,
+        requestId,
+        correlationId,
+        traceId,
+      });
     }
 
     // Parse successful response
@@ -204,28 +219,28 @@ export async function apiFetch<T = any>(
 
     // Handle AbortController timeout
     if (error.name === "AbortError") {
-      const timeoutError = new Error(
-        `Request timed out after ${timeout}ms. Backend may not be running at ${API_BASE}. Check: 1) Backend is running, 2) No CORS issues, 3) Network connectivity.`
-      );
       console.error(`[API Timeout] ${options.method || "GET"} ${url}`, {
         timeout,
         apiBase: API_BASE,
         path,
       });
-      throw timeoutError;
+      throw new ApiRequestError({
+        message: `Request timed out after ${timeout}ms.`,
+        url,
+      });
     }
 
     // Handle network/fetch errors
     if (error instanceof TypeError && error.message.includes("fetch")) {
-      const networkError = new Error(
-        `Network error: Cannot connect to backend at ${API_BASE}. Verify backend is running and accessible.`
-      );
       console.error(`[API Network Error]`, {
         url,
         apiBase: API_BASE,
         originalError: error.message,
       });
-      throw networkError;
+      throw new ApiRequestError({
+        message: `Network error: Cannot connect to backend at ${API_BASE || "(same-origin)"}.`,
+        url,
+      });
     }
 
     // Re-throw formatted errors from non-2xx responses

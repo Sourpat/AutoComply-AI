@@ -20,7 +20,7 @@
  * SETUP:
  * [ ] Backend: .venv\Scripts\python -m uvicorn src.api.main:app --port 8001
  * [ ] Frontend: npm run dev
- * [ ] Health: curl http://localhost:8001/workflow/health
+ * [ ] Health: curl <API_BASE_URL>/workflow/health
  * 
  * TEST 1: Backend Mode
  * [ ] Submit CSF Practitioner form

@@ -36,6 +36,24 @@
 
 ## Decisions
 
+### [2026-02-03] Diagnostics-first fetch + console analytics summary (Phase 10.5)
+
+**Context**: Review Queue, Ops, and Analytics dashboards had silent failures and inconsistent API bases across prod/local, and analytics lacked a stable summary contract.
+
+**Decision**: Standardize frontend requests through a diagnostics-first `apiFetch` that logs request URL, status, body snippet, and correlation headers on failures; surface error panels in the Review Queue, Ops, and Analytics pages. Add a minimal `/api/console/analytics/summary` endpoint that returns a stable aggregate payload for the Analytics Dashboard.
+
+**Rationale**:
+- Reduces time-to-debug by making endpoint failures visible in UI
+- Keeps API base consistent without production localhost fallbacks
+- Provides a single analytics contract for fast dashboard wiring
+
+**Consequences**:
+- Positive: Faster ops/debug loop, fewer silent failures
+- Negative: Adds lightweight aggregation queries on summary endpoint
+- Neutral: Existing analytics endpoints remain available
+
+**Status**: Accepted
+
 ### [2026-02-03] Demo reset guard + ops smoke checks (Phase 10.3)
 
 **Context**: Recruiter demos require safe reset tooling without risking destructive actions in production, plus a single smoke endpoint for deployment checks.

@@ -1,33 +1,50 @@
 // frontend/src/components/ReviewQueueList.tsx
 import { useState, useEffect } from "react";
 import {
+  buildReviewQueueItemsPath,
   getReviewQueueItems,
   type ReviewQueueItem,
   type ReviewQueueListResponse,
 } from "../api/reviewQueueClient";
-import { API_BASE } from "../lib/api";
+import { API_BASE, apiFetch, toApiErrorDetails, type ApiErrorDetails } from "../lib/api";
 import { calculateChatMetrics, inferChatRiskLevel } from "../lib/metrics";
 import { ReviewQueueLayout } from "../pages/review-queue/ui/ReviewQueueLayout";
 import { FiltersPanel } from "../pages/review-queue/ui/FiltersPanel";
 import { QueueRow } from "../pages/review-queue/ui/QueueRow";
 import { ReviewPanel } from "../pages/review-queue/ui/ReviewPanel";
 import { ReviewQueueItemUI, RiskLevel } from "../pages/review-queue/ui/types";
+import { ApiErrorPanel } from "./ApiErrorPanel";
+import { useRole } from "../context/RoleContext";
 
 export function ReviewQueueList() {
   const [data, setData] = useState<ReviewQueueListResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [errorDetails, setErrorDetails] = useState<ApiErrorDetails | null>(null);
+  const [lastStatus, setLastStatus] = useState<number | null>(null);
+  const [lastEndpoint, setLastEndpoint] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("open");
   const [reasonFilter, setReasonFilter] = useState<string>("");
   const [riskFilter, setRiskFilter] = useState<string>("");
   const [resetting, setResetting] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
+  const { role } = useRole();
 
   const loadQueue = async () => {
     setLoading(true);
+    setErrorDetails(null);
     try {
+      const endpointPath = buildReviewQueueItemsPath(statusFilter);
+      setLastEndpoint(endpointPath);
       const result = await getReviewQueueItems(statusFilter);
-      setData(result);
+      const normalized = normalizeReviewQueueResponse(result);
+      setData(normalized);
+      setLastStatus(200);
     } catch (error) {
+      const endpointPath = buildReviewQueueItemsPath(statusFilter);
+      const endpointUrl = endpointPath.startsWith("http") ? endpointPath : `${API_BASE}${endpointPath}`;
+      const details = toApiErrorDetails(error, { url: endpointUrl });
+      setErrorDetails(details);
+      setLastStatus(details.status ?? null);
       console.error("Failed to load review queue:", error);
     } finally {
       setLoading(false);
@@ -41,18 +58,9 @@ export function ReviewQueueList() {
 
     setResetting(true);
     try {
-      const response = await fetch(`${API_BASE}/api/v1/demo/reset`, {
+      const result = await apiFetch<any>("/api/v1/demo/reset", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
       });
-
-      if (!response.ok) {
-        throw new Error(`Reset failed: ${response.statusText}`);
-      }
-
-      const result = await response.json();
       console.log("Demo reset result:", result);
       alert(`Demo reset successful! Seeded ${result.seeded.kb_entries} KB entries.`);
       
@@ -131,6 +139,42 @@ export function ReviewQueueList() {
     assigned_to: item.assigned_to,
   });
 
+  const normalizeReviewQueueResponse = (payload: any): ReviewQueueListResponse => {
+    if (Array.isArray(payload)) {
+      return buildReviewQueueResponse(payload);
+    }
+    if (payload && Array.isArray(payload.items)) {
+      return buildReviewQueueResponse(payload.items, payload.stats, payload.total);
+    }
+    if (payload && Array.isArray(payload.data)) {
+      return buildReviewQueueResponse(payload.data, payload.stats, payload.total);
+    }
+    return buildReviewQueueResponse([]);
+  };
+
+  const buildReviewQueueResponse = (
+    items: ReviewQueueItem[],
+    stats?: ReviewQueueListResponse["stats"],
+    total?: number
+  ): ReviewQueueListResponse => {
+    const computedStats = stats ?? items.reduce(
+      (acc, item) => {
+        if (item.status === "open") acc.open += 1;
+        if (item.status === "in_review") acc.in_review += 1;
+        if (item.status === "published") acc.published += 1;
+        acc.total += 1;
+        return acc;
+      },
+      { open: 0, in_review: 0, published: 0, total: 0 }
+    );
+
+    return {
+      items,
+      total: typeof total === "number" ? total : items.length,
+      stats: computedStats,
+    };
+  };
+
   return (
     <div className="bg-slate-950 text-gray-100 p-6 min-h-screen">
       <div className="max-w-[1600px] mx-auto">
@@ -202,9 +246,22 @@ export function ReviewQueueList() {
           <div className="text-center py-12">
             <div className="text-slate-400">Loading chat review queue...</div>
           </div>
+        ) : errorDetails ? (
+          <ApiErrorPanel
+            error={errorDetails}
+            title="Unable to load review queue"
+            onRetry={loadQueue}
+          />
         ) : !data ? (
           <div className="bg-slate-900/60 ring-1 ring-white/10 rounded-lg p-12 text-center">
-            <div className="text-slate-400 text-lg">No data available</div>
+            <div className="text-slate-300 text-lg">0 items loaded</div>
+            <div className="mt-2 text-slate-500 text-sm">The review queue is empty or the service returned no rows.</div>
+            <button
+              onClick={loadQueue}
+              className="mt-4 px-4 py-2 rounded-lg bg-slate-800 text-slate-100 hover:bg-slate-700"
+            >
+              Refresh
+            </button>
           </div>
         ) : (() => {
           const filteredItems = applyFilters(data.items);
@@ -304,6 +361,20 @@ export function ReviewQueueList() {
             />
           );
         })()}
+        {role === "devsupport" && (
+          <div className="mt-6 rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-2 text-[11px] text-slate-400">
+            <div>Diagnostics (DevSupport only)</div>
+            <div className="mt-1 font-mono text-slate-500">
+              API_BASE: {API_BASE || "(same-origin)"}
+            </div>
+            <div className="mt-1 font-mono text-slate-500">
+              Endpoint: {lastEndpoint || "(not loaded)"}
+            </div>
+            <div className="mt-1 font-mono text-slate-500">
+              Last status: {lastStatus ?? "n/a"}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -35,8 +35,10 @@ export function isAdminUnlocked(): boolean {
  * Get base headers for API requests with role
  */
 export function getAuthHeaders(): Record<string, string> {
+  const role = getCurrentRole();
   return {
-    'X-AutoComply-Role': getCurrentRole(),
+    'X-AutoComply-Role': role,
+    'X-User-Role': role,
   };
 }
 
@@ -44,8 +46,10 @@ export function getAuthHeaders(): Record<string, string> {
  * Get headers for JSON API requests with role
  */
 export function getJsonHeaders(): Record<string, string> {
+  const role = getCurrentRole();
   return {
     'Content-Type': 'application/json',
-    'X-AutoComply-Role': getCurrentRole(),
+    'X-AutoComply-Role': role,
+    'X-User-Role': role,
   };
 }

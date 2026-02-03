@@ -32,7 +32,8 @@ import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { cn } from "../lib/utils";
 import { formatTimestamp } from "../lib/formatters";
 import { getStatusLabel, getStatusTone } from "../lib/formatters";
-import { API_BASE } from "../lib/api";
+import { apiFetch, toApiErrorDetails, type ApiErrorDetails } from "../lib/api";
+import { ApiErrorPanel } from "../components/ApiErrorPanel";
 
 export function ReviewQueuePage() {
   type AgenticCaseSummary = {
@@ -47,6 +48,7 @@ export function ReviewQueuePage() {
   const [items, setItems] = useState<WorkQueueSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<ApiErrorDetails | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [notesModal, setNotesModal] = useState<{ open: boolean; submission: WorkQueueSubmission | null }>({ 
     open: false, 
@@ -59,17 +61,20 @@ export function ReviewQueuePage() {
   const [agenticCases, setAgenticCases] = useState<AgenticCaseSummary[]>([]);
   const [agenticLoading, setAgenticLoading] = useState(true);
   const [agenticError, setAgenticError] = useState<string | null>(null);
+  const [agenticErrorDetails, setAgenticErrorDetails] = useState<ApiErrorDetails | null>(null);
   const [selectedAgenticCaseId, setSelectedAgenticCaseId] = useState<string | null>(null);
 
   // Fetch work queue items
   async function fetchItems() {
     setLoading(true);
     setError(null);
+    setErrorDetails(null);
     try {
       const response = await getWorkQueue(undefined, "submitted,in_review", 100);
       setItems(response.items);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load review queue");
+      setErrorDetails(toApiErrorDetails(err));
     } finally {
       setLoading(false);
     }
@@ -78,18 +83,16 @@ export function ReviewQueuePage() {
   async function fetchAgenticCases() {
     setAgenticLoading(true);
     setAgenticError(null);
+    setAgenticErrorDetails(null);
     try {
-      const response = await fetch(`${API_BASE}/api/agentic/cases`);
-      if (!response.ok) {
-        throw new Error(`Failed to load agentic cases (${response.status})`);
-      }
-      const data = (await response.json()) as AgenticCaseSummary[];
+      const data = await apiFetch<AgenticCaseSummary[]>("/api/agentic/cases");
       setAgenticCases(data);
       if (!selectedAgenticCaseId && data.length > 0) {
         setSelectedAgenticCaseId(data[0].caseId);
       }
     } catch (err) {
       setAgenticError(err instanceof Error ? err.message : "Failed to load agentic cases");
+      setAgenticErrorDetails(toApiErrorDetails(err));
     } finally {
       setAgenticLoading(false);
     }
@@ -97,12 +100,7 @@ export function ReviewQueuePage() {
 
   async function seedDemoCases() {
     try {
-      const response = await fetch(`${API_BASE}/api/agentic/demo/seed`, {
-        method: "POST",
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to seed demo cases (${response.status})`);
-      }
+      await apiFetch("/api/agentic/demo/seed", { method: "POST" });
       toast.success("Demo cases created");
       await fetchAgenticCases();
     } catch (err) {
@@ -288,13 +286,19 @@ export function ReviewQueuePage() {
             </Button>
           </div>
 
-          {agenticError && (
+          {agenticErrorDetails ? (
+            <ApiErrorPanel
+              error={agenticErrorDetails}
+              title="Unable to load agentic cases"
+              onRetry={fetchAgenticCases}
+            />
+          ) : agenticError ? (
             <ErrorState
               title="Unable to load agentic cases"
               description={agenticError}
               onRetry={fetchAgenticCases}
             />
-          )}
+          ) : null}
 
           {agenticLoading ? (
             <div className="space-y-2">
@@ -369,13 +373,19 @@ export function ReviewQueuePage() {
             </div>
           </div>
 
-          {error && (
+          {errorDetails ? (
+            <ApiErrorPanel
+              error={errorDetails}
+              title="Unable to load review queue"
+              onRetry={fetchItems}
+            />
+          ) : error ? (
             <ErrorState
               title="Unable to load review queue"
               description={error}
               onRetry={fetchItems}
             />
-          )}
+          ) : null}
 
           {loading && items.length === 0 ? (
             <div className="space-y-3">

@@ -1,5 +1,8 @@
 // frontend/src/api/reviewQueueClient.ts
-import { API_BASE } from "../lib/api";
+import { apiFetch } from "../lib/api";
+import { getAuthHeaders, getJsonHeaders } from "../lib/authHeaders";
+
+const REVIEW_QUEUE_BASE = "/api/v1/admin/review-queue";
 
 export interface ReviewQueueItem {
   id: number;
@@ -30,83 +33,57 @@ export interface ReviewQueueListResponse {
   };
 }
 
+export function buildReviewQueueItemsPath(
+  status?: string,
+  limit: number = 50,
+  offset: number = 0
+): string {
+  const params = new URLSearchParams();
+  if (status) params.append("status", status);
+  params.append("limit", limit.toString());
+  params.append("offset", offset.toString());
+  return `${REVIEW_QUEUE_BASE}/items?${params}`;
+}
+
 export async function getReviewQueueItems(
   status?: string,
   limit: number = 50,
   offset: number = 0
 ): Promise<ReviewQueueListResponse> {
-  const params = new URLSearchParams();
-  if (status) params.append("status", status);
-  params.append("limit", limit.toString());
-  params.append("offset", offset.toString());
-
-  const resp = await fetch(
-    `${API_BASE}/api/v1/admin/review-queue/items?${params}`
-  );
-
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch review queue: ${resp.status}`);
-  }
-
-  return resp.json();
+  const path = buildReviewQueueItemsPath(status, limit, offset);
+  return apiFetch<ReviewQueueListResponse>(path, {
+    headers: getAuthHeaders(),
+  });
 }
 
 export async function getReviewQueueItem(
   itemId: number
 ): Promise<ReviewQueueItem> {
-  const resp = await fetch(
-    `${API_BASE}/api/v1/admin/review-queue/items/${itemId}`
-  );
-
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch review item: ${resp.status}`);
-  }
-
-  return resp.json();
+  return apiFetch<ReviewQueueItem>(`${REVIEW_QUEUE_BASE}/items/${itemId}`, {
+    headers: getAuthHeaders(),
+  });
 }
 
 export async function assignReviewItem(
   itemId: number,
   assignedTo: string
 ): Promise<any> {
-  const resp = await fetch(
-    `${API_BASE}/api/v1/admin/review-queue/items/${itemId}/assign`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ assigned_to: assignedTo }),
-    }
-  );
-
-  if (!resp.ok) {
-    throw new Error(`Failed to assign review item: ${resp.status}`);
-  }
-
-  return resp.json();
+  return apiFetch(`${REVIEW_QUEUE_BASE}/items/${itemId}/assign`, {
+    method: "POST",
+    headers: getJsonHeaders(),
+    body: JSON.stringify({ assigned_to: assignedTo }),
+  });
 }
 
 export async function updateDraftAnswer(
   itemId: number,
   draftAnswer: string
 ): Promise<any> {
-  const resp = await fetch(
-    `${API_BASE}/api/v1/admin/review-queue/items/${itemId}/update-draft`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ draft_answer: draftAnswer }),
-    }
-  );
-
-  if (!resp.ok) {
-    throw new Error(`Failed to update draft answer: ${resp.status}`);
-  }
-
-  return resp.json();
+  return apiFetch(`${REVIEW_QUEUE_BASE}/items/${itemId}/update-draft`, {
+    method: "POST",
+    headers: getJsonHeaders(),
+    body: JSON.stringify({ draft_answer: draftAnswer }),
+  });
 }
 
 export async function publishAnswer(
@@ -114,45 +91,22 @@ export async function publishAnswer(
   finalAnswer: string,
   tags?: string[]
 ): Promise<any> {
-  const resp = await fetch(
-    `${API_BASE}/api/v1/admin/review-queue/items/${itemId}/publish`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ final_answer: finalAnswer, tags }),
-    }
-  );
-
-  if (!resp.ok) {
-    throw new Error(`Failed to publish answer: ${resp.status}`);
-  }
-
-  return resp.json();
+  return apiFetch(`${REVIEW_QUEUE_BASE}/items/${itemId}/publish`, {
+    method: "POST",
+    headers: getJsonHeaders(),
+    body: JSON.stringify({ final_answer: finalAnswer, tags }),
+  });
 }
 
 export async function rejectReviewItem(itemId: number): Promise<any> {
-  const resp = await fetch(
-    `${API_BASE}/api/v1/admin/review-queue/items/${itemId}/reject`,
-    {
-      method: "POST",
-    }
-  );
-
-  if (!resp.ok) {
-    throw new Error(`Failed to reject review item: ${resp.status}`);
-  }
-
-  return resp.json();
+  return apiFetch(`${REVIEW_QUEUE_BASE}/items/${itemId}/reject`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
 }
 
 export async function getQueueStats(): Promise<any> {
-  const resp = await fetch(`${API_BASE}/api/v1/admin/review-queue/stats`);
-
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch queue stats: ${resp.status}`);
-  }
-
-  return resp.json();
+  return apiFetch(`${REVIEW_QUEUE_BASE}/stats`, {
+    headers: getAuthHeaders(),
+  });
 }

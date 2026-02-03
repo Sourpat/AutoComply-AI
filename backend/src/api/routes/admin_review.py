@@ -17,6 +17,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+import logging
 
 from src.database.connection import get_db
 from src.database.models import ReviewStatus, ReviewQueueItem, QuestionEvent
@@ -28,6 +30,8 @@ router = APIRouter(
     tags=["admin", "review-queue"],
     dependencies=[Depends(require_admin_role)],  # All endpoints require admin role
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -111,15 +115,23 @@ async def list_review_items(
                 detail=f"Invalid status: {status}. Must be one of: open, in_review, approved, published"
             )
     
-    # Get items
-    items = review_service.get_queue_items(
-        status=review_status,
-        limit=limit,
-        offset=offset
-    )
-    
-    # Get stats
-    stats = review_service.get_queue_stats()
+    try:
+        # Get items
+        items = review_service.get_queue_items(
+            status=review_status,
+            limit=limit,
+            offset=offset
+        )
+
+        # Get stats
+        stats = review_service.get_queue_stats()
+    except SQLAlchemyError as exc:
+        logger.warning("Review queue tables unavailable: %s", exc)
+        return ReviewQueueListResponse(
+            items=[],
+            total=0,
+            stats={"open": 0, "in_review": 0, "published": 0, "total": 0},
+        )
     
     # Build response
     response_items = []

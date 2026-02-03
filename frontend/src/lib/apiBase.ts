@@ -4,15 +4,14 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Single source of truth for backend API location. All API clients should
- * import API_BASE from src/lib/api.ts (which re-exports this module).
+ * import API_BASE from src/lib/api.ts.
  * 
  * USAGE PATTERNS:
  * ---------------
  * 
  * DEVELOPMENT (Local):
- *   • Leave VITE_API_BASE_URL empty in .env → Uses Vite proxy
- *   • Auto-detects localhost and uses http://127.0.0.1:8001
- *   • Vite dev server proxies API routes to backend (no CORS issues)
+ *   • Set VITE_API_BASE_URL explicitly to your backend URL
+ *   • Or leave empty to use same-origin (Vite proxy recommended)
  *   • Example .env:
  *       VITE_API_BASE_URL=
  *       VITE_APP_ENV=dev
@@ -32,48 +31,13 @@
  *   ⚠️  Changing VITE_API_BASE_URL requires rebuilding the frontend
  *   ⚠️  Empty strings ("") are treated as undefined (uses fallback)
  * 
- * CRITICAL BUG FIX:
- *   Empty string env vars (VITE_API_BASE_URL="") were overriding the
- *   localhost fallback, causing "Request timeout" errors in local dev.
- *   Now we properly treat empty strings as undefined.
+ * NOTE:
+ *   Empty string env vars (VITE_API_BASE_URL="") will fall back to same-origin.
  */
 
-const getApiBase = (): string => {
-  const metaEnv = (import.meta as any)?.env ?? {};
-  
-  // Production: Use VITE_API_BASE_URL from environment (required for hosted deployments)
-  // Platforms: Render, Vercel, Netlify, Railway, Heroku, etc.
-  const envBase = metaEnv.VITE_API_BASE_URL || metaEnv.VITE_API_BASE;
-  if (envBase && envBase.trim()) {
-    return envBase.trim();
-  }
+import { API_BASE } from "./api";
 
-  // Development: Auto-detect localhost and use backend on port 8001
-  // Frontend runs on 5173 (Vite), backend on 8001 (uvicorn)
-  if (
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1")
-  ) {
-    return "http://127.0.0.1:8001";
-  }
-
-  // Fallback: Same-origin (not recommended for production)
-  // Always set VITE_API_BASE_URL explicitly in production builds
-  if (typeof window !== "undefined") {
-    return `${window.location.protocol}//${window.location.host}`;
-  }
-
-  // SSR fallback
-  return "http://localhost:8001";
-};
-
-export const API_BASE = getApiBase();
-
-// Developer visibility: log the resolved API base on page load
-if (typeof window !== "undefined") {
-  console.info("[AutoComply API] Backend URL:", API_BASE);
-}
+export { API_BASE };
 
 /**
  * Helper to safely parse error responses from FastAPI

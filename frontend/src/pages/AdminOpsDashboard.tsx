@@ -21,7 +21,9 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { API_BASE } from "../lib/api";
+import { apiFetch, toApiErrorDetails, type ApiErrorDetails } from "../lib/api";
+import { getAuthHeaders } from "../lib/authHeaders";
+import { ApiErrorPanel } from "../components/ApiErrorPanel";
 import {
   VerificationWorkEvent,
   VerificationSource,
@@ -174,7 +176,13 @@ export function AdminOpsDashboard() {
   const [kpis, setKpis] = useState<OpsKPI | null>(null);
   const [reviews, setReviews] = useState<OpsReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<ApiErrorDetails | null>(null);
+  const [healthSummary, setHealthSummary] = useState<any | null>(null);
+  const [opsSmoke, setOpsSmoke] = useState<any | null>(null);
+  const [signingStatus, setSigningStatus] = useState<any | null>(null);
+  const [healthError, setHealthError] = useState<ApiErrorDetails | null>(null);
+  const [opsError, setOpsError] = useState<ApiErrorDetails | null>(null);
+  const [signingError, setSigningError] = useState<ApiErrorDetails | null>(null);
   
   const [filters, setFilters] = useState<Filters>({
     status: "",
@@ -187,25 +195,44 @@ export function AdminOpsDashboard() {
   // Fetch data on mount
   useEffect(() => {
     loadDashboardData();
+    loadHealthBlocks();
   }, []);
+
+  const loadHealthBlocks = async () => {
+    setHealthError(null);
+    setOpsError(null);
+    setSigningError(null);
+
+    try {
+      const data = await apiFetch("/health/full", { headers: getAuthHeaders() });
+      setHealthSummary(data);
+    } catch (err) {
+      setHealthError(toApiErrorDetails(err, { url: "/health/full" }));
+    }
+
+    try {
+      const data = await apiFetch("/api/ops/smoke", { headers: getAuthHeaders() });
+      setOpsSmoke(data);
+    } catch (err) {
+      setOpsError(toApiErrorDetails(err, { url: "/api/ops/smoke" }));
+    }
+
+    try {
+      const data = await apiFetch("/api/audit/signing/status", { headers: getAuthHeaders() });
+      setSigningStatus(data);
+    } catch (err) {
+      setSigningError(toApiErrorDetails(err, { url: "/api/audit/signing/status" }));
+    }
+  };
 
   const loadDashboardData = async () => {
     setLoading(true);
-    setError(null);
+    setErrorDetails(null);
     
     try {
-      const [kpiRes, reviewsRes] = await Promise.all([
-        fetch(`${API_BASE}/api/v1/admin/ops/summary`),
-        fetch(`${API_BASE}/api/v1/admin/ops/reviews?days=14&limit=100`),
-      ]);
-
-      if (!kpiRes.ok || !reviewsRes.ok) {
-        throw new Error("Failed to load dashboard data");
-      }
-
       const [kpiData, reviewsData] = await Promise.all([
-        kpiRes.json(),
-        reviewsRes.json(),
+        apiFetch<OpsKPI>("/api/v1/admin/ops/summary", { headers: getAuthHeaders() }),
+        apiFetch<OpsReviewItem[]>("/api/v1/admin/ops/reviews?days=14&limit=100", { headers: getAuthHeaders() }),
       ]);
 
       // Enrich reviews with source
@@ -218,10 +245,15 @@ export function AdminOpsDashboard() {
       setReviews(enrichedReviews);
     } catch (err) {
       console.error("Dashboard load error:", err);
-      setError("Unable to load dashboard. Please try again later.");
+      setErrorDetails(toApiErrorDetails(err, { url: "/api/v1/admin/ops/summary" }));
     } finally {
       setLoading(false);
     }
+  };
+
+  const refreshAll = () => {
+    loadDashboardData();
+    loadHealthBlocks();
   };
 
   // Filter reviews client-side
@@ -329,20 +361,15 @@ export function AdminOpsDashboard() {
     );
   }
 
-  if (error) {
+  if (errorDetails) {
     return (
       <div className="bg-gray-900 text-gray-100 min-h-screen p-6">
         <div className="max-w-7xl mx-auto">
-          <div className="bg-red-900/30 border border-red-700 rounded-lg p-6 text-center">
-            <h2 className="text-xl font-bold text-red-300 mb-2">Error Loading Dashboard</h2>
-            <p className="text-red-200 mb-4">{error}</p>
-            <button
-              onClick={loadDashboardData}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-            >
-              Retry
-            </button>
-          </div>
+          <ApiErrorPanel
+            error={errorDetails}
+            title="Error loading dashboard"
+            onRetry={refreshAll}
+          />
         </div>
       </div>
     );
@@ -372,6 +399,68 @@ export function AdminOpsDashboard() {
             >
               Compliance Console
             </button>
+          </div>
+        </div>
+
+        {/* System Health */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xl font-bold">System Health</h2>
+            <button
+              onClick={refreshAll}
+              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-md text-sm font-medium"
+            >
+              Refresh
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-gray-800 border border-slate-700 rounded-lg p-4">
+              <div className="text-gray-400 text-sm mb-1">Health / Build</div>
+              <div className="text-lg font-semibold text-emerald-300">
+                {healthSummary?.status ?? "unknown"}
+              </div>
+              <div className="text-xs text-gray-500 mt-2">
+                build_sha: {healthSummary?.build_sha ?? "unknown"}
+              </div>
+            </div>
+            <div className="bg-gray-800 border border-slate-700 rounded-lg p-4">
+              <div className="text-gray-400 text-sm mb-1">Ops Smoke</div>
+              <div className="text-xs text-gray-300 mt-1">
+                db_ok: {String(opsSmoke?.db_ok ?? "?")}
+              </div>
+              <div className="text-xs text-gray-300">
+                schema_ok: {String(opsSmoke?.schema_ok ?? "?")}
+              </div>
+              <div className="text-xs text-gray-300">
+                routes_ok: {String(opsSmoke?.routes_ok ?? "?")}
+              </div>
+              <div className="text-xs text-gray-500 mt-2">
+                env: {opsSmoke?.env ?? "unknown"}
+              </div>
+            </div>
+            <div className="bg-gray-800 border border-slate-700 rounded-lg p-4">
+              <div className="text-gray-400 text-sm mb-1">Signing</div>
+              <div className="text-xs text-gray-300 mt-1">
+                enabled: {String(signingStatus?.enabled ?? "?")}
+              </div>
+              <div className="text-xs text-gray-300">
+                key_fingerprint: {signingStatus?.key_fingerprint ?? "n/a"}
+              </div>
+              <div className="text-xs text-gray-500 mt-2">
+                env: {signingStatus?.environment ?? "unknown"}
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+            {healthError && (
+              <ApiErrorPanel error={healthError} title="Health check" onRetry={loadHealthBlocks} compact />
+            )}
+            {opsError && (
+              <ApiErrorPanel error={opsError} title="Ops smoke" onRetry={loadHealthBlocks} compact />
+            )}
+            {signingError && (
+              <ApiErrorPanel error={signingError} title="Signing status" onRetry={loadHealthBlocks} compact />
+            )}
           </div>
         </div>
 

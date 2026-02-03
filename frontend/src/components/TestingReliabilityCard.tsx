@@ -1,6 +1,7 @@
 import React from "react";
 import { ShieldCheck, Activity, Bug } from "lucide-react";
 import { TestCoverageNote } from "./TestCoverageNote";
+import { API_BASE } from "../lib/api";
 
 function BulletRow({
   icon,
@@ -27,6 +28,7 @@ function BulletRow({
 }
 
 export function TestingReliabilityCard() {
+  const apiBaseForDocs = API_BASE || "<API_BASE_URL>";
   return (
     <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-4 text-sm text-slate-100 shadow-md shadow-black/30 backdrop-blur">
       <div className="flex items-start justify-between gap-2">
@@ -68,7 +70,7 @@ export function TestingReliabilityCard() {
           icon={<Bug className="h-3.5 w-3.5 text-amber-200" />}
           title="HTTP smoke tests"
           body={
-            "A lightweight script, `python scripts/smoke_test_autocomply.py --base-url http://localhost:8000`, calls key endpoints like /health, /csf/hospital/evaluate, and license/order mocks to catch wiring issues early."
+            `A lightweight script, \`python scripts/smoke_test_autocomply.py --base-url ${apiBaseForDocs}\`, calls key endpoints like /health, /csf/hospital/evaluate, and license/order mocks to catch wiring issues early.`
           }
         />
 

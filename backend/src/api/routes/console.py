@@ -6,6 +6,7 @@ real-time verification work queue, statistics, and trace data.
 """
 
 from datetime import datetime, timedelta, timezone
+import json
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -64,6 +65,32 @@ def _parse_window(window: str) -> timedelta:
     raise ValueError("window must be like '24h' or '7d'")
 
 
+def _table_exists(table_name: str) -> bool:
+    rows = execute_sql(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name = :table_name",
+        {"table_name": table_name},
+    )
+    return bool(rows)
+
+
+def _safe_count(query: str, params: dict | None = None) -> int:
+    rows = execute_sql(query, params or {})
+    if not rows:
+        return 0
+    return int(rows[0].get("count", 0))
+
+
+def _safe_group_count(query: str, params: dict | None = None, key: str = "name") -> list[dict]:
+    rows = execute_sql(query, params or {})
+    results: list[dict] = []
+    for row in rows:
+        name = row.get(key)
+        if name is None:
+            continue
+        results.append({"name": name, "count": int(row.get("count", 0))})
+    return results
+
+
 @router.get("/work-queue", response_model=WorkQueueResponse)
 async def get_work_queue(
     tenant: Optional[str] = Query(
@@ -107,6 +134,209 @@ async def get_work_queue(
     return WorkQueueResponse(
         items=items, statistics=statistics, total=len(items)
     )
+
+
+@router.get("/analytics/summary")
+async def get_console_analytics_summary(
+    days: int = Query(30, ge=1, le=365)
+) -> dict:
+    cutoff_dt = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff = cutoff_dt.isoformat().replace("+00:00", "Z")
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat().replace("+00:00", "Z")
+    soon_iso = (now + timedelta(hours=24)).isoformat().replace("+00:00", "Z")
+
+    if not _table_exists("cases"):
+        return {
+            "total_cases": 0,
+            "open_cases": 0,
+            "closed_cases": 0,
+            "overdue_cases": 0,
+            "due_24h": 0,
+            "status_breakdown": [],
+            "decision_type_breakdown": [],
+            "cases_created_daily": [],
+            "cases_closed_daily": [],
+            "top_event_types": [],
+            "verifier_activity": [],
+            "top_evidence_tags": [],
+            "request_info_reasons": [],
+        }
+
+    open_statuses = ("new", "in_review", "needs_info")
+    closed_statuses = ("approved", "blocked", "closed")
+
+    total_cases = _safe_count("SELECT COUNT(*) as count FROM cases")
+    open_cases = _safe_count(
+        "SELECT COUNT(*) as count FROM cases WHERE status IN (:s1, :s2, :s3)",
+        {"s1": open_statuses[0], "s2": open_statuses[1], "s3": open_statuses[2]},
+    )
+    closed_cases = _safe_count(
+        "SELECT COUNT(*) as count FROM cases WHERE status IN (:s1, :s2, :s3)",
+        {"s1": closed_statuses[0], "s2": closed_statuses[1], "s3": closed_statuses[2]},
+    )
+    overdue_cases = _safe_count(
+        """
+        SELECT COUNT(*) as count
+        FROM cases
+        WHERE due_at IS NOT NULL
+          AND due_at < :now
+          AND status IN (:s1, :s2, :s3)
+        """,
+        {"now": now_iso, "s1": open_statuses[0], "s2": open_statuses[1], "s3": open_statuses[2]},
+    )
+    due_24h = _safe_count(
+        """
+        SELECT COUNT(*) as count
+        FROM cases
+        WHERE due_at IS NOT NULL
+          AND due_at >= :now
+          AND due_at <= :soon
+          AND status IN (:s1, :s2, :s3)
+        """,
+        {
+            "now": now_iso,
+            "soon": soon_iso,
+            "s1": open_statuses[0],
+            "s2": open_statuses[1],
+            "s3": open_statuses[2],
+        },
+    )
+
+    status_breakdown = _safe_group_count(
+        "SELECT status as name, COUNT(*) as count FROM cases GROUP BY status",
+        key="name",
+    )
+    decision_type_breakdown = _safe_group_count(
+        "SELECT decision_type as name, COUNT(*) as count FROM cases GROUP BY decision_type",
+        key="name",
+    )
+
+    cases_created_daily = execute_sql(
+        """
+        SELECT substr(created_at, 1, 10) as date, COUNT(*) as count
+        FROM cases
+        WHERE created_at >= :cutoff
+        GROUP BY date
+        ORDER BY date
+        """,
+        {"cutoff": cutoff},
+    )
+
+    cases_closed_daily = execute_sql(
+        """
+        SELECT substr(resolved_at, 1, 10) as date, COUNT(*) as count
+        FROM cases
+        WHERE resolved_at IS NOT NULL AND resolved_at >= :cutoff
+        GROUP BY date
+        ORDER BY date
+        """,
+        {"cutoff": cutoff},
+    )
+
+    cases_created_daily = [
+        {"date": row.get("date"), "count": int(row.get("count", 0))}
+        for row in cases_created_daily
+        if row.get("date")
+    ]
+    cases_closed_daily = [
+        {"date": row.get("date"), "count": int(row.get("count", 0))}
+        for row in cases_closed_daily
+        if row.get("date")
+    ]
+
+    top_event_types: list[dict] = []
+    if _table_exists("audit_events"):
+        top_event_types = _safe_group_count(
+            """
+            SELECT event_type as name, COUNT(*) as count
+            FROM audit_events
+            WHERE created_at >= :cutoff
+            GROUP BY event_type
+            ORDER BY count DESC
+            LIMIT 10
+            """,
+            {"cutoff": cutoff},
+            key="name",
+        )
+
+    verifier_activity_map: dict[str, int] = {}
+    if _table_exists("policy_overrides"):
+        rows = execute_sql(
+            """
+            SELECT reviewer as name, COUNT(*) as count
+            FROM policy_overrides
+            WHERE created_at >= :cutoff
+            GROUP BY reviewer
+            """,
+            {"cutoff": cutoff},
+        )
+        for row in rows:
+            name = row.get("name") or "unknown"
+            verifier_activity_map[name] = verifier_activity_map.get(name, 0) + int(row.get("count", 0))
+
+    if _table_exists("case_decisions"):
+        rows = execute_sql(
+            """
+            SELECT COALESCE(decided_by_name, decided_by_role, 'unknown') as name,
+                   COUNT(*) as count
+            FROM case_decisions
+            WHERE created_at >= :cutoff
+              AND decision = 'APPROVED'
+            GROUP BY name
+            """,
+            {"cutoff": cutoff},
+        )
+        for row in rows:
+            name = row.get("name") or "unknown"
+            verifier_activity_map[name] = verifier_activity_map.get(name, 0) + int(row.get("count", 0))
+
+    verifier_activity = [
+        {"name": name, "count": count}
+        for name, count in sorted(verifier_activity_map.items(), key=lambda item: item[1], reverse=True)
+    ]
+
+    top_evidence_tags: list[dict] = []
+    if _table_exists("evidence_items"):
+        tag_counts: dict[str, int] = {}
+        rows = execute_sql(
+            "SELECT tags FROM evidence_items WHERE created_at >= :cutoff",
+            {"cutoff": cutoff},
+        )
+        for row in rows:
+            raw = row.get("tags")
+            if not raw:
+                continue
+            try:
+                tags = json.loads(raw) if isinstance(raw, str) else []
+            except json.JSONDecodeError:
+                tags = []
+            if not isinstance(tags, list):
+                continue
+            for tag in tags:
+                if not tag:
+                    continue
+                tag_counts[str(tag)] = tag_counts.get(str(tag), 0) + 1
+        top_evidence_tags = [
+            {"name": tag, "count": count}
+            for tag, count in sorted(tag_counts.items(), key=lambda item: item[1], reverse=True)[:10]
+        ]
+
+    return {
+        "total_cases": total_cases,
+        "open_cases": open_cases,
+        "closed_cases": closed_cases,
+        "overdue_cases": overdue_cases,
+        "due_24h": due_24h,
+        "status_breakdown": status_breakdown,
+        "decision_type_breakdown": decision_type_breakdown,
+        "cases_created_daily": cases_created_daily,
+        "cases_closed_daily": cases_closed_daily,
+        "top_event_types": top_event_types,
+        "verifier_activity": verifier_activity,
+        "top_evidence_tags": top_evidence_tags,
+        "request_info_reasons": [],
+    }
 
 
 

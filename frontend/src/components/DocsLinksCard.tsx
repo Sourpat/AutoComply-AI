@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Github, FileText, BookOpen, Terminal, Copy } from "lucide-react";
 import { copyToClipboard } from "../utils/clipboard";
+import { API_BASE } from "../lib/api";
 
 type DocsLinksCardProps = {
   repoUrl?: string;
@@ -23,6 +24,7 @@ export function DocsLinksCard({
     "idle"
   );
 
+  const apiBaseForDocs = API_BASE || "<API_BASE_URL>";
   const localRunSnippet = `# backend
 cd backend
 pip install -r requirements.txt
@@ -34,7 +36,7 @@ pnpm install
 pnpm dev
 
 # smoke test (backend running)
-python scripts/smoke_test_autocomply.py --base-url http://localhost:8000`;
+python scripts/smoke_test_autocomply.py --base-url ${apiBaseForDocs}`;
 
   async function handleCopyLocalRun() {
     try {

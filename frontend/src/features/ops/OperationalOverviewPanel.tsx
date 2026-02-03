@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { CopyCurlButton } from "../../components/CopyCurlButton";
 import { buildCurlCommand } from "../../utils/curl";
 import { useTraceSelection } from "../../state/traceSelectionContext";
+import { apiFetch, toApiErrorDetails, type ApiErrorDetails } from "../../lib/api";
+import { ApiErrorPanel } from "../../components/ApiErrorPanel";
 
 interface TenantWhoAmIResponse {
   tenant_id: string;
@@ -60,7 +62,10 @@ export const OperationalOverviewPanel: React.FC = () => {
   const [recentDecisions, setRecentDecisions] = useState<RecentDecisionItem[]>([]);
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [tenantError, setTenantError] = useState<ApiErrorDetails | null>(null);
+  const [healthError, setHealthError] = useState<ApiErrorDetails | null>(null);
+  const [caseError, setCaseError] = useState<ApiErrorDetails | null>(null);
+  const [recentError, setRecentError] = useState<ApiErrorDetails | null>(null);
 
   const [tenantCurl, setTenantCurl] = useState<string | null>(null);
 
@@ -69,14 +74,17 @@ export const OperationalOverviewPanel: React.FC = () => {
 
     const fetchRecentDecisions = async () => {
       try {
-        const resp = await fetch("/decisions/recent?limit=50");
-        if (!resp.ok) return;
-        const data = await resp.json();
-        if (!cancelled && Array.isArray(data)) {
-          setRecentDecisions(data);
+        const data = await apiFetch<RecentDecisionItem[]>(
+          "/decisions/recent?limit=50"
+        );
+        if (!cancelled) {
+          setRecentDecisions(Array.isArray(data) ? data : []);
+          setRecentError(null);
         }
-      } catch {
-        // silent fail; panel can still render other metrics
+      } catch (err) {
+        if (!cancelled) {
+          setRecentError(toApiErrorDetails(err, { url: "/decisions/recent?limit=50" }));
+        }
       }
     };
 
@@ -108,47 +116,49 @@ export const OperationalOverviewPanel: React.FC = () => {
 
   const handleRefresh = async () => {
     setLoading(true);
-    setError(null);
     setCaseSummary(null);
+    setTenantError(null);
+    setHealthError(null);
+    setCaseError(null);
 
+    // 1) Tenant
     try {
-      // 1) Tenant
-      const whoResp = await fetch("/tenants/whoami");
-      if (!whoResp.ok) {
-        throw new Error(`whoami failed: ${whoResp.status}`);
-      }
-      const whoJson = (await whoResp.json()) as TenantWhoAmIResponse;
+      const whoJson = await apiFetch<TenantWhoAmIResponse>("/tenants/whoami");
       setTenant(whoJson);
-
       const whoCurl = buildCurlCommand({
         method: "GET",
-        url: "/tenants/whoami",
+        endpoint: "/tenants/whoami",
       });
       setTenantCurl(whoCurl);
+    } catch (err) {
+      setTenantError(toApiErrorDetails(err, { url: "/tenants/whoami" }));
+    }
 
-      // 2) Health
-      const healthResp = await fetch("/health");
-      if (!healthResp.ok) {
-        throw new Error(`health failed: ${healthResp.status}`);
-      }
-      const healthJson = (await healthResp.json()) as HealthResponse;
+    // 2) Health
+    try {
+      const healthJson = await apiFetch<HealthResponse>("/health");
       setHealth(healthJson);
+    } catch (err) {
+      setHealthError(toApiErrorDetails(err, { url: "/health" }));
+    }
 
-      // 3) Optional: case summary for selected trace
-      if (selectedTraceId) {
-        const csResp = await fetch(
+    // 3) Optional: case summary for selected trace
+    if (selectedTraceId) {
+      try {
+        const csJson = await apiFetch<ComplianceCaseSummary>(
           `/cases/summary/${encodeURIComponent(selectedTraceId)}`
         );
-        if (csResp.ok) {
-          const csJson = (await csResp.json()) as ComplianceCaseSummary;
-          setCaseSummary(csJson);
-        }
+        setCaseSummary(csJson);
+      } catch (err) {
+        setCaseError(
+          toApiErrorDetails(err, {
+            url: `/cases/summary/${encodeURIComponent(selectedTraceId)}`,
+          })
+        );
       }
-    } catch (err) {
-      setError("Failed to load operational overview. Check backend logs.");
-    } finally {
-      setLoading(false);
     }
+
+    setLoading(false);
   };
 
   const healthChipClass =
@@ -206,10 +216,13 @@ export const OperationalOverviewPanel: React.FC = () => {
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-[11px] text-red-200">
-          {error}
-        </div>
+      {tenantError && (
+        <ApiErrorPanel
+          error={tenantError}
+          title="Tenant lookup failed"
+          onRetry={handleRefresh}
+          compact
+        />
       )}
 
       <div className="grid gap-3 md:grid-cols-3">
@@ -223,6 +236,11 @@ export const OperationalOverviewPanel: React.FC = () => {
             {" "}
             or risk is explicitly low.
           </p>
+          {recentError && (
+            <div className="mt-2">
+              <ApiErrorPanel error={recentError} title="Recent decisions" compact />
+            </div>
+          )}
         </div>
 
         <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
@@ -287,6 +305,14 @@ export const OperationalOverviewPanel: React.FC = () => {
           </p>
         )}
       </div>
+      {healthError && (
+        <ApiErrorPanel
+          error={healthError}
+          title="Health check failed"
+          onRetry={handleRefresh}
+          compact
+        />
+      )}
 
       {/* Case summary snippet */}
       <div className="space-y-1">
@@ -336,6 +362,14 @@ export const OperationalOverviewPanel: React.FC = () => {
           </p>
         )}
       </div>
+      {caseError && (
+        <ApiErrorPanel
+          error={caseError}
+          title="Case summary failed"
+          onRetry={handleRefresh}
+          compact
+        />
+      )}
     </div>
   );
 };

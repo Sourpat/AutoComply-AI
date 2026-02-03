@@ -1,5 +1,8 @@
 // frontend/src/api/consoleClient.ts
-import { API_BASE } from "../lib/api";
+import { apiFetch } from "../lib/api";
+import { getAuthHeaders, getJsonHeaders } from "../lib/authHeaders";
+
+const CONSOLE_BASE = "/api/console";
 
 export interface WorkQueueSubmission {
   submission_id: string;
@@ -42,31 +45,18 @@ export async function getWorkQueue(
   if (tenant) params.append("tenant", tenant);
   if (status) params.append("status", status);
   params.append("limit", limit.toString());
-
-  const resp = await fetch(`${API_BASE}/console/work-queue?${params}`);
-
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch work queue: ${resp.status}`);
-  }
-
-  return await resp.json();
+  return apiFetch<WorkQueueResponse>(`${CONSOLE_BASE}/work-queue?${params}`, {
+    headers: getAuthHeaders(),
+  });
 }
 
 export async function updateSubmission(
   submissionId: string,
   update: UpdateSubmissionRequest
 ): Promise<WorkQueueSubmission> {
-  const resp = await fetch(`${API_BASE}/console/work-queue/${submissionId}`, {
+  return apiFetch<WorkQueueSubmission>(`${CONSOLE_BASE}/work-queue/${submissionId}`, {
     method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: getJsonHeaders(),
     body: JSON.stringify(update),
   });
-
-  if (!resp.ok) {
-    throw new Error(`Failed to update submission: ${resp.status}`);
-  }
-
-  return await resp.json();
 }
