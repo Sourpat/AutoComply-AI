@@ -7,21 +7,6 @@
 ---
 
 ## P0 - Critical (Do First)
-### Phase 10.5 — Fix Review Queue/Ops + analytics wiring + UX polish
-**Status**: blocked
-**Assigned**: GitHub Copilot
-**Goal**: Ensure Review Queue, Ops tab, and Analytics Dashboard work in prod/local with consistent API base, clear error surfacing, and polished UX.
-**Acceptance Criteria**:
-- [ ] Review Queue loads from Render/local using consistent API base and admin headers
-- [ ] Ops tab shows independent health blocks and no full-page error
-- [ ] Analytics Dashboard uses dark shell, filter presets in localStorage, and summary contract
-- [ ] All fetch errors show endpoint + status in UI panel
-- [ ] New /api/console/analytics/summary endpoint returns required fields
-**Verification**:
-- `npm -C frontend run build`
-- `npm -C frontend run smoke:prod`
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_ops_smoke.py backend/tests/test_demo_reset_guard.py backend/tests/test_console_analytics_summary.py`
-**Dependencies**: Render deployment for /api/v1/admin/review-queue/items (currently 500 on prod smoke)
 
 
 > **Status Legend**: `pending` | `in-progress` | `blocked` | `completed`
@@ -124,6 +109,13 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 10.5 — Fix Review Queue/Ops + analytics wiring + UX polish
+**Completed**: 2026-02-03
+**Commit**: (pending)
+**Summary**: Stabilized review queue endpoint fallback and ensured /api/v1 prefix parity.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_demo_reset_guard.py backend/tests/test_ops_smoke.py backend/tests/test_console_analytics_summary.py backend/tests/test_admin_review_queue_safe_empty.py`
+
 ### Phase 10.4 — Prod integration checks + UI smoke
 **Completed**: 2026-02-03
 **Commit**: (pending)
@@ -149,12 +141,6 @@
 **Completed**: 2026-02-02
 **Commit**: (pending)
 **Summary**: Added canonical packet signing, verify endpoint, and signed export UI.
-
-### Phase 10.0 — Deployment Stability + Data Consistency Hardening
-**Completed**: 2026-02-02
-**Commit**: (pending)
-**Summary**: Added startup migrations, /health/db checks, env indicator, and smoke tests.
-
 
 ---
 

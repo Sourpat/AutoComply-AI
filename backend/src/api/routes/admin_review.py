@@ -65,6 +65,7 @@ class ReviewQueueListResponse(BaseModel):
     items: List[ReviewQueueItemResponse]
     total: int
     stats: dict
+    note: Optional[str] = None
 
 
 class AssignRequest(BaseModel):
@@ -126,11 +127,12 @@ async def list_review_items(
         # Get stats
         stats = review_service.get_queue_stats()
     except SQLAlchemyError as exc:
-        logger.warning("Review queue tables unavailable: %s", exc)
+        logger.exception("error_code=review_queue_not_initialized error=%s", exc)
         return ReviewQueueListResponse(
             items=[],
             total=0,
             stats={"open": 0, "in_review": 0, "published": 0, "total": 0},
+            note="review queue not initialized",
         )
     
     # Build response
@@ -163,7 +165,8 @@ async def list_review_items(
     return ReviewQueueListResponse(
         items=response_items,
         total=len(response_items),
-        stats=stats
+        stats=stats,
+        note=None,
     )
 
 
