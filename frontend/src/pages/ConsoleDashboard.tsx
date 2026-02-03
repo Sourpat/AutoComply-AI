@@ -57,6 +57,22 @@ type DemoReadyState = {
   buildSha?: string | null;
   lastCheckedAt?: string | null;
   error?: string | null;
+  healthDetails?: {
+    status?: string | null;
+    buildSha?: string | null;
+  } | null;
+  smokeDetails?: {
+    env?: string | null;
+    buildSha?: string | null;
+    signingEnabled?: boolean | null;
+    signingKeyId?: string | null;
+    activeContract?: boolean | null;
+  } | null;
+  signingDetails?: {
+    enabled?: boolean | null;
+    keyFingerprint?: string | null;
+    environment?: string | null;
+  } | null;
 };
 
 // ============================================================================
@@ -558,8 +574,14 @@ const ConsoleDashboard: React.FC = () => {
     buildSha: null,
     lastCheckedAt: null,
     error: null,
+    healthDetails: null,
+    smokeDetails: null,
+    signingDetails: null,
   });
   const [isDemoReadyLoading, setIsDemoReadyLoading] = useState(false);
+  const [isHealthCheckLoading, setIsHealthCheckLoading] = useState(false);
+  const [isSmokeCheckLoading, setIsSmokeCheckLoading] = useState(false);
+  const [isSigningCheckLoading, setIsSigningCheckLoading] = useState(false);
   const [isDemoResetting, setIsDemoResetting] = useState(false);
   const [demoResetOverride, setDemoResetOverride] = useState(() => {
     return localStorage.getItem("acai.demoResetOverride") === "true";
@@ -618,6 +640,31 @@ const ConsoleDashboard: React.FC = () => {
       smokeResult.status === "fulfilled" && Boolean(smokeResult.value?.ok);
     const activeContract =
       smokeResult.status === "fulfilled" ? Boolean(smokeResult.value?.active_contract_present) : null;
+    const healthDetails =
+      healthFullResult.status === "fulfilled"
+        ? {
+            status: healthFullResult.value?.status ?? null,
+            buildSha: healthFullResult.value?.build_sha ?? null,
+          }
+        : null;
+    const smokeDetails =
+      smokeResult.status === "fulfilled"
+        ? {
+            env: smokeResult.value?.env ?? null,
+            buildSha: smokeResult.value?.build_sha ?? null,
+            signingEnabled: smokeResult.value?.signing_enabled ?? null,
+            signingKeyId: smokeResult.value?.signing_key_id ?? null,
+            activeContract: smokeResult.value?.active_contract_present ?? null,
+          }
+        : null;
+    const signingDetails =
+      signingResult.status === "fulfilled"
+        ? {
+            enabled: signingResult.value?.enabled ?? null,
+            keyFingerprint: signingResult.value?.key_fingerprint ?? null,
+            environment: signingResult.value?.environment ?? null,
+          }
+        : null;
     const env = smokeResult.status === "fulfilled" ? smokeResult.value?.env ?? null : null;
     const buildSha =
       smokeResult.status === "fulfilled"
@@ -642,8 +689,104 @@ const ConsoleDashboard: React.FC = () => {
       buildSha,
       lastCheckedAt: new Date().toISOString(),
       error,
+      healthDetails,
+      smokeDetails,
+      signingDetails,
     });
     setIsDemoReadyLoading(false);
+  };
+
+  const handleHealthCheck = async () => {
+    if (isHealthCheckLoading) return;
+    setIsHealthCheckLoading(true);
+    try {
+      const data = await getHealthFull();
+      setDemoReady((prev) => ({
+        ...prev,
+        healthOk: data?.status === "ok",
+        healthDetails: {
+          status: data?.status ?? null,
+          buildSha: data?.build_sha ?? null,
+        },
+        buildSha: data?.build_sha ?? prev.buildSha,
+        lastCheckedAt: new Date().toISOString(),
+        error: null,
+      }));
+    } catch (err) {
+      setDemoReady((prev) => ({
+        ...prev,
+        healthOk: false,
+        healthDetails: null,
+        lastCheckedAt: new Date().toISOString(),
+        error: err instanceof Error ? err.message : "Health check failed",
+      }));
+    } finally {
+      setIsHealthCheckLoading(false);
+    }
+  };
+
+  const handleSmokeCheck = async () => {
+    if (isSmokeCheckLoading) return;
+    setIsSmokeCheckLoading(true);
+    try {
+      const data = await getSmoke();
+      setDemoReady((prev) => ({
+        ...prev,
+        smokeOk: Boolean(data?.ok),
+        activeContract: Boolean(data?.active_contract_present),
+        env: data?.env ?? prev.env,
+        buildSha: data?.build_sha ?? prev.buildSha,
+        smokeDetails: {
+          env: data?.env ?? null,
+          buildSha: data?.build_sha ?? null,
+          signingEnabled: data?.signing_enabled ?? null,
+          signingKeyId: data?.signing_key_id ?? null,
+          activeContract: data?.active_contract_present ?? null,
+        },
+        lastCheckedAt: new Date().toISOString(),
+        error: null,
+      }));
+    } catch (err) {
+      setDemoReady((prev) => ({
+        ...prev,
+        smokeOk: false,
+        smokeDetails: null,
+        lastCheckedAt: new Date().toISOString(),
+        error: err instanceof Error ? err.message : "Ops smoke failed",
+      }));
+    } finally {
+      setIsSmokeCheckLoading(false);
+    }
+  };
+
+  const handleSigningCheck = async () => {
+    if (isSigningCheckLoading) return;
+    setIsSigningCheckLoading(true);
+    try {
+      const data = await getSigningStatus();
+      setDemoReady((prev) => ({
+        ...prev,
+        signingEnabled: Boolean(data?.enabled),
+        env: data?.environment ?? prev.env,
+        signingDetails: {
+          enabled: data?.enabled ?? null,
+          keyFingerprint: data?.key_fingerprint ?? null,
+          environment: data?.environment ?? null,
+        },
+        lastCheckedAt: new Date().toISOString(),
+        error: null,
+      }));
+    } catch (err) {
+      setDemoReady((prev) => ({
+        ...prev,
+        signingEnabled: false,
+        signingDetails: null,
+        lastCheckedAt: new Date().toISOString(),
+        error: err instanceof Error ? err.message : "Signing status failed",
+      }));
+    } finally {
+      setIsSigningCheckLoading(false);
+    }
   };
   
   // Phase 4.1: Fetch case requests for submitter's submissions
@@ -1828,12 +1971,63 @@ const ConsoleDashboard: React.FC = () => {
               </div>
             </div>
 
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                className="rounded-md border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:border-slate-300 disabled:opacity-60"
+                onClick={handleHealthCheck}
+                disabled={isHealthCheckLoading}
+              >
+                {isHealthCheckLoading
+                  ? "Checking..."
+                  : `Check Backend Health ${demoReady.healthOk === null ? "" : demoReady.healthOk ? "✓" : "✕"}`}
+              </button>
+              <button
+                className="rounded-md border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:border-slate-300 disabled:opacity-60"
+                onClick={handleSmokeCheck}
+                disabled={isSmokeCheckLoading}
+              >
+                {isSmokeCheckLoading
+                  ? "Checking..."
+                  : `Check Ops Smoke ${demoReady.smokeOk === null ? "" : demoReady.smokeOk ? "✓" : "✕"}`}
+              </button>
+              <button
+                className="rounded-md border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:border-slate-300 disabled:opacity-60"
+                onClick={handleSigningCheck}
+                disabled={isSigningCheckLoading}
+              >
+                {isSigningCheckLoading
+                  ? "Checking..."
+                  : `Check Signing Status ${demoReady.signingEnabled === null ? "" : demoReady.signingEnabled ? "✓" : "✕"}`}
+              </button>
+            </div>
+
             <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
               {renderDemoCheck("API reachable", demoReady.apiReachable)}
               {renderDemoCheck("/health/full ok", demoReady.healthOk)}
               {renderDemoCheck("Signing enabled", demoReady.signingEnabled)}
               {renderDemoCheck("/api/ops/smoke ok", demoReady.smokeOk)}
               {renderDemoCheck("Active contract present", demoReady.activeContract)}
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-600 md:grid-cols-3">
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                <div className="font-semibold text-slate-700">Health</div>
+                <div>Status: {demoReady.healthDetails?.status ?? "unknown"}</div>
+                <div>Build: {demoReady.healthDetails?.buildSha ?? "unknown"}</div>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                <div className="font-semibold text-slate-700">Ops Smoke</div>
+                <div>Env: {demoReady.smokeDetails?.env ?? "unknown"}</div>
+                <div>Build: {demoReady.smokeDetails?.buildSha ?? "unknown"}</div>
+                <div>Signing: {demoReady.smokeDetails?.signingEnabled ? "enabled" : "disabled"}</div>
+                <div>Key ID: {demoReady.smokeDetails?.signingKeyId ?? "n/a"}</div>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                <div className="font-semibold text-slate-700">Signing</div>
+                <div>Env: {demoReady.signingDetails?.environment ?? "unknown"}</div>
+                <div>Enabled: {demoReady.signingDetails?.enabled ? "yes" : "no"}</div>
+                <div>Fingerprint: {demoReady.signingDetails?.keyFingerprint ?? "n/a"}</div>
+              </div>
             </div>
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">

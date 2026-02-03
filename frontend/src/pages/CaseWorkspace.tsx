@@ -10,6 +10,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
+import { API_BASE } from "../lib/api";
 import { viewStore } from "../lib/viewStore";
 import type { QueueView, SortField, SortDirection } from "../types/views";
 import type { WorkQueueItem as DemoWorkQueueItem } from "../types/workQueue";
@@ -204,7 +205,7 @@ export const CaseWorkspace: React.FC = () => {
       {queueError && (
         <ErrorState
           title="Backend Not Reachable"
-          description="Cannot load cases from http://127.0.0.1:8001"
+          description={`Cannot load cases from ${API_BASE}`}
           onRetry={reloadQueue}
         />
       )}

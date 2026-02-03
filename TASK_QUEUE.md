@@ -47,6 +47,7 @@
 **Notes**: Blocked pending backend restart verification for /api/workflow and /api/console aliases.
 
 
+
 ### Phase 9.5 — Safe failure modes + UI surfacing
 **Status**: completed
 **Assigned**: GitHub Copilot
@@ -107,6 +108,14 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 10.4 — Prod integration checks + UI smoke
+**Completed**: 2026-02-03
+**Commit**: (pending)
+**Summary**: Added demo-ready check buttons, prod smoke script, and API base cleanup.
+**Verification**:
+- `npm -C frontend run build`
+- `npm -C frontend run smoke:prod`
+
 ### Phase 10.3 — Prod smoke + safe demo reset + demo ready UI
 **Completed**: 2026-02-03
 **Commit**: (pending)
@@ -129,11 +138,6 @@
 **Completed**: 2026-02-02
 **Commit**: (pending)
 **Summary**: Added startup migrations, /health/db checks, env indicator, and smoke tests.
-
-### Phase 9.9 — Override analytics
-**Completed**: 2026-02-02
-**Commit**: (pending)
-**Summary**: Added override metrics endpoint and Console dashboard section.
 
 
 ---

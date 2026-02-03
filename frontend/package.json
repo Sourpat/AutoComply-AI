@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "test": "vitest",
     "typecheck": "tsc --noEmit",
-    "check:bundle": "node scripts/check_bundle_size.js"
+    "check:bundle": "node scripts/check_bundle_size.js",
+    "smoke:prod": "node scripts/prodSmoke.js"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",

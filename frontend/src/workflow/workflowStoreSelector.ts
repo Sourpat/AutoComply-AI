@@ -7,6 +7,7 @@
 
 import { workflowHealth } from '../api/workflowApi';
 import { demoStore } from '../lib/demoStore';
+import { API_BASE } from '../lib/api';
 import { workflowStoreApi } from './workflowStoreApi';
 import type { WorkQueueItem } from '../types/workQueue';
 import type { AuditEvent, AuditEventCreateInput } from '../types/audit';
@@ -96,7 +97,7 @@ export async function getWorkflowStore(): Promise<WorkflowStore> {
   
   if (!isHealthy) {
     throw new Error(
-      'Backend not reachable. Please ensure backend is running on http://127.0.0.1:8001\n' +
+      `Backend not reachable. Please ensure backend is running on ${API_BASE}\n` +
       'Start with: uvicorn src.api.main:app --reload --host 127.0.0.1 --port 8001'
     );
   }

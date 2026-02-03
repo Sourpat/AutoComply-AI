@@ -28,10 +28,13 @@ import { OperationalOverviewPanel } from "../features/ops/OperationalOverviewPan
 import { TraceSelectionProvider } from "../state/traceSelectionContext";
 import { VerificationWorkQueue } from "../components/VerificationWorkQueue";
 import { useEffect, useState } from "react";
+import { API_BASE } from "../lib/api";
 
 type ApiReferenceCardConfig = React.ComponentProps<typeof ApiReferenceCard> & {
   id: string;
 };
+
+const CURL_BASE = API_BASE;
 
 const API_REFERENCE_CARDS: ApiReferenceCardConfig[] = [
   {
@@ -42,7 +45,7 @@ const API_REFERENCE_CARDS: ApiReferenceCardConfig[] = [
       "Evaluates a hospital controlled substance form and normalizes the result to ok_to_ship, needs_review, or blocked.",
     method: "POST",
     path: "/csf/hospital/evaluate",
-    curlSnippet: `curl -X POST http://localhost:8000/csf/hospital/evaluate \\\n  -H "Content-Type: application/json" \\\n  -d '{
+      curlSnippet: `curl -X POST ${CURL_BASE}/csf/hospital/evaluate \\\n  -H "Content-Type: application/json" \\\n  -d '{
   "hospital_name": "Riverside General Hospital",
   "account_number": "ACCT-123456",
   "ship_to_state": "OH",
@@ -68,7 +71,7 @@ const API_REFERENCE_CARDS: ApiReferenceCardConfig[] = [
       "Evaluates facility-level controlled substance forms and outputs ok_to_ship, needs_review, or blocked decisions.",
     method: "POST",
     path: "/csf/facility/evaluate",
-    curlSnippet: `curl -X POST http://localhost:8000/csf/facility/evaluate \\\n  -H "Content-Type: application/json" \\\n  -d '{
+      curlSnippet: `curl -X POST ${CURL_BASE}/csf/facility/evaluate \\\n  -H "Content-Type: application/json" \\\n  -d '{
   "facility_name": "SummitCare Clinics – East Region",
   "account_number": "FAC-445210",
   "ship_to_state": "OH",
@@ -94,7 +97,7 @@ const API_REFERENCE_CARDS: ApiReferenceCardConfig[] = [
       "Returns a human-friendly explanation of the Facility CSF decision, plus any missing or corrective fields.",
     method: "POST",
     path: "/csf/facility/form-copilot",
-    curlSnippet: `curl -X POST http://localhost:8000/csf/facility/form-copilot \\\n  -H "Content-Type: application/json" \\\n  -d '{
+      curlSnippet: `curl -X POST ${CURL_BASE}/csf/facility/form-copilot \\\n  -H "Content-Type: application/json" \\\n  -d '{
   "facility_name": "SummitCare Clinics – East Region",
   "account_number": "FAC-445210",
   "ship_to_state": "OH",
@@ -121,7 +124,7 @@ const API_REFERENCE_CARDS: ApiReferenceCardConfig[] = [
       "Evaluates a prescriber’s controlled substance form in the practitioner sandbox with the same normalized decision set.",
     method: "POST",
     path: "/csf/practitioner/evaluate",
-    curlSnippet: `curl -X POST http://localhost:8000/csf/practitioner/evaluate \\\n  -H "Content-Type: application/json" \\\n  -d '{
+      curlSnippet: `curl -X POST ${CURL_BASE}/csf/practitioner/evaluate \\\n  -H "Content-Type: application/json" \\\n  -d '{
   "practitioner_name": "Dr. Jamie Patel",
   "npi": "1987654321",
   "ship_to_state": "OH",
@@ -147,7 +150,7 @@ const API_REFERENCE_CARDS: ApiReferenceCardConfig[] = [
       "Explains practitioner CSF decisions with missing fields and regulatory references for prescriber-focused workflows.",
     method: "POST",
     path: "/csf/practitioner/form-copilot",
-    curlSnippet: `curl -X POST http://localhost:8000/csf/practitioner/form-copilot \\\n  -H "Content-Type: application/json" \\\n  -d '{
+      curlSnippet: `curl -X POST ${CURL_BASE}/csf/practitioner/form-copilot \\\n  -H "Content-Type: application/json" \\\n  -d '{
   "practitioner_name": "Dr. Jamie Patel",
   "npi": "1987654321",
   "ship_to_state": "OH",
@@ -174,7 +177,7 @@ const API_REFERENCE_CARDS: ApiReferenceCardConfig[] = [
       "Checks an Ohio TDDD license and decides whether this account is allowed to receive controlled substances in Ohio.",
     method: "POST",
     path: "/license/ohio-tddd/evaluate",
-    curlSnippet: `curl -X POST http://localhost:8000/license/ohio-tddd/evaluate \\\n  -H "Content-Type: application/json" \\\n  -d '{
+      curlSnippet: `curl -X POST ${CURL_BASE}/license/ohio-tddd/evaluate \\\n  -H "Content-Type: application/json" \\\n  -d '{
   "account_number": "ACCT-445210",
   "tddd_number": "TDDD-1234567",
   "ship_to_state": "OH"
@@ -197,7 +200,7 @@ const API_REFERENCE_CARDS: ApiReferenceCardConfig[] = [
       "Evaluates pharmacy licensing for New York scenarios in the NY sandbox, including DEA and state license checks.",
     method: "POST",
     path: "/license/ny-pharmacy/evaluate",
-    curlSnippet: `curl -X POST http://localhost:8000/license/ny-pharmacy/evaluate \\\n  -H "Content-Type: application/json" \\\n  -d '{
+      curlSnippet: `curl -X POST ${CURL_BASE}/license/ny-pharmacy/evaluate \\\n  -H "Content-Type: application/json" \\\n  -d '{
   "pharmacy_name": "Hudson Pharmacy",
   "account_number": "ACCT-889910",
   "ship_to_state": "NY",
@@ -228,7 +231,7 @@ const API_REFERENCE_CARDS: ApiReferenceCardConfig[] = [
       "Combines Hospital CSF + Ohio TDDD outputs into one mock order decision for demo purposes.",
     method: "POST",
     path: "/orders/mock/ohio-hospital-approval",
-    curlSnippet: `curl -X POST http://localhost:8000/orders/mock/ohio-hospital-approval \\\n  -H "Content-Type: application/json" \\\n  -d '{
+      curlSnippet: `curl -X POST ${CURL_BASE}/orders/mock/ohio-hospital-approval \\\n  -H "Content-Type: application/json" \\\n  -d '{
   "csf_decision": "ok_to_ship",
   "license_decision": "ok_to_ship"
 }'`,
@@ -249,7 +252,7 @@ const API_REFERENCE_CARDS: ApiReferenceCardConfig[] = [
       "Combines Facility CSF + Ohio TDDD license into a mock order decision for facilities.",
     method: "POST",
     path: "/orders/mock/ohio-facility-approval",
-    curlSnippet: `curl -X POST http://localhost:8000/orders/mock/ohio-facility-approval \\\n  -H "Content-Type: application/json" \\\n  -d '{
+      curlSnippet: `curl -X POST ${CURL_BASE}/orders/mock/ohio-facility-approval \\\n  -H "Content-Type: application/json" \\\n  -d '{
   "csf_decision": "ok_to_ship",
   "license_decision": "ok_to_ship"
 }'`,
@@ -270,7 +273,7 @@ const API_REFERENCE_CARDS: ApiReferenceCardConfig[] = [
       "Combines NY license engine outputs into a single mock order decision.",
     method: "POST",
     path: "/orders/mock/ny-pharmacy-approval",
-    curlSnippet: `curl -X POST http://localhost:8000/orders/mock/ny-pharmacy-approval \\\n  -H "Content-Type: application/json" \\\n  -d '{
+      curlSnippet: `curl -X POST ${CURL_BASE}/orders/mock/ny-pharmacy-approval \\\n  -H "Content-Type: application/json" \\\n  -d '{
   "license_decision": "license_active"
 }'`,
     requestJson: {
