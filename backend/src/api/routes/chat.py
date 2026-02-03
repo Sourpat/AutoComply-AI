@@ -40,6 +40,11 @@ router = APIRouter(
     tags=["chat"],
 )
 
+alias_router = APIRouter(
+    prefix="/api/chat",
+    tags=["chat"],
+)
+
 # Note: SIMILARITY_THRESHOLD imported dynamically when RAG enabled
 SIMILARITY_THRESHOLD = 0.78  # Fallback default
 
@@ -359,6 +364,10 @@ def generate_draft_answer(
 # Endpoints
 # ============================================================================
 
+@alias_router.get("/health")
+async def chat_health() -> dict:
+    return {"ok": True, "route": "chat"}
+
 @router.post("/ask", response_model=ChatResponse)
 async def ask_question(
     request: ChatRequest,
@@ -457,6 +466,14 @@ async def ask_question(
             session_id=session_id,
             message_id=0  # Placeholder when DB save fails
         )
+
+
+@alias_router.post("/ask", response_model=ChatResponse)
+async def ask_question_alias(
+    request: ChatRequest,
+    db: Session = Depends(get_db)
+) -> ChatResponse:
+    return await ask_question(request, db)
 
 
 async def _ask_question_internal(
@@ -955,3 +972,11 @@ async def get_chat_history(
             for msg in messages
         ]
     }
+
+
+@alias_router.get("/history/{session_id}")
+async def get_chat_history_alias(
+    session_id: str,
+    db: Session = Depends(get_db)
+):
+    return await get_chat_history(session_id, db)

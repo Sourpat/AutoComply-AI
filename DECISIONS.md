@@ -36,6 +36,28 @@
 
 ## Decisions
 
+### [2026-02-03] Chat API alias + frontend endpoint alignment
+
+**Context**: The Chat page returned a 404 because frontend requests did not match the backend chat route prefix, and there was no health probe for quick smoke checks.
+
+**Decision**: Standardize the frontend on `/api/chat` via the shared `apiFetch` helper, and add backend alias routes for `/api/chat` that proxy to the canonical `/api/v1/chat` handlers, including a `/api/chat/health` endpoint.
+
+**Rationale**:
+- Keeps the UI aligned with the prevailing `/api` prefix across the app
+- Preserves backward compatibility with `/api/v1/chat`
+- Adds a lightweight health check for smoke testing
+
+**Alternatives Considered**:
+- Update frontend to `/api/v1/chat` only: rejected to keep `/api` parity and avoid future 404s
+- Change backend to `/api/chat` only: rejected to avoid breaking existing clients
+
+**Consequences**:
+- Positive: Eliminates chat 404s and improves diagnostics
+- Negative: Adds a thin alias surface to maintain
+- Neutral: No schema changes
+
+**Status**: Accepted
+
 ### [2026-02-03] Diagnostics-first fetch + console analytics summary (Phase 10.5)
 
 **Context**: Review Queue, Ops, and Analytics dashboards had silent failures and inconsistent API bases across prod/local, and analytics lacked a stable summary contract.

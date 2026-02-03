@@ -3,6 +3,8 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { askQuestion, type ChatResponse, type DecisionTrace } from "../api/chatClient";
 import { ConversationSidebar, type Conversation } from "./ConversationSidebar";
+import { ApiErrorPanel } from "./ApiErrorPanel";
+import { toApiErrorDetails, type ApiErrorDetails } from "../lib/api";
 
 interface Message {
   role: string;
@@ -42,6 +44,7 @@ export function ChatBot() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showDemoQuestions, setShowDemoQuestions] = useState(true);
+  const [errorDetails, setErrorDetails] = useState<ApiErrorDetails | null>(null);
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
   const messages = activeConversation?.messages || [];
@@ -140,6 +143,7 @@ export function ChatBot() {
     const userQuestion = question.trim();
     setQuestion("");
     setLoading(true);
+    setErrorDetails(null);
     const userMessage: Message = { role: "user", content: userQuestion };
     const updatedMessages = [...messages, userMessage];
     const isFirstMessage = messages.length === 0;
@@ -164,6 +168,7 @@ export function ChatBot() {
       });
     } catch (error) {
       console.error("Chat error:", error);
+      setErrorDetails(toApiErrorDetails(error, { url: "/api/chat/ask" }));
       const errorMessage: Message = { role: "assistant", content: "Sorry, an error occurred. Please try again." };
       updateConversation(activeConversationId, { messages: [...updatedMessages, errorMessage] });
     } finally {
@@ -193,6 +198,12 @@ export function ChatBot() {
           </p>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {errorDetails && (
+            <ApiErrorPanel
+              error={errorDetails}
+              title="Chat request failed"
+            />
+          )}
           {messages.length === 0 && (
             <div className="text-center text-gray-500 mt-8">
               <p className="text-lg mb-2">👋 Ask me anything about compliance!</p>

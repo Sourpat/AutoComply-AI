@@ -109,6 +109,15 @@
 
 **Phase 8 Status**: DONE
 
+### Fix Chat page 404 (Chat API parity)
+**Completed**: 2026-02-03
+**Commit**: (pending)
+**Summary**: Added /api/chat alias + health endpoint and aligned Chat UI to shared API base with diagnostics.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_chat_alias_routes.py`
+- `npm -C frontend run build`
+- Manual: http://localhost:5173/chat loads without {"detail":"Not Found"}
+
 ### Phase 10.5 — Fix Review Queue/Ops + analytics wiring + UX polish
 **Completed**: 2026-02-03
 **Commit**: (pending)
@@ -136,11 +145,6 @@
 **Completed**: 2026-02-02
 **Commit**: (pending)
 **Summary**: Standardized AUDIT_SIGNING_KEY, added signing status endpoint + badge, and prod enforcement test.
-
-### Phase 10.1 — Audit Packet Integrity + Signed Exports
-**Completed**: 2026-02-02
-**Commit**: (pending)
-**Summary**: Added canonical packet signing, verify endpoint, and signed export UI.
 
 ---
 

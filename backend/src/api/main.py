@@ -390,6 +390,7 @@ app.include_router(console.router, prefix="/api")
 
 # Learn After First Unknown routes
 app.include_router(chat.router)
+app.include_router(chat.alias_router)
 app.include_router(admin_review.router)
 
 # Phase 8.1: Distributed Traces API

@@ -1,5 +1,5 @@
 // frontend/src/api/chatClient.ts
-import { API_BASE } from "../lib/api";
+import { apiFetch } from "../lib/api";
 
 export interface ChatRequest {
   question: string;
@@ -32,34 +32,52 @@ export interface ChatResponse {
   reviewer_draft?: string;  // Detailed markdown draft for admin views (only present for NEEDS_REVIEW)
 }
 
+const CHAT_BASE = "/api/chat";
+
+const DECISION_TRACE_DEFAULTS: DecisionTrace = {
+  kb_searched: false,
+  top_match_score: null,
+  top_3_matches: [],
+  similarity_threshold: 0,
+  passed_similarity_gate: false,
+  passed_policy_gate: false,
+  gating_decision: "NEEDS_REVIEW",
+  reason_code: null,
+  queue_item_id: null,
+  model_metadata: {},
+};
+
+function normalizeChatResponse(payload: ChatResponse): ChatResponse {
+  const trace = payload?.decision_trace ?? ({} as DecisionTrace);
+  return {
+    ...payload,
+    decision_trace: {
+      ...DECISION_TRACE_DEFAULTS,
+      ...trace,
+      top_3_matches: trace.top_3_matches ?? [],
+      model_metadata: trace.model_metadata ?? {},
+      top_match_score: trace.top_match_score ?? null,
+      reason_code: trace.reason_code ?? null,
+      queue_item_id: trace.queue_item_id ?? null,
+    },
+  };
+}
+
 export async function askQuestion(
   request: ChatRequest
 ): Promise<ChatResponse> {
-  const resp = await fetch(`${API_BASE}/api/v1/chat/ask`, {
+  const payload = await apiFetch<ChatResponse>(`${CHAT_BASE}/ask`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify(request),
   });
 
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => "");
-    const message = text ? `${resp.status}: ${text}` : `${resp.status}`;
-    throw new Error(`Chat request failed: ${message}`);
-  }
-
-  return resp.json();
+  return normalizeChatResponse(payload);
 }
 
 export async function getChatHistory(
   session_id: string
 ): Promise<{ session_id: string; messages: Array<any> }> {
-  const resp = await fetch(`${API_BASE}/api/v1/chat/history/${session_id}`);
-
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch chat history: ${resp.status}`);
-  }
-
-  return resp.json();
+  return apiFetch<{ session_id: string; messages: Array<any> }>(
+    `${CHAT_BASE}/history/${session_id}`
+  );
 }

@@ -17,6 +17,7 @@ const endpoints = [
   { path: "/api/console/work-queue?limit=5", keys: ["items", "total"] },
   { path: "/api/v1/admin/review-queue/items?limit=5", keys: ["items", "total", "stats"], headers: adminHeaders },
   { path: "/api/console/analytics/summary?days=30", keys: ["total_cases", "open_cases", "closed_cases", "status_breakdown"] },
+  { path: "/api/chat/health", keys: ["ok", "route"] },
 ];
 
 const joinUrl = (baseUrl, path) => `${baseUrl.replace(/\/$/, "")}${path}`;
