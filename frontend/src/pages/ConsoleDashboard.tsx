@@ -26,6 +26,7 @@ import { BackendHealthBanner } from "../components/BackendHealthBanner";
 import { listPolicyOverrides } from "../api/policyOverrides";
 import type { PolicyOverrideDetail } from "../types/decision";
 import { getAuthHeaders } from "../lib/authHeaders";
+import { getHealthFull, getHealthz, getSigningStatus, getSmoke, postDemoReset } from "../api/demoOps";
 
 type DecisionStatus = "ok_to_ship" | "blocked" | "needs_review";
 type ActiveSection = "dashboard" | "csf" | "licenses" | "orders" | "settings" | "about";
@@ -44,6 +45,18 @@ type OverrideMetrics = {
     reviewer: string;
     created_at: string;
   }>;
+};
+
+type DemoReadyState = {
+  apiReachable: boolean | null;
+  healthOk: boolean | null;
+  signingEnabled: boolean | null;
+  smokeOk: boolean | null;
+  activeContract: boolean | null;
+  env?: string | null;
+  buildSha?: string | null;
+  lastCheckedAt?: string | null;
+  error?: string | null;
 };
 
 // ============================================================================
@@ -535,6 +548,22 @@ const ConsoleDashboard: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [overrideMetrics, setOverrideMetrics] = useState<OverrideMetrics | null>(null);
   const [overrideMetricsError, setOverrideMetricsError] = useState<string | null>(null);
+  const [demoReady, setDemoReady] = useState<DemoReadyState>({
+    apiReachable: null,
+    healthOk: null,
+    signingEnabled: null,
+    smokeOk: null,
+    activeContract: null,
+    env: null,
+    buildSha: null,
+    lastCheckedAt: null,
+    error: null,
+  });
+  const [isDemoReadyLoading, setIsDemoReadyLoading] = useState(false);
+  const [isDemoResetting, setIsDemoResetting] = useState(false);
+  const [demoResetOverride, setDemoResetOverride] = useState(() => {
+    return localStorage.getItem("acai.demoResetOverride") === "true";
+  });
   
   // Case requests for submitter (Phase 4.1)
   const [caseRequests, setCaseRequests] = useState<Map<string, any>>(new Map());
@@ -566,6 +595,55 @@ const ConsoleDashboard: React.FC = () => {
         setIsLoadingSubmissions(false);
       }
     }
+  };
+
+  const loadDemoReady = async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setIsDemoReadyLoading(true);
+    }
+
+    const [healthzResult, healthFullResult, signingResult, smokeResult] = await Promise.allSettled([
+      getHealthz(),
+      getHealthFull(),
+      getSigningStatus(),
+      getSmoke(),
+    ]);
+
+    const apiReachable = healthzResult.status === "fulfilled";
+    const healthOk =
+      healthFullResult.status === "fulfilled" && healthFullResult.value?.status === "ok";
+    const signingEnabled =
+      signingResult.status === "fulfilled" && Boolean(signingResult.value?.enabled);
+    const smokeOk =
+      smokeResult.status === "fulfilled" && Boolean(smokeResult.value?.ok);
+    const activeContract =
+      smokeResult.status === "fulfilled" ? Boolean(smokeResult.value?.active_contract_present) : null;
+    const env = smokeResult.status === "fulfilled" ? smokeResult.value?.env ?? null : null;
+    const buildSha =
+      smokeResult.status === "fulfilled"
+        ? smokeResult.value?.build_sha ?? null
+        : healthFullResult.status === "fulfilled"
+          ? healthFullResult.value?.build_sha ?? null
+          : null;
+    const error =
+      [healthzResult, healthFullResult, signingResult, smokeResult].some(
+        (result) => result.status === "rejected"
+      )
+        ? "One or more checks failed"
+        : null;
+
+    setDemoReady({
+      apiReachable,
+      healthOk,
+      signingEnabled,
+      smokeOk,
+      activeContract,
+      env,
+      buildSha,
+      lastCheckedAt: new Date().toISOString(),
+      error,
+    });
+    setIsDemoReadyLoading(false);
   };
   
   // Phase 4.1: Fetch case requests for submitter's submissions
@@ -671,6 +749,15 @@ const ConsoleDashboard: React.FC = () => {
       window.removeEventListener('focus', handleFocus);
     };
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem("acai.demoResetOverride", demoResetOverride ? "true" : "false");
+  }, [demoResetOverride]);
+
+  useEffect(() => {
+    if (activeSection !== "dashboard") return;
+    loadDemoReady();
+  }, [activeSection]);
 
   useEffect(() => {
     let active = true;
@@ -1236,6 +1323,29 @@ const ConsoleDashboard: React.FC = () => {
     await loadWorkQueue();
   };
 
+  const handleDemoReset = async () => {
+    if (isDemoResetting) return;
+    setIsDemoResetting(true);
+    try {
+      const result = await postDemoReset();
+      const counts = result?.counts || {};
+      const clearedCases = counts.cases ?? 0;
+      const clearedSubmissions = counts.submissions ?? 0;
+      const seededCases = counts.seeded_cases ?? 0;
+      showSuccess(
+        `Demo reset complete (${clearedCases} cases, ${clearedSubmissions} submissions, ${seededCases} seeded)`
+      );
+      await refreshWorkQueue();
+      await refreshSubmissions({ silent: true });
+      await loadDemoReady({ silent: true });
+    } catch (err) {
+      console.error('[ConsoleDashboard] Demo reset failed:', err);
+      setError(err instanceof Error ? err.message : 'Demo reset failed');
+    } finally {
+      setIsDemoResetting(false);
+    }
+  };
+
   // Assignment handlers
   const handleAssign = (caseId: string, user: DemoUser) => {
     demoStore.assignWorkQueueItem(
@@ -1520,6 +1630,25 @@ const ConsoleDashboard: React.FC = () => {
     setSearchQuery(value);
   };
 
+  const renderDemoCheck = (label: string, value: boolean | null) => {
+    const statusLabel = value === null ? "Checking" : value ? "OK" : "Fail";
+    const statusColor = value === null ? "bg-slate-300" : value ? "bg-emerald-500" : "bg-rose-500";
+    const textColor = value === null ? "text-slate-500" : value ? "text-emerald-700" : "text-rose-700";
+    return (
+      <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+        <span className="text-slate-700">{label}</span>
+        <span className={`inline-flex items-center gap-2 font-semibold ${textColor}`}>
+          <span className={`h-2 w-2 rounded-full ${statusColor}`} />
+          {statusLabel}
+        </span>
+      </div>
+    );
+  };
+
+  const envLabel = demoReady.env?.toLowerCase() || "unknown";
+  const isProdEnv = envLabel === "prod" || envLabel === "production" || envLabel === "unknown";
+  const canResetDemo = envLabel !== "unknown" && (!isProdEnv || demoResetOverride);
+
   return (
     <div className="console-shell">
       {/* Backend Health Banner */}
@@ -1669,6 +1798,70 @@ const ConsoleDashboard: React.FC = () => {
         {/* Dashboard Content */}
         {activeSection === "dashboard" && (
           <>
+        {/* Demo Ready checklist */}
+        <section className="mb-6">
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Demo Ready</h2>
+                <p className="text-xs text-slate-500">
+                  Quick readiness checks before recruiter demos.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="rounded-md border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:border-slate-300"
+                  onClick={() => loadDemoReady()}
+                  disabled={isDemoReadyLoading}
+                >
+                  {isDemoReadyLoading ? "Checking..." : "Refresh"}
+                </button>
+                {canResetDemo && (
+                  <button
+                    className="rounded-md bg-rose-600 px-3 py-1 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+                    onClick={handleDemoReset}
+                    disabled={isDemoResetting}
+                  >
+                    {isDemoResetting ? "Resetting..." : "Reset Demo Data"}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+              {renderDemoCheck("API reachable", demoReady.apiReachable)}
+              {renderDemoCheck("/health/full ok", demoReady.healthOk)}
+              {renderDemoCheck("Signing enabled", demoReady.signingEnabled)}
+              {renderDemoCheck("/api/ops/smoke ok", demoReady.smokeOk)}
+              {renderDemoCheck("Active contract present", demoReady.activeContract)}
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+              <div>
+                Env: <span className="font-semibold text-slate-700">{envLabel}</span> • Build:{" "}
+                <span className="font-semibold text-slate-700">{demoReady.buildSha || "unknown"}</span>
+              </div>
+              {demoReady.lastCheckedAt && (
+                <div>Checked {new Date(demoReady.lastCheckedAt).toLocaleTimeString()}</div>
+              )}
+            </div>
+
+            {isProdEnv && (
+              <label className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={demoResetOverride}
+                  onChange={(e) => setDemoResetOverride(e.target.checked)}
+                />
+                Enable demo reset locally (requires DEV_SEED_TOKEN header)
+              </label>
+            )}
+
+            {demoReady.error && (
+              <div className="mt-2 text-xs text-rose-600">{demoReady.error}</div>
+            )}
+          </div>
+        </section>
         {/* Hero row */}
         <section className="console-hero-row">
           <div className="console-hero-card">

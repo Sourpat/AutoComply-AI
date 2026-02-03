@@ -36,6 +36,24 @@
 
 ## Decisions
 
+### [2026-02-03] Demo reset guard + ops smoke checks (Phase 10.3)
+
+**Context**: Recruiter demos require safe reset tooling without risking destructive actions in production, plus a single smoke endpoint for deployment checks.
+
+**Decision**: Add `/api/demo/reset` guarded by APP_ENV and `DEV_SEED_TOKEN` header (blocked in prod unless token matches), and `/api/ops/smoke` to report DB, schema, signing, and active-contract readiness. Surface the checks in Console Dashboard with a Demo Ready panel.
+
+**Rationale**:
+- Enables reliable demo resets in dev/staging
+- Prevents accidental production data clearing
+- Provides a single non-destructive readiness endpoint for smoke tests
+
+**Consequences**:
+- Positive: Safer demos and clearer operational checks
+- Negative: Requires setting `DEV_SEED_TOKEN` when using prod reset override
+- Neutral: No schema changes
+
+**Status**: Accepted
+
 ### [2026-02-02] Signing status endpoint + prod enforcement (Phase 10.2)
 
 **Context**: Phase 10.2 requires deploy parity for audit signing, a status endpoint, and stricter production behavior when signing is disabled.

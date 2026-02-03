@@ -139,6 +139,8 @@ frontend/
 - `ANTHROPIC_API_KEY` - Alternative LLM provider
 - `CORS_ORIGINS` - Frontend origin (default: http://localhost:5173)
 - `DEV_SEED_TOKEN` - Seed endpoint auth token
+- `VITE_API_BASE_URL` - Frontend API base URL (build-time)
+- `VITE_DEV_SEED_TOKEN` - Frontend-only dev seed token for demo reset header
 
 **Configuration**: See `backend/src/config.py`
 

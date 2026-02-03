@@ -48,6 +48,8 @@ from src.api.routes import metrics
 from src.api.routes import kb_admin
 from src.api.routes import demo
 from src.api.routes import ops
+from src.api.routes import demo_reset
+from src.api.routes import ops_smoke
 from src.api.routes import agentic
 from src.api.routes import audit_packets
 from src.api.routes import audit_events
@@ -396,6 +398,8 @@ app.include_router(metrics.router)
 app.include_router(kb_admin.router)
 app.include_router(demo.router)
 app.include_router(ops.router)
+app.include_router(demo_reset.router)
+app.include_router(ops_smoke.router)
 app.include_router(agentic.router)
 app.include_router(audit_packets.router)
 app.include_router(audit_events.router)

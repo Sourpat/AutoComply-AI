@@ -1,6 +1,6 @@
 # Task Queue
 
-**Last Updated**: 2026-02-02
+**Last Updated**: 2026-02-03
 
 **Active WIP**: 0
 
@@ -45,6 +45,7 @@
 - `Invoke-RestMethod http://127.0.0.1:8001/api/agentic/cases?limit=10`
 **Dependencies**: None
 **Notes**: Blocked pending backend restart verification for /api/workflow and /api/console aliases.
+
 
 ### Phase 9.5 — Safe failure modes + UI surfacing
 **Status**: completed
@@ -106,6 +107,14 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 10.3 — Prod smoke + safe demo reset + demo ready UI
+**Completed**: 2026-02-03
+**Commit**: (pending)
+**Summary**: Added demo reset guard + ops smoke endpoint, Demo Ready checklist UI, and tests.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_demo_reset_guard.py tests/test_ops_smoke.py`
+- `npm -C frontend run build`
+
 ### Phase 10.2 — Deploy parity + signing verification hardening
 **Completed**: 2026-02-02
 **Commit**: (pending)
@@ -125,11 +134,6 @@
 **Completed**: 2026-02-02
 **Commit**: (pending)
 **Summary**: Added override metrics endpoint and Console dashboard section.
-
-### Phase 9.8 — Override RBAC hardening
-**Completed**: 2026-02-02
-**Commit**: (pending)
-**Summary**: Enforced role gating and rationale validation for overrides.
 
 
 ---
