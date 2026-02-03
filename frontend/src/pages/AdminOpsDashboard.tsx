@@ -22,7 +22,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, toApiErrorDetails, type ApiErrorDetails } from "../lib/api";
-import { getAuthHeaders } from "../lib/authHeaders";
+import { getAdminAuthHeaders } from "../lib/authHeaders";
 import { ApiErrorPanel } from "../components/ApiErrorPanel";
 import {
   VerificationWorkEvent,
@@ -204,21 +204,21 @@ export function AdminOpsDashboard() {
     setSigningError(null);
 
     try {
-      const data = await apiFetch("/health/full", { headers: getAuthHeaders() });
+      const data = await apiFetch("/health/full", { headers: getAdminAuthHeaders() });
       setHealthSummary(data);
     } catch (err) {
       setHealthError(toApiErrorDetails(err, { url: "/health/full" }));
     }
 
     try {
-      const data = await apiFetch("/api/ops/smoke", { headers: getAuthHeaders() });
+      const data = await apiFetch("/api/ops/smoke", { headers: getAdminAuthHeaders() });
       setOpsSmoke(data);
     } catch (err) {
       setOpsError(toApiErrorDetails(err, { url: "/api/ops/smoke" }));
     }
 
     try {
-      const data = await apiFetch("/api/audit/signing/status", { headers: getAuthHeaders() });
+      const data = await apiFetch("/api/audit/signing/status", { headers: getAdminAuthHeaders() });
       setSigningStatus(data);
     } catch (err) {
       setSigningError(toApiErrorDetails(err, { url: "/api/audit/signing/status" }));
@@ -231,8 +231,8 @@ export function AdminOpsDashboard() {
     
     try {
       const [kpiData, reviewsData] = await Promise.all([
-        apiFetch<OpsKPI>("/api/v1/admin/ops/summary", { headers: getAuthHeaders() }),
-        apiFetch<OpsReviewItem[]>("/api/v1/admin/ops/reviews?days=14&limit=100", { headers: getAuthHeaders() }),
+        apiFetch<OpsKPI>("/api/v1/admin/ops/summary", { headers: getAdminAuthHeaders() }),
+        apiFetch<OpsReviewItem[]>("/api/v1/admin/ops/reviews?days=14&limit=100", { headers: getAdminAuthHeaders() }),
       ]);
 
       // Enrich reviews with source

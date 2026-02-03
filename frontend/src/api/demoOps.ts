@@ -1,5 +1,5 @@
 import { API_BASE, apiFetch } from "../lib/api";
-import { getAuthHeaders, getJsonHeaders } from "../lib/authHeaders";
+import { getAuthHeaders, getAdminJsonHeaders } from "../lib/authHeaders";
 
 export async function getHealthz(): Promise<any> {
   return apiFetch("/healthz", { headers: getAuthHeaders() });
@@ -20,7 +20,7 @@ export async function getSmoke(): Promise<any> {
 export async function postDemoReset(): Promise<any> {
   return apiFetch("/api/demo/reset", {
     method: "POST",
-    headers: getJsonHeaders(),
+    headers: getAdminJsonHeaders(),
     body: JSON.stringify({}),
   });
 }

@@ -1,6 +1,6 @@
 // frontend/src/api/reviewQueueClient.ts
 import { apiFetch } from "../lib/api";
-import { getAuthHeaders, getJsonHeaders } from "../lib/authHeaders";
+import { getAdminAuthHeaders, getAdminJsonHeaders } from "../lib/authHeaders";
 
 const REVIEW_QUEUE_BASE = "/api/v1/admin/review-queue";
 
@@ -52,7 +52,7 @@ export async function getReviewQueueItems(
 ): Promise<ReviewQueueListResponse> {
   const path = buildReviewQueueItemsPath(status, limit, offset);
   return apiFetch<ReviewQueueListResponse>(path, {
-    headers: getAuthHeaders(),
+    headers: getAdminAuthHeaders(),
   });
 }
 
@@ -60,7 +60,7 @@ export async function getReviewQueueItem(
   itemId: number
 ): Promise<ReviewQueueItem> {
   return apiFetch<ReviewQueueItem>(`${REVIEW_QUEUE_BASE}/items/${itemId}`, {
-    headers: getAuthHeaders(),
+    headers: getAdminAuthHeaders(),
   });
 }
 
@@ -70,7 +70,7 @@ export async function assignReviewItem(
 ): Promise<any> {
   return apiFetch(`${REVIEW_QUEUE_BASE}/items/${itemId}/assign`, {
     method: "POST",
-    headers: getJsonHeaders(),
+    headers: getAdminJsonHeaders(),
     body: JSON.stringify({ assigned_to: assignedTo }),
   });
 }
@@ -81,7 +81,7 @@ export async function updateDraftAnswer(
 ): Promise<any> {
   return apiFetch(`${REVIEW_QUEUE_BASE}/items/${itemId}/update-draft`, {
     method: "POST",
-    headers: getJsonHeaders(),
+    headers: getAdminJsonHeaders(),
     body: JSON.stringify({ draft_answer: draftAnswer }),
   });
 }
@@ -93,7 +93,7 @@ export async function publishAnswer(
 ): Promise<any> {
   return apiFetch(`${REVIEW_QUEUE_BASE}/items/${itemId}/publish`, {
     method: "POST",
-    headers: getJsonHeaders(),
+    headers: getAdminJsonHeaders(),
     body: JSON.stringify({ final_answer: finalAnswer, tags }),
   });
 }
@@ -101,12 +101,12 @@ export async function publishAnswer(
 export async function rejectReviewItem(itemId: number): Promise<any> {
   return apiFetch(`${REVIEW_QUEUE_BASE}/items/${itemId}/reject`, {
     method: "POST",
-    headers: getAuthHeaders(),
+    headers: getAdminAuthHeaders(),
   });
 }
 
 export async function getQueueStats(): Promise<any> {
   return apiFetch(`${REVIEW_QUEUE_BASE}/stats`, {
-    headers: getAuthHeaders(),
+    headers: getAdminAuthHeaders(),
   });
 }

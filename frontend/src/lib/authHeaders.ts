@@ -43,19 +43,12 @@ export function isAdminUnlocked(): boolean {
 /**
  * Get base headers for API requests with role
  */
-export function withDevSeedToken(headers: Record<string, string>): Record<string, string> {
-  if (DEV_SEED_TOKEN) {
-    return { ...headers, [DEV_SEED_HEADER]: DEV_SEED_TOKEN };
-  }
-  return headers;
-}
-
 export function getAuthHeaders(): Record<string, string> {
   const role = getCurrentRole();
-  return withDevSeedToken({
+  return {
     [AUTO_ROLE_HEADER]: role,
     [ROLE_HEADER]: role,
-  });
+  };
 }
 
 /**
@@ -63,9 +56,37 @@ export function getAuthHeaders(): Record<string, string> {
  */
 export function getJsonHeaders(): Record<string, string> {
   const role = getCurrentRole();
-  return withDevSeedToken({
+  return {
     'Content-Type': 'application/json',
     [AUTO_ROLE_HEADER]: role,
     [ROLE_HEADER]: role,
+  };
+}
+
+function withDevSeedToken(headers: Record<string, string>): Record<string, string> {
+  if (DEV_SEED_TOKEN) {
+    return { ...headers, [DEV_SEED_HEADER]: DEV_SEED_TOKEN };
+  }
+  return headers;
+}
+
+export function getAdminAuthHeaders(): Record<string, string> {
+  if (!isAdminUnlocked()) {
+    return {};
+  }
+  return withDevSeedToken({
+    [AUTO_ROLE_HEADER]: "admin",
+    [ROLE_HEADER]: "admin",
+  });
+}
+
+export function getAdminJsonHeaders(): Record<string, string> {
+  if (!isAdminUnlocked()) {
+    return { 'Content-Type': 'application/json' };
+  }
+  return withDevSeedToken({
+    'Content-Type': 'application/json',
+    [AUTO_ROLE_HEADER]: "admin",
+    [ROLE_HEADER]: "admin",
   });
 }

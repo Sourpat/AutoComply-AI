@@ -31,7 +31,7 @@ def test_review_queue_allows_role_with_dev_seed(monkeypatch) -> None:
     response = client.get(
         "/api/v1/admin/review-queue/items?limit=1",
         headers={
-            auth.ROLE_HEADER: "verifier",
+            auth.ROLE_HEADER: "admin",
             auth.DEV_SEED_HEADER: "local_dev_token",
         },
     )
