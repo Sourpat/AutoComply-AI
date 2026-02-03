@@ -2,8 +2,17 @@
  * Auth Headers Utility
  * 
  * Provides headers for API requests based on admin_unlocked state.
- * Automatically includes X-AutoComply-Role header.
+ * Automatically includes role headers and optional dev seed token.
  */
+
+const metaEnv = (import.meta as any)?.env ?? {};
+
+export const ROLE_HEADER = "x-user-role";
+export const AUTO_ROLE_HEADER = "x-autocomply-role";
+export const DEV_SEED_HEADER = "x-dev-seed-token";
+
+const DEV_SEED_TOKEN =
+  typeof metaEnv.VITE_DEV_SEED_TOKEN === "string" ? metaEnv.VITE_DEV_SEED_TOKEN.trim() : "";
 
 /**
  * Get the user's current role based on admin_unlocked state
@@ -34,12 +43,19 @@ export function isAdminUnlocked(): boolean {
 /**
  * Get base headers for API requests with role
  */
+export function withDevSeedToken(headers: Record<string, string>): Record<string, string> {
+  if (DEV_SEED_TOKEN) {
+    return { ...headers, [DEV_SEED_HEADER]: DEV_SEED_TOKEN };
+  }
+  return headers;
+}
+
 export function getAuthHeaders(): Record<string, string> {
   const role = getCurrentRole();
-  return {
-    'X-AutoComply-Role': role,
-    'X-User-Role': role,
-  };
+  return withDevSeedToken({
+    [AUTO_ROLE_HEADER]: role,
+    [ROLE_HEADER]: role,
+  });
 }
 
 /**
@@ -47,9 +63,9 @@ export function getAuthHeaders(): Record<string, string> {
  */
 export function getJsonHeaders(): Record<string, string> {
   const role = getCurrentRole();
-  return {
+  return withDevSeedToken({
     'Content-Type': 'application/json',
-    'X-AutoComply-Role': role,
-    'X-User-Role': role,
-  };
+    [AUTO_ROLE_HEADER]: role,
+    [ROLE_HEADER]: role,
+  });
 }

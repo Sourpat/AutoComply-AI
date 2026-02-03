@@ -10,7 +10,7 @@ Allows reviewers to:
 - Approve and publish answers to KB
 - Reject items
 
-SECURITY: All endpoints require admin role via X-User-Role header.
+SECURITY: Review queue endpoints require role + dev seed token (when configured).
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,12 +23,12 @@ import logging
 from src.database.connection import get_db
 from src.database.models import ReviewStatus, ReviewQueueItem, QuestionEvent
 from src.services.review_queue_service import ReviewQueueService
-from src.api.dependencies.auth import require_admin_role
+from src.api.dependencies.auth import require_review_queue_role
 
 router = APIRouter(
     prefix="/api/v1/admin/review-queue",
     tags=["admin", "review-queue"],
-    dependencies=[Depends(require_admin_role)],  # All endpoints require admin role
+    dependencies=[Depends(require_review_queue_role)],
 )
 
 logger = logging.getLogger(__name__)

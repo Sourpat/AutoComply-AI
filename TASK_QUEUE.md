@@ -109,6 +109,15 @@
 
 **Phase 8 Status**: DONE
 
+### Fix Review Queue 403 (Auth headers parity)
+**Completed**: 2026-02-03
+**Commit**: (pending)
+**Summary**: Normalized role + dev seed token headers across stack and tightened Review Queue auth.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_review_queue_auth.py`
+- `npm -C frontend run build`
+- Manual: http://localhost:5173/admin/review loads without 403
+
 ### Fix Chat page 404 (Chat API parity)
 **Completed**: 2026-02-03
 **Commit**: (pending)
@@ -140,11 +149,6 @@
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q tests/test_demo_reset_guard.py tests/test_ops_smoke.py`
 - `npm -C frontend run build`
-
-### Phase 10.2 — Deploy parity + signing verification hardening
-**Completed**: 2026-02-02
-**Commit**: (pending)
-**Summary**: Standardized AUDIT_SIGNING_KEY, added signing status endpoint + badge, and prod enforcement test.
 
 ---
 

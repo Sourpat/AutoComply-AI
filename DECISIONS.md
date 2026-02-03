@@ -36,6 +36,24 @@
 
 ## Decisions
 
+### [2026-02-03] Review Queue auth header normalization
+
+**Context**: Review Queue requests were returning 403 due to inconsistent role header names and missing dev seed token propagation between frontend and backend.
+
+**Decision**: Define shared header constants (`x-user-role`, `x-autocomply-role`, `x-dev-seed-token`) in backend auth dependencies and frontend auth helpers. Require role headers for Review Queue access and validate the dev seed token when configured, returning clear 403 reasons.
+
+**Rationale**:
+- Prevents silent 403s by aligning header names across stack
+- Ensures Review Queue access remains protected while supporting dev/staging tokens
+- Provides explicit error messaging for faster troubleshooting
+
+**Consequences**:
+- Positive: Consistent RBAC headers and clearer failure reasons
+- Negative: Requires setting `VITE_DEV_SEED_TOKEN`/`DEV_SEED_TOKEN` when token enforcement is enabled
+- Neutral: No schema changes
+
+**Status**: Accepted
+
 ### [2026-02-03] Chat API alias + frontend endpoint alignment
 
 **Context**: The Chat page returned a 404 because frontend requests did not match the backend chat route prefix, and there was no health probe for quick smoke checks.

@@ -9,9 +9,16 @@ Frontend sets this header based on localStorage 'admin_unlocked' state.
 from fastapi import Header, HTTPException, status
 from typing import Annotated, Iterable
 
+from src.config import get_settings
+
+ROLE_HEADER = "x-user-role"
+AUTO_ROLE_HEADER = "x-autocomply-role"
+DEV_SEED_HEADER = "x-dev-seed-token"
+
 
 def require_admin_role(
-    x_user_role: Annotated[str | None, Header()] = None
+    x_user_role: Annotated[str | None, Header(alias=ROLE_HEADER)] = None,
+    x_autocomply_role: Annotated[str | None, Header(alias=AUTO_ROLE_HEADER)] = None,
 ) -> str:
     """
     Dependency that requires admin role.
@@ -34,16 +41,19 @@ def require_admin_role(
             # Only accessible if X-User-Role: admin header is present
             ...
     """
-    if not x_user_role or x_user_role.lower() != "admin":
+    role = _normalize_role(x_autocomply_role, x_user_role)
+    if not role:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "admin_access_required",
-                "message": "This endpoint requires admin privileges. Admin mode must be unlocked in the UI.",
-            }
+            detail="forbidden: missing role header",
         )
-    
-    return x_user_role
+    if role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="forbidden: admin role required",
+        )
+
+    return role
 
 
 def _normalize_role(*values: str | None) -> str | None:
@@ -55,28 +65,63 @@ def _normalize_role(*values: str | None) -> str | None:
 
 def require_roles(
     allowed_roles: Iterable[str],
-    x_user_role: Annotated[str | None, Header()] = None,
-    x_autocomply_role: Annotated[str | None, Header(alias="X-AutoComply-Role")] = None,
+    x_user_role: Annotated[str | None, Header(alias=ROLE_HEADER)] = None,
+    x_autocomply_role: Annotated[str | None, Header(alias=AUTO_ROLE_HEADER)] = None,
 ) -> str:
     role = _normalize_role(x_autocomply_role, x_user_role)
     allowed = {r.lower() for r in allowed_roles}
-    if not role or role not in allowed:
+    if not role:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "role_not_allowed",
-                "message": "This endpoint requires an authorized role.",
-            },
+            detail="forbidden: missing role header",
+        )
+    if role not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="forbidden: role not allowed",
         )
     return role
 
 
 def require_override_role(
-    x_user_role: Annotated[str | None, Header()] = None,
-    x_autocomply_role: Annotated[str | None, Header(alias="X-AutoComply-Role")] = None,
+    x_user_role: Annotated[str | None, Header(alias=ROLE_HEADER)] = None,
+    x_autocomply_role: Annotated[str | None, Header(alias=AUTO_ROLE_HEADER)] = None,
 ) -> str:
     return require_roles(
         {"verifier", "devsupport", "admin"},
         x_user_role=x_user_role,
         x_autocomply_role=x_autocomply_role,
     )
+
+
+def require_review_queue_role(
+    x_user_role: Annotated[str | None, Header(alias=ROLE_HEADER)] = None,
+    x_autocomply_role: Annotated[str | None, Header(alias=AUTO_ROLE_HEADER)] = None,
+    x_dev_seed_token: Annotated[str | None, Header(alias=DEV_SEED_HEADER)] = None,
+) -> str:
+    settings = get_settings()
+    role = require_roles(
+        {"admin", "verifier", "devsupport"},
+        x_user_role=x_user_role,
+        x_autocomply_role=x_autocomply_role,
+    )
+
+    if settings.DEV_SEED_TOKEN:
+        if not x_dev_seed_token:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="forbidden: missing dev seed token",
+            )
+        if x_dev_seed_token != settings.DEV_SEED_TOKEN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="forbidden: dev seed token invalid",
+            )
+
+    if settings.is_production and role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="forbidden: admin role required in production",
+        )
+
+    return role

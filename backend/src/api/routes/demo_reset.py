@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from app.middleware.request_id import get_request_id
 from src.autocomply.audit.decision_log import get_decision_log
 from src.config import get_settings
+from src.api.dependencies.auth import DEV_SEED_HEADER
 from src.core.db import execute_sql, execute_update
 
 logger = logging.getLogger(__name__)
@@ -62,7 +63,7 @@ async def reset_demo(request: Request) -> Dict[str, Any]:
     In production, requires X-Dev-Seed-Token to match DEV_SEED_TOKEN.
     """
     settings = get_settings()
-    token_header = request.headers.get("X-Dev-Seed-Token")
+    token_header = request.headers.get(DEV_SEED_HEADER)
 
     if settings.is_production:
         if not settings.DEV_SEED_TOKEN or token_header != settings.DEV_SEED_TOKEN:
