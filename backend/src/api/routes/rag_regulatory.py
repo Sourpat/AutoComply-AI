@@ -256,10 +256,29 @@ async def regulatory_explain_endpoint(
                         "id": fr.id,
                         "title": fr.title,
                         "severity": fr.severity,
+                        "jurisdiction": fr.jurisdiction,
                         "citation": fr.citation,
+                        "rationale": fr.rationale,
+                        "requirement": fr.requirement,
+                        "snippet": fr.snippet,
                     }
                     for fr in eval_result.fired_rules
                 ],
+                "evaluated_rules": [
+                    {
+                        "id": rule.id,
+                        "title": rule.title,
+                        "severity": rule.severity,
+                        "jurisdiction": rule.jurisdiction,
+                        "citation": rule.citation,
+                        "rationale": rule.rationale,
+                        "requirement": rule.requirement,
+                        "status": rule.status,
+                    }
+                    for rule in getattr(eval_result, "evaluated_rules", [])
+                ],
+                "satisfied_requirements": getattr(eval_result, "satisfied_requirements", []),
+                "decision_summary": getattr(eval_result, "decision_summary", ""),
                 "missing_evidence": eval_result.missing_evidence,
                 "next_steps": eval_result.next_steps,
             },

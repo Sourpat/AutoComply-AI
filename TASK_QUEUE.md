@@ -1,6 +1,6 @@
 # Task Queue
 
-**Last Updated**: 2026-02-03
+**Last Updated**: 2026-02-04
 
 **Active WIP**: 0
 
@@ -109,6 +109,27 @@
 
 **Phase 8 Status**: DONE
 
+### BUG-208: Console details payload/explain not loading
+**Completed**: 2026-02-04
+**Commit**: (pending)
+**Summary**: Switched connected mode to console work-queue/submissions APIs, added payload completeness on load, and enriched explain debug output for fired rules.
+**Verification**:
+- `npm -C frontend run build`
+
+### BUG-207: RAG Explorer explainability premium refactor
+**Completed**: 2026-02-04
+**Commit**: (pending)
+**Summary**: Refactored explainability layout, added required-field completeness with empty payload handling, and improved connected submission dropdown.
+**Verification**:
+- `npm -C frontend run build`
+
+### BUG-206: Console demo readiness + override metrics 404
+**Completed**: 2026-02-04
+**Commit**: (pending)
+**Summary**: Added 404-safe ops smoke fetch and override metrics fallback derived from policy overrides.
+**Verification**:
+- `npm -C frontend run build`
+
 ### BUG-204: Fix workflow proxy for console health
 **Completed**: 2026-02-03
 **Commit**: (pending)
@@ -145,15 +166,6 @@
 - Manual: http://localhost:5173/admin/review loads without 403
 
 ### Fix Chat page 404 (Chat API parity)
-**Completed**: 2026-02-03
-**Commit**: (pending)
-**Summary**: Added /api/chat alias + health endpoint and aligned Chat UI to shared API base with diagnostics.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_chat_alias_routes.py`
-- `npm -C frontend run build`
-- Manual: http://localhost:5173/chat loads without {"detail":"Not Found"}
-
-
 ---
 
 ## Task Workflow
@@ -190,4 +202,19 @@
 - Refactoring for code quality
 - Documentation improvements
 - Tech debt cleanup
+
+
+### BUG-205: Restore ops smoke endpoint
+**Status**: blocked
+**Assigned**: GitHub Copilot
+**Goal**: Ensure GET /api/ops/smoke returns 200 locally and appears in OpenAPI
+**Acceptance Criteria**:
+- [ ] GET /api/ops/smoke returns 200 locally
+- [ ] /api/ops/smoke appears in /openapi.json
+- [ ] No auth required for /api/ops/smoke
+**Verification**:
+- `Invoke-RestMethod http://127.0.0.1:8001/api/ops/smoke`
+- `Invoke-RestMethod http://127.0.0.1:8001/openapi.json | Select-String /api/ops/smoke`
+**Dependencies**: None
+**Notes**: Port 8001 is currently bound by an unknown process; need it freed to verify locally.
 
