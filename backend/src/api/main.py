@@ -49,7 +49,6 @@ from src.api.routes import kb_admin
 from src.api.routes import demo
 from src.api.routes import ops
 from src.api.routes import demo_reset
-from src.api.routes import ops_smoke
 from src.api.routes import agentic
 from src.api.routes import audit_packets
 from src.api.routes import audit_events
@@ -409,13 +408,14 @@ app.include_router(metrics.router)
 app.include_router(kb_admin.router)
 app.include_router(demo.router)
 app.include_router(ops.router)
+app.include_router(ops.smoke_router)
 app.include_router(demo_reset.router)
-app.include_router(ops_smoke.router)
 app.include_router(agentic.router)
 app.include_router(audit_packets.router)
 app.include_router(audit_events.router)
 app.include_router(policy_contracts.router)
 app.include_router(policy_safe_failures.router)
+
 
 # Workflow Console - Step 2.10
 app.include_router(workflow_router)
@@ -429,6 +429,7 @@ app.include_router(policy_router)
 
 # Submissions persistence
 app.include_router(submissions_router)
+app.include_router(submissions_router, prefix="/api")
 
 # Analytics - Step 2.11, 2.12
 app.include_router(analytics_router)
