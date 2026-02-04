@@ -54,6 +54,22 @@
 
 **Status**: Accepted
 
+### [2026-02-03] Dev proxy includes workflow endpoints
+
+**Context**: Console health checks and case loading hit `/workflow/*` endpoints; without a Vite proxy entry they returned 404 from the dev server.
+
+**Decision**: Add a `/workflow` proxy entry in Vite dev server to forward to the backend.
+
+**Rationale**:
+- Keeps workflow health checks and case APIs functional in local dev
+- Avoids forcing all workflow calls to `/api/*` when backend exposes `/workflow/*`
+
+**Consequences**:
+- Positive: Console no longer reports backend unreachable during local dev
+- Neutral: No production behavior changes
+
+**Status**: Accepted
+
 ### [2026-02-03] Standardize chat API path + API-only Vite proxy
 
 **Context**: Dev requests to `/api/chat/*` returned 404 in the running API, while `/api/v1/chat/*` worked. Dev server proxying many non-API routes also caused SPA refreshes to hit the backend.

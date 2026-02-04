@@ -109,6 +109,13 @@
 
 **Phase 8 Status**: DONE
 
+### BUG-204: Fix workflow proxy for console health
+**Completed**: 2026-02-03
+**Commit**: (pending)
+**Summary**: Added /workflow proxy so Console health checks hit the backend in dev.
+**Verification**:
+- `Invoke-RestMethod http://localhost:5173/workflow/health`
+
 ### BUG-203: Fix console recovery + demo questions
 **Completed**: 2026-02-03
 **Commit**: (pending)
@@ -146,12 +153,6 @@
 - `npm -C frontend run build`
 - Manual: http://localhost:5173/chat loads without {"detail":"Not Found"}
 
-### Phase 10.5 — Fix Review Queue/Ops + analytics wiring + UX polish
-**Completed**: 2026-02-03
-**Commit**: (pending)
-**Summary**: Stabilized review queue endpoint fallback and ensured /api/v1 prefix parity.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_demo_reset_guard.py backend/tests/test_ops_smoke.py backend/tests/test_console_analytics_summary.py backend/tests/test_admin_review_queue_safe_empty.py`
 
 ---
 

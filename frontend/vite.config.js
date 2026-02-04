@@ -67,6 +67,7 @@ export default defineConfig(({ mode }) => {
         // Backend API routes only - do NOT proxy SPA routes.
         "/api": { target: apiBase, changeOrigin: true, secure: false },
         "/health": { target: apiBase, changeOrigin: true, secure: false },
+        "/workflow": { target: apiBase, changeOrigin: true, secure: false },
       },
     },
   };
