@@ -27,6 +27,7 @@ import { listPolicyOverrides } from "../api/policyOverrides";
 import type { PolicyOverrideDetail } from "../types/decision";
 import { getAuthHeaders } from "../lib/authHeaders";
 import { getHealthFull, getHealthz, getSigningStatus, getSmoke, postDemoReset } from "../api/demoOps";
+import { clearHealthCheckCache, getWorkflowStore } from "../workflow/workflowStoreSelector";
 
 type DecisionStatus = "ok_to_ship" | "blocked" | "needs_review";
 type ActiveSection = "dashboard" | "csf" | "licenses" | "orders" | "settings" | "about";
@@ -1199,6 +1200,18 @@ const ConsoleDashboard: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleRetryLoad = async () => {
+    setError(null);
+    clearHealthCheckCache();
+    try {
+      await getWorkflowStore(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Backend not reachable");
+      return;
+    }
+    await loadWorkQueue();
   };
 
   const handleViewTrace = async (traceId: string) => {
@@ -2657,7 +2670,7 @@ const ConsoleDashboard: React.FC = () => {
                     <div className="text-xs text-red-600">{error}</div>
                   </div>
                   <button
-                    onClick={() => window.location.reload()}
+                    onClick={handleRetryLoad}
                     className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700"
                   >
                     Retry
@@ -3299,8 +3312,7 @@ const ConsoleDashboard: React.FC = () => {
                     <h4 className="text-md font-semibold text-slate-900 mb-4">Admin Tools</h4>
                     <AdminResetPanel 
                       onResetComplete={() => {
-                        // Refresh the page or reload work queue
-                        window.location.reload();
+                        handleRetryLoad();
                       }} 
                     />
                   </div>

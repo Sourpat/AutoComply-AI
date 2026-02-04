@@ -36,6 +36,45 @@
 
 ## Decisions
 
+### [2026-02-03] Demo answers + forced health refresh for Console
+
+**Context**: Console displayed “Backend Not Reachable” even after backend recovery due to cached health checks, and demo questions in Chat were routed to the backend and queued.
+
+**Decision**: Add a force refresh path for backend health checks and wire Console retry actions to clear cache and re-evaluate. Provide a frontend-only demo answer map for demo question clicks to return immediate responses without backend calls.
+
+**Rationale**:
+- Allows the Console to recover after backend starts without full reload
+- Ensures demo questions always produce immediate, deterministic answers
+- Reduces reliance on backend availability for demo UX
+
+**Consequences**:
+- Positive: Faster recovery and smoother demo flow
+- Negative: Demo answers are curated and must be maintained
+- Neutral: No backend schema changes
+
+**Status**: Accepted
+
+### [2026-02-03] Standardize chat API path + API-only Vite proxy
+
+**Context**: Dev requests to `/api/chat/*` returned 404 in the running API, while `/api/v1/chat/*` worked. Dev server proxying many non-API routes also caused SPA refreshes to hit the backend.
+
+**Decision**: Standardize the frontend chat client on `/api/v1/chat` and narrow the Vite dev proxy to API-only routes (`/api`, `/health`).
+
+**Rationale**:
+- Matches the canonical backend routes currently exposed in OpenAPI
+- Prevents SPA routes from being proxied to the backend during dev
+- Keeps API base control in `VITE_API_BASE_URL`
+
+**Alternatives Considered**:
+- Fix `/api/chat` alias routing: deferred until alias registration discrepancy is resolved
+
+**Consequences**:
+- Positive: Chat submit works end-to-end and SPA refreshes return index.html
+- Negative: `/api/chat/*` is no longer used by the frontend
+- Neutral: No backend schema changes
+
+**Status**: Accepted
+
 ### [2026-02-03] Review Queue auth header normalization
 
 **Context**: Review Queue requests were returning 403 due to inconsistent role header names and missing dev seed token propagation between frontend and backend.

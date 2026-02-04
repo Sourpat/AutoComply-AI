@@ -29,9 +29,9 @@ const HEALTH_CHECK_CACHE_MS = 30000; // 30 seconds
 /**
  * Check if backend is healthy
  */
-async function checkBackendHealth(): Promise<boolean> {
+async function checkBackendHealth(force = false): Promise<boolean> {
   // Use cache if available and fresh
-  if (healthCheckCache && Date.now() - healthCheckCache.timestamp < HEALTH_CHECK_CACHE_MS) {
+  if (!force && healthCheckCache && Date.now() - healthCheckCache.timestamp < HEALTH_CHECK_CACHE_MS) {
     return healthCheckCache.isHealthy;
   }
   
@@ -92,8 +92,8 @@ const demoStoreAdapter = new DemoStoreAdapter();
  * CRITICAL: No longer falls back to demo store when backend is unreachable.
  * This ensures UI shows proper error states instead of stale demo data.
  */
-export async function getWorkflowStore(): Promise<WorkflowStore> {
-  const isHealthy = await checkBackendHealth();
+export async function getWorkflowStore(force = false): Promise<WorkflowStore> {
+  const isHealthy = await checkBackendHealth(force);
   
   if (!isHealthy) {
     throw new Error(

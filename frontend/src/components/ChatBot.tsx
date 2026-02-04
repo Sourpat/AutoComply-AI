@@ -33,6 +33,45 @@ const DEMO_QUESTIONS = [
   "How do I get a DEA license in Texas?",
 ];
 
+const DEMO_ANSWERS: Record<string, string> = {
+  "What is a Schedule II drug?":
+    "Schedule II drugs have a high potential for abuse but accepted medical use.\n" +
+    "They require a valid DEA registration and strict inventory controls.\n" +
+    "Prescriptions are generally non-refillable and closely documented.\n" +
+    "State rules may add extra limits on prescribing and dispensing.\n" +
+    "Disclaimer: General info only — verify with federal and state regulations.",
+  "What are requirements for Schedule II controlled substances in Florida?":
+    "Florida requires DEA registration plus state-controlled substance compliance.\n" +
+    "Maintain accurate inventories, secure storage, and dispensing logs.\n" +
+    "Prescriptions typically require strict validation and cannot be refilled.\n" +
+    "Check Florida statutes and Board of Pharmacy rules for updates.\n" +
+    "Disclaimer: General guidance only — confirm current Florida requirements.",
+  "What is Ohio TDDD and when is it required?":
+    "Ohio TDDD is a terminal distributor of dangerous drugs license.\n" +
+    "It is required for facilities handling controlled substances in Ohio.\n" +
+    "Licensing depends on facility type, activities, and drug schedules handled.\n" +
+    "Renewals and inspections are managed by the Ohio Board of Pharmacy.\n" +
+    "Disclaimer: General info only — confirm with Ohio Board of Pharmacy.",
+  "What are Schedule IV shipping rules for New Jersey?":
+    "Schedule IV shipping typically requires DEA registration and compliance.\n" +
+    "Use secure packaging, maintain chain-of-custody, and verify recipients.\n" +
+    "Recordkeeping and reporting must meet federal and NJ requirements.\n" +
+    "Confirm carrier policies and any NJ-specific restrictions.\n" +
+    "Disclaimer: General info only — verify with NJ regulations.",
+  "What are Schedule IV shipping rules for Rhode Island?":
+    "Schedule IV shipping generally requires DEA registration and compliance.\n" +
+    "Ensure secure transport, recipient verification, and proper documentation.\n" +
+    "Maintain shipment logs and follow any state-controlled substance rules.\n" +
+    "Check Rhode Island Board of Pharmacy guidance for details.\n" +
+    "Disclaimer: General info only — verify with RI regulations.",
+  "How do I get a DEA license in Texas?":
+    "Apply for a DEA registration appropriate to your business activity.\n" +
+    "Ensure Texas state licensure is active before applying federally.\n" +
+    "Provide required documentation, fees, and business location details.\n" +
+    "Expect background checks and possible inspection requirements.\n" +
+    "Disclaimer: General info only — confirm with DEA and Texas authorities.",
+};
+
 function isAdminUnlocked(): boolean {
   return localStorage.getItem("admin_unlocked") === "true";
 }
@@ -128,6 +167,19 @@ export function ChatBot() {
 
   const handleDemoQuestion = (demoQuestion: string) => {
     if (loading || !activeConversationId) return;
+    const demoAnswer = DEMO_ANSWERS[demoQuestion];
+    if (demoAnswer) {
+      const userMessage: Message = { role: "user", content: demoQuestion };
+      const assistantMessage: Message = { role: "assistant", content: demoAnswer };
+      const updatedMessages = [...messages, userMessage, assistantMessage];
+      const isFirstMessage = messages.length === 0;
+      const title = isFirstMessage
+        ? demoQuestion.length > 40 ? demoQuestion.substring(0, 40) + "..." : demoQuestion
+        : activeConversation?.title || "New conversation";
+      updateConversation(activeConversationId, { messages: updatedMessages, title });
+      setShowDemoQuestions(false);
+      return;
+    }
     setQuestion(demoQuestion);
     // Auto-submit after a brief delay to show the question in the input
     setTimeout(() => {
@@ -168,7 +220,7 @@ export function ChatBot() {
       });
     } catch (error) {
       console.error("Chat error:", error);
-      const details = toApiErrorDetails(error, { url: "/api/chat/ask" });
+      const details = toApiErrorDetails(error, { url: "/api/v1/chat/ask" });
       setErrorDetails(details);
       const errorMessage: Message = {
         role: "assistant",

@@ -1,14 +1,11 @@
 // frontend/src/lib/api.ts
 // Centralized API base URL and fetch wrapper with timeout + diagnostics
 
-/**
- * Single source of truth for backend API location.
- *
- * Use VITE_API_BASE_URL at build time. If empty, fall back to same-origin
- * by keeping API_BASE as an empty string.
- */
+import { API_BASE } from "./apiBase";
+
+export { API_BASE };
+
 const metaEnv = (import.meta as any)?.env ?? {};
-export const API_BASE = (metaEnv.VITE_API_BASE_URL ?? "").trim();
 const isDev = metaEnv.DEV;
 
 // Log resolved API_BASE for debugging (dev only)

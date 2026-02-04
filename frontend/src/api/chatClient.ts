@@ -32,7 +32,7 @@ export interface ChatResponse {
   reviewer_draft?: string;  // Detailed markdown draft for admin views (only present for NEEDS_REVIEW)
 }
 
-const CHAT_BASE = "/api/chat";
+const CHAT_BASE = "/api/v1/chat";
 
 const DECISION_TRACE_DEFAULTS: DecisionTrace = {
   kb_searched: false,

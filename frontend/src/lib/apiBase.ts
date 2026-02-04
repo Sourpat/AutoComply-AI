@@ -4,7 +4,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Single source of truth for backend API location. All API clients should
- * import API_BASE from src/lib/api.ts.
+ * import API_BASE from src/lib/apiBase.ts.
  * 
  * USAGE PATTERNS:
  * ---------------
@@ -35,9 +35,19 @@
  *   Empty string env vars (VITE_API_BASE_URL="") will fall back to same-origin.
  */
 
-import { API_BASE } from "./api";
+const metaEnv = (import.meta as any)?.env ?? {};
 
-export { API_BASE };
+export function getApiBase(): string {
+  const raw = (metaEnv.VITE_API_BASE_URL ?? "").trim();
+  if (!raw) return "";
+  return raw.replace(/\/+$/, "");
+}
+
+export const API_BASE = getApiBase();
+
+if (metaEnv.PROD && !API_BASE && typeof window !== "undefined") {
+  console.warn("[AutoComply API] VITE_API_BASE_URL is missing in production build.");
+}
 
 /**
  * Helper to safely parse error responses from FastAPI

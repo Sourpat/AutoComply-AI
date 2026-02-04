@@ -109,6 +109,25 @@
 
 **Phase 8 Status**: DONE
 
+### BUG-203: Fix console recovery + demo questions
+**Completed**: 2026-02-03
+**Commit**: (pending)
+**Summary**: Standardized dev proxy/API base usage, added forced health refresh on retry, and demo question answers in chat.
+**Verification**:
+- `irm "http://127.0.0.1:8001/health/full" | ConvertTo-Json -Depth 10`
+- `npm -C frontend run build`
+- `http://localhost:5173/chat` demo questions answer locally
+
+### BUG-202: Fix dev routing + chat queue end-to-end
+**Completed**: 2026-02-03
+**Commit**: (pending)
+**Summary**: Limited Vite proxy to API-only routes, standardized chat client on `/api/v1/chat`, and verified chat-to-review-queue flow.
+**Verification**:
+- GET http://127.0.0.1:8001/health/full
+- GET http://localhost:5173/chat (SPA HTML)
+- POST http://127.0.0.1:8001/api/v1/chat/ask (200)
+- GET http://127.0.0.1:8001/api/v1/admin/review-queue/items?limit=20 (item created)
+
 ### Fix Review Queue 403 (Auth headers parity)
 **Completed**: 2026-02-03
 **Commit**: (pending)
@@ -133,22 +152,6 @@
 **Summary**: Stabilized review queue endpoint fallback and ensured /api/v1 prefix parity.
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q backend/tests/test_demo_reset_guard.py backend/tests/test_ops_smoke.py backend/tests/test_console_analytics_summary.py backend/tests/test_admin_review_queue_safe_empty.py`
-
-### Phase 10.4 — Prod integration checks + UI smoke
-**Completed**: 2026-02-03
-**Commit**: (pending)
-**Summary**: Added demo-ready check buttons, prod smoke script, and API base cleanup.
-**Verification**:
-- `npm -C frontend run build`
-- `npm -C frontend run smoke:prod`
-
-### Phase 10.3 — Prod smoke + safe demo reset + demo ready UI
-**Completed**: 2026-02-03
-**Commit**: (pending)
-**Summary**: Added demo reset guard + ops smoke endpoint, Demo Ready checklist UI, and tests.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q tests/test_demo_reset_guard.py tests/test_ops_smoke.py`
-- `npm -C frontend run build`
 
 ---
 
@@ -186,3 +189,4 @@
 - Refactoring for code quality
 - Documentation improvements
 - Tech debt cleanup
+
