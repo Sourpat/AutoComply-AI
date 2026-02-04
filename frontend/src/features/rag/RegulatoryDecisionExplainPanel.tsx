@@ -14,6 +14,11 @@ import type { CompletenessScore } from "../../lib/completenessScorer";
 import { API_BASE } from "../../lib/api";
 import { generateCounterfactuals, type Counterfactual } from "../../lib/counterfactualGenerator";
 import { generateRequestInfoMessage, type RequestInfoTemplate } from "../../lib/requestInfoGenerator";
+import {
+  completenessSchemas,
+  type CompletenessField,
+  type CompletenessSchema,
+} from "../../submissions/submissionTypes";
 import { useRole } from "../../context/RoleContext";
 import {
   canViewEvidence,
@@ -66,13 +71,6 @@ interface EvaluatedRule {
   status: string; // "passed" | "failed" | "info"
 }
 
-type RequiredField = {
-  key: string;
-  label: string;
-  category: "block" | "review" | "info";
-  paths: string[];
-};
-
 type LocalCompleteness = {
   scorePct: number;
   presentCount: number;
@@ -82,31 +80,8 @@ type LocalCompleteness = {
     review: string[];
     info: string[];
   };
-  missingByCategory: {
-    block: RequiredField[];
-    review: RequiredField[];
-    info: RequiredField[];
-  };
+  missingByCategory: Record<"block" | "review" | "info", CompletenessField[]>;
 };
-
-const REQUIRED_FIELDS: RequiredField[] = [
-  { key: "requestingUnit", label: "Requesting Unit", category: "block", paths: ["requesting_unit", "requestingUnit"] },
-  { key: "requestType", label: "Request Type", category: "block", paths: ["request_type", "requestType"] },
-  { key: "dataSubject", label: "Data Subject", category: "block", paths: ["data_subject", "dataSubject"] },
-  { key: "dataCategories", label: "Data Categories", category: "block", paths: ["data_categories", "dataCategories"] },
-  { key: "legalBasis", label: "Legal Basis", category: "block", paths: ["legal_basis", "legalBasis"] },
-  { key: "retention", label: "Retention", category: "block", paths: ["retention_period", "retentionPeriod", "retention"] },
-  { key: "securityControls", label: "Security Controls", category: "block", paths: ["security_controls", "securityControls"] },
-  { key: "vendor", label: "Vendor / Processor", category: "block", paths: ["vendor", "processor"] },
-  { key: "location", label: "Data Location", category: "review", paths: ["data_location", "location"] },
-  { key: "transfer", label: "Cross-Border Transfer", category: "review", paths: ["cross_border_transfer", "transfer"] },
-  { key: "pii", label: "PII / Sensitive Data", category: "review", paths: ["pii", "sensitive_data"] },
-  { key: "purpose", label: "Purpose", category: "review", paths: ["purpose"] },
-  { key: "dsrImpact", label: "DSR Impact", category: "review", paths: ["dsr_impact", "dsrImpact"] },
-  { key: "dataVolume", label: "Data Volume", category: "review", paths: ["data_volume", "dataVolume"] },
-  { key: "requestDate", label: "Request Date", category: "info", paths: ["request_date", "requestDate"] },
-  { key: "attachments", label: "Attachments", category: "info", paths: ["attachments"] }
-];
 
 const getValueByPath = (source: Record<string, unknown> | null, path: string): unknown => {
   if (!source) return undefined;
@@ -118,6 +93,19 @@ const getValueByPath = (source: Record<string, unknown> | null, path: string): u
   }, source);
 };
 
+const getValueByPathSet = (
+  source: Record<string, unknown> | null,
+  path: string | string[]
+): unknown => {
+  if (!source) return undefined;
+  const paths = Array.isArray(path) ? path : [path];
+  for (const candidate of paths) {
+    const value = getValueByPath(source, candidate);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+};
+
 const isValuePresent = (value: unknown): boolean => {
   if (value === null || value === undefined) return false;
   if (typeof value === "string") return value.trim().length > 0;
@@ -126,18 +114,21 @@ const isValuePresent = (value: unknown): boolean => {
   return true;
 };
 
-const computeCompleteness = (payload: Record<string, unknown> | null): LocalCompleteness => {
-  const totalCount = REQUIRED_FIELDS.length;
+const computeCompleteness = (
+  payload: Record<string, unknown> | null,
+  schema: CompletenessSchema
+): LocalCompleteness => {
+  const totalCount = schema.fields.length;
   const missingByCategory = {
-    block: [] as RequiredField[],
-    review: [] as RequiredField[],
-    info: [] as RequiredField[]
+    block: [] as CompletenessField[],
+    review: [] as CompletenessField[],
+    info: [] as CompletenessField[]
   };
 
   let presentCount = 0;
 
-  for (const field of REQUIRED_FIELDS) {
-    const isPresent = field.paths.some((path) => isValuePresent(getValueByPath(payload, path)));
+  for (const field of schema.fields) {
+    const isPresent = isValuePresent(getValueByPathSet(payload, field.path));
     if (isPresent) {
       presentCount += 1;
     } else {
@@ -192,6 +183,34 @@ const mapWorkQueueSubmission = (item: WorkQueueSubmission): Submission => {
     csfType: item.csf_type,
     tenantId: item.tenant,
   };
+
+const resolveSchemaKey = (candidate?: string | null): string => {
+  if (!candidate) return "default";
+  const normalized = candidate.toLowerCase();
+  if (normalized in completenessSchemas) return normalized;
+  if (normalized.includes("csf") && normalized.includes("practitioner")) return "csf_practitioner";
+  if (normalized.includes("csf") && normalized.includes("facility")) return "csf_facility";
+  if (normalized.includes("csf") && normalized.includes("hospital")) return "csf_hospital";
+  if (normalized.includes("tddd")) return "ohio_tddd";
+  return "default";
+};
+
+const extractPayload = (detail: Record<string, unknown> | null) => {
+  if (!detail) return null;
+  const candidates = [
+    detail.payload,
+    detail.submission_payload,
+    detail.form_data,
+    detail.data,
+    (detail.submission as Record<string, unknown> | undefined)?.payload,
+  ];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === "object" && Object.keys(candidate as Record<string, unknown>).length > 0) {
+      return candidate as Record<string, unknown>;
+    }
+  }
+  return null;
+};
 };
 
 interface RegulatoryDecisionExplainPanelProps {
@@ -222,6 +241,7 @@ export function RegulatoryDecisionExplainPanel({
   const [selectedSubmission, setSelectedSubmission] = useState<string>("");
   const [loadedTrace, setLoadedTrace] = useState<Submission | null>(null);
   const [selectedSubmissionPayload, setSelectedSubmissionPayload] = useState<Record<string, unknown> | null>(null);
+  const [selectedSchemaKey, setSelectedSchemaKey] = useState<string>("default");
   const [submissionMenuOpen, setSubmissionMenuOpen] = useState(false);
   
   const [state, setState] = useState<RequestState>("idle");
@@ -396,15 +416,18 @@ export function RegulatoryDecisionExplainPanel({
     try {
       const detail = await getConsoleSubmission(submissionId);
       const submission = mapWorkQueueSubmission(detail);
-      const payload = submission.payload || {};
+      const payload = extractPayload({ payload: submission.payload }) || {};
       const payloadKeys = payload ? Object.keys(payload).length : 0;
       console.log("[Connected] Loaded submission payload keys:", payloadKeys);
       
       setLoadedTrace(submission);
       setSelectedSubmission(submissionId);
-      setSelectedSubmissionPayload(submission.payload || null);
+      const schemaKey = resolveSchemaKey(detail.csf_type || detail.title || detail.tenant);
+      setSelectedSchemaKey(schemaKey);
+      setSelectedSubmissionPayload(payloadKeys > 0 ? payload : null);
       const hasPayload = payload && Object.keys(payload).length > 0;
-      const completeness = hasPayload ? computeCompleteness(payload) : null;
+      const schema = completenessSchemas[schemaKey] || completenessSchemas.default;
+      const completeness = hasPayload ? computeCompleteness(payload, schema) : null;
       setCompletenessScore(completeness);
       
       // Load audit events for timeline
@@ -428,7 +451,10 @@ export function RegulatoryDecisionExplainPanel({
         setSelectedSubmission(submissionId);
         setSelectedSubmissionPayload(fallback.payload || null);
         const hasPayload = fallback.payload && Object.keys(fallback.payload).length > 0;
-        const completeness = hasPayload ? computeCompleteness(fallback.payload) : null;
+        const schemaKey = resolveSchemaKey(fallback.csfType || fallback.kind || fallback.displayName);
+        setSelectedSchemaKey(schemaKey);
+        const schema = completenessSchemas[schemaKey] || completenessSchemas.default;
+        const completeness = hasPayload ? computeCompleteness(fallback.payload, schema) : null;
         setCompletenessScore(completeness);
         setState("idle");
         return;
@@ -457,15 +483,18 @@ export function RegulatoryDecisionExplainPanel({
       }
 
       const submission = mapWorkQueueSubmission(match);
-      const payload = submission.payload || {};
+      const payload = extractPayload({ payload: submission.payload }) || {};
       const payloadKeys = payload ? Object.keys(payload).length : 0;
       console.log("[Connected] Loaded trace payload keys:", payloadKeys);
       
       setLoadedTrace(submission);
       setSelectedSubmission(submission.id);
-      setSelectedSubmissionPayload(submission.payload || null);
+      const schemaKey = resolveSchemaKey(match.csf_type || match.title || match.tenant);
+      setSelectedSchemaKey(schemaKey);
+      setSelectedSubmissionPayload(payloadKeys > 0 ? payload : null);
       const hasPayload = payload && Object.keys(payload).length > 0;
-      const completeness = hasPayload ? computeCompleteness(payload) : null;
+      const schema = completenessSchemas[schemaKey] || completenessSchemas.default;
+      const completeness = hasPayload ? computeCompleteness(payload, schema) : null;
       setCompletenessScore(completeness);
       
       // Load audit events for timeline
@@ -542,6 +571,9 @@ export function RegulatoryDecisionExplainPanel({
         // Compute explainability quality metrics
         const csfType = scenario.decision_type || 'csf_practitioner';
         const payload = scenario.evidence || {};
+        const schemaKey = resolveSchemaKey(scenario.decision_type);
+        const schema = completenessSchemas[schemaKey] || completenessSchemas.default;
+        setSelectedSchemaKey(schemaKey);
         const firedRuleIds = (response.debug?.fired_rules || []).map((r: any) => r.id || r.ruleId);
         const hasPayload = payload && Object.keys(payload).length > 0;
         
@@ -549,7 +581,7 @@ export function RegulatoryDecisionExplainPanel({
         setSelectedSubmissionPayload(payload);
         
         // Completeness
-        const completeness = hasPayload ? computeCompleteness(payload) : null;
+        const completeness = hasPayload ? computeCompleteness(payload, schema) : null;
         setCompletenessScore(completeness);
         
         // Counterfactuals
@@ -605,12 +637,15 @@ export function RegulatoryDecisionExplainPanel({
           // Compute explainability quality metrics
           const csfType = loadedTrace.kind || 'csf_practitioner';
           const payload = loadedTrace.payload || {};
+          const schemaKey = resolveSchemaKey(loadedTrace.csfType || csfType);
+          const schema = completenessSchemas[schemaKey] || completenessSchemas.default;
+          setSelectedSchemaKey(schemaKey);
           const firedRuleIds = normalized.fired_rules.map(r => r.id);
           const hasPayload = payload && Object.keys(payload).length > 0;
           setSelectedSubmissionPayload(payload);
           
           // Completeness
-          const completeness = hasPayload ? computeCompleteness(payload) : null;
+          const completeness = hasPayload ? computeCompleteness(payload, schema) : null;
           setCompletenessScore(completeness);
           
           // Counterfactuals
@@ -663,12 +698,15 @@ export function RegulatoryDecisionExplainPanel({
           // Compute explainability quality metrics
           const csfType = loadedTrace.kind || 'csf_practitioner';
           const payload = loadedTrace.payload || {};
+          const schemaKey = resolveSchemaKey(loadedTrace.csfType || csfType);
+          const schema = completenessSchemas[schemaKey] || completenessSchemas.default;
+          setSelectedSchemaKey(schemaKey);
           const firedRuleIds = (response.debug?.fired_rules || []).map((r: any) => r.id || r.ruleId);
           const hasPayload = payload && Object.keys(payload).length > 0;
           setSelectedSubmissionPayload(payload);
           
           // Completeness
-          const completeness = hasPayload ? computeCompleteness(payload) : null;
+          const completeness = hasPayload ? computeCompleteness(payload, schema) : null;
           setCompletenessScore(completeness);
           
           // Counterfactuals
@@ -798,22 +836,27 @@ export function RegulatoryDecisionExplainPanel({
   };
 
   const activeFiredRules = normalizedTrace?.fired_rules ?? (result?.debug?.fired_rules || []);
+  const activeDrivers = normalizedTrace?.drivers ?? (result?.debug?.drivers || []);
   const missingBlockCount = completenessScore?.missingByCategory.block.length ?? 0;
   const missingReviewCount = completenessScore?.missingByCategory.review.length ?? 0;
   const hasPayload = !!selectedSubmissionPayload && Object.keys(selectedSubmissionPayload).length > 0;
   const completenessPct = completenessScore?.scorePct ?? null;
 
   const decisionStatusLabel = (() => {
-    if (normalizedTrace?.outcome === "approved") return "Approved";
-    if (normalizedTrace?.outcome === "blocked") return "Blocked";
-    if (normalizedTrace?.outcome === "needs_review") return "Needs Review";
+    if (normalizedTrace?.outcome) {
+      if (normalizedTrace.outcome === "approved") return "Approved";
+      if (normalizedTrace.outcome === "blocked") return "Blocked";
+      if (normalizedTrace.outcome === "needs_review") return "Needs Review";
+    }
     if (missingBlockCount > 0) return "Blocked";
     if (missingReviewCount > 0) return "Needs Review";
+    if (hasPayload && completenessPct !== null && completenessPct >= 80) return "Approved";
     if (hasPayload) return "Pending Review";
     return "Unknown";
   })();
 
   const decisionRiskLabel = (() => {
+    if (normalizedTrace?.risk_level) return normalizedTrace.risk_level;
     if (missingBlockCount > 0) return "High";
     if (missingReviewCount > 0) return "Medium";
     if (completenessPct !== null && completenessPct >= 90) return "Low";
@@ -1081,7 +1124,15 @@ export function RegulatoryDecisionExplainPanel({
               <div>
                 <div className="text-[12px] font-semibold text-zinc-200">Decision summary</div>
                 <div className="text-[11px] text-zinc-400">
-                  {normalizedTrace?.decision_summary || result?.answer || "Decision summary unavailable."}
+                  {normalizedTrace?.decision_summary && normalizedTrace.decision_summary.trim().length > 0
+                    ? normalizedTrace.decision_summary
+                    : result?.answer && result.answer.trim().length > 0
+                      ? result.answer
+                      : activeFiredRules.length > 0
+                        ? `Decision based on ${activeFiredRules.length} fired rule${activeFiredRules.length !== 1 ? "s" : ""}.`
+                        : topMissingFields.length > 0
+                          ? `Decision pending due to missing ${topMissingFields.length} required field${topMissingFields.length !== 1 ? "s" : ""}.`
+                          : "No rule evidence returned yet. Load submission payload and run Explain Decision."}
                 </div>
               </div>
             </div>
@@ -1155,9 +1206,15 @@ export function RegulatoryDecisionExplainPanel({
             </div>
             <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-3">
               <div className="text-[10px] uppercase tracking-wide text-zinc-500">Decision basis</div>
-              <div className="text-[12px] font-semibold text-zinc-100 mt-1">{topMissingFields.length > 0 ? "Missing data" : "Policy rules"}</div>
+              <div className="text-[12px] font-semibold text-zinc-100 mt-1">
+                {activeDrivers.length > 0 ? "Rule drivers" : topMissingFields.length > 0 ? "Missing data" : "Policy rules"}
+              </div>
               <div className="text-[11px] text-zinc-400 mt-1">
-                {topMissingFields.length > 0 ? topMissingFields.join(", ") : "No critical data gaps detected"}
+                {activeDrivers.length > 0
+                  ? activeDrivers.slice(0, 3).map((driver: any) => driver.label).join(", ")
+                  : topMissingFields.length > 0
+                    ? topMissingFields.join(", ")
+                    : "No critical data gaps detected"}
               </div>
             </div>
           </div>
@@ -1191,50 +1248,70 @@ export function RegulatoryDecisionExplainPanel({
                   </ul>
                 </div>
               )}
-              {canViewFiredRules(role) && activeFiredRules.length > 0 ? (
+              {canViewFiredRules(role) && (activeFiredRules.length > 0 || activeDrivers.length > 0) ? (
                 <div className="space-y-2">
-                  <div className="text-[11px] text-zinc-300 font-semibold">Fired rules ({activeFiredRules.length})</div>
-                  {(() => {
-                    const groups = groupRulesBySeverity(activeFiredRules);
-                    return (
-                      <>
-                        {groups.block.length > 0 && (
-                          <div>
-                            <div className="text-[11px] font-semibold text-red-300 mb-1">🚫 Block ({groups.block.length})</div>
-                            <div className="space-y-1.5">
-                              {groups.block.map((rule, idx) => renderRule(rule, idx))}
+                  <div className="text-[11px] text-zinc-300 font-semibold">
+                    Evidence drivers ({Math.max(activeFiredRules.length, activeDrivers.length)})
+                  </div>
+                  {activeFiredRules.length > 0 ? (
+                    (() => {
+                      const groups = groupRulesBySeverity(activeFiredRules);
+                      return (
+                        <>
+                          {groups.block.length > 0 && (
+                            <div>
+                              <div className="text-[11px] font-semibold text-red-300 mb-1">🚫 Block ({groups.block.length})</div>
+                              <div className="space-y-1.5">
+                                {groups.block.map((rule, idx) => renderRule(rule, idx))}
+                              </div>
                             </div>
-                          </div>
-                        )}
-                        {groups.review.length > 0 && (
-                          <div>
-                            <div className="text-[11px] font-semibold text-yellow-300 mb-1">⚠️ Review ({groups.review.length})</div>
-                            <div className="space-y-1.5">
-                              {groups.review.map((rule, idx) => renderRule(rule, idx))}
+                          )}
+                          {groups.review.length > 0 && (
+                            <div>
+                              <div className="text-[11px] font-semibold text-yellow-300 mb-1">⚠️ Review ({groups.review.length})</div>
+                              <div className="space-y-1.5">
+                                {groups.review.map((rule, idx) => renderRule(rule, idx))}
+                              </div>
                             </div>
-                          </div>
-                        )}
-                        {groups.info.length > 0 && (
-                          <div>
-                            <div className="text-[11px] font-semibold text-blue-300 mb-1">ℹ️ Info ({groups.info.length})</div>
-                            <div className="space-y-1.5">
-                              {groups.info.map((rule, idx) => renderRule(rule, idx))}
+                          )}
+                          {groups.info.length > 0 && (
+                            <div>
+                              <div className="text-[11px] font-semibold text-blue-300 mb-1">ℹ️ Info ({groups.info.length})</div>
+                              <div className="space-y-1.5">
+                                {groups.info.map((rule, idx) => renderRule(rule, idx))}
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
+                          )}
+                        </>
+                      );
+                    })()
+                  ) : (
+                    <div className="space-y-1">
+                      {activeDrivers.slice(0, 6).map((driver: any, idx: number) => (
+                        <div key={idx} className="rounded-md border border-zinc-700 bg-zinc-900/60 px-3 py-2 text-[11px]">
+                          <div className="text-zinc-100 font-medium">{driver.label}</div>
+                          {driver.details && (
+                            <div className="text-zinc-400 mt-1">{driver.details}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-[11px] text-zinc-500">No fired rules to display.</div>
               )}
             </div>
             <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-3">
-              <div className="text-xs font-semibold text-zinc-200 mb-2">Data completeness</div>
+              <div className="text-xs font-semibold text-zinc-200 mb-1">Data completeness</div>
+              <div className="text-[10px] text-zinc-500 mb-2">
+                Schema: {completenessSchemas[selectedSchemaKey]?.label || "Not selected"}
+              </div>
               {!hasPayload && (
                 <div className="text-[11px] text-zinc-400">
-                  Submission payload is missing. Load a submission or ensure the scenario includes evidence data.
+                  {selectedSchemaKey === "default"
+                    ? "Schema not selected yet. Load a submission payload to determine the correct completeness checks."
+                    : "No payload loaded yet. Load a submission or run Explain Decision."}
                 </div>
               )}
               {hasPayload && completenessScore && (
@@ -1257,7 +1334,7 @@ export function RegulatoryDecisionExplainPanel({
                       <div className="text-[11px] font-semibold text-red-300 mb-1">Missing BLOCK</div>
                       <ul className="space-y-1">
                         {completenessScore.missingByCategory.block.map((field) => (
-                          <li key={field.key} className="text-[11px] text-red-200/80">• {field.label}</li>
+                          <li key={field.label} className="text-[11px] text-red-200/80">• {field.label}</li>
                         ))}
                       </ul>
                     </div>
@@ -1267,7 +1344,7 @@ export function RegulatoryDecisionExplainPanel({
                       <div className="text-[11px] font-semibold text-yellow-300 mb-1">Missing REVIEW</div>
                       <ul className="space-y-1">
                         {completenessScore.missingByCategory.review.map((field) => (
-                          <li key={field.key} className="text-[11px] text-yellow-200/80">• {field.label}</li>
+                          <li key={field.label} className="text-[11px] text-yellow-200/80">• {field.label}</li>
                         ))}
                       </ul>
                     </div>
@@ -1277,7 +1354,7 @@ export function RegulatoryDecisionExplainPanel({
                       <div className="text-[11px] font-semibold text-blue-300 mb-1">Missing INFO</div>
                       <ul className="space-y-1">
                         {completenessScore.missingByCategory.info.map((field) => (
-                          <li key={field.key} className="text-[11px] text-blue-200/80">• {field.label}</li>
+                          <li key={field.label} className="text-[11px] text-blue-200/80">• {field.label}</li>
                         ))}
                       </ul>
                     </div>

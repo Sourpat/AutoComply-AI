@@ -27,6 +27,13 @@ export interface NormalizedEvaluatedRule {
   status: string; // "passed" | "failed" | "info"
 }
 
+export interface NormalizedDriver {
+  type: string; // "policy_rule" | "missing_field" | "citation"
+  label: string;
+  severity?: string;
+  details?: string;
+}
+
 export interface NormalizedTrace {
   outcome: string; // "approved" | "needs_review" | "blocked"
   status: string; // "ok_to_ship" | "blocked" | "needs_review"
@@ -34,6 +41,7 @@ export interface NormalizedTrace {
   decision_summary: string;
   fired_rules: NormalizedFiredRule[];
   evaluated_rules: NormalizedEvaluatedRule[];
+  drivers: NormalizedDriver[];
   missing_evidence: string[];
   next_steps: string[];
   satisfied_requirements: string[];
@@ -141,6 +149,42 @@ export function normalizeTrace(rawTrace: any): NormalizedTrace {
     source: cit.source || cit.citation || cit.id || ""
   }));
 
+  const driversRaw =
+    decision.drivers ||
+    payload.drivers ||
+    rawTrace.drivers ||
+    [];
+
+  const drivers: NormalizedDriver[] = Array.isArray(driversRaw)
+    ? driversRaw.map((driver: any) => ({
+        type: driver.type || "policy_rule",
+        label: driver.label || driver.title || driver.name || "",
+        severity: driver.severity || driver.level || undefined,
+        details: driver.details || driver.reason || driver.rationale || undefined,
+      }))
+    : [];
+
+  if (drivers.length === 0 && fired_rules.length > 0) {
+    fired_rules.forEach((rule) => {
+      drivers.push({
+        type: "policy_rule",
+        label: rule.title || rule.id,
+        severity: rule.severity,
+        details: rule.rationale || rule.requirement,
+      });
+    });
+  }
+
+  if (drivers.length === 0 && missing_evidence.length > 0) {
+    missing_evidence.forEach((item) => {
+      drivers.push({
+        type: "missing_field",
+        label: item,
+        severity: "review",
+      });
+    });
+  }
+
   // Extract evidence
   const evidence = 
     decision.evidence || 
@@ -155,6 +199,7 @@ export function normalizeTrace(rawTrace: any): NormalizedTrace {
     decision_summary,
     fired_rules,
     evaluated_rules,
+    drivers,
     missing_evidence,
     next_steps,
     satisfied_requirements,
