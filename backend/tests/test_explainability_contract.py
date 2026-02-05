@@ -31,6 +31,12 @@ def test_explain_contract_v1_approved_practitioner():
     assert data["fired_rules"] == []
     assert data["submission_id"] == "sub-001"
     assert data["policy_version"].startswith("explainability-policy-")
+    evidence = data.get("debug", {}).get("evidence", {})
+    coverage = evidence.get("evidence_coverage")
+    assert coverage is not None
+    assert 0 <= coverage <= 1
+    knowledge = data.get("debug", {}).get("knowledge", {})
+    assert knowledge.get("knowledge_version")
 
 
 def test_explain_contract_v1_blocked_hospital_ohio():

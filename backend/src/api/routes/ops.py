@@ -6,9 +6,9 @@ Read-only endpoints that provide operational metrics and review queue analytics.
 SECURITY: All endpoints require admin role via X-User-Role header.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case
 from datetime import datetime, timedelta, timezone
@@ -16,13 +16,20 @@ from datetime import datetime, timedelta, timezone
 from src.database.connection import get_db
 from src.database.models import ReviewQueueItem, ReviewStatus, QuestionEvent, QuestionStatus
 from src.autocomply.domain.submissions_store import get_submission_store, SubmissionStatus
+from app.submissions.seed import seed_demo_submissions
+import os
 from src.api.dependencies.auth import require_admin_role
+from src.autocomply.domain.explainability.versioning import get_knowledge_version
+from src.autocomply.regulations.knowledge import get_regulatory_knowledge
+from src.api.routes.ops_smoke import ops_smoke as ops_smoke_handler
 
 router = APIRouter(
     prefix="/api/v1/admin/ops",
     tags=["admin", "ops"],
     dependencies=[Depends(require_admin_role)],  # All endpoints require admin role
 )
+
+smoke_router = APIRouter(prefix="/api/ops", tags=["ops"])
 
 
 # ============================================================================
@@ -68,6 +75,74 @@ class OpsSubmissionResponse(BaseModel):
     decision_status: Optional[str]
     risk_level: Optional[str]
     trace_id: str
+
+
+class SeedSubmissionsResponse(BaseModel):
+    inserted: int
+    ids: List[str]
+
+
+@smoke_router.get("/smoke")
+async def ops_smoke_alias():
+    return await ops_smoke_handler()
+
+
+@smoke_router.get("/kb-stats")
+async def kb_stats() -> Dict[str, Any]:
+    knowledge = get_regulatory_knowledge()
+    knowledge_version = get_knowledge_version()
+    sources = getattr(knowledge, "_sources_by_id", None)
+    notes: List[str] = []
+
+    if not isinstance(sources, dict):
+        return {
+            "ok": False,
+            "knowledge_version": knowledge_version,
+            "docs_total": None,
+            "chunks_total": None,
+            "jurisdictions": {},
+            "last_ingested_at": None,
+            "notes": "Knowledge inventory unavailable",
+        }
+
+    source_list = list(sources.values())
+    if not source_list:
+        notes.append("No regulatory sources loaded")
+
+    doc_ids = {getattr(src, "id", None) for src in source_list if getattr(src, "id", None)}
+    docs_total = len(doc_ids) if doc_ids else None
+    chunks_total = len(source_list) if source_list else None
+
+    jurisdictions: Dict[str, int] = {}
+    for src in source_list:
+        jurisdiction = getattr(src, "jurisdiction", None) or "unknown"
+        jurisdictions[jurisdiction] = jurisdictions.get(jurisdiction, 0) + 1
+
+    ok = docs_total is not None and chunks_total is not None
+    return {
+        "ok": ok,
+        "knowledge_version": knowledge_version,
+        "docs_total": docs_total,
+        "chunks_total": chunks_total,
+        "jurisdictions": jurisdictions,
+        "last_ingested_at": None,
+        "notes": "; ".join(notes) if notes else None,
+    }
+
+
+@smoke_router.post("/seed-submissions", response_model=SeedSubmissionsResponse)
+async def seed_submissions() -> SeedSubmissionsResponse:
+    env = os.getenv("ENV", "local")
+    if env != "local":
+        raise HTTPException(status_code=403, detail="Seed endpoint only available in local environment")
+
+    store = get_submission_store()
+    inserted = seed_demo_submissions(store)
+
+    return SeedSubmissionsResponse(
+        inserted=len(inserted),
+        ids=[item["id"] for item in inserted],
+    )
 
 
 # ============================================================================

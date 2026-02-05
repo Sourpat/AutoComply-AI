@@ -26,7 +26,7 @@ import { BackendHealthBanner } from "../components/BackendHealthBanner";
 import { listPolicyOverrides } from "../api/policyOverrides";
 import type { PolicyOverrideDetail } from "../types/decision";
 import { getAuthHeaders } from "../lib/authHeaders";
-import { getHealthFull, getHealthz, getSigningStatus, getSmoke, postDemoReset } from "../api/demoOps";
+import { getHealthFull, getHealthz, getSigningStatus, getSmoke, getKbStats, postDemoReset } from "../api/demoOps";
 import { clearHealthCheckCache, getWorkflowStore } from "../workflow/workflowStoreSelector";
 import { ragDetailsUrl } from "../lib/ragLink";
 
@@ -55,6 +55,14 @@ type DemoReadyState = {
   signingEnabled: boolean | null;
   smokeOk: boolean | null;
   activeContract: boolean | null;
+  kbInventoryOk?: boolean | null;
+  kbDetails?: {
+    knowledgeVersion?: string | null;
+    docsTotal?: number | null;
+    chunksTotal?: number | null;
+    lastIngestedAt?: string | null;
+    notes?: string | null;
+  } | null;
   smokeChecks?: {
     server?: boolean;
     seed?: boolean;
@@ -668,6 +676,8 @@ const ConsoleDashboard: React.FC = () => {
     signingEnabled: null,
     smokeOk: null,
     activeContract: null,
+    kbInventoryOk: null,
+    kbDetails: null,
     smokeChecks: null,
     smokeErrorSummary: null,
     env: null,
@@ -724,11 +734,12 @@ const ConsoleDashboard: React.FC = () => {
       setIsDemoReadyLoading(true);
     }
 
-    const [healthzResult, healthFullResult, signingResult, smokeResult] = await Promise.allSettled([
+    const [healthzResult, healthFullResult, signingResult, smokeResult, kbResult] = await Promise.allSettled([
       getHealthz(),
       getHealthFull(),
       getSigningStatus(),
       getSmoke(),
+      getKbStats(),
     ]);
 
     const apiReachable = healthzResult.status === "fulfilled";
@@ -773,6 +784,25 @@ const ConsoleDashboard: React.FC = () => {
             environment: signingResult.value?.environment ?? null,
           }
         : null;
+    const kbDocsTotal = kbResult.status === "fulfilled" ? kbResult.value?.docs_total : null;
+    const kbChunksTotal = kbResult.status === "fulfilled" ? kbResult.value?.chunks_total : null;
+    const kbInventoryOk =
+      kbResult.status === "fulfilled" &&
+      Boolean(kbResult.value?.ok) &&
+      typeof kbDocsTotal === "number" &&
+      typeof kbChunksTotal === "number" &&
+      kbDocsTotal > 0 &&
+      kbChunksTotal > 0;
+    const kbDetails =
+      kbResult.status === "fulfilled"
+        ? {
+            knowledgeVersion: kbResult.value?.knowledge_version ?? null,
+            docsTotal: kbDocsTotal ?? null,
+            chunksTotal: kbChunksTotal ?? null,
+            lastIngestedAt: kbResult.value?.last_ingested_at ?? null,
+            notes: kbResult.value?.notes ?? null,
+          }
+        : null;
     const env = smokeResult.status === "fulfilled" ? smokeResult.value?.env ?? null : null;
     const buildSha =
       smokeResult.status === "fulfilled"
@@ -781,7 +811,7 @@ const ConsoleDashboard: React.FC = () => {
           ? healthFullResult.value?.build_sha ?? null
           : null;
     const error =
-      [healthzResult, healthFullResult, signingResult, smokeResult].some(
+      [healthzResult, healthFullResult, signingResult, smokeResult, kbResult].some(
         (result) => result.status === "rejected"
       )
         ? "One or more checks failed"
@@ -793,6 +823,8 @@ const ConsoleDashboard: React.FC = () => {
       signingEnabled,
       smokeOk,
       activeContract,
+      kbInventoryOk,
+      kbDetails,
       smokeChecks,
       smokeErrorSummary,
       env,
@@ -2166,6 +2198,7 @@ const ConsoleDashboard: React.FC = () => {
               {renderDemoCheck("Signing enabled", demoReady.signingEnabled)}
               {renderDemoCheck("/api/ops/smoke ok", demoReady.smokeOk)}
               {renderDemoCheck("Active contract present", demoReady.activeContract)}
+              {renderDemoCheck("KB inventory", demoReady.kbInventoryOk ?? null)}
               {demoReady.smokeChecks?.server !== undefined &&
                 renderDemoCheck("Ops server", demoReady.smokeChecks.server ?? null)}
               {demoReady.smokeChecks?.seed !== undefined &&
@@ -2180,7 +2213,7 @@ const ConsoleDashboard: React.FC = () => {
                 renderDemoCheck("Ops truth gate", demoReady.smokeChecks.truth_gate ?? null)}
             </div>
 
-            <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-600 md:grid-cols-3">
+            <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-600 md:grid-cols-4">
               <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
                 <div className="font-semibold text-slate-700">Health</div>
                 <div>Status: {demoReady.healthDetails?.status ?? "unknown"}</div>
@@ -2194,6 +2227,16 @@ const ConsoleDashboard: React.FC = () => {
                 <div>Key ID: {demoReady.smokeDetails?.signingKeyId ?? "n/a"}</div>
                 {demoReady.smokeDetails?.errorSummary && (
                   <div className="mt-1 text-rose-600">{demoReady.smokeDetails.errorSummary}</div>
+                )}
+              </div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                <div className="font-semibold text-slate-700">KB Inventory</div>
+                <div>Version: {demoReady.kbDetails?.knowledgeVersion ?? "unknown"}</div>
+                <div>Docs: {demoReady.kbDetails?.docsTotal ?? "not available"}</div>
+                <div>Chunks: {demoReady.kbDetails?.chunksTotal ?? "not available"}</div>
+                <div>Last ingest: {demoReady.kbDetails?.lastIngestedAt ?? "not available"}</div>
+                {demoReady.kbDetails?.notes && (
+                  <div className="mt-1 text-amber-700">{demoReady.kbDetails.notes}</div>
                 )}
               </div>
               <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">

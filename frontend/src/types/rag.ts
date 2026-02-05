@@ -75,5 +75,5 @@ export interface ExplainResult {
   fired_rules: ExplainFiredRule[];
   citations: ExplainCitation[];
   next_steps: ExplainNextStep[];
-  debug?: Record<string, string> | null;
+  debug?: Record<string, any> | null;
 }

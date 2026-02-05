@@ -54,6 +54,8 @@
 
 
 
+
+
 ### Phase 9.5 — Safe failure modes + UI surfacing
 **Status**: completed
 **Assigned**: GitHub Copilot
@@ -114,6 +116,14 @@
 
 **Phase 8 Status**: DONE
 
+### T-020: Evidence coverage + KB stats metrics
+**Completed**: 2026-02-05
+**Commit**: (pending)
+**Summary**: Added evidence coverage + retrieval metrics in explain v1 debug, KB inventory endpoint, and surfaced metrics in RAG Explorer + Demo Ready.
+**Verification**:
+- `Invoke-RestMethod http://127.0.0.1:8001/api/ops/kb-stats | ConvertTo-Json -Depth 30`
+- `C:/Python314/python.exe -m pytest backend/tests/test_explainability_contract.py -v backend/tests/test_kb_stats.py -v`
+
 ### T-019: Ops smoke determinism + truth gate
 **Completed**: 2026-02-05
 **Commit**: (pending)
@@ -142,13 +152,6 @@
 **Summary**: Added explainability contract models, canonical normalization, deterministic policy engine, and /api/rag/explain/v1 endpoint with tests.
 **Verification**:
 - `C:/Python314/python.exe -m pytest backend/tests/test_explainability_contract.py -v`
-
-### BUG-208: Console details payload/explain not loading
-**Completed**: 2026-02-04
-**Commit**: (pending)
-**Summary**: Switched connected mode to console work-queue/submissions APIs, added payload completeness on load, and enriched explain debug output for fired rules.
-**Verification**:
-- `npm -C frontend run build`
 ---
 
 ## Task Workflow

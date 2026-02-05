@@ -773,6 +773,27 @@ export function RegulatoryDecisionExplainPanel({
   const hasPayload = !!selectedSubmissionPayload && Object.keys(selectedSubmissionPayload).length > 0;
   const completenessPct = completenessScore?.scorePct ?? null;
   const truthGateActive = !!explainResult && explainFiredRules.length > 0 && explainCitations.length === 0;
+  const evidenceDebug = explainResult?.debug?.evidence as
+    | { fired_rules_count?: number; citations_count?: number; rules_with_citations?: number; evidence_coverage?: number }
+    | undefined;
+  const retrievalDebug = explainResult?.debug?.retrieval as
+    | { top_k?: number; elapsed_ms?: number; unique_docs?: number }
+    | undefined;
+  const knowledgeDebug = explainResult?.debug?.knowledge as
+    | { knowledge_version?: string }
+    | undefined;
+  const evidenceCoveragePct =
+    typeof evidenceDebug?.evidence_coverage === "number"
+      ? Math.round(evidenceDebug.evidence_coverage * 100)
+      : null;
+  const uniqueSources =
+    typeof retrievalDebug?.unique_docs === "number" ? retrievalDebug.unique_docs : null;
+  const retrievalMs =
+    typeof retrievalDebug?.elapsed_ms === "number" ? retrievalDebug.elapsed_ms : null;
+  const knowledgeVersion =
+    typeof knowledgeDebug?.knowledge_version === "string"
+      ? knowledgeDebug.knowledge_version
+      : explainResult?.knowledge_version ?? null;
 
   const formatLabel = (value?: string | null) => {
     if (!value) return "Unknown";
@@ -1158,6 +1179,17 @@ export function RegulatoryDecisionExplainPanel({
               <div className="text-[11px] font-semibold text-amber-200">Evidence not retrieved yet for triggered rules</div>
               <div className="text-[10px] text-amber-200/80">
                 Rule triggered; evidence not retrieved yet.
+              </div>
+            </div>
+          )}
+
+          {explainResult && (
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-[11px] text-zinc-300">
+              <div className="flex flex-wrap gap-3">
+                <span>Evidence coverage: {evidenceCoveragePct !== null ? `${evidenceCoveragePct}%` : "n/a"}</span>
+                <span>Unique sources: {uniqueSources ?? "n/a"}</span>
+                <span>Retrieval time: {retrievalMs !== null ? `${retrievalMs} ms` : "n/a"}</span>
+                <span>Knowledge version: {knowledgeVersion ?? "unknown"}</span>
               </div>
             </div>
           )}

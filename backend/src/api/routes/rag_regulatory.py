@@ -38,7 +38,7 @@ from src.autocomply.domain.explainability.versioning import (
 )
 from src.autocomply.domain.policy.engine import evaluate_submission
 from src.autocomply.domain.policy.rule_evidence import RULE_EVIDENCE_QUERIES
-from src.autocomply.domain.evidence.retriever import retrieve_evidence
+from src.autocomply.domain.evidence.retriever import retrieve_evidence_with_stats
 from src.autocomply.domain.submissions.normalizers import (
     normalize_csf_hospital_ohio,
     normalize_csf_practitioner,
@@ -377,17 +377,21 @@ async def explain_contract_v1(payload: ExplainV1Request) -> ExplainResult:
 
     retrieval_k = 4
     citations = []
+    rules_with_citations = 0
+    total_elapsed_ms = 0
     for rule in fired_rules:
         queries = RULE_EVIDENCE_QUERIES.get(rule.id, [])
         if not queries:
             continue
-        citations.extend(
-            retrieve_evidence(
-                queries=queries,
-                jurisdiction=canonical.jurisdiction,
-                k=retrieval_k,
-            )
+        rule_citations, stats = retrieve_evidence_with_stats(
+            queries=queries,
+            jurisdiction=canonical.jurisdiction,
+            k=retrieval_k,
         )
+        total_elapsed_ms += stats.elapsed_ms
+        if rule_citations:
+            rules_with_citations += 1
+        citations.extend(rule_citations)
 
     seen_keys = set()
     unique_citations = []
@@ -399,6 +403,10 @@ async def explain_contract_v1(payload: ExplainV1Request) -> ExplainResult:
         unique_citations.append(citation)
 
     citations = unique_citations
+    unique_docs = len({citation.doc_id for citation in citations if citation.doc_id})
+    fired_rules_count = len(fired_rules)
+    citations_count = len(citations)
+    evidence_coverage = rules_with_citations / max(1, fired_rules_count)
 
     debug_note = None
     if fired_rules and not citations:
@@ -423,9 +431,20 @@ async def explain_contract_v1(payload: ExplainV1Request) -> ExplainResult:
         debug={
             "submission_type": canonical.kind,
             "jurisdiction": canonical.jurisdiction or "",
-            "retrieval_k": str(retrieval_k),
-            "retrieved_chunks_count": str(len(citations)),
-            "citation_coverage": str(len(citations) / max(1, len(fired_rules))),
+            "retrieval": {
+                "top_k": retrieval_k,
+                "elapsed_ms": total_elapsed_ms,
+                "unique_docs": unique_docs,
+            },
+            "evidence": {
+                "fired_rules_count": fired_rules_count,
+                "citations_count": citations_count,
+                "rules_with_citations": rules_with_citations,
+                "evidence_coverage": evidence_coverage,
+            },
+            "knowledge": {
+                "knowledge_version": get_knowledge_version(),
+            },
             **({"note": debug_note} if debug_note else {}),
         },
     )

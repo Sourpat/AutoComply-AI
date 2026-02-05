@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from time import perf_counter
 from typing import Iterable, List, Optional, Tuple
 
 from src.autocomply.domain.explainability.models import Citation
 from src.autocomply.regulations.knowledge import get_regulatory_knowledge
+
+
+@dataclass(frozen=True)
+class EvidenceRetrievalStats:
+    top_k: int
+    elapsed_ms: int
+    unique_docs: int
 
 
 def _jurisdiction_match(source_jurisdiction: Optional[str], jurisdiction: Optional[str]) -> bool:
@@ -67,3 +76,16 @@ def retrieve_evidence(
     )
 
     return ordered[:k]
+
+
+def retrieve_evidence_with_stats(
+    queries: Iterable[str],
+    jurisdiction: str | None,
+    k: int = 4,
+) -> Tuple[List[Citation], EvidenceRetrievalStats]:
+    start = perf_counter()
+    citations = retrieve_evidence(queries=queries, jurisdiction=jurisdiction, k=k)
+    elapsed_ms = int((perf_counter() - start) * 1000)
+    unique_docs = len({citation.doc_id for citation in citations if citation.doc_id})
+    stats = EvidenceRetrievalStats(top_k=k, elapsed_ms=elapsed_ms, unique_docs=unique_docs)
+    return citations, stats

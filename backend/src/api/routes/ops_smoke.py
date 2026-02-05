@@ -227,3 +227,5 @@ async def ops_smoke() -> Dict[str, Any]:
         "env": settings.APP_ENV,
         "build_sha": _build_sha() or "unknown",
     }
+
+
