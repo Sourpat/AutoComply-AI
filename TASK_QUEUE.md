@@ -4,6 +4,8 @@
 
 **Active WIP**: 0
 
+**Demo Ready RC Smoke**: powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1
+
 ---
 
 ## P0 - Critical (Do First)

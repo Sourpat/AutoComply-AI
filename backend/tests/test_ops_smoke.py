@@ -1,12 +1,11 @@
-import pytest
+import asyncio
 
 from src.api.routes.ops_smoke import ops_smoke
 
 
-@pytest.mark.asyncio
-async def test_ops_smoke_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ops_smoke_payload(monkeypatch) -> None:
     monkeypatch.setenv("ENV", "local")
-    payload = await ops_smoke()
+    payload = asyncio.run(ops_smoke())
 
     assert payload["ok"] is True
     assert payload["checks"]["determinism"] == "ok"
