@@ -13,6 +13,7 @@ from src.config import get_settings
 from src.core.db import execute_sql
 from src.policy.contracts import get_active_contract
 from src.api.routes.rag_regulatory import ExplainV1Request, build_explain_contract_v1
+from src.autocomply.domain.explainability.drift import detect_drift
 from src.autocomply.domain.explainability.store import diff_explain_runs, list_runs
 
 router = APIRouter(tags=["ops"])
@@ -239,6 +240,47 @@ async def ops_smoke() -> Dict[str, Any]:
         replay_diff_ok = False
         details["errors"].append({"check": "replay_diff", "detail": "no submission for replay_diff"})
     record_check("replay_diff", replay_diff_ok)
+
+    drift_lock_ok = True
+    if determinism_target:
+        try:
+            recent_runs = list_runs(submission_id=determinism_target, limit=2)
+            if len(recent_runs) < 2:
+                drift_lock_ok = False
+                details["errors"].append(
+                    {
+                        "check": "drift_lock",
+                        "detail": f"expected 2 runs for {determinism_target}",
+                    }
+                )
+            else:
+                drift = detect_drift(recent_runs[1], recent_runs[0])
+                drift_lock_ok = not drift.changed
+                details["drift_lock"] = {
+                    "submission_id": determinism_target,
+                    "changed": drift.changed,
+                    "reason": drift.reason,
+                    "fields_changed": drift.fields_changed,
+                }
+                if drift_lock_ok is False:
+                    details["errors"].append(
+                        {
+                            "check": "drift_lock",
+                            "detail": f"drift detected for {determinism_target}",
+                        }
+                    )
+        except Exception as exc:
+            drift_lock_ok = False
+            details["errors"].append(
+                {
+                    "check": "drift_lock",
+                    "detail": f"drift lock failed for {determinism_target}: {type(exc).__name__}",
+                }
+            )
+    else:
+        drift_lock_ok = False
+        details["errors"].append({"check": "drift_lock", "detail": "no submission for drift lock"})
+    record_check("drift_lock", drift_lock_ok)
 
     idempotency_ok = True
     if determinism_target:

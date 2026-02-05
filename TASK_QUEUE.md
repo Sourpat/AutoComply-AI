@@ -51,6 +51,20 @@
 **Notes**: Blocked pending backend restart verification for /api/workflow and /api/console aliases.
 
 
+### T-024: Explain drift detection + ops drift lock
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Detect explain drift cause and fail ops smoke on unexpected drift.
+**Acceptance Criteria**:
+- [x] Diff endpoint classifies drift reason and fields changed
+- [x] Ops smoke fails on drift for replayed submission
+- [x] Tests cover drift detection cases
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_explain_drift.py backend/tests/test_ops_smoke.py`
+- `powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1`
+**Dependencies**: None
+
+
 
 
 
@@ -114,6 +128,14 @@
 
 **Phase 8 Status**: DONE
 
+### T-024: Explain drift detection + ops drift lock
+**Completed**: 2026-02-05
+**Commit**: (pending)
+**Summary**: Added explain drift classification, diff drift metadata, and ops smoke drift lock with tests.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_explain_drift.py backend/tests/test_ops_smoke.py`
+- `powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1`
+
 ### T-023: Explain v1 strict validation + claim gate
 **Completed**: 2026-02-05
 **Commit**: (pending)
@@ -145,14 +167,6 @@
 **Verification**:
 - `Invoke-RestMethod http://127.0.0.1:8001/api/ops/kb-stats | ConvertTo-Json -Depth 30`
 - `C:/Python314/python.exe -m pytest backend/tests/test_explainability_contract.py -v backend/tests/test_kb_stats.py -v`
-
-### T-019: Ops smoke determinism + truth gate
-**Completed**: 2026-02-05
-**Commit**: (pending)
-**Summary**: Extended /api/ops/smoke to validate explain determinism + truth gate and surfaced checks in Demo Ready.
-**Verification**:
-- `Invoke-RestMethod http://127.0.0.1:8001/api/ops/smoke | ConvertTo-Json -Depth 30`
-- `C:/Python314/python.exe -m pytest backend/tests/test_ops_smoke.py -v`
 
 ---
 

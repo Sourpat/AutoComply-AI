@@ -31,6 +31,7 @@ from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 from src.stores.decision_store import get_decision_store
 from src.autocomply.domain.submissions_store import get_submission_store
 from src.autocomply.domain.explainability.claim_gate import gate_summary
+from src.autocomply.domain.explainability.drift import ENGINE_VERSION, detect_drift
 from src.autocomply.domain.explainability.models import ExplainResult, NextStep, validate_explain_result
 from src.autocomply.domain.explainability.store import (
     diff_explain_runs,
@@ -466,6 +467,7 @@ async def build_explain_contract_v1(
     debug_payload: Dict[str, Any] = {
         "submission_type": canonical.kind,
         "jurisdiction": canonical.jurisdiction or "",
+        "engine_version": ENGINE_VERSION,
         "retrieval": {
             "top_k": retrieval_k,
             "elapsed_ms": total_elapsed_ms,
@@ -591,7 +593,19 @@ async def diff_explain_runs_endpoint(run_a: str, run_b: str) -> Dict[str, Any]:
     if not record_a or not record_b:
         missing = run_a if not record_a else run_b
         raise HTTPException(status_code=404, detail=f"Run not found: {missing}")
-    return diff_explain_runs(record_a, record_b)
+    response = diff_explain_runs(record_a, record_b)
+    drift = detect_drift(record_a, record_b)
+    response["drift"] = {
+        "changed": drift.changed,
+        "reason": drift.reason,
+        "fields_changed": drift.fields_changed,
+    }
+    if drift.changed and drift.reason == "unknown":
+        debug_payload = response.setdefault("debug", {})
+        existing_note = str(debug_payload.get("note", "")).strip()
+        note = "unattributed_drift_detected"
+        debug_payload["note"] = f"{existing_note};{note}" if existing_note else note
+    return response
 
 
 @router.get("/regulatory/scenarios")

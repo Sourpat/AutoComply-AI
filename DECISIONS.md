@@ -36,6 +36,25 @@
 
 ## Decisions
 
+### [2026-02-05] Explain drift detection and ops drift lock
+
+**Context**: Explainability must be stable and any change must be classified and surfaced for auditability.
+
+**Decision**: Add a drift classifier that attributes changes to input, policy, knowledge, or engine versions, and enforce a drift lock in ops smoke that fails on unexpected changes.
+
+**Rationale**:
+- Prevents silent behavior changes
+- Makes drift attributable for audits and ops
+
+**Alternatives Considered**:
+- Only compare run IDs: rejected because it hides causal drift
+
+**Consequences**:
+- Positive: Strong stability guarantees for explain replay
+- Neutral: Adds drift metadata to diff response
+
+**Status**: Accepted
+
 ### [2026-02-05] Strict canonical validation and claim gating for explain v1
 
 **Context**: Explain v1 requires deterministic validation and a guardrail to prevent unsupported claims in summaries, especially before any richer narrative generation is introduced.
