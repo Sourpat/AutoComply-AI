@@ -28,6 +28,7 @@ import type { PolicyOverrideDetail } from "../types/decision";
 import { getAuthHeaders } from "../lib/authHeaders";
 import { getHealthFull, getHealthz, getSigningStatus, getSmoke, postDemoReset } from "../api/demoOps";
 import { clearHealthCheckCache, getWorkflowStore } from "../workflow/workflowStoreSelector";
+import { ragDetailsUrl } from "../lib/ragLink";
 
 type DecisionStatus = "ok_to_ship" | "blocked" | "needs_review";
 type ActiveSection = "dashboard" | "csf" | "licenses" | "orders" | "settings" | "about";
@@ -3080,7 +3081,7 @@ const ConsoleDashboard: React.FC = () => {
                           {deletingId === submission.id ? 'Deleting...' : 'Delete'}
                         </button>
                         <a
-                          href={`/console/rag?mode=connected&submission_id=${submission.id}&autoload=1`}
+                          href={ragDetailsUrl(submission.id, { autoload: true })}
                           className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 inline-block text-center"
                           title="View decision details"
                         >

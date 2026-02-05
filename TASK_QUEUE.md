@@ -1,6 +1,6 @@
 # Task Queue
 
-**Last Updated**: 2026-02-04
+**Last Updated**: 2026-02-05
 
 **Active WIP**: 0
 
@@ -47,6 +47,8 @@
 - `Invoke-RestMethod http://127.0.0.1:8001/api/agentic/cases?limit=10`
 **Dependencies**: None
 **Notes**: Blocked pending backend restart verification for /api/workflow and /api/console aliases.
+
+
 
 
 
@@ -110,6 +112,13 @@
 
 **Phase 8 Status**: DONE
 
+### T-018: Add RAG E2E smoke script
+**Completed**: 2026-02-05
+**Commit**: (pending)
+**Summary**: Added a frontend Node smoke script for seed + recent + explain v1 wiring and centralized submission_id link building.
+**Verification**:
+- `npm -C frontend run rag:smoke`
+
 ### BUG-209: Wire RAG Explorer to Explain v1
 **Completed**: 2026-02-05
 **Commit**: (pending)
@@ -137,50 +146,6 @@
 **Summary**: Refactored explainability layout, added required-field completeness with empty payload handling, and improved connected submission dropdown.
 **Verification**:
 - `npm -C frontend run build`
-
-### BUG-206: Console demo readiness + override metrics 404
-**Completed**: 2026-02-04
-**Commit**: (pending)
-**Summary**: Added 404-safe ops smoke fetch and override metrics fallback derived from policy overrides.
-**Verification**:
-- `npm -C frontend run build`
-
-### BUG-204: Fix workflow proxy for console health
-**Completed**: 2026-02-03
-**Commit**: (pending)
-**Summary**: Added /workflow proxy so Console health checks hit the backend in dev.
-**Verification**:
-- `Invoke-RestMethod http://localhost:5173/workflow/health`
-
-### BUG-203: Fix console recovery + demo questions
-**Completed**: 2026-02-03
-**Commit**: (pending)
-**Summary**: Standardized dev proxy/API base usage, added forced health refresh on retry, and demo question answers in chat.
-**Verification**:
-- `irm "http://127.0.0.1:8001/health/full" | ConvertTo-Json -Depth 10`
-- `npm -C frontend run build`
-- `http://localhost:5173/chat` demo questions answer locally
-
-### BUG-202: Fix dev routing + chat queue end-to-end
-**Completed**: 2026-02-03
-**Commit**: (pending)
-**Summary**: Limited Vite proxy to API-only routes, standardized chat client on `/api/v1/chat`, and verified chat-to-review-queue flow.
-**Verification**:
-- GET http://127.0.0.1:8001/health/full
-- GET http://localhost:5173/chat (SPA HTML)
-- POST http://127.0.0.1:8001/api/v1/chat/ask (200)
-- GET http://127.0.0.1:8001/api/v1/admin/review-queue/items?limit=20 (item created)
-
-### Fix Review Queue 403 (Auth headers parity)
-**Completed**: 2026-02-03
-**Commit**: (pending)
-**Summary**: Normalized role + dev seed token headers across stack and tightened Review Queue auth.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_review_queue_auth.py`
-- `npm -C frontend run build`
-- Manual: http://localhost:5173/admin/review loads without 403
-
-### Fix Chat page 404 (Chat API parity)
 ---
 
 ## Task Workflow

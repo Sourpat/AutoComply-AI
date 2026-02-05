@@ -9,6 +9,7 @@ import type { AuditEvent } from "../types/audit";
 import { demoStore } from "../lib/demoStore";
 import { Timeline } from "./Timeline";
 import { getStatusLabel, getStatusColor } from "../workflow/statusTransitions";
+import { ragDetailsUrl } from "../lib/ragLink";
 
 interface CaseDetailsDrawerProps {
   caseId: string | null;
@@ -166,7 +167,7 @@ export function CaseDetailsDrawer({ caseId, onClose }: CaseDetailsDrawerProps) {
             <a
               href={
                 caseItem?.submissionId
-                  ? `/console/rag?mode=connected&submission_id=${caseItem.submissionId}&autoload=1`
+                  ? ragDetailsUrl(caseItem.submissionId, { autoload: true })
                   : `/console/rag?mode=connected&traceId=${caseItem?.traceId}`
               }
               className="flex-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 text-center"
