@@ -183,6 +183,7 @@ const mapWorkQueueSubmission = (item: WorkQueueSubmission): Submission => {
     csfType: item.csf_type,
     tenantId: item.tenant,
   };
+};
 
 const resolveSchemaKey = (candidate?: string | null): string => {
   if (!candidate) return "default";
@@ -210,7 +211,6 @@ const extractPayload = (detail: Record<string, unknown> | null) => {
     }
   }
   return null;
-};
 };
 
 interface RegulatoryDecisionExplainPanelProps {
