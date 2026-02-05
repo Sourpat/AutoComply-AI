@@ -11,6 +11,7 @@
 
 > **Status Legend**: `pending` | `in-progress` | `blocked` | `completed`
 
+
 ### Example Task Template (DELETE THIS AFTER READING)
 ```markdown
 ### T-001: Fix critical bug in X
@@ -108,6 +109,20 @@
 ## Completed Tasks (Last 5)
 
 **Phase 8 Status**: DONE
+
+### BUG-209: Wire RAG Explorer to Explain v1
+**Completed**: 2026-02-05
+**Commit**: (pending)
+**Summary**: Wired Console View Details to pass submission_id, RAG Explorer calls explain v1, and UI renders truth-gated explain results only.
+**Verification**:
+- `npm -C frontend run build`
+
+### T-017: Explainability Contract v1 (backend-first)
+**Completed**: 2026-02-04
+**Commit**: (pending)
+**Summary**: Added explainability contract models, canonical normalization, deterministic policy engine, and /api/rag/explain/v1 endpoint with tests.
+**Verification**:
+- `C:/Python314/python.exe -m pytest backend/tests/test_explainability_contract.py -v`
 
 ### BUG-208: Console details payload/explain not loading
 **Completed**: 2026-02-04

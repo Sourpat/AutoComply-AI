@@ -1,9 +1,10 @@
-import type { RagSearchResponse, RagSource } from "../types/rag";
+import type { RagSearchResponse, RagSource, ExplainResult } from "../types/rag";
 import { API_BASE } from "../lib/api";
 
 const RAG_SEARCH_ENDPOINT = "/rag/regulatory/search";
 const RAG_EXPLAIN_ENDPOINT = "/rag/regulatory-explain";
 const RAG_SCENARIOS_ENDPOINT = "/rag/regulatory/scenarios";
+const RAG_EXPLAIN_V1_ENDPOINT = "/api/rag/explain/v1";
 
 function normalizeRagSource(raw: any): RagSource {
   const scoreValue =
@@ -154,6 +155,35 @@ export async function ragExplain(
       if (errorData?.detail) {
         errorMessage = typeof errorData.detail === 'string' 
           ? errorData.detail 
+          : errorData.detail?.message || errorMessage;
+      } else if (errorData?.message) {
+        errorMessage = errorData.message;
+      }
+    } catch {
+      // Failed to parse error response, use default message
+    }
+    const error: any = new Error(errorMessage);
+    error.status = res.status;
+    throw error;
+  }
+
+  return await res.json();
+}
+
+export async function explainV1(submissionId: string): Promise<ExplainResult> {
+  const res = await fetch(`${API_BASE}${RAG_EXPLAIN_V1_ENDPOINT}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ submission_id: submissionId }),
+  });
+
+  if (!res.ok) {
+    let errorMessage = `Explain v1 failed with status ${res.status}`;
+    try {
+      const errorData = await res.json();
+      if (errorData?.detail) {
+        errorMessage = typeof errorData.detail === "string"
+          ? errorData.detail
           : errorData.detail?.message || errorMessage;
       } else if (errorData?.message) {
         errorMessage = errorData.message;

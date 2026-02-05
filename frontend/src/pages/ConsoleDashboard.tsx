@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import "./ConsoleDashboard.css";
 import { TraceReplayDrawer, TraceData, TraceStep } from "../components/TraceReplayDrawer";
-import { apiFetch } from "../lib/api";
+import { ApiRequestError, apiFetch } from "../lib/api";
 import { demoStore } from "../lib/demoStore";
 import * as submissionSelector from "../submissions/submissionStoreSelector";
 import type { SubmissionRecord } from "../submissions/submissionTypes";
@@ -81,6 +81,63 @@ type DemoReadyState = {
 // ============================================================================
 const SUBMISSIONS_CACHE_KEY = "acai.submissions.cache.v1";
 const WORK_QUEUE_CACHE_KEY = "acai.workQueue.cache.v1";
+
+const OVERRIDE_WINDOW_DEFAULT = "24h";
+
+function parseWindowMs(window: string): number {
+  const trimmed = window.trim().toLowerCase();
+  if (trimmed.endsWith("h")) {
+    const hours = Number(trimmed.slice(0, -1));
+    if (!Number.isNaN(hours)) {
+      return hours * 60 * 60 * 1000;
+    }
+  }
+  if (trimmed.endsWith("d")) {
+    const days = Number(trimmed.slice(0, -1));
+    if (!Number.isNaN(days)) {
+      return days * 24 * 60 * 60 * 1000;
+    }
+  }
+  return 24 * 60 * 60 * 1000;
+}
+
+function buildOverrideMetricsFromList(
+  overrides: PolicyOverrideDetail[],
+  window: string
+): OverrideMetrics {
+  const cutoff = Date.now() - parseWindowMs(window);
+  const recent = overrides.filter((item) => {
+    const ts = Date.parse(item.created_at);
+    return !Number.isNaN(ts) && ts >= cutoff;
+  });
+  const by_action: Record<string, number> = {};
+  const by_reviewer: Record<string, number> = {};
+
+  for (const item of recent) {
+    if (item.override_action) {
+      by_action[item.override_action] = (by_action[item.override_action] ?? 0) + 1;
+    }
+    if (item.reviewer) {
+      by_reviewer[item.reviewer] = (by_reviewer[item.reviewer] ?? 0) + 1;
+    }
+  }
+
+  return {
+    window,
+    total: recent.length,
+    by_action,
+    by_reviewer,
+    recent: recent.map((item) => ({
+      id: item.id,
+      trace_id: item.trace_id,
+      submission_id: item.submission_id,
+      override_action: item.override_action,
+      rationale: item.rationale,
+      reviewer: item.reviewer,
+      created_at: item.created_at,
+    })),
+  };
+}
 
 function getCachedSubmissions(): SubmissionRecord[] {
   try {
@@ -906,18 +963,47 @@ const ConsoleDashboard: React.FC = () => {
   useEffect(() => {
     let active = true;
     if (activeSection !== "dashboard") return;
-    apiFetch<OverrideMetrics>("/api/console/override-metrics?window=24h", {
-      headers: getAuthHeaders(),
-    })
-      .then((data) => {
+
+    const loadOverrideMetrics = async () => {
+      try {
+        const data = await apiFetch<OverrideMetrics>(
+          `/api/console/override-metrics?window=${OVERRIDE_WINDOW_DEFAULT}`,
+          { headers: getAuthHeaders() }
+        );
         if (!active) return;
         setOverrideMetrics(data);
         setOverrideMetricsError(null);
-      })
-      .catch((err) => {
+        return;
+      } catch (err) {
+        if (err instanceof ApiRequestError && err.details?.status === 404) {
+          try {
+            const overrides = await listPolicyOverrides(200);
+            if (!active) return;
+            const fallback = buildOverrideMetricsFromList(overrides, OVERRIDE_WINDOW_DEFAULT);
+            setOverrideMetrics(fallback);
+            setOverrideMetricsError(null);
+            return;
+          } catch (fallbackErr) {
+            if (!active) return;
+            if (fallbackErr instanceof ApiRequestError && fallbackErr.details?.status === 404) {
+              const emptyFallback = buildOverrideMetricsFromList([], OVERRIDE_WINDOW_DEFAULT);
+              setOverrideMetrics(emptyFallback);
+              setOverrideMetricsError(null);
+              return;
+            }
+            setOverrideMetricsError(
+              fallbackErr instanceof Error ? fallbackErr.message : "Failed to load override metrics"
+            );
+            return;
+          }
+        }
+
         if (!active) return;
         setOverrideMetricsError(err instanceof Error ? err.message : "Failed to load override metrics");
-      });
+      }
+    };
+
+    loadOverrideMetrics();
     return () => {
       active = false;
     };
@@ -1959,9 +2045,9 @@ const ConsoleDashboard: React.FC = () => {
           <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold text-slate-900">Demo Ready</h2>
+                <h2 className="text-sm font-semibold text-slate-900">System Readiness</h2>
                 <p className="text-xs text-slate-500">
-                  Quick readiness checks before recruiter demos.
+                  Core service health and compliance readiness signals.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -2994,7 +3080,7 @@ const ConsoleDashboard: React.FC = () => {
                           {deletingId === submission.id ? 'Deleting...' : 'Delete'}
                         </button>
                         <a
-                          href={`/console/rag?mode=connected&submissionId=${submission.id}&autoload=1`}
+                          href={`/console/rag?mode=connected&submission_id=${submission.id}&autoload=1`}
                           className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 inline-block text-center"
                           title="View decision details"
                         >

@@ -1,12 +1,17 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ragExplain, type DecisionExplainResponse } from "../../api/ragClient";
+import { ragExplain, explainV1, type DecisionExplainResponse } from "../../api/ragClient";
 import { getWorkQueue, getConsoleSubmission, type WorkQueueSubmission } from "../../api/consoleClient";
 import { get_mock_scenarios } from "../../api/mockScenarios";
 import { useRagDebug } from "../../devsupport/RagDebugContext";
 import { demoStore } from "../../lib/demoStore";
 import type { Submission } from "../../types/workQueue";
-import { normalizeTrace, type NormalizedTrace } from "../../lib/traceNormalizer";
+import type {
+  ExplainResult,
+  ExplainFiredRule,
+  ExplainMissingField
+} from "../../types/rag";
+import type { NormalizedTrace } from "../../lib/traceNormalizer";
 import { buildDecisionPacket } from "../../utils/buildDecisionPacket";
 import { downloadJson, downloadHtml } from "../../utils/exportPacket";
 import { generateDecisionPacketHtml } from "../../templates/decisionPacketTemplate";
@@ -218,6 +223,7 @@ interface RegulatoryDecisionExplainPanelProps {
   onConsumed?: () => void;
   explainPanelRef?: React.RefObject<HTMLDivElement>;
   caseId?: string; // For evidence packet tracking
+  submissionIdFromRoute?: string;
 }
 
 export function RegulatoryDecisionExplainPanel({
@@ -225,6 +231,7 @@ export function RegulatoryDecisionExplainPanel({
   onConsumed,
   explainPanelRef,
   caseId = 'explainability-default', // Default case ID for standalone explainability
+  submissionIdFromRoute,
 }: RegulatoryDecisionExplainPanelProps) {
   const ragDebugContext = useRagDebug();
   const aiDebugEnabled = ragDebugContext?.enabled || false;
@@ -248,6 +255,7 @@ export function RegulatoryDecisionExplainPanel({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<DecisionExplainResponse | null>(null);
   const [normalizedTrace, setNormalizedTrace] = useState<NormalizedTrace | null>(null);
+  const [explainResult, setExplainResult] = useState<ExplainResult | null>(null);
   const [readyBanner, setReadyBanner] = useState<string | null>(null);
   
   // Explainability quality state
@@ -304,12 +312,28 @@ export function RegulatoryDecisionExplainPanel({
     setFilteredSubmissions(recentSubmissions);
   }, [recentSubmissions]);
 
+  const loadExplainById = async (submissionId: string) => {
+    setState("loading");
+    setError(null);
+    setExplainResult(null);
+    setResult(null);
+    setNormalizedTrace(null);
+    try {
+      const response = await explainV1(submissionId);
+      setExplainResult(response);
+      setState("success");
+    } catch (err: any) {
+      console.error("Explain v1 error:", err);
+      setError(err.message || "Failed to load explain v1 result");
+      setState("error");
+    }
+  };
+
   // Handle deep linking - auto-load trace from URL params
   useEffect(() => {
     const mode = searchParams.get("mode");
-    const submissionId = searchParams.get("submissionId");
+    const submissionId = submissionIdFromRoute ?? searchParams.get("submission_id") ?? searchParams.get("submissionId");
     const caseId = searchParams.get("caseId"); // Step 2.4: Support caseId from CaseWorkspace
-    const traceId = searchParams.get("traceId");
     const autoload = searchParams.get("autoload");
     const decisionType = searchParams.get("decisionType"); // Coverage deep-linking
     
@@ -334,7 +358,7 @@ export function RegulatoryDecisionExplainPanel({
             getConsoleSubmission(queueItem.submissionId)
               .then((submissionRecord) => {
                 if (submissionRecord) {
-                  window.location.href = `/console/rag?mode=connected&submissionId=${submissionRecord.submission_id}`;
+                  window.location.href = `/console/rag?mode=connected&submission_id=${submissionRecord.submission_id}`;
                 }
               })
               .catch(() => null);
@@ -342,13 +366,10 @@ export function RegulatoryDecisionExplainPanel({
         }
       } else if (submissionId) {
         setSelectedSubmission(submissionId);
-        
-        if (autoload === "1") {
-          // Auto-load after a brief delay to ensure submissions are loaded
-          setTimeout(() => {
-            loadTraceById(submissionId);
-          }, 300);
-        }
+        loadExplainById(submissionId);
+      } else if (autoload === "1") {
+        setError("No submission_id provided");
+        setState("error");
       }
     }
   }, [searchParams]);
@@ -405,6 +426,7 @@ export function RegulatoryDecisionExplainPanel({
     setState("loading");
     setError(null);
     setLoadedTrace(null);
+    setExplainResult(null);
     setSelectedSubmissionPayload(null);
     console.log("[Connected] Loading submission by id:", submissionId);
     const isDev = (import.meta as any)?.env?.DEV === true;
@@ -440,7 +462,7 @@ export function RegulatoryDecisionExplainPanel({
         setAuditEvents([]);
       }
       
-      setState("idle");
+      setState(explainResult ? "success" : "idle");
       setReadyBanner(`Loaded ${submission.displayName} from ${new Date(submission.submittedAt).toLocaleString()}`);
       setTimeout(() => setReadyBanner(null), 3000);
     } catch (err: any) {
@@ -456,7 +478,7 @@ export function RegulatoryDecisionExplainPanel({
         const schema = completenessSchemas[schemaKey] || completenessSchemas.default;
         const completeness = hasPayload ? computeCompleteness(fallback.payload, schema) : null;
         setCompletenessScore(completeness);
-        setState("idle");
+        setState(explainResult ? "success" : "idle");
         return;
       }
       console.error("Load trace error:", err);
@@ -469,6 +491,7 @@ export function RegulatoryDecisionExplainPanel({
     setState("loading");
     setError(null);
     setLoadedTrace(null);
+    setExplainResult(null);
     setSelectedSubmissionPayload(null);
     console.log("[Connected] Loading submission by trace id:", traceId);
 
@@ -507,7 +530,7 @@ export function RegulatoryDecisionExplainPanel({
         setAuditEvents([]);
       }
       
-      setState("idle");
+      setState(explainResult ? "success" : "idle");
       setReadyBanner(`Loaded ${submission.displayName} from ${new Date(submission.submittedAt).toLocaleString()}`);
       setTimeout(() => setReadyBanner(null), 3000);
     } catch (err: any) {
@@ -531,6 +554,7 @@ export function RegulatoryDecisionExplainPanel({
     setError(null);
     setResult(null);
     setNormalizedTrace(null);
+    setExplainResult(null);
     const isDev = (import.meta as any)?.env?.DEV === true;
     const explainUrl = `${API_BASE}/rag/regulatory-explain`;
     if (isDev) {
@@ -606,133 +630,12 @@ export function RegulatoryDecisionExplainPanel({
           setRequestInfo(null);
         }
       } else {
-        // Connected mode: Trace-first with evaluator fallback
-        if (!loadedTrace) {
-          throw new Error("No trace loaded. Please select and load a submission first.");
+        // Connected mode: Explain v1 by submission_id
+        const submissionId = selectedSubmission || loadedTrace?.id;
+        if (!submissionId) {
+          throw new Error("No submission selected. Please select a submission first.");
         }
-        
-        console.log("[Connected] Loading stored trace from submission:", {
-          submission_id: loadedTrace.id,
-          trace_id: loadedTrace.traceId,
-          has_decisionTrace: !!loadedTrace.decisionTrace,
-          has_payload: !!loadedTrace.payload
-        });
-
-        // TRACE-FIRST: If decisionTrace exists, use it directly
-        if (loadedTrace.decisionTrace) {
-          console.log("[Connected] Using decisionTrace (trace-first mode)");
-          const normalized = normalizeTrace(loadedTrace.decisionTrace);
-          setNormalizedTrace(normalized);
-          console.log("[Connected] Trace fired_rules:", normalized.fired_rules.length);
-          
-          // Determine state based on trace content
-          if (normalized.outcome === "approved" && normalized.fired_rules.length === 0) {
-            setState("success");
-          } else if (normalized.fired_rules.length > 0 || normalized.missing_evidence.length > 0 || normalized.next_steps.length > 0) {
-            setState("success");
-          } else {
-            setState("empty");
-          }
-          
-          // Compute explainability quality metrics
-          const csfType = loadedTrace.kind || 'csf_practitioner';
-          const payload = loadedTrace.payload || {};
-          const schemaKey = resolveSchemaKey(loadedTrace.csfType || csfType);
-          const schema = completenessSchemas[schemaKey] || completenessSchemas.default;
-          setSelectedSchemaKey(schemaKey);
-          const firedRuleIds = normalized.fired_rules.map(r => r.id);
-          const hasPayload = payload && Object.keys(payload).length > 0;
-          setSelectedSubmissionPayload(payload);
-          
-          // Completeness
-          const completeness = hasPayload ? computeCompleteness(payload, schema) : null;
-          setCompletenessScore(completeness);
-          
-          // Counterfactuals
-          const counterf = generateCounterfactuals(csfType, payload, firedRuleIds, 5);
-          setCounterfactuals(counterf);
-          
-          // Request info
-          if (completeness) {
-            const reqInfo = generateRequestInfoMessage(
-              {
-                scorePct: completeness.scorePct,
-                presentCount: completeness.presentCount,
-                totalCount: completeness.totalCount,
-                missing: completeness.missing,
-                missingFieldDetails: []
-              } as CompletenessScore,
-              loadedTrace.id || null,
-              csfType
-            );
-            setRequestInfo(reqInfo);
-          } else {
-            setRequestInfo(null);
-          }
-        } 
-        // EVALUATOR FALLBACK: If no decisionTrace, run evaluator
-        else if (loadedTrace.payload) {
-          console.log("[Connected] No decisionTrace found - falling back to evaluator");
-          
-          // Extract decision_type and evidence from payload
-          const decision_type = loadedTrace.kind || 'csf';
-          const evidence = loadedTrace.payload;
-          
-          const response = await ragExplain(
-            decision_type,
-            'csf',
-            evidence,
-            `Explain this ${decision_type} submission.`
-          );
-
-          console.log("[Connected] Evaluator fallback response:", response);
-          console.log("[Connected] Evaluator fired_rules:", response.debug?.fired_rules?.length || 0);
-          setResult(response);
-          
-          if (response.debug?.fired_rules?.length > 0) {
-            setState("success");
-          } else {
-            setState("empty");
-          }
-          
-          // Compute explainability quality metrics
-          const csfType = loadedTrace.kind || 'csf_practitioner';
-          const payload = loadedTrace.payload || {};
-          const schemaKey = resolveSchemaKey(loadedTrace.csfType || csfType);
-          const schema = completenessSchemas[schemaKey] || completenessSchemas.default;
-          setSelectedSchemaKey(schemaKey);
-          const firedRuleIds = (response.debug?.fired_rules || []).map((r: any) => r.id || r.ruleId);
-          const hasPayload = payload && Object.keys(payload).length > 0;
-          setSelectedSubmissionPayload(payload);
-          
-          // Completeness
-          const completeness = hasPayload ? computeCompleteness(payload, schema) : null;
-          setCompletenessScore(completeness);
-          
-          // Counterfactuals
-          const counterf = generateCounterfactuals(csfType, payload, firedRuleIds, 5);
-          setCounterfactuals(counterf);
-          
-          // Request info
-          if (completeness) {
-            const reqInfo = generateRequestInfoMessage(
-              {
-                scorePct: completeness.scorePct,
-                presentCount: completeness.presentCount,
-                totalCount: completeness.totalCount,
-                missing: completeness.missing,
-                missingFieldDetails: []
-              } as CompletenessScore,
-              loadedTrace.id || null,
-              csfType
-            );
-            setRequestInfo(reqInfo);
-          } else {
-            setRequestInfo(null);
-          }
-        } else {
-          throw new Error("No trace data or payload found in submission");
-        }
+        await loadExplainById(submissionId);
       }
     } catch (err: any) {
       console.error("Explain error:", err);
@@ -764,18 +667,27 @@ export function RegulatoryDecisionExplainPanel({
     );
   };
 
-  const groupRulesBySeverity = (firedRules: FiredRule[]) => {
+  const normalizeSeverity = (severity?: string) => (severity || "info").toLowerCase();
+
+  const groupRulesBySeverity = (firedRules: Array<FiredRule | ExplainFiredRule>) => {
     const groups = {
-      block: firedRules.filter(r => r.severity === "block"),
-      review: firedRules.filter(r => r.severity === "review"),
-      info: firedRules.filter(r => r.severity === "info"),
+      block: firedRules.filter(r => normalizeSeverity(r.severity) === "block"),
+      review: firedRules.filter(r => normalizeSeverity(r.severity) === "review"),
+      info: firedRules.filter(r => normalizeSeverity(r.severity) === "info"),
     };
     return groups;
   };
 
-  const renderRule = (rule: FiredRule, index: number) => {
-    // Extract evidence from rule (max 3)
-    const evidenceChips = rule.evidence?.slice(0, 3) || [];
+  const renderRule = (rule: FiredRule | ExplainFiredRule, index: number, maskDetails: boolean = false) => {
+    const ruleTitle = "title" in rule ? rule.title : rule.name;
+    const ruleRequirement = "requirement" in rule ? rule.requirement : rule.rationale;
+    const requirementText = maskDetails ? "Evidence not retrieved yet." : ruleRequirement;
+    const ruleCitation = "citation" in rule ? rule.citation : "";
+    const ruleJurisdiction = "jurisdiction" in rule
+      ? rule.jurisdiction
+      : rule.inputs?.jurisdiction || rule.inputs?.state || "Jurisdiction not specified";
+    const severityValue = typeof rule.severity === "string" ? rule.severity.toLowerCase() : "info";
+    const evidenceChips = "evidence" in rule ? rule.evidence?.slice(0, 3) || [] : [];
 
     return (
       <div
@@ -783,15 +695,15 @@ export function RegulatoryDecisionExplainPanel({
         className="rounded-lg border border-zinc-700 bg-zinc-900/70 px-3 py-2.5 text-[11px]"
       >
         <div className="flex items-start justify-between gap-2 mb-1">
-          <div className="font-medium text-zinc-100">{rule.title}</div>
-          {canViewRuleIds(role) && rule.citation && (
+          <div className="font-medium text-zinc-100">{ruleTitle}</div>
+          {canViewRuleIds(role) && ruleCitation && (
             <div className="text-[10px] text-zinc-400 font-mono shrink-0">
-              {rule.citation}
+              {ruleCitation}
             </div>
           )}
         </div>
         
-        <div className="text-zinc-50 mb-2 leading-relaxed">{rule.requirement}</div>
+        <div className="text-zinc-50 mb-2 leading-relaxed">{requirementText}</div>
         
         {/* Evidence chips - Verifier/Admin only */}
         {canViewEvidence(role) && evidenceChips.length > 0 && (
@@ -806,11 +718,11 @@ export function RegulatoryDecisionExplainPanel({
                     const evidence: EvidenceItem = {
                       id: ev.resultId ?? `evidence-${rule.id}-${idx}`,
                       label: ev.docTitle,
-                      jurisdiction: ev.jurisdiction ?? rule.jurisdiction,
-                      citation: ev.section ?? rule.citation,
+                      jurisdiction: ev.jurisdiction ?? ruleJurisdiction,
+                      citation: ev.section ?? ruleCitation,
                       snippet: ev.snippet,
-                      decisionType: rule.severity,
-                      tags: [rule.severity],
+                      decisionType: severityValue,
+                      tags: [severityValue],
                     };
                     handleOpenEvidence(evidence);
                   }}
@@ -826,7 +738,7 @@ export function RegulatoryDecisionExplainPanel({
         
         {canViewRuleIds(role) && (
           <div className="flex items-center gap-2 text-[10px] text-zinc-400">
-            <span>{rule.jurisdiction}</span>
+            <span>{ruleJurisdiction}</span>
             <span>•</span>
             <span className="font-mono">{rule.id}</span>
           </div>
@@ -835,14 +747,43 @@ export function RegulatoryDecisionExplainPanel({
     );
   };
 
-  const activeFiredRules = normalizedTrace?.fired_rules ?? (result?.debug?.fired_rules || []);
-  const activeDrivers = normalizedTrace?.drivers ?? (result?.debug?.drivers || []);
-  const missingBlockCount = completenessScore?.missingByCategory.block.length ?? 0;
-  const missingReviewCount = completenessScore?.missingByCategory.review.length ?? 0;
+  const explainFiredRules = explainResult?.fired_rules ?? [];
+  const explainCitations = explainResult?.citations ?? [];
+  const explainMissingFields = explainResult?.missing_fields ?? [];
+  const explainNextSteps = explainResult?.next_steps ?? [];
+
+  const explainMissingByCategory = explainMissingFields.reduce(
+    (acc, field) => {
+      acc[field.category].push(field);
+      return acc;
+    },
+    { BLOCK: [] as ExplainMissingField[], REVIEW: [] as ExplainMissingField[], INFO: [] as ExplainMissingField[] }
+  );
+
+  const activeFiredRules: Array<FiredRule | ExplainFiredRule> = explainResult
+    ? explainFiredRules
+    : normalizedTrace?.fired_rules ?? (result?.debug?.fired_rules || []);
+  const activeDrivers = explainResult ? [] : normalizedTrace?.drivers ?? (result?.debug?.drivers || []);
+  const missingBlockCount = explainResult
+    ? explainMissingByCategory.BLOCK.length
+    : completenessScore?.missingByCategory.block.length ?? 0;
+  const missingReviewCount = explainResult
+    ? explainMissingByCategory.REVIEW.length
+    : completenessScore?.missingByCategory.review.length ?? 0;
   const hasPayload = !!selectedSubmissionPayload && Object.keys(selectedSubmissionPayload).length > 0;
   const completenessPct = completenessScore?.scorePct ?? null;
+  const truthGateActive = !!explainResult && explainFiredRules.length > 0 && explainCitations.length === 0;
+
+  const formatLabel = (value?: string | null) => {
+    if (!value) return "Unknown";
+    return value
+      .toString()
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
 
   const decisionStatusLabel = (() => {
+    if (explainResult?.status) return formatLabel(explainResult.status);
     if (normalizedTrace?.outcome) {
       if (normalizedTrace.outcome === "approved") return "Approved";
       if (normalizedTrace.outcome === "blocked") return "Blocked";
@@ -856,6 +797,7 @@ export function RegulatoryDecisionExplainPanel({
   })();
 
   const decisionRiskLabel = (() => {
+    if (explainResult?.risk) return formatLabel(explainResult.risk);
     if (normalizedTrace?.risk_level) return normalizedTrace.risk_level;
     if (missingBlockCount > 0) return "High";
     if (missingReviewCount > 0) return "Medium";
@@ -865,11 +807,15 @@ export function RegulatoryDecisionExplainPanel({
     return "Unknown";
   })();
 
-  const topMissingFields = completenessScore
-    ? [...completenessScore.missingByCategory.block, ...completenessScore.missingByCategory.review]
+  const topMissingFields = explainResult
+    ? [...explainMissingByCategory.BLOCK, ...explainMissingByCategory.REVIEW]
         .slice(0, 4)
         .map((field) => field.label)
-    : [];
+    : completenessScore
+      ? [...completenessScore.missingByCategory.block, ...completenessScore.missingByCategory.review]
+          .slice(0, 4)
+          .map((field) => field.label)
+      : [];
 
   const selectedSubmissionLabel = (() => {
     const sub = filteredSubmissions.find((item) => item.id === selectedSubmission);
@@ -877,6 +823,38 @@ export function RegulatoryDecisionExplainPanel({
     const queueItem = demoStore.getWorkQueue().find((item) => item.submissionId === sub.id);
     const status = queueItem?.status || "submitted";
     return `${sub.displayName} · ${status} · ${new Date(sub.submittedAt).toLocaleString()}`;
+  })();
+
+  const decisionSummaryText = (() => {
+    if (explainResult) {
+      if (truthGateActive) {
+        return "Rule triggered; evidence not retrieved yet.";
+      }
+      if (explainResult.summary && explainResult.summary.trim().length > 0) {
+        return explainResult.summary;
+      }
+      if (explainFiredRules.length > 0) {
+        return `Decision based on ${explainFiredRules.length} fired rule${explainFiredRules.length !== 1 ? "s" : ""}.`;
+      }
+      if (explainMissingFields.length > 0) {
+        return `Decision pending due to missing ${explainMissingFields.length} required field${explainMissingFields.length !== 1 ? "s" : ""}.`;
+      }
+      return "No rule evidence returned yet.";
+    }
+
+    if (normalizedTrace?.decision_summary && normalizedTrace.decision_summary.trim().length > 0) {
+      return normalizedTrace.decision_summary;
+    }
+    if (result?.answer && result.answer.trim().length > 0) {
+      return result.answer;
+    }
+    if (activeFiredRules.length > 0) {
+      return `Decision based on ${activeFiredRules.length} fired rule${activeFiredRules.length !== 1 ? "s" : ""}.`;
+    }
+    if (topMissingFields.length > 0) {
+      return `Decision pending due to missing ${topMissingFields.length} required field${topMissingFields.length !== 1 ? "s" : ""}.`;
+    }
+    return "No rule evidence returned yet. Load submission payload and run Explain Decision.";
   })();
 
   return (
@@ -905,6 +883,7 @@ export function RegulatoryDecisionExplainPanel({
             onChange={(e) => {
               setDecisionSource(e.target.value as DecisionSource);
               setResult(null);
+              setExplainResult(null);
               setError(null);
               setState("idle");
               setLoadedTrace(null);
@@ -1050,7 +1029,7 @@ export function RegulatoryDecisionExplainPanel({
           disabled={
             state === "loading" || 
             (decisionSource === "sandbox" && !selectedScenario) ||
-            (decisionSource === "connected" && (!loadedTrace || !selectedSubmissionPayload || Object.keys(selectedSubmissionPayload).length === 0))
+            (decisionSource === "connected" && !selectedSubmission)
           }
           className="px-4 py-1.5 text-[11px] font-medium bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-md transition-colors"
         >
@@ -1059,9 +1038,11 @@ export function RegulatoryDecisionExplainPanel({
       </div>
 
       {/* Debug Info */}
-      {aiDebugEnabled && result && (
+      {aiDebugEnabled && (explainResult || result) && (
         <div className="text-[9px] text-zinc-600 font-mono">
-          Debug: outcome={result.debug?.outcome} | rules={result.debug?.fired_rules_count} | missing={result.debug?.missing_evidence_count} | steps={result.debug?.next_steps_count}
+          {explainResult
+            ? `Debug: run_id=${explainResult.run_id} | policy=${explainResult.policy_version} | knowledge=${explainResult.knowledge_version}`
+            : `Debug: outcome=${result?.debug?.outcome} | rules=${result?.debug?.fired_rules_count} | missing=${result?.debug?.missing_evidence_count} | steps=${result?.debug?.next_steps_count}`}
         </div>
       )}
 
@@ -1116,23 +1097,15 @@ export function RegulatoryDecisionExplainPanel({
       )}
 
       {/* Success State */}
-      {state === "success" && (result || normalizedTrace) && (
+      {state === "success" && (explainResult || result || normalizedTrace) && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {getOutcomeBadge(normalizedTrace ? normalizedTrace.outcome : result!.debug.outcome)}
+              {getOutcomeBadge(explainResult ? explainResult.status : normalizedTrace ? normalizedTrace.outcome : result!.debug.outcome)}
               <div>
                 <div className="text-[12px] font-semibold text-zinc-200">Decision summary</div>
                 <div className="text-[11px] text-zinc-400">
-                  {normalizedTrace?.decision_summary && normalizedTrace.decision_summary.trim().length > 0
-                    ? normalizedTrace.decision_summary
-                    : result?.answer && result.answer.trim().length > 0
-                      ? result.answer
-                      : activeFiredRules.length > 0
-                        ? `Decision based on ${activeFiredRules.length} fired rule${activeFiredRules.length !== 1 ? "s" : ""}.`
-                        : topMissingFields.length > 0
-                          ? `Decision pending due to missing ${topMissingFields.length} required field${topMissingFields.length !== 1 ? "s" : ""}.`
-                          : "No rule evidence returned yet. Load submission payload and run Explain Decision."}
+                  {decisionSummaryText}
                 </div>
               </div>
             </div>
@@ -1180,6 +1153,15 @@ export function RegulatoryDecisionExplainPanel({
             )}
           </div>
 
+          {truthGateActive && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+              <div className="text-[11px] font-semibold text-amber-200">Evidence not retrieved yet for triggered rules</div>
+              <div className="text-[10px] text-amber-200/80">
+                Rule triggered; evidence not retrieved yet.
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
             <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-3">
               <div className="text-[10px] uppercase tracking-wide text-zinc-500">Decision status</div>
@@ -1222,31 +1204,84 @@ export function RegulatoryDecisionExplainPanel({
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
             <div className="lg:col-span-2 rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-3">
               <div className="text-xs font-semibold text-zinc-200 mb-2">Evidence & rule drivers</div>
-              {(normalizedTrace?.missing_evidence?.length || result?.debug.missing_evidence?.length) && (
-                <div className="mb-3">
-                  <div className="text-[11px] text-amber-200 font-semibold mb-1">Missing evidence</div>
-                  <ul className="space-y-1">
-                    {(normalizedTrace?.missing_evidence || result?.debug.missing_evidence || []).map((item, idx) => (
-                      <li key={idx} className="text-[11px] text-amber-100/80 flex items-start gap-2">
-                        <span className="shrink-0">•</span>
-                        <span>{String(item).replace(/\n/g, " ").replace(/\s+/g, " ").trim()}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {(normalizedTrace?.next_steps?.length || result?.debug.next_steps?.length) && (
-                <div className="mb-3">
-                  <div className="text-[11px] text-blue-200 font-semibold mb-1">Next steps</div>
-                  <ul className="space-y-1">
-                    {(normalizedTrace?.next_steps || result?.debug.next_steps || []).map((step, idx) => (
-                      <li key={idx} className="text-[11px] text-blue-100/80 flex items-start gap-2">
-                        <span className="shrink-0">•</span>
-                        <span>{String(step).replace(/\n/g, " ").replace(/\s+/g, " ").trim()}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+              {explainResult ? (
+                <>
+                  {explainMissingFields.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-[11px] text-amber-200 font-semibold mb-1">Missing fields</div>
+                      <ul className="space-y-1">
+                        {explainMissingFields.map((field) => (
+                          <li key={field.key} className="text-[11px] text-amber-100/80 flex items-start gap-2">
+                            <span className="shrink-0">•</span>
+                            <span>{field.label}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {explainNextSteps.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-[11px] text-blue-200 font-semibold mb-1">Next steps</div>
+                      <ul className="space-y-1">
+                        {explainNextSteps.map((step, idx) => (
+                          <li key={`${step.action}-${idx}`} className="text-[11px] text-blue-100/80 flex items-start gap-2">
+                            <span className="shrink-0">•</span>
+                            <span>{step.action}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {explainCitations.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-[11px] text-emerald-200 font-semibold mb-1">Citations</div>
+                      <ul className="space-y-2">
+                        {explainCitations.map((citation, idx) => (
+                          <li key={`${citation.doc_id}-${citation.chunk_id}-${idx}`} className="rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2 py-2 text-[11px] text-emerald-100/90">
+                            <div className="font-medium text-emerald-200">
+                              {citation.source_title || citation.doc_id}
+                            </div>
+                            <div className="text-[10px] text-emerald-300/80">
+                              {citation.jurisdiction || "Jurisdiction unknown"}
+                            </div>
+                            <div className="mt-1 text-emerald-100/80">
+                              {citation.snippet}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {(normalizedTrace?.missing_evidence?.length || result?.debug.missing_evidence?.length) && (
+                    <div className="mb-3">
+                      <div className="text-[11px] text-amber-200 font-semibold mb-1">Missing evidence</div>
+                      <ul className="space-y-1">
+                        {(normalizedTrace?.missing_evidence || result?.debug.missing_evidence || []).map((item, idx) => (
+                          <li key={idx} className="text-[11px] text-amber-100/80 flex items-start gap-2">
+                            <span className="shrink-0">•</span>
+                            <span>{String(item).replace(/\n/g, " ").replace(/\s+/g, " ").trim()}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {(normalizedTrace?.next_steps?.length || result?.debug.next_steps?.length) && (
+                    <div className="mb-3">
+                      <div className="text-[11px] text-blue-200 font-semibold mb-1">Next steps</div>
+                      <ul className="space-y-1">
+                        {(normalizedTrace?.next_steps || result?.debug.next_steps || []).map((step, idx) => (
+                          <li key={idx} className="text-[11px] text-blue-100/80 flex items-start gap-2">
+                            <span className="shrink-0">•</span>
+                            <span>{String(step).replace(/\n/g, " ").replace(/\s+/g, " ").trim()}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
               )}
               {canViewFiredRules(role) && (activeFiredRules.length > 0 || activeDrivers.length > 0) ? (
                 <div className="space-y-2">
@@ -1262,7 +1297,7 @@ export function RegulatoryDecisionExplainPanel({
                             <div>
                               <div className="text-[11px] font-semibold text-red-300 mb-1">🚫 Block ({groups.block.length})</div>
                               <div className="space-y-1.5">
-                                {groups.block.map((rule, idx) => renderRule(rule, idx))}
+                                {groups.block.map((rule, idx) => renderRule(rule, idx, truthGateActive))}
                               </div>
                             </div>
                           )}
@@ -1270,7 +1305,7 @@ export function RegulatoryDecisionExplainPanel({
                             <div>
                               <div className="text-[11px] font-semibold text-yellow-300 mb-1">⚠️ Review ({groups.review.length})</div>
                               <div className="space-y-1.5">
-                                {groups.review.map((rule, idx) => renderRule(rule, idx))}
+                                {groups.review.map((rule, idx) => renderRule(rule, idx, truthGateActive))}
                               </div>
                             </div>
                           )}
@@ -1278,7 +1313,7 @@ export function RegulatoryDecisionExplainPanel({
                             <div>
                               <div className="text-[11px] font-semibold text-blue-300 mb-1">ℹ️ Info ({groups.info.length})</div>
                               <div className="space-y-1.5">
-                                {groups.info.map((rule, idx) => renderRule(rule, idx))}
+                                {groups.info.map((rule, idx) => renderRule(rule, idx, truthGateActive))}
                               </div>
                             </div>
                           )}
@@ -1304,65 +1339,115 @@ export function RegulatoryDecisionExplainPanel({
             </div>
             <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-3">
               <div className="text-xs font-semibold text-zinc-200 mb-1">Data completeness</div>
-              <div className="text-[10px] text-zinc-500 mb-2">
-                Schema: {completenessSchemas[selectedSchemaKey]?.label || "Not selected"}
-              </div>
-              {!hasPayload && (
-                <div className="text-[11px] text-zinc-400">
-                  {selectedSchemaKey === "default"
-                    ? "Schema not selected yet. Load a submission payload to determine the correct completeness checks."
-                    : "No payload loaded yet. Load a submission or run Explain Decision."}
-                </div>
-              )}
-              {hasPayload && completenessScore && (
+              {explainResult ? (
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[11px] text-zinc-400">Required fields present</div>
-                    <div className={`text-sm font-semibold ${
-                      completenessScore.scorePct >= 90 ? "text-green-400" :
-                      completenessScore.scorePct >= 70 ? "text-yellow-400" :
-                      "text-red-400"
-                    }`}>
-                      {completenessScore.scorePct}%
+                  <div className="text-[10px] text-zinc-500">Explain v1 missing fields</div>
+                  {explainMissingFields.length === 0 ? (
+                    <div className="text-[11px] text-green-300">✓ No missing fields reported</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {explainMissingByCategory.BLOCK.length > 0 && (
+                        <div>
+                          <div className="text-[11px] font-semibold text-red-300 mb-1">
+                            Missing BLOCK ({explainMissingByCategory.BLOCK.length})
+                          </div>
+                          <ul className="space-y-1">
+                            {explainMissingByCategory.BLOCK.map((field) => (
+                              <li key={field.key} className="text-[11px] text-red-200/80">• {field.label}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {explainMissingByCategory.REVIEW.length > 0 && (
+                        <div>
+                          <div className="text-[11px] font-semibold text-yellow-300 mb-1">
+                            Missing REVIEW ({explainMissingByCategory.REVIEW.length})
+                          </div>
+                          <ul className="space-y-1">
+                            {explainMissingByCategory.REVIEW.map((field) => (
+                              <li key={field.key} className="text-[11px] text-yellow-200/80">• {field.label}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {explainMissingByCategory.INFO.length > 0 && (
+                        <div>
+                          <div className="text-[11px] font-semibold text-blue-300 mb-1">
+                            Missing INFO ({explainMissingByCategory.INFO.length})
+                          </div>
+                          <ul className="space-y-1">
+                            {explainMissingByCategory.INFO.map((field) => (
+                              <li key={field.key} className="text-[11px] text-blue-200/80">• {field.label}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                  <div className="text-[11px] text-zinc-400">
-                    {completenessScore.presentCount} of {completenessScore.totalCount} fields present
-                  </div>
-                  {completenessScore.missingByCategory.block.length > 0 && (
-                    <div>
-                      <div className="text-[11px] font-semibold text-red-300 mb-1">Missing BLOCK</div>
-                      <ul className="space-y-1">
-                        {completenessScore.missingByCategory.block.map((field) => (
-                          <li key={field.label} className="text-[11px] text-red-200/80">• {field.label}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {completenessScore.missingByCategory.review.length > 0 && (
-                    <div>
-                      <div className="text-[11px] font-semibold text-yellow-300 mb-1">Missing REVIEW</div>
-                      <ul className="space-y-1">
-                        {completenessScore.missingByCategory.review.map((field) => (
-                          <li key={field.label} className="text-[11px] text-yellow-200/80">• {field.label}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {completenessScore.missingByCategory.info.length > 0 && (
-                    <div>
-                      <div className="text-[11px] font-semibold text-blue-300 mb-1">Missing INFO</div>
-                      <ul className="space-y-1">
-                        {completenessScore.missingByCategory.info.map((field) => (
-                          <li key={field.label} className="text-[11px] text-blue-200/80">• {field.label}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {completenessScore.scorePct === 100 && (
-                    <div className="text-[11px] text-green-300">✓ All required fields are present</div>
                   )}
                 </div>
+              ) : (
+                <>
+                  <div className="text-[10px] text-zinc-500 mb-2">
+                    Schema: {completenessSchemas[selectedSchemaKey]?.label || "Not selected"}
+                  </div>
+                  {!hasPayload && (
+                    <div className="text-[11px] text-zinc-400">
+                      {selectedSchemaKey === "default"
+                        ? "Schema not selected yet. Load a submission payload to determine the correct completeness checks."
+                        : "No payload loaded yet. Load a submission or run Explain Decision."}
+                    </div>
+                  )}
+                  {hasPayload && completenessScore && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[11px] text-zinc-400">Required fields present</div>
+                        <div className={`text-sm font-semibold ${
+                          completenessScore.scorePct >= 90 ? "text-green-400" :
+                          completenessScore.scorePct >= 70 ? "text-yellow-400" :
+                          "text-red-400"
+                        }`}>
+                          {completenessScore.scorePct}%
+                        </div>
+                      </div>
+                      <div className="text-[11px] text-zinc-400">
+                        {completenessScore.presentCount} of {completenessScore.totalCount} fields present
+                      </div>
+                      {completenessScore.missingByCategory.block.length > 0 && (
+                        <div>
+                          <div className="text-[11px] font-semibold text-red-300 mb-1">Missing BLOCK</div>
+                          <ul className="space-y-1">
+                            {completenessScore.missingByCategory.block.map((field) => (
+                              <li key={field.label} className="text-[11px] text-red-200/80">• {field.label}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {completenessScore.missingByCategory.review.length > 0 && (
+                        <div>
+                          <div className="text-[11px] font-semibold text-yellow-300 mb-1">Missing REVIEW</div>
+                          <ul className="space-y-1">
+                            {completenessScore.missingByCategory.review.map((field) => (
+                              <li key={field.label} className="text-[11px] text-yellow-200/80">• {field.label}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {completenessScore.missingByCategory.info.length > 0 && (
+                        <div>
+                          <div className="text-[11px] font-semibold text-blue-300 mb-1">Missing INFO</div>
+                          <ul className="space-y-1">
+                            {completenessScore.missingByCategory.info.map((field) => (
+                              <li key={field.label} className="text-[11px] text-blue-200/80">• {field.label}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {completenessScore.scorePct === 100 && (
+                        <div className="text-[11px] text-green-300">✓ All required fields are present</div>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

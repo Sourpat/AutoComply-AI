@@ -166,7 +166,7 @@ export function CaseDetailsDrawer({ caseId, onClose }: CaseDetailsDrawerProps) {
             <a
               href={
                 caseItem?.submissionId
-                  ? `/console/rag?mode=connected&submissionId=${caseItem.submissionId}&autoload=1`
+                  ? `/console/rag?mode=connected&submission_id=${caseItem.submissionId}&autoload=1`
                   : `/console/rag?mode=connected&traceId=${caseItem?.traceId}`
               }
               className="flex-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 text-center"
