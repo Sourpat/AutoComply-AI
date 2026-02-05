@@ -55,3 +55,7 @@ class ExplainResult(BaseModel):
     citations: List[Citation] = Field(default_factory=list)
     next_steps: List[NextStep] = Field(default_factory=list)
     debug: Optional[Dict[str, Any]] = None
+
+
+def validate_explain_result(payload: Dict[str, Any]) -> ExplainResult:
+    return ExplainResult.model_validate(payload)

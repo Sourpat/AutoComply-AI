@@ -54,9 +54,6 @@
 
 
 
-
-
-
 ### Phase 9.5 — Safe failure modes + UI surfacing
 **Status**: completed
 **Assigned**: GitHub Copilot
@@ -117,6 +114,14 @@
 
 **Phase 8 Status**: DONE
 
+### T-023: Explain v1 strict validation + claim gate
+**Completed**: 2026-02-05
+**Commit**: (pending)
+**Summary**: Added canonical validation, explain contract validation, and claim gating with tests and RC smoke verification.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_canonical_validation.py backend/tests/test_claim_gate.py backend/tests/test_explainability_contract.py backend/tests/test_ops_smoke.py`
+- `powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1`
+
 ### T-022: Explain v1 concurrency + idempotency + correlation IDs
 **Completed**: 2026-02-05
 **Commit**: (pending)
@@ -148,13 +153,6 @@
 **Verification**:
 - `Invoke-RestMethod http://127.0.0.1:8001/api/ops/smoke | ConvertTo-Json -Depth 30`
 - `C:/Python314/python.exe -m pytest backend/tests/test_ops_smoke.py -v`
-
-### T-018: Add RAG E2E smoke script
-**Completed**: 2026-02-05
-**Commit**: (pending)
-**Summary**: Added a frontend Node smoke script for seed + recent + explain v1 wiring and centralized submission_id link building.
-**Verification**:
-- `npm -C frontend run rag:smoke`
 
 ---
 

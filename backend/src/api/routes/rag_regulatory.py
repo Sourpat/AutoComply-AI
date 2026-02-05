@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel, Field, root_validator
+from pydantic import BaseModel, Field, ValidationError, root_validator
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -30,7 +30,8 @@ from src.api.models.compliance_models import RegulatoryExplainResponse, Regulato
 from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 from src.stores.decision_store import get_decision_store
 from src.autocomply.domain.submissions_store import get_submission_store
-from src.autocomply.domain.explainability.models import ExplainResult
+from src.autocomply.domain.explainability.claim_gate import gate_summary
+from src.autocomply.domain.explainability.models import ExplainResult, NextStep, validate_explain_result
 from src.autocomply.domain.explainability.store import (
     diff_explain_runs,
     get_run,
@@ -50,6 +51,7 @@ from src.autocomply.domain.submissions.normalizers import (
     normalize_csf_hospital_ohio,
     normalize_csf_practitioner,
 )
+from src.autocomply.domain.submissions.validate import validate_canonical
 from src.utils.logger import get_logger
 
 logger = get_logger("rag_regulatory")
@@ -373,13 +375,46 @@ async def build_explain_contract_v1(
     if payload.submission_id:
         canonical = canonical.model_copy(update={"submission_id": payload.submission_id})
 
+    missing_from_validation = validate_canonical(canonical)
     if not canonical.submission_id:
         canonical = canonical.model_copy(update={"submission_id": "unknown"})
 
     status, risk, missing_fields, fired_rules, next_steps = evaluate_submission(canonical)
+    merged_missing_fields = list(missing_fields)
+    existing_missing_keys = {(field.key, field.category) for field in merged_missing_fields}
+    for field in missing_from_validation:
+        key = (field.key, field.category)
+        if key in existing_missing_keys:
+            continue
+        merged_missing_fields.append(field)
+        existing_missing_keys.add(key)
 
-    block_missing = [field for field in missing_fields if field.category == "BLOCK"]
-    review_missing = [field for field in missing_fields if field.category == "REVIEW"]
+    existing_actions = {step.action for step in next_steps}
+    for field in merged_missing_fields:
+        action = f"Provide {field.label}"
+        if action in existing_actions:
+            continue
+        next_steps.append(
+            NextStep(
+                action=action,
+                blocking=field.category == "BLOCK",
+                rationale=field.reason,
+            )
+        )
+        existing_actions.add(action)
+
+    block_missing = [field for field in merged_missing_fields if field.category == "BLOCK"]
+    review_missing = [field for field in merged_missing_fields if field.category == "REVIEW"]
+
+    if block_missing:
+        status = "blocked"
+        risk = "high"
+    elif review_missing:
+        if status == "approved":
+            status = "needs_review"
+            risk = "medium"
+        elif status == "needs_review":
+            risk = "medium"
 
     if status == "approved":
         summary = "Approved: all required fields satisfied."
@@ -453,6 +488,8 @@ async def build_explain_contract_v1(
     if debug_notes:
         debug_payload["note"] = ";".join(debug_notes)
 
+    summary = gate_summary(summary, merged_missing_fields, fired_rules, citations, status)
+
     explain_result = ExplainResult(
         run_id=make_run_id(submission_hash),
         submission_id=canonical.submission_id,
@@ -462,12 +499,19 @@ async def build_explain_contract_v1(
         status=status,
         risk=risk,
         summary=summary,
-        missing_fields=missing_fields,
+        missing_fields=merged_missing_fields,
         fired_rules=fired_rules,
         citations=citations,
         next_steps=next_steps,
         debug=debug_payload,
     )
+
+    debug_payload = explain_result.debug or {}
+    debug_payload["validation"] = {
+        "missing_count": len(missing_from_validation),
+        "sources": ["canonical_validator"],
+    }
+    explain_result.debug = debug_payload
 
     try:
         stored_run_id = insert_run(
@@ -493,6 +537,16 @@ async def build_explain_contract_v1(
         else:
             debug_payload["note"] = "run_persist_failed"
         explain_result.debug = debug_payload
+
+    try:
+        explain_result = validate_explain_result(explain_result.model_dump())
+    except ValidationError as exc:
+        logger.exception(
+            "ExplainResult contract invalid",
+            exc_info=exc,
+            extra={"request_id": request_id or ""},
+        )
+        raise HTTPException(status_code=500, detail="ExplainResult contract invalid")
 
     return explain_result
 

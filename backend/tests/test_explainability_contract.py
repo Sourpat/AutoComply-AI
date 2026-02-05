@@ -27,6 +27,7 @@ def test_explain_contract_v1_approved_practitioner():
     data = resp.json()
     assert data["status"] == "approved"
     assert data["risk"] == "low"
+    assert data["summary"].strip()
     assert data["missing_fields"] == []
     assert data["fired_rules"] == []
     assert data["submission_id"] == "sub-001"
@@ -59,6 +60,7 @@ def test_explain_contract_v1_blocked_hospital_ohio():
     data = resp.json()
     assert data["status"] == "blocked"
     assert data["risk"] == "high"
+    assert data["summary"].strip()
 
     missing_keys = {field["key"] for field in data["missing_fields"]}
     assert "tddd_cert" in missing_keys
@@ -96,6 +98,33 @@ def test_explain_contract_v1_truth_gate_when_no_citations():
     assert data["citations"] == []
     assert "no_supporting_evidence_found" in data.get("debug", {}).get("note", "")
 
+    assert data["summary"].strip()
+
     summary = data["summary"].lower()
     assert "blocking rule triggered" in summary
     assert "must" not in summary
+
+
+def test_explain_contract_v1_malformed_payload_forces_review():
+    payload = {
+        "submission_type": "csf_practitioner",
+        "payload": {
+            "form": {
+                "dea_number": "AB1234567",
+                "dea_expiration": "2026-01-01",
+                "state_license_number": "SL-123",
+                "state_license_expiration": "2026-01-01",
+                "state": "OH",
+                "requested_schedules": ["II"],
+            },
+        },
+    }
+
+    resp = client.post("/api/rag/explain/v1", json=payload)
+    assert resp.status_code == 200
+
+    data = resp.json()
+    assert data["status"] == "needs_review"
+    assert data["risk"] == "medium"
+    missing_keys = {field["key"] for field in data["missing_fields"]}
+    assert "submission_id" in missing_keys

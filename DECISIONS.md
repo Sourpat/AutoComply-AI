@@ -36,6 +36,27 @@
 
 ## Decisions
 
+### [2026-02-05] Strict canonical validation and claim gating for explain v1
+
+**Context**: Explain v1 requires deterministic validation and a guardrail to prevent unsupported claims in summaries, especially before any richer narrative generation is introduced.
+
+**Decision**: Add canonical validation that returns MissingField entries without raising, enforce ExplainResult contract validation at runtime, and gate summaries with a deterministic claim gate that replaces unsafe summaries with safe templates.
+
+**Rationale**:
+- Ensures malformed payloads cannot be marked approved
+- Enforces contract integrity before responses are returned
+- Prevents regulatory claims without supporting evidence
+
+**Alternatives Considered**:
+- Add LLM-only moderation: rejected to keep deterministic safeguards
+- Skip runtime validation: rejected due to silent contract drift risk
+
+**Consequences**:
+- Positive: Stronger reliability wall for explainability responses
+- Neutral: Additional validation logic on each request
+
+**Status**: Accepted
+
 ### [2026-02-05] Explain run idempotency, correlation IDs, and SQLite hardening
 
 **Context**: Explain v1 runs need to be production-safe under concurrent requests, with traceable request IDs and idempotent deduplication.
