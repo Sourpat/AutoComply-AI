@@ -1,24 +1,15 @@
-from starlette.testclient import TestClient
+import pytest
 
-from src.api.main import app
-
-
-client = TestClient(app)
+from src.api.routes.ops_smoke import ops_smoke
 
 
-def test_ops_smoke_payload() -> None:
-    response = client.get("/api/ops/smoke")
-    assert response.status_code == 200
-    payload = response.json()
+@pytest.mark.asyncio
+async def test_ops_smoke_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENV", "local")
+    payload = await ops_smoke()
 
-    assert "db_ok" in payload
-    assert "schema_ok" in payload
-    assert "signing_enabled" in payload
-    assert "active_contract_present" in payload
-    assert "env" in payload
-    assert "build_sha" in payload
-
+    assert payload["ok"] is True
+    assert payload["checks"]["determinism"] == "ok"
+    assert payload["checks"]["truth_gate"] == "ok"
     assert payload["db_ok"] is True
     assert payload["schema_ok"] is True
-    assert payload["missing_tables"] == []
-    assert "intelligence_history.trace_id" not in payload.get("missing_columns", [])

@@ -52,6 +52,8 @@
 
 
 
+
+
 ### Phase 9.5 — Safe failure modes + UI surfacing
 **Status**: completed
 **Assigned**: GitHub Copilot
@@ -112,6 +114,14 @@
 
 **Phase 8 Status**: DONE
 
+### T-019: Ops smoke determinism + truth gate
+**Completed**: 2026-02-05
+**Commit**: (pending)
+**Summary**: Extended /api/ops/smoke to validate explain determinism + truth gate and surfaced checks in Demo Ready.
+**Verification**:
+- `Invoke-RestMethod http://127.0.0.1:8001/api/ops/smoke | ConvertTo-Json -Depth 30`
+- `C:/Python314/python.exe -m pytest backend/tests/test_ops_smoke.py -v`
+
 ### T-018: Add RAG E2E smoke script
 **Completed**: 2026-02-05
 **Commit**: (pending)
@@ -137,13 +147,6 @@
 **Completed**: 2026-02-04
 **Commit**: (pending)
 **Summary**: Switched connected mode to console work-queue/submissions APIs, added payload completeness on load, and enriched explain debug output for fired rules.
-**Verification**:
-- `npm -C frontend run build`
-
-### BUG-207: RAG Explorer explainability premium refactor
-**Completed**: 2026-02-04
-**Commit**: (pending)
-**Summary**: Refactored explainability layout, added required-field completeness with empty payload handling, and improved connected submission dropdown.
 **Verification**:
 - `npm -C frontend run build`
 ---

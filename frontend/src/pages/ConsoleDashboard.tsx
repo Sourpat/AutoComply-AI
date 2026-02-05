@@ -55,6 +55,15 @@ type DemoReadyState = {
   signingEnabled: boolean | null;
   smokeOk: boolean | null;
   activeContract: boolean | null;
+  smokeChecks?: {
+    server?: boolean;
+    seed?: boolean;
+    recent?: boolean;
+    explain_v1?: boolean;
+    determinism?: boolean;
+    truth_gate?: boolean;
+  } | null;
+  smokeErrorSummary?: string | null;
   env?: string | null;
   buildSha?: string | null;
   lastCheckedAt?: string | null;
@@ -69,6 +78,8 @@ type DemoReadyState = {
     signingEnabled?: boolean | null;
     signingKeyId?: string | null;
     activeContract?: boolean | null;
+    checks?: Record<string, string> | null;
+    errorSummary?: string | null;
   } | null;
   signingDetails?: {
     enabled?: boolean | null;
@@ -84,6 +95,34 @@ const SUBMISSIONS_CACHE_KEY = "acai.submissions.cache.v1";
 const WORK_QUEUE_CACHE_KEY = "acai.workQueue.cache.v1";
 
 const OVERRIDE_WINDOW_DEFAULT = "24h";
+
+const parseSmokeChecks = (payload: any): DemoReadyState["smokeChecks"] => {
+  if (!payload?.checks || typeof payload.checks !== "object") {
+    return null;
+  }
+  const checks = payload.checks as Record<string, string>;
+  return {
+    server: checks.server === "ok",
+    seed: checks.seed === "ok",
+    recent: checks.recent === "ok",
+    explain_v1: checks.explain_v1 === "ok",
+    determinism: checks.determinism === "ok",
+    truth_gate: checks.truth_gate === "ok",
+  };
+};
+
+const buildSmokeErrorSummary = (payload: any): string | null => {
+  const errors = payload?.details?.errors;
+  if (!Array.isArray(errors) || errors.length === 0) {
+    return null;
+  }
+  const summaries = errors.map((item) => {
+    const check = item?.check ?? "unknown";
+    const detail = item?.detail ?? "failed";
+    return `${check}: ${detail}`;
+  });
+  return summaries.join(" | ");
+};
 
 function parseWindowMs(window: string): number {
   const trimmed = window.trim().toLowerCase();
@@ -629,6 +668,8 @@ const ConsoleDashboard: React.FC = () => {
     signingEnabled: null,
     smokeOk: null,
     activeContract: null,
+    smokeChecks: null,
+    smokeErrorSummary: null,
     env: null,
     buildSha: null,
     lastCheckedAt: null,
@@ -699,6 +740,12 @@ const ConsoleDashboard: React.FC = () => {
       smokeResult.status === "fulfilled" && Boolean(smokeResult.value?.ok);
     const activeContract =
       smokeResult.status === "fulfilled" ? Boolean(smokeResult.value?.active_contract_present) : null;
+    const smokeChecks =
+      smokeResult.status === "fulfilled" ? parseSmokeChecks(smokeResult.value) : null;
+    const smokeErrorSummary =
+      smokeResult.status === "fulfilled" && smokeResult.value?.ok === false
+        ? buildSmokeErrorSummary(smokeResult.value)
+        : null;
     const healthDetails =
       healthFullResult.status === "fulfilled"
         ? {
@@ -714,6 +761,8 @@ const ConsoleDashboard: React.FC = () => {
             signingEnabled: smokeResult.value?.signing_enabled ?? null,
             signingKeyId: smokeResult.value?.signing_key_id ?? null,
             activeContract: smokeResult.value?.active_contract_present ?? null,
+            checks: smokeResult.value?.checks ?? null,
+            errorSummary: smokeErrorSummary,
           }
         : null;
     const signingDetails =
@@ -744,6 +793,8 @@ const ConsoleDashboard: React.FC = () => {
       signingEnabled,
       smokeOk,
       activeContract,
+      smokeChecks,
+      smokeErrorSummary,
       env,
       buildSha,
       lastCheckedAt: new Date().toISOString(),
@@ -789,10 +840,14 @@ const ConsoleDashboard: React.FC = () => {
     setIsSmokeCheckLoading(true);
     try {
       const data = await getSmoke();
+      const smokeChecks = parseSmokeChecks(data);
+      const smokeErrorSummary = data?.ok === false ? buildSmokeErrorSummary(data) : null;
       setDemoReady((prev) => ({
         ...prev,
         smokeOk: Boolean(data?.ok),
         activeContract: Boolean(data?.active_contract_present),
+        smokeChecks,
+        smokeErrorSummary,
         env: data?.env ?? prev.env,
         buildSha: data?.build_sha ?? prev.buildSha,
         smokeDetails: {
@@ -801,6 +856,8 @@ const ConsoleDashboard: React.FC = () => {
           signingEnabled: data?.signing_enabled ?? null,
           signingKeyId: data?.signing_key_id ?? null,
           activeContract: data?.active_contract_present ?? null,
+          checks: data?.checks ?? null,
+          errorSummary: smokeErrorSummary,
         },
         lastCheckedAt: new Date().toISOString(),
         error: null,
@@ -809,6 +866,8 @@ const ConsoleDashboard: React.FC = () => {
       setDemoReady((prev) => ({
         ...prev,
         smokeOk: false,
+        smokeChecks: null,
+        smokeErrorSummary: null,
         smokeDetails: null,
         lastCheckedAt: new Date().toISOString(),
         error: err instanceof Error ? err.message : "Ops smoke failed",
@@ -2107,6 +2166,18 @@ const ConsoleDashboard: React.FC = () => {
               {renderDemoCheck("Signing enabled", demoReady.signingEnabled)}
               {renderDemoCheck("/api/ops/smoke ok", demoReady.smokeOk)}
               {renderDemoCheck("Active contract present", demoReady.activeContract)}
+              {demoReady.smokeChecks?.server !== undefined &&
+                renderDemoCheck("Ops server", demoReady.smokeChecks.server ?? null)}
+              {demoReady.smokeChecks?.seed !== undefined &&
+                renderDemoCheck("Ops seed", demoReady.smokeChecks.seed ?? null)}
+              {demoReady.smokeChecks?.recent !== undefined &&
+                renderDemoCheck("Ops recent", demoReady.smokeChecks.recent ?? null)}
+              {demoReady.smokeChecks?.explain_v1 !== undefined &&
+                renderDemoCheck("Ops explain v1", demoReady.smokeChecks.explain_v1 ?? null)}
+              {demoReady.smokeChecks?.determinism !== undefined &&
+                renderDemoCheck("Ops determinism", demoReady.smokeChecks.determinism ?? null)}
+              {demoReady.smokeChecks?.truth_gate !== undefined &&
+                renderDemoCheck("Ops truth gate", demoReady.smokeChecks.truth_gate ?? null)}
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-600 md:grid-cols-3">
@@ -2121,6 +2192,9 @@ const ConsoleDashboard: React.FC = () => {
                 <div>Build: {demoReady.smokeDetails?.buildSha ?? "unknown"}</div>
                 <div>Signing: {demoReady.smokeDetails?.signingEnabled ? "enabled" : "disabled"}</div>
                 <div>Key ID: {demoReady.smokeDetails?.signingKeyId ?? "n/a"}</div>
+                {demoReady.smokeDetails?.errorSummary && (
+                  <div className="mt-1 text-rose-600">{demoReady.smokeDetails.errorSummary}</div>
+                )}
               </div>
               <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
                 <div className="font-semibold text-slate-700">Signing</div>
@@ -2153,6 +2227,9 @@ const ConsoleDashboard: React.FC = () => {
 
             {demoReady.error && (
               <div className="mt-2 text-xs text-rose-600">{demoReady.error}</div>
+            )}
+            {!demoReady.error && demoReady.smokeErrorSummary && (
+              <div className="mt-2 text-xs text-rose-600">{demoReady.smokeErrorSummary}</div>
             )}
           </div>
         </section>
