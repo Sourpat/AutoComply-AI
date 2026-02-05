@@ -36,6 +36,86 @@
 
 ## Decisions
 
+### [2026-02-05] Deterministic evidence retrieval with truth gate for Explain v1
+
+**Context**: Explain v1 needed to attach regulatory evidence to fired rules without allowing RAG to alter decisions or fabricate citations.
+
+**Decision**: Add a deterministic evidence retriever backed by existing regulatory knowledge search, map rule IDs to fixed query templates, and enforce a truth gate that withholds regulatory claims when no citations are found.
+
+**Rationale**:
+- Ensures evidence attachment is reproducible and grounded in existing KB
+- Keeps policy engine deterministic and independent from retrieval
+- Prevents hallucinated citations by requiring matches or returning empty results
+
+**Alternatives Considered**:
+- Use free-form RAG generation: rejected due to hallucination risk
+- Add a new vector database: rejected to keep infra unchanged
+
+**Consequences**:
+- Positive: Explain v1 now returns citations when available and safe summaries when not
+- Neutral: Evidence coverage depends on KB content and query templates
+
+**Status**: Accepted
+
+### [2026-02-04] Explainability Contract v1 with canonical normalization
+
+**Context**: The RAG explainability flow needed a deterministic, backend-first contract to avoid hallucinated decisions and ensure consistent evaluation across payload variants.
+
+**Decision**: Introduce a canonical ExplainResult contract, submission normalizers for csf_practitioner and csf_hospital_ohio, and a deterministic policy engine wired to a new /api/rag/explain/v1 endpoint with explicit versioning.
+
+**Rationale**:
+- Guarantees explainability output only depends on canonical payload + rules
+- Provides a stable response shape for frontend integration
+- Enables future contract evolution via versioned helpers
+
+**Alternatives Considered**:
+- Continue using legacy explain debug payloads: rejected due to inconsistent schemas
+- Add ad-hoc logic in the endpoint: rejected to keep normalization and evaluation reusable
+
+**Consequences**:
+- Positive: Stable contract and deterministic outputs for explainability
+- Neutral: Additional versioning metadata added to responses
+
+**Status**: Accepted
+
+### [2026-02-04] RAG Explorer explainability layout + required-field completeness
+
+**Context**: The RAG Explorer View Details page needed a clearer, premium explainability layout and data completeness scoring that does not show 0% when the submission payload is missing.
+
+**Decision**: Refactor the explainability UI into summary cards plus evidence/completeness columns, and compute completeness using a fixed required-field list with explicit empty-state handling when payload data is missing.
+
+**Rationale**:
+- Keeps explainability aligned with compliance reviewer expectations
+- Prevents misleading 0% completeness when payloads are absent
+- Provides consistent decision status/risk cues based on missing BLOCK/REVIEW fields
+
+**Alternatives Considered**:
+- Continue rule-expectations scoring: rejected because it can show 0% when payload is missing
+- Leave layout unchanged: rejected due to clarity and UX requirements
+
+**Consequences**:
+- Positive: Clearer explainability flow and more accurate completeness messaging
+- Neutral: Completeness logic is now independent of rule expectation metadata
+
+**Status**: Accepted
+
+### [2026-02-03] Ops smoke endpoint exposed at /api/ops/smoke
+
+**Context**: Local smoke checks needed a stable, unauthenticated endpoint and OpenAPI visibility at `/api/ops/smoke` to mirror production.
+
+**Decision**: Expose the smoke check under `/api/ops/smoke` via an ops router alias with no auth dependencies so it appears in OpenAPI and can be called directly.
+
+**Rationale**:
+- Keeps smoke checks decoupled from admin auth
+- Preserves a single canonical smoke handler
+- Ensures documentation parity with production
+
+**Consequences**:
+- Positive: `/api/ops/smoke` is callable without headers and documented
+- Neutral: No schema changes
+
+**Status**: Accepted
+
 ### [2026-02-03] Demo answers + forced health refresh for Console
 
 **Context**: Console displayed “Backend Not Reachable” even after backend recovery due to cached health checks, and demo questions in Chat were routed to the backend and queued.

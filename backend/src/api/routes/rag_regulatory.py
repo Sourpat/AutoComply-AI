@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, root_validator
 from typing import Any, Dict, List, Optional
 
@@ -29,6 +29,20 @@ from src.api.models.compliance_models import RegulatoryExplainResponse, Regulato
 from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 from src.stores.decision_store import get_decision_store
 from src.autocomply.domain.submissions_store import get_submission_store
+from src.autocomply.domain.explainability.models import ExplainResult
+from src.autocomply.domain.explainability.versioning import (
+    get_knowledge_version,
+    get_policy_version,
+    hash_canonical_submission,
+    make_run_id,
+)
+from src.autocomply.domain.policy.engine import evaluate_submission
+from src.autocomply.domain.policy.rule_evidence import RULE_EVIDENCE_QUERIES
+from src.autocomply.domain.evidence.retriever import retrieve_evidence
+from src.autocomply.domain.submissions.normalizers import (
+    normalize_csf_hospital_ohio,
+    normalize_csf_practitioner,
+)
 
 router = APIRouter(
     prefix="/rag",
@@ -88,6 +102,12 @@ class RegulatoryRagResponse(RegulatoryExplainResponse):
     """
 
     pass
+
+
+class ExplainV1Request(BaseModel):
+    submission_type: Optional[str] = Field(None, description="Canonical submission type")
+    submission_id: Optional[str] = None
+    payload: Dict[str, Any] = Field(default_factory=dict)
 
 
 class RegulatoryPreviewRequest(BaseModel):
@@ -310,6 +330,105 @@ async def regulatory_explain_endpoint(
         answer.regulatory_references = [src.id for src in fallback_sources if src.id]
 
     return RegulatoryRagResponse(**answer.model_dump())
+
+
+@router.post("/explain/v1", response_model=ExplainResult)
+async def explain_contract_v1(payload: ExplainV1Request) -> ExplainResult:
+    submission_type = (payload.submission_type or "").strip().lower()
+    submission_payload = payload.payload
+
+    if not submission_payload and payload.submission_id:
+        store = get_submission_store()
+        stored = store.get_submission(payload.submission_id)
+        if not stored:
+            raise HTTPException(status_code=404, detail=f"Submission not found: {payload.submission_id}")
+        submission_payload = stored.payload or {}
+        if not submission_type:
+            csf_type = (stored.csf_type or "").strip().lower()
+            if csf_type == "practitioner":
+                submission_type = "csf_practitioner"
+            elif csf_type == "hospital":
+                submission_type = "csf_hospital_ohio"
+
+    if submission_type == "csf_practitioner":
+        canonical = normalize_csf_practitioner(submission_payload)
+    elif submission_type in {"csf_hospital_ohio", "ohio_tddd"}:
+        canonical = normalize_csf_hospital_ohio(submission_payload)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported submission_type: {payload.submission_type}")
+
+    if payload.submission_id:
+        canonical = canonical.model_copy(update={"submission_id": payload.submission_id})
+
+    if not canonical.submission_id:
+        canonical = canonical.model_copy(update={"submission_id": "unknown"})
+
+    status, risk, missing_fields, fired_rules, next_steps = evaluate_submission(canonical)
+
+    block_missing = [field for field in missing_fields if field.category == "BLOCK"]
+    review_missing = [field for field in missing_fields if field.category == "REVIEW"]
+
+    if status == "approved":
+        summary = "Approved: all required fields satisfied."
+    elif status == "needs_review":
+        summary = f"Needs review: {len(review_missing)} item(s) require review."
+    else:
+        summary = f"Blocked: {len(block_missing)} blocking field(s) missing."
+
+    retrieval_k = 4
+    citations = []
+    for rule in fired_rules:
+        queries = RULE_EVIDENCE_QUERIES.get(rule.id, [])
+        if not queries:
+            continue
+        citations.extend(
+            retrieve_evidence(
+                queries=queries,
+                jurisdiction=canonical.jurisdiction,
+                k=retrieval_k,
+            )
+        )
+
+    seen_keys = set()
+    unique_citations = []
+    for citation in citations:
+        key = (citation.doc_id, citation.chunk_id)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        unique_citations.append(citation)
+
+    citations = unique_citations
+
+    debug_note = None
+    if fired_rules and not citations:
+        debug_note = "no_supporting_evidence_found"
+        summary = "Blocking rule triggered. No supporting citation returned yet."
+
+    submission_hash = hash_canonical_submission(canonical)
+
+    return ExplainResult(
+        run_id=make_run_id(submission_hash),
+        submission_id=canonical.submission_id,
+        submission_hash=submission_hash,
+        policy_version=get_policy_version(),
+        knowledge_version=get_knowledge_version(),
+        status=status,
+        risk=risk,
+        summary=summary,
+        missing_fields=missing_fields,
+        fired_rules=fired_rules,
+        citations=citations,
+        next_steps=next_steps,
+        debug={
+            "submission_type": canonical.kind,
+            "jurisdiction": canonical.jurisdiction or "",
+            "retrieval_k": str(retrieval_k),
+            "retrieved_chunks_count": str(len(citations)),
+            "citation_coverage": str(len(citations) / max(1, len(fired_rules))),
+            **({"note": debug_note} if debug_note else {}),
+        },
+    )
 
 
 @router.get("/regulatory/scenarios")
