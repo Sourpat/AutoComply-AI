@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field, root_validator
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 from src.autocomply.domain.rag_regulatory_explain import (
     RegulatoryRagAnswer,
@@ -30,6 +31,12 @@ from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 from src.stores.decision_store import get_decision_store
 from src.autocomply.domain.submissions_store import get_submission_store
 from src.autocomply.domain.explainability.models import ExplainResult
+from src.autocomply.domain.explainability.store import (
+    diff_explain_runs,
+    get_run,
+    insert_run,
+    list_runs,
+)
 from src.autocomply.domain.explainability.versioning import (
     get_knowledge_version,
     get_policy_version,
@@ -43,6 +50,9 @@ from src.autocomply.domain.submissions.normalizers import (
     normalize_csf_hospital_ohio,
     normalize_csf_practitioner,
 )
+from src.utils.logger import get_logger
+
+logger = get_logger("rag_regulatory")
 
 router = APIRouter(
     prefix="/rag",
@@ -332,8 +342,11 @@ async def regulatory_explain_endpoint(
     return RegulatoryRagResponse(**answer.model_dump())
 
 
-@router.post("/explain/v1", response_model=ExplainResult)
-async def explain_contract_v1(payload: ExplainV1Request) -> ExplainResult:
+async def build_explain_contract_v1(
+    payload: ExplainV1Request,
+    request_id: Optional[str] = None,
+    idempotency_key: Optional[str] = None,
+) -> ExplainResult:
     submission_type = (payload.submission_type or "").strip().lower()
     submission_payload = payload.payload
 
@@ -408,14 +421,39 @@ async def explain_contract_v1(payload: ExplainV1Request) -> ExplainResult:
     citations_count = len(citations)
     evidence_coverage = rules_with_citations / max(1, fired_rules_count)
 
-    debug_note = None
+    debug_notes: List[str] = []
     if fired_rules and not citations:
-        debug_note = "no_supporting_evidence_found"
+        debug_notes.append("no_supporting_evidence_found")
         summary = "Blocking rule triggered. No supporting citation returned yet."
 
     submission_hash = hash_canonical_submission(canonical)
 
-    return ExplainResult(
+    debug_payload: Dict[str, Any] = {
+        "submission_type": canonical.kind,
+        "jurisdiction": canonical.jurisdiction or "",
+        "retrieval": {
+            "top_k": retrieval_k,
+            "elapsed_ms": total_elapsed_ms,
+            "unique_docs": unique_docs,
+        },
+        "evidence": {
+            "fired_rules_count": fired_rules_count,
+            "citations_count": citations_count,
+            "rules_with_citations": rules_with_citations,
+            "evidence_coverage": evidence_coverage,
+        },
+        "knowledge": {
+            "knowledge_version": get_knowledge_version(),
+        },
+    }
+    if request_id:
+        debug_payload["request_id"] = request_id
+    if idempotency_key:
+        debug_payload["idempotency_key"] = idempotency_key
+    if debug_notes:
+        debug_payload["note"] = ";".join(debug_notes)
+
+    explain_result = ExplainResult(
         run_id=make_run_id(submission_hash),
         submission_id=canonical.submission_id,
         submission_hash=submission_hash,
@@ -428,26 +466,78 @@ async def explain_contract_v1(payload: ExplainV1Request) -> ExplainResult:
         fired_rules=fired_rules,
         citations=citations,
         next_steps=next_steps,
-        debug={
-            "submission_type": canonical.kind,
-            "jurisdiction": canonical.jurisdiction or "",
-            "retrieval": {
-                "top_k": retrieval_k,
-                "elapsed_ms": total_elapsed_ms,
-                "unique_docs": unique_docs,
-            },
-            "evidence": {
-                "fired_rules_count": fired_rules_count,
-                "citations_count": citations_count,
-                "rules_with_citations": rules_with_citations,
-                "evidence_coverage": evidence_coverage,
-            },
-            "knowledge": {
-                "knowledge_version": get_knowledge_version(),
-            },
-            **({"note": debug_note} if debug_note else {}),
-        },
+        debug=debug_payload,
     )
+
+    try:
+        stored_run_id = insert_run(
+            explain_result,
+            request_id=request_id,
+            idempotency_key=idempotency_key,
+        )
+        if stored_run_id != explain_result.run_id:
+            explain_result.run_id = stored_run_id
+            debug_payload = explain_result.debug or {}
+            existing_note = str(debug_payload.get("note", "")).strip()
+            if existing_note:
+                debug_payload["note"] = f"{existing_note};idempotent_reuse"
+            else:
+                debug_payload["note"] = "idempotent_reuse"
+            explain_result.debug = debug_payload
+    except Exception as exc:
+        logger.exception("Explain run persistence failed", exc_info=exc)
+        debug_payload = explain_result.debug or {}
+        existing_note = str(debug_payload.get("note", "")).strip()
+        if existing_note:
+            debug_payload["note"] = f"{existing_note};run_persist_failed"
+        else:
+            debug_payload["note"] = "run_persist_failed"
+        explain_result.debug = debug_payload
+
+    return explain_result
+
+
+@router.post("/explain/v1", response_model=ExplainResult)
+async def explain_contract_v1(
+    payload: ExplainV1Request,
+    request: Request,
+    response: Response,
+) -> ExplainResult:
+    request_id = request.headers.get("X-Request-Id") or str(uuid4())
+    idempotency_key = request.headers.get("Idempotency-Key")
+    response.headers["X-Request-Id"] = request_id
+    return await build_explain_contract_v1(
+        payload,
+        request_id=request_id,
+        idempotency_key=idempotency_key,
+    )
+
+
+@router.get("/explain/runs")
+async def list_explain_runs(
+    submission_id: Optional[str] = None,
+    limit: int = 50,
+) -> Dict[str, Any]:
+    runs = list_runs(submission_id=submission_id, limit=limit)
+    return {"ok": True, "runs": runs}
+
+
+@router.get("/explain/runs/{run_id}")
+async def get_explain_run(run_id: str) -> Dict[str, Any]:
+    run = get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+    return {"ok": True, "run": run}
+
+
+@router.get("/explain/diff")
+async def diff_explain_runs_endpoint(run_a: str, run_b: str) -> Dict[str, Any]:
+    record_a = get_run(run_a)
+    record_b = get_run(run_b)
+    if not record_a or not record_b:
+        missing = run_a if not record_a else run_b
+        raise HTTPException(status_code=404, detail=f"Run not found: {missing}")
+    return diff_explain_runs(record_a, record_b)
 
 
 @router.get("/regulatory/scenarios")

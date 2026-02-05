@@ -57,7 +57,6 @@
 
 
 
-
 ### Phase 9.5 — Safe failure modes + UI surfacing
 **Status**: completed
 **Assigned**: GitHub Copilot
@@ -118,6 +117,22 @@
 
 **Phase 8 Status**: DONE
 
+### T-022: Explain v1 concurrency + idempotency + correlation IDs
+**Completed**: 2026-02-05
+**Commit**: (pending)
+**Summary**: Hardened explain run storage for concurrency, idempotency, and correlation IDs; added ops smoke idempotency check and tests.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_explain_runs_store.py backend/tests/test_explain_diff.py backend/tests/test_explain_idempotency.py backend/tests/test_ops_smoke.py`
+- `Invoke-RestMethod http://127.0.0.1:8001/api/rag/explain/runs?submission_id=demo-sub-3 | ConvertTo-Json -Depth 50`
+
+### T-021: Explain replay + diff audit log
+**Completed**: 2026-02-05
+**Commit**: (pending)
+**Summary**: Persisted Explain v1 runs to SQLite, added replay/diff APIs, and added ops smoke replay_diff guardrail with store/diff tests.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_explain_runs_store.py backend/tests/test_explain_diff.py backend/tests/test_ops_smoke.py`
+- `Invoke-RestMethod http://127.0.0.1:8001/api/rag/explain/runs?submission_id=demo-sub-3 | ConvertTo-Json -Depth 50`
+
 ### T-020: Evidence coverage + KB stats metrics
 **Completed**: 2026-02-05
 **Commit**: (pending)
@@ -141,19 +156,6 @@
 **Verification**:
 - `npm -C frontend run rag:smoke`
 
-### BUG-209: Wire RAG Explorer to Explain v1
-**Completed**: 2026-02-05
-**Commit**: (pending)
-**Summary**: Wired Console View Details to pass submission_id, RAG Explorer calls explain v1, and UI renders truth-gated explain results only.
-**Verification**:
-- `npm -C frontend run build`
-
-### T-017: Explainability Contract v1 (backend-first)
-**Completed**: 2026-02-04
-**Commit**: (pending)
-**Summary**: Added explainability contract models, canonical normalization, deterministic policy engine, and /api/rag/explain/v1 endpoint with tests.
-**Verification**:
-- `C:/Python314/python.exe -m pytest backend/tests/test_explainability_contract.py -v`
 ---
 
 ## Task Workflow

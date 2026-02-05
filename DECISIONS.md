@@ -36,6 +36,48 @@
 
 ## Decisions
 
+### [2026-02-05] Explain run idempotency, correlation IDs, and SQLite hardening
+
+**Context**: Explain v1 runs need to be production-safe under concurrent requests, with traceable request IDs and idempotent deduplication.
+
+**Decision**: Enable SQLite WAL + busy_timeout, serialize writes with a process lock, and add idempotency + request ID metadata to explain run records. Use a deterministic `run_dedupe_key` when `Idempotency-Key` is present to reuse runs.
+
+**Rationale**:
+- Avoids write contention errors under concurrent traffic
+- Prevents duplicate runs for retry storms
+- Provides end-to-end traceability via `X-Request-Id`
+
+**Alternatives Considered**:
+- Move to a separate DB: rejected to keep local storage lightweight
+- Ignore idempotency: rejected due to retry duplication risk
+
+**Consequences**:
+- Positive: Explain runs are reliable and traceable in production-like load
+- Neutral: Adds a small amount of metadata to SQLite rows
+
+**Status**: Accepted
+
+### [2026-02-05] Explain run IDs include timestamp for immutable replay
+
+**Context**: Replay/diff auditing requires multiple Explain v1 runs to be stored for the same submission without collisions.
+
+**Decision**: Append a timestamp suffix to the Explain run ID to guarantee uniqueness while preserving the submission hash prefix.
+
+**Rationale**:
+- Prevents SQLite primary key collisions when replaying the same submission
+- Keeps run IDs human-readable and traceable to a submission hash
+- Enables ops smoke replay_diff to compare consecutive runs reliably
+
+**Alternatives Considered**:
+- Use UUIDs only: rejected to keep run IDs traceable to submission hash
+- Overwrite existing runs: rejected because audit trail must be immutable
+
+**Consequences**:
+- Positive: Immutable audit log supports multiple replays per submission
+- Neutral: Run IDs are slightly longer due to timestamp suffix
+
+**Status**: Accepted
+
 ### [2026-02-05] Deterministic evidence retrieval with truth gate for Explain v1
 
 **Context**: Explain v1 needed to attach regulatory evidence to fired rules without allowing RAG to alter decisions or fabricate citations.

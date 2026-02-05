@@ -12,7 +12,8 @@ from src.autocomply.domain.submissions_store import get_submission_store
 from src.config import get_settings
 from src.core.db import execute_sql
 from src.policy.contracts import get_active_contract
-from src.api.routes.rag_regulatory import ExplainV1Request, explain_contract_v1
+from src.api.routes.rag_regulatory import ExplainV1Request, build_explain_contract_v1
+from src.autocomply.domain.explainability.store import diff_explain_runs, list_runs
 
 router = APIRouter(tags=["ops"])
 
@@ -152,7 +153,7 @@ async def ops_smoke() -> Dict[str, Any]:
     explain_ok = True
     for submission_id in target_ids:
         try:
-            explain = await explain_contract_v1(ExplainV1Request(submission_id=submission_id))
+            explain = await build_explain_contract_v1(ExplainV1Request(submission_id=submission_id))
             explain_results[submission_id] = explain
         except Exception as exc:
             explain_ok = False
@@ -168,8 +169,8 @@ async def ops_smoke() -> Dict[str, Any]:
     determinism_target = "demo-sub-3" if "demo-sub-3" in recent_ids else (target_ids[0] if target_ids else None)
     if determinism_target:
         try:
-            first = await explain_contract_v1(ExplainV1Request(submission_id=determinism_target))
-            second = await explain_contract_v1(ExplainV1Request(submission_id=determinism_target))
+            first = await build_explain_contract_v1(ExplainV1Request(submission_id=determinism_target))
+            second = await build_explain_contract_v1(ExplainV1Request(submission_id=determinism_target))
             determinism_ok = (
                 first.status == second.status
                 and first.submission_hash == second.submission_hash
@@ -191,6 +192,100 @@ async def ops_smoke() -> Dict[str, Any]:
         determinism_ok = False
         details["errors"].append({"check": "determinism", "detail": "no submission for determinism"})
     record_check("determinism", determinism_ok)
+
+    replay_diff_ok = True
+    if determinism_target:
+        try:
+            recent_runs = list_runs(submission_id=determinism_target, limit=2)
+            if len(recent_runs) < 2:
+                replay_diff_ok = False
+                details["errors"].append(
+                    {
+                        "check": "replay_diff",
+                        "detail": f"expected 2 runs for {determinism_target}",
+                    }
+                )
+            else:
+                diff = diff_explain_runs(recent_runs[1], recent_runs[0])
+                changes = diff.get("changes", {})
+                replay_diff_ok = not (
+                    changes.get("status", {}).get("changed")
+                    or changes.get("risk", {}).get("changed")
+                    or changes.get("submission_hash", {}).get("changed")
+                    or changes.get("missing_fields", {}).get("added")
+                    or changes.get("missing_fields", {}).get("removed")
+                    or changes.get("fired_rules", {}).get("added")
+                    or changes.get("fired_rules", {}).get("removed")
+                    or changes.get("citations", {}).get("added")
+                    or changes.get("citations", {}).get("removed")
+                )
+                details["replay_diff"] = diff
+                if not replay_diff_ok:
+                    details["errors"].append(
+                        {
+                            "check": "replay_diff",
+                            "detail": f"diff changes detected for {determinism_target}",
+                        }
+                    )
+        except Exception as exc:
+            replay_diff_ok = False
+            details["errors"].append(
+                {
+                    "check": "replay_diff",
+                    "detail": f"replay diff failed for {determinism_target}: {type(exc).__name__}",
+                }
+            )
+    else:
+        replay_diff_ok = False
+        details["errors"].append({"check": "replay_diff", "detail": "no submission for replay_diff"})
+    record_check("replay_diff", replay_diff_ok)
+
+    idempotency_ok = True
+    if determinism_target:
+        try:
+            idempotency_key = "ops-smoke-idem"
+            before = list_runs(submission_id=determinism_target, limit=100)
+            first = await build_explain_contract_v1(
+                ExplainV1Request(submission_id=determinism_target),
+                request_id="ops-smoke-1",
+                idempotency_key=idempotency_key,
+            )
+            second = await build_explain_contract_v1(
+                ExplainV1Request(submission_id=determinism_target),
+                request_id="ops-smoke-2",
+                idempotency_key=idempotency_key,
+            )
+            after = list_runs(submission_id=determinism_target, limit=100)
+            run_id_same = first.run_id == second.run_id
+            debug_note = str((getattr(second, "debug", None) or {}).get("note", ""))
+            reused = "idempotent_reuse" in debug_note
+            count_delta = len(after) - len(before)
+            idempotency_ok = (run_id_same or reused) and count_delta <= 1
+            details["idempotency"] = {
+                "submission_id": determinism_target,
+                "run_id_same": run_id_same,
+                "reused": reused,
+                "count_delta": count_delta,
+            }
+            if not idempotency_ok:
+                details["errors"].append(
+                    {
+                        "check": "idempotency",
+                        "detail": "idempotency key did not reuse run",
+                    }
+                )
+        except Exception as exc:
+            idempotency_ok = False
+            details["errors"].append(
+                {
+                    "check": "idempotency",
+                    "detail": f"idempotency failed for {determinism_target}: {type(exc).__name__}",
+                }
+            )
+    else:
+        idempotency_ok = False
+        details["errors"].append({"check": "idempotency", "detail": "no submission for idempotency"})
+    record_check("idempotency", idempotency_ok)
 
     truth_gate_ok = True
     for submission_id, result in explain_results.items():
