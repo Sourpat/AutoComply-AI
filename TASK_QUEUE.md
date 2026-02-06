@@ -195,7 +195,7 @@
 
 ### Phase 4: Verifier Console uses real submitted cases
 **Completed**: 2026-02-06
-**Commit**: 60e2f4c
+**Commit**: d799866
 **Summary**: Wired verifier console to real cases, actions/notes, assignments, decision packet JSON/PDF, and audit ZIP exports with CI smoke gate and tests.
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q tests/test_audit_packet_downloads.py`
