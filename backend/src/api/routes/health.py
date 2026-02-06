@@ -218,9 +218,11 @@ async def health_details() -> HealthDetails:
     
     # Check multiple env var sources for commit SHA (platform-specific)
     commit_sha = (
-        os.getenv("GIT_SHA")  # Custom
+        os.getenv("RENDER_GIT_COMMIT")  # Render platform
+        or os.getenv("RENDER_COMMIT_SHA")
+        or os.getenv("RENDER_GIT_SHA")
+        or os.getenv("GIT_SHA")  # Custom
         or os.getenv("GITHUB_SHA")  # GitHub Actions
-        or os.getenv("RENDER_GIT_COMMIT")  # Render platform
         or os.getenv("SOURCE_VERSION")  # Azure
         or os.getenv("COMMIT_SHA")  # Generic
     )
