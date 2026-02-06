@@ -85,6 +85,8 @@
 
 ## P1 - High Priority (Do Next)
 
+
+
 ### T-016: Audit suite demo readiness
 **Status**: deferred
 **Assigned**: (none)
@@ -111,6 +113,14 @@
 ## Completed Tasks (Last 5)
 
 **Phase 8 Status**: DONE
+
+### T-026: Explain golden suite gate
+**Completed**: 2026-02-05
+**Commit**: (pending)
+**Summary**: Added golden-case fixtures, runner, ops endpoint, pytest gate, and RC smoke step for Explain v1.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_golden_suite.py`
+- `Invoke-RestMethod -Method Post http://127.0.0.1:8001/api/ops/golden/run`
 
 ### T-025: Explain run retention + storage health
 **Completed**: 2026-02-05
@@ -142,14 +152,6 @@
 **Summary**: Hardened explain run storage for concurrency, idempotency, and correlation IDs; added ops smoke idempotency check and tests.
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q backend/tests/test_explain_runs_store.py backend/tests/test_explain_diff.py backend/tests/test_explain_idempotency.py backend/tests/test_ops_smoke.py`
-- `Invoke-RestMethod http://127.0.0.1:8001/api/rag/explain/runs?submission_id=demo-sub-3 | ConvertTo-Json -Depth 50`
-
-### T-021: Explain replay + diff audit log
-**Completed**: 2026-02-05
-**Commit**: (pending)
-**Summary**: Persisted Explain v1 runs to SQLite, added replay/diff APIs, and added ops smoke replay_diff guardrail with store/diff tests.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_explain_runs_store.py backend/tests/test_explain_diff.py backend/tests/test_ops_smoke.py`
 - `Invoke-RestMethod http://127.0.0.1:8001/api/rag/explain/runs?submission_id=demo-sub-3 | ConvertTo-Json -Depth 50`
 
 ---

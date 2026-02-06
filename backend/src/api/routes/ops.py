@@ -20,6 +20,7 @@ from app.submissions.seed import seed_demo_submissions
 import os
 from src.api.dependencies.auth import AUTO_ROLE_HEADER, ROLE_HEADER, require_admin_role
 from src.autocomply.domain.explainability.maintenance import prune_runs, vacuum_if_needed
+from src.autocomply.domain.explainability.golden_runner import run_golden_suite
 from src.autocomply.domain.explainability.versioning import get_knowledge_version
 from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 from src.api.routes.ops_smoke import ops_smoke as ops_smoke_handler
@@ -89,6 +90,10 @@ class ExplainMaintenanceRequest(BaseModel):
     vacuum_threshold: int = 500
 
 
+class GoldenRunRequest(BaseModel):
+    version: str = "v1"
+
+
 @smoke_router.post("/explain/maintenance")
 async def explain_maintenance(
     payload: ExplainMaintenanceRequest,
@@ -114,6 +119,26 @@ async def explain_maintenance(
         "remaining_rows": result.get("remaining_rows", 0),
         "vacuum_ran": vacuum_ran,
     }
+
+
+@smoke_router.post("/golden/run")
+async def golden_run(
+    payload: GoldenRunRequest = GoldenRunRequest(),
+    x_user_role: Annotated[str | None, Header(alias=ROLE_HEADER)] = None,
+    x_autocomply_role: Annotated[str | None, Header(alias=AUTO_ROLE_HEADER)] = None,
+) -> Dict[str, Any]:
+    env = os.getenv("ENV", "local")
+    if env != "local":
+        require_admin_role(
+            x_user_role=x_user_role,
+            x_autocomply_role=x_autocomply_role,
+        )
+
+    result = await run_golden_suite(version=payload.version)
+    if not result.get("ok"):
+        raise HTTPException(status_code=500, detail={"message": "Golden suite failed", "result": result})
+
+    return result
 
 
 @smoke_router.get("/smoke")

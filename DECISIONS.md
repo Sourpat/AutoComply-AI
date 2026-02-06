@@ -1254,6 +1254,32 @@
 - Issue: Cases list 500 error
 - File: backend/app/workflow/sla.py
 
+### [2026-02-05] Add Explain v1 golden suite gate
+
+**Context**: Explain v1 changes need a deterministic regression gate that exercises the full contract without relying on HTTP calls.
+
+**Decision**: Add versioned golden case fixtures and a runner that reuses `build_explain_contract_v1`, validating status/risk/missing fields/rules and claim gating when citations are absent. Expose the runner via `/api/ops/golden/run` and include it in pytest + RC smoke.
+
+**Rationale**:
+- Ensures explain contract regressions are caught in CI and ops smoke
+- Reuses the same build path to avoid divergence
+- Keeps fixtures stable and easy to extend
+
+**Alternatives Considered**:
+- HTTP-only golden runs: Rejected (slower, less deterministic in tests)
+- Snapshotting raw responses: Rejected (too brittle across benign changes)
+
+**Consequences**:
+- Positive: Deterministic gating for explain v1 behavior
+- Negative: Adds lightweight fixture maintenance
+- Neutral: No schema changes
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-026
+- Area: explainability golden suite
+
 ---
 
 ## Superseded Decisions
