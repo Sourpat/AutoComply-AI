@@ -1,6 +1,6 @@
 # AutoComply AI
 
-[![RC Gate](https://github.com/Sourpat/AutoComply-AI/actions/workflows/rc_gate.yml/badge.svg?branch=feat/explainability-contract-v1)](https://github.com/Sourpat/AutoComply-AI/actions/workflows/rc_gate.yml)
+[![RC Gate](https://github.com/Sourpat/AutoComply-AI/actions/workflows/rc_gate.yml/badge.svg?branch=main)](https://github.com/Sourpat/AutoComply-AI/actions/workflows/rc_gate.yml)
 
 > A regulatory copilot playground for controlled substances and drug distribution flows.  
 > Built with FastAPI + React, RAG, multi-agent architecture, and DevSupport tooling.
