@@ -8,8 +8,7 @@ C:/Python314/python.exe -m uvicorn src.api.main:app --reload --host 127.0.0.1 --
 
 ## Seed demo data
 ```powershell
-# Use the Phase 4 seed command once implemented
-# C:/Python314/python.exe scripts/seed_phase4_verifier_cases.py
+Invoke-RestMethod -Method Post http://127.0.0.1:8001/api/ops/seed-verifier-cases
 ```
 
 ## Verify endpoints
@@ -18,7 +17,7 @@ Invoke-RestMethod http://127.0.0.1:8001/api/verifier/cases
 ```
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8001/api/verifier/cases/{case_id}
+Invoke-RestMethod http://127.0.0.1:8001/api/verifier/cases/case-001
 ```
 
 ## Frontend build

@@ -36,6 +36,25 @@
 
 ## Decisions
 
+### [2026-02-06] Phase 4 verifier cases store
+
+**Context**: Phase 4 needs deterministic verifier cases for list/detail APIs and smoke checks, independent of the main workflow DB.
+
+**Decision**: Create a dedicated SQLite store under backend/.data/verifier_cases.sqlite with a minimal cases + case_events schema and deterministic seed.
+
+**Rationale**:
+- Keeps Phase 4 data isolated and deterministic
+- Simplifies verifier list/detail API development
+
+**Alternatives Considered**:
+- Reuse workflow DB: rejected for Phase 4.1 to keep scope minimal
+
+**Consequences**:
+- Positive: Stable seeds and predictable API responses
+- Neutral: Separate SQLite file to manage
+
+**Status**: Accepted
+
 ### [2026-02-06] RC Gate release gate + commit SHA precedence
 
 **Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).

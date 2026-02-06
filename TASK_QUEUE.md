@@ -57,6 +57,12 @@
 - [ ] Seed/Fixtures: deterministic 10 demo cases
 - [ ] Tests: API contract tests for list/detail endpoints
 - [ ] Docs: Phase4 demo script + architecture note
+**Tasks**:
+- [ ] Backend store + schema bootstrap
+- [ ] Seed endpoint (/api/ops/seed-verifier-cases)
+- [ ] Verifier cases list/detail endpoints
+- [ ] Tests: test_verifier_cases_api.py
+- [ ] Docs: PHASE4_PLAN.md + PHASE4_SMOKE.md updates
 **Verification**:
 - TBD (see docs/PHASE4_SMOKE.md)
 **Dependencies**: None
