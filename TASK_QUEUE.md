@@ -51,22 +51,6 @@
 **Notes**: Blocked pending backend restart verification for /api/workflow and /api/console aliases.
 
 
-### T-024: Explain drift detection + ops drift lock
-**Status**: completed
-**Assigned**: GitHub Copilot
-**Goal**: Detect explain drift cause and fail ops smoke on unexpected drift.
-**Acceptance Criteria**:
-- [x] Diff endpoint classifies drift reason and fields changed
-- [x] Ops smoke fails on drift for replayed submission
-- [x] Tests cover drift detection cases
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_explain_drift.py backend/tests/test_ops_smoke.py`
-- `powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1`
-**Dependencies**: None
-
-
-
-
 
 ### Phase 9.5 — Safe failure modes + UI surfacing
 **Status**: completed
@@ -128,6 +112,14 @@
 
 **Phase 8 Status**: DONE
 
+### T-025: Explain run retention + storage health
+**Completed**: 2026-02-05
+**Commit**: (pending)
+**Summary**: Added retention/compaction utilities, storage health checks, and ops maintenance endpoint with tests.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_explain_maintenance.py backend/tests/test_ops_smoke.py`
+- `powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1`
+
 ### T-024: Explain drift detection + ops drift lock
 **Completed**: 2026-02-05
 **Commit**: (pending)
@@ -159,14 +151,6 @@
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q backend/tests/test_explain_runs_store.py backend/tests/test_explain_diff.py backend/tests/test_ops_smoke.py`
 - `Invoke-RestMethod http://127.0.0.1:8001/api/rag/explain/runs?submission_id=demo-sub-3 | ConvertTo-Json -Depth 50`
-
-### T-020: Evidence coverage + KB stats metrics
-**Completed**: 2026-02-05
-**Commit**: (pending)
-**Summary**: Added evidence coverage + retrieval metrics in explain v1 debug, KB inventory endpoint, and surfaced metrics in RAG Explorer + Demo Ready.
-**Verification**:
-- `Invoke-RestMethod http://127.0.0.1:8001/api/ops/kb-stats | ConvertTo-Json -Depth 30`
-- `C:/Python314/python.exe -m pytest backend/tests/test_explainability_contract.py -v backend/tests/test_kb_stats.py -v`
 
 ---
 

@@ -14,6 +14,11 @@ from src.core.db import execute_sql
 from src.policy.contracts import get_active_contract
 from src.api.routes.rag_regulatory import ExplainV1Request, build_explain_contract_v1
 from src.autocomply.domain.explainability.drift import detect_drift
+from src.autocomply.domain.explainability.maintenance import (
+    count_runs,
+    explain_db_size_mb,
+    get_explain_db_path,
+)
 from src.autocomply.domain.explainability.store import diff_explain_runs, list_runs
 
 router = APIRouter(tags=["ops"])
@@ -346,7 +351,38 @@ async def ops_smoke() -> Dict[str, Any]:
                 )
     record_check("truth_gate", truth_gate_ok)
 
-    ok = all(value == "ok" for value in checks.values())
+    storage_rows = 0
+    storage_size_mb = 0.0
+    storage_state = "ok"
+    try:
+        db_path = get_explain_db_path()
+        if os.path.exists(db_path):
+            storage_size_mb = explain_db_size_mb(db_path)
+            storage_rows = count_runs(db_path)
+        hard_row_limit = 100000
+        hard_size_limit_mb = 200
+        warn_row_limit = int(hard_row_limit * 0.8)
+        warn_size_limit_mb = hard_size_limit_mb * 0.8
+        if storage_rows >= hard_row_limit or storage_size_mb >= hard_size_limit_mb:
+            storage_state = "fail"
+        elif storage_rows >= warn_row_limit or storage_size_mb >= warn_size_limit_mb:
+            storage_state = "warn"
+    except Exception as exc:
+        storage_state = "warn"
+        details["errors"].append(
+            {
+                "check": "storage_health",
+                "detail": f"storage health check failed: {type(exc).__name__}",
+            }
+        )
+
+    checks["storage_health"] = storage_state
+    details["storage"] = {
+        "rows": storage_rows,
+        "size_mb": round(storage_size_mb, 2),
+    }
+
+    ok = all(value in {"ok", "warn"} for value in checks.values())
 
     return {
         "ok": ok,

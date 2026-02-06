@@ -6,9 +6,9 @@ Read-only endpoints that provide operational metrics and review queue analytics.
 SECURITY: All endpoints require admin role via X-User-Role header.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
-from typing import Any, Dict, List, Optional
+from typing import Any, Annotated, Dict, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case
 from datetime import datetime, timedelta, timezone
@@ -18,7 +18,8 @@ from src.database.models import ReviewQueueItem, ReviewStatus, QuestionEvent, Qu
 from src.autocomply.domain.submissions_store import get_submission_store, SubmissionStatus
 from app.submissions.seed import seed_demo_submissions
 import os
-from src.api.dependencies.auth import require_admin_role
+from src.api.dependencies.auth import AUTO_ROLE_HEADER, ROLE_HEADER, require_admin_role
+from src.autocomply.domain.explainability.maintenance import prune_runs, vacuum_if_needed
 from src.autocomply.domain.explainability.versioning import get_knowledge_version
 from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 from src.api.routes.ops_smoke import ops_smoke as ops_smoke_handler
@@ -80,6 +81,39 @@ class OpsSubmissionResponse(BaseModel):
 class SeedSubmissionsResponse(BaseModel):
     inserted: int
     ids: List[str]
+
+
+class ExplainMaintenanceRequest(BaseModel):
+    max_age_days: int = 30
+    max_rows: int = 5000
+    vacuum_threshold: int = 500
+
+
+@smoke_router.post("/explain/maintenance")
+async def explain_maintenance(
+    payload: ExplainMaintenanceRequest,
+    x_user_role: Annotated[str | None, Header(alias=ROLE_HEADER)] = None,
+    x_autocomply_role: Annotated[str | None, Header(alias=AUTO_ROLE_HEADER)] = None,
+) -> Dict[str, Any]:
+    env = os.getenv("ENV", "local")
+    if env != "local":
+        require_admin_role(
+            x_user_role=x_user_role,
+            x_autocomply_role=x_autocomply_role,
+        )
+
+    result = prune_runs(
+        max_age_days=payload.max_age_days,
+        max_rows=payload.max_rows,
+    )
+    vacuum_ran = vacuum_if_needed(payload.vacuum_threshold)
+
+    return {
+        "ok": True,
+        "deleted_rows": result.get("deleted_rows", 0),
+        "remaining_rows": result.get("remaining_rows", 0),
+        "vacuum_ran": vacuum_ran,
+    }
 
 
 @smoke_router.get("/smoke")

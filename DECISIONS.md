@@ -36,6 +36,26 @@
 
 ## Decisions
 
+### [2026-02-05] Explain run retention, compaction, and storage health guardrails
+
+**Context**: Explain runs must remain bounded and storage health needs to be observable to prevent long-run degradation.
+
+**Decision**: Add retention and compaction utilities, a guarded ops maintenance endpoint, and storage health checks in ops smoke with warn/fail thresholds.
+
+**Rationale**:
+- Prevents unbounded growth of explain run storage
+- Enables manual or scheduled maintenance without blocking explain path
+- Surfaces storage risk early in ops checks
+
+**Alternatives Considered**:
+- External job/cron only: rejected to keep local ops control
+
+**Consequences**:
+- Positive: Operational durability for explain runs
+- Neutral: Occasional VACUUM overhead when thresholds are met
+
+**Status**: Accepted
+
 ### [2026-02-05] Explain drift detection and ops drift lock
 
 **Context**: Explainability must be stable and any change must be classified and surfaced for auditability.
