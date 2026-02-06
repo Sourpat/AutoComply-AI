@@ -17,6 +17,8 @@ import { Button } from "../components/ui/button";
 import {
   bulkVerifierCaseAction,
   bulkVerifierCaseAssign,
+  downloadAuditZip,
+  downloadDecisionPacketPdf,
   fetchVerifierCaseEvents,
   fetchVerifierCaseDetail,
   fetchVerifierCases,
@@ -68,6 +70,7 @@ export const CaseWorkspace: React.FC = () => {
   const [packetLoading, setPacketLoading] = useState(false);
   const [packetError, setPacketError] = useState<string | null>(null);
   const [packetCache, setPacketCache] = useState<Record<string, any>>({});
+  const [packetToast, setPacketToast] = useState<string | null>(null);
 
   const casesCountRef = useRef(0);
 
@@ -394,7 +397,50 @@ export const CaseWorkspace: React.FC = () => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    setPacketToast(`Decision packet JSON downloaded for ${selectedCaseId}`);
   }, [selectedCaseId, loadDecisionPacket]);
+
+  const handleExportPdf = useCallback(async () => {
+    if (!selectedCaseId) return;
+    try {
+      const blob = await downloadDecisionPacketPdf(selectedCaseId, true);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `decision-packet-${selectedCaseId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setPacketToast(`Decision packet PDF downloaded for ${selectedCaseId}`);
+    } catch (err) {
+      setPacketError(err instanceof Error ? err.message : "Failed to download PDF");
+    }
+  }, [selectedCaseId]);
+
+  const handleDownloadAuditZip = useCallback(async () => {
+    if (!selectedCaseId) return;
+    try {
+      const blob = await downloadAuditZip(selectedCaseId, true);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `audit-packet-${selectedCaseId}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setPacketToast(`Audit ZIP downloaded for ${selectedCaseId}`);
+    } catch (err) {
+      setPacketError(err instanceof Error ? err.message : "Failed to download audit zip");
+    }
+  }, [selectedCaseId]);
+
+  useEffect(() => {
+    if (!packetToast) return;
+    const timeoutId = window.setTimeout(() => setPacketToast(null), 2500);
+    return () => window.clearTimeout(timeoutId);
+  }, [packetToast]);
 
   useEffect(() => {
     if (!selectedCaseId) return;
@@ -781,6 +827,18 @@ export const CaseWorkspace: React.FC = () => {
                           Export JSON
                         </button>
                         <button
+                          onClick={handleExportPdf}
+                          className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          Export PDF
+                        </button>
+                        <button
+                          onClick={handleDownloadAuditZip}
+                          className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          Download Audit ZIP
+                        </button>
+                        <button
                           onClick={() => loadDecisionPacket(detail.case.case_id, true)}
                           className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500"
                         >
@@ -814,6 +872,7 @@ export const CaseWorkspace: React.FC = () => {
 
                     {packetLoading && <p className="text-xs text-slate-500">Loading packet…</p>}
                     {packetError && <p className="text-xs text-red-600">{packetError}</p>}
+                    {packetToast && <p className="text-xs text-emerald-600">{packetToast}</p>}
 
                     {!packetLoading && !packetError && decisionPacket && packetTab === "overview" && (
                       <div className="grid grid-cols-2 gap-3 text-xs text-slate-600">

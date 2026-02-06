@@ -1,5 +1,5 @@
 // frontend/src/api/verifierCasesClient.ts
-import { apiFetch } from "../lib/api";
+import { apiFetch, API_BASE } from "../lib/api";
 import { getAuthHeaders, getJsonHeaders } from "../lib/authHeaders";
 
 const VERIFIER_BASE = "/api/verifier";
@@ -192,6 +192,32 @@ export async function getDecisionPacket(
   return apiFetch<any>(`${VERIFIER_BASE}/cases/${caseId}/packet?include_explain=${flag}`, {
     headers: getAuthHeaders(),
   });
+}
+
+export async function downloadDecisionPacketPdf(
+  caseId: string,
+  includeExplain: boolean = true
+): Promise<Blob> {
+  const flag = includeExplain ? 1 : 0;
+  const url = `${API_BASE}${VERIFIER_BASE}/cases/${caseId}/packet.pdf?include_explain=${flag}`;
+  const response = await fetch(url, { headers: getAuthHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to download PDF: ${response.status}`);
+  }
+  return response.blob();
+}
+
+export async function downloadAuditZip(
+  caseId: string,
+  includeExplain: boolean = true
+): Promise<Blob> {
+  const flag = includeExplain ? 1 : 0;
+  const url = `${API_BASE}${VERIFIER_BASE}/cases/${caseId}/audit.zip?include_explain=${flag}`;
+  const response = await fetch(url, { headers: getAuthHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to download ZIP: ${response.status}`);
+  }
+  return response.blob();
 }
 
 export async function seedVerifierCases(): Promise<{ inserted_cases: number; inserted_events: number }>

@@ -38,6 +38,8 @@ npm run build
 9. Select 3 cases → bulk Needs review → statuses update and events appear
 10. Open Decision Packet panel → Overview + Evidence tabs load
 11. Export JSON → decision-packet-<id>.json downloads with citations
+12. Export PDF → decision-packet-<id>.pdf downloads
+13. Download Audit ZIP → contains decision-packet json/pdf, citations.json, timeline.json, README.txt
 
 ## Optional: RC smoke
 ```powershell

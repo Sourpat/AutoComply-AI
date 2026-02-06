@@ -83,10 +83,31 @@ async def build_decision_packet(
             explain = await build_explain_contract_v1(
                 ExplainV1Request(submission_id=case.get("submission_id")),
             )
-            if hasattr(explain, "model_dump"):
-                explain_payload = explain.model_dump()
-            else:
-                explain_payload = explain
+            citations = []
+            for citation in explain.citations:
+                citations.append(citation.model_dump())
+            citations = sorted(
+                citations,
+                key=lambda c: (
+                    str(c.get("source_title") or c.get("doc_id") or ""),
+                    str(c.get("citation") or ""),
+                    str(c.get("chunk_id") or ""),
+                ),
+            )
+            explain_payload = {
+                "knowledge_version": explain.knowledge_version,
+                "citations": citations,
+                "rationale": explain.summary,
+                "signals": [
+                    {
+                        "key": field.key,
+                        "category": field.category,
+                        "reason": field.reason,
+                    }
+                    for field in explain.missing_fields
+                ],
+                "policy_hits": [rule.id for rule in explain.fired_rules],
+            }
         except Exception:
             explain_payload = _build_explain_stub()
 

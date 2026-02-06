@@ -2,7 +2,7 @@
 
 **Last Updated**: 2026-02-06
 
-**Active WIP**: 1
+**Active WIP**: 0
 
 **Demo Ready RC Smoke**: powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1
 
@@ -46,7 +46,7 @@
 
 
 ### Phase 4: Verifier Console uses real submitted cases
-**Status**: in-progress
+**Status**: completed
 **Assigned**: GitHub Copilot
 **Goal**: Wire Verifier Console to real cases with backend list/detail endpoints and deterministic demo data.
 **Acceptance Criteria**:
@@ -55,16 +55,19 @@
 - [x] Backend: actions + notes + events endpoints (persisted)
 - [x] Backend: assignment + bulk endpoints with assignee filters
 - [x] Backend: decision packet endpoint (dp-v1) with explain citations
+- [x] Backend: decision packet PDF + audit ZIP downloads
 - [x] Frontend: Verifier Console uses /api/verifier/cases (list/detail + filters + errors)
 - [x] Frontend: Verifier actions + notes + timeline
 - [x] Frontend: My Queue + bulk actions + assignment controls
 - [x] Frontend: Decision Packet panel + export JSON
+- [x] Frontend: Export PDF + Audit ZIP download
 - [x] Seed/Fixtures: deterministic 10 demo cases
 - [x] Tests: API contract tests for list/detail endpoints
 - [x] Tests: verifier actions + notes
 - [x] Tests: verifier bulk + assignment
 - [x] Tests: decision packet API
-- [ ] Docs: Phase4 demo script + architecture note
+- [x] Tests: audit packet downloads
+- [x] Docs: Phase4 demo script + architecture note
 **Tasks**:
 - [x] Backend store + schema bootstrap
 - [x] Seed endpoint (/api/ops/seed-verifier-cases)
@@ -79,7 +82,9 @@
 - [x] Tests: test_decision_packet_api.py
 - [x] Docs: PHASE4_PLAN.md + PHASE4_SMOKE.md updates
 **Verification**:
-- TBD (see docs/PHASE4_SMOKE.md)
+- `C:/Python314/python.exe -m pytest -q tests/test_audit_packet_downloads.py`
+- `npm run build`
+- See docs/PHASE4_SMOKE.md
 **Dependencies**: None
 **Notes**: Kickoff for Phase 4 scope.
 
@@ -188,6 +193,14 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 4: Verifier Console uses real submitted cases
+**Completed**: 2026-02-06
+**Commit**: 60e2f4c
+**Summary**: Wired verifier console to real cases, actions/notes, assignments, decision packet JSON/PDF, and audit ZIP exports with CI smoke gate and tests.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_audit_packet_downloads.py`
+- `npm run build`
+
 ### Phase 3.10 — CI health version + intelligence schema
 **Completed**: 2026-02-06
 **Commit**: 8afe541, 5bf0658, 79e561a
@@ -217,14 +230,6 @@
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q backend/tests/test_golden_suite.py`
 - `Invoke-RestMethod -Method Post http://127.0.0.1:8001/api/ops/golden/run`
-
-### T-025: Explain run retention + storage health
-**Completed**: 2026-02-05
-**Commit**: (pending)
-**Summary**: Added retention/compaction utilities, storage health checks, and ops maintenance endpoint with tests.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_explain_maintenance.py backend/tests/test_ops_smoke.py`
-- `powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1`
 
 ---
 

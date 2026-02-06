@@ -90,7 +90,16 @@ jobs:
           ENV: ci
         run: |
           curl -sSf -X POST http://127.0.0.1:8001/api/ops/seed-submissions -H "Content-Type: application/json" -d "{}" > /dev/null
-          curl -sSf http://127.0.0.1:8001/api/ops/smoke > /dev/null
+          curl -sSf http://127.0.0.1:8001/api/ops/smoke > ops_smoke.json
+          python - <<'PY'
+import json, sys
+with open('ops_smoke.json', 'r', encoding='utf-8') as fh:
+    data = json.load(fh)
+check = data.get('checks', {}).get('verifier_audit_packet')
+if check != 'ok':
+    print('verifier_audit_packet check failed')
+    sys.exit(1)
+PY
           curl -sSf http://127.0.0.1:8001/api/ops/kb-stats > /dev/null
           curl -sSf -X POST http://127.0.0.1:8001/api/ops/golden/run -H "Content-Type: application/json" -d "{\"version\":\"v1\",\"limit\":50}" > /dev/null
 

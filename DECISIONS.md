@@ -133,6 +133,25 @@
 
 **Status**: Accepted
 
+### [2026-02-06] Decision packet PDF + audit ZIP bundle
+
+**Context**: Phase 4.6 requires deterministic PDF export and a downloadable audit ZIP with JSON/PDF + evidence artifacts.
+
+**Decision**: Implement a simple reportlab-based PDF renderer and an in-memory ZIP bundle that includes decision packet JSON/PDF, citations.json, timeline.json, and README.txt. Expose via `/api/verifier/cases/{case_id}/packet.pdf` and `/api/verifier/cases/{case_id}/audit.zip`.
+
+**Rationale**:
+- Keeps output deterministic and text-first
+- Avoids external renderers and simplifies audit exports
+
+**Alternatives Considered**:
+- HTML-to-PDF renderers: rejected for determinism and dependency complexity
+
+**Consequences**:
+- Positive: Verifiable export artifacts for audit/training
+- Neutral: PDF styling remains minimal until Phase 4.6+ enhancements
+
+**Status**: Accepted
+
 ### [2026-02-06] RC Gate release gate + commit SHA precedence
 
 **Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).
