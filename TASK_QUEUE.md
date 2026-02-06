@@ -197,7 +197,7 @@
 
 ### Phase 4.7 — Final decision flow + case lock + final packet snapshot
 **Completed**: 2026-02-06
-**Commit**: (pending)
+**Commit**: 1ae1081
 **Summary**: Added final decision endpoint with lock + snapshot, UI modal, and ops smoke coverage.
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q tests/test_verifier_decision_flow.py`
