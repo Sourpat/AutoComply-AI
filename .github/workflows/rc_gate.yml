@@ -19,21 +19,26 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/pyproject.toml
 
       - name: Backend install
         working-directory: backend
         run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          elif [ -f pyproject.toml ]; then
+          python -m pip install --upgrade pip setuptools wheel
+          if [ -f pyproject.toml ]; then
             pip install -e .
+          elif [ -f requirements.txt ]; then
+            pip install -r requirements.txt
           else
             echo "No requirements.txt or pyproject.toml found in backend/"
             ls -la
             exit 1
           fi
           python -c "import sys; print('PY', sys.version)"
+          python -c "import pkgutil; print('HAS_FASTAPI', any(m.name=='fastapi' for m in pkgutil.iter_modules()))"
 
       - name: Backend tests
         working-directory: backend
@@ -41,7 +46,8 @@ jobs:
           ENV: ci
           PYTHONPATH: ${{ github.workspace }}/backend
         run: |
-          python -m pytest -q tests
+          mkdir -p .data
+          python -m pytest -q
 
       - name: Start backend
         working-directory: backend
@@ -81,6 +87,14 @@ jobs:
         run: |
           python -c "from src.api.main import app; print('\n'.join(sorted({r.path for r in app.routes})))" || true
           tail -200 uvicorn.log || true
+
+      - name: Debug backend env on failure
+        if: failure()
+        working-directory: backend
+        run: |
+          python -c "import sys; print(sys.version)"
+          pip freeze | head -200 || true
+          ls -la || true
 
       - name: Frontend install + build
         working-directory: frontend
