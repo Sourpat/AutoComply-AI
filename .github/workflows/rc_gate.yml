@@ -44,6 +44,7 @@ jobs:
         working-directory: backend
         env:
           ENV: ci
+          APP_ENV: dev
           PYTHONPATH: ${{ github.workspace }}/backend
         run: |
           mkdir -p .data

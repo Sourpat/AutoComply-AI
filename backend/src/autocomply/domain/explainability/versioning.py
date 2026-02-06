@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from typing import Any, Dict
 
 from src.autocomply.domain.submissions.canonical import CanonicalSubmission
@@ -28,4 +29,4 @@ def hash_canonical_submission(canonical: CanonicalSubmission) -> str:
 
 
 def make_run_id(submission_hash: str) -> str:
-    return f"exp-v1-{submission_hash[:12]}"
+    return f"exp-v1-{submission_hash[:12]}-{time.time_ns()}"

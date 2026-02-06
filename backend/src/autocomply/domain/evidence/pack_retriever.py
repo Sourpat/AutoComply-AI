@@ -41,7 +41,8 @@ def _jurisdiction_match(doc_jurisdiction: Optional[str], jurisdiction: Optional[
         return False
     doc_value = doc_jurisdiction.lower()
     if doc_value == "us":
-        return True
+        jurisdiction_value = jurisdiction.lower()
+        return jurisdiction_value in {"us", "usa", "united states", "united_states"}
     return jurisdiction.lower() in doc_value
 
 

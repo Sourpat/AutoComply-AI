@@ -179,6 +179,14 @@ client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
+def _reset_settings_cache() -> None:
+    """Clear cached settings between tests to honor env overrides."""
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def _isolate_db_per_test() -> None:
     """Clear all tables between tests to avoid cross-test collisions."""
     with get_raw_connection() as conn:

@@ -15,7 +15,7 @@
 
 
 ### Phase 3.8 — RC Gate readiness + CI env guards
-**Status**: blocked
+**Status**: in-progress
 **Assigned**: GitHub Copilot
 **Goal**: Harden CI readiness wait, deterministic env, and backend log artifacts
 **Acceptance Criteria**:
@@ -26,7 +26,7 @@
 **Verification**:
 - GitHub Actions RC Gate passes and logs artifact uploaded
 **Dependencies**: None
-**Notes**: Awaiting CI run confirmation before completion.
+**Notes**: Local pytest -q passes with ENV=ci, APP_ENV=dev; awaiting CI run confirmation before completion.
 
 
 

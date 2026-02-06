@@ -36,6 +36,26 @@
 
 ## Decisions
 
+### [2026-02-06] Reset settings cache between tests
+
+**Context**: Several tests toggle `APP_ENV` and `DEV_SEED_TOKEN`, but `get_settings()` is cached. This caused environment-dependent endpoints (like `/dev/seed`) to intermittently read stale production settings in CI.
+
+**Decision**: Add an autouse pytest fixture in [backend/tests/conftest.py](backend/tests/conftest.py) that clears `get_settings` cache before and after each test.
+
+**Rationale**:
+- Keeps environment overrides reliable without restructuring app initialization
+- Eliminates cross-test leakage from cached settings
+
+**Alternatives Considered**:
+- Remove caching from `get_settings`: rejected due to broader runtime impact
+- Rebuild the FastAPI app per test: rejected due to cost and test complexity
+
+**Consequences**:
+- Positive: Stable, deterministic test behavior across env overrides
+- Negative: Minor overhead from cache resets per test
+
+**Status**: Accepted
+
 ### [2026-02-05] Deterministic knowledge pack mode for evidence retrieval
 
 **Context**: Evidence citations varied across environments because retrieval depended on whatever KB was available at runtime.
