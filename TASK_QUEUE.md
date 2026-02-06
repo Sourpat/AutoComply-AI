@@ -30,7 +30,7 @@
 
 
 ### Phase 3.10 — CI health version + intelligence schema
-**Status**: in-progress
+**Status**: blocked
 **Assigned**: GitHub Copilot
 **Goal**: Fix health version assertion and ensure intelligence schema bootstrap in CI/tests
 **Acceptance Criteria**:
@@ -41,7 +41,7 @@
 - `C:/Python314/python.exe -m pytest -q backend/tests/test_signal_intelligence.py backend/tests/test_health_details.py`
 - `C:/Python314/python.exe -m pytest -q`
 **Dependencies**: None
-**Notes**: Implement schema_intelligence bootstrap and wire in startup + tests.
+**Notes**: CI still failing Backend tests. Need Pytest failure summary tail from run logs.
 
 
 
