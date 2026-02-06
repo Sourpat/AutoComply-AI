@@ -46,10 +46,24 @@ jobs:
           ENV: ci
           APP_ENV: dev
           PYTHONPATH: ${{ github.workspace }}/backend
+          KNOWLEDGE_MODE: pack
         run: |
-          set -o pipefail
           mkdir -p .data
+          set +e
           python -m pytest -q 2>&1 | tee pytest.log
+          code=${PIPESTATUS[0]}
+          echo "PYTEST_EXIT_CODE=$code" >> $GITHUB_ENV
+          exit $code
+
+      - name: Pytest failure summary
+        if: failure()
+        working-directory: backend
+        run: |
+          echo "## Backend pytest failure tail" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -n 250 pytest.log >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Start backend
         working-directory: backend
