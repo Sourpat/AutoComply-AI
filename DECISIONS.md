@@ -1280,6 +1280,31 @@
 - Tasks: T-026
 - Area: explainability golden suite
 
+### [2026-02-05] Include golden suite in ops smoke readiness
+
+**Context**: Demo readiness should be validated by a single authoritative endpoint without requiring separate golden suite calls.
+
+**Decision**: Execute a limited golden suite run inside `/api/ops/smoke` and surface the result as `checks.golden_suite` with a brief failure summary.
+
+**Rationale**:
+- Ensures a single demo-ready signal for Console
+- Keeps the golden suite fast via a fixed limit
+- Avoids two sources of truth during RC smoke
+
+**Alternatives Considered**:
+- Keep golden suite separate: Rejected (split readiness indicators)
+
+**Consequences**:
+- Positive: One-call readiness signal includes golden regression coverage
+- Negative: Slightly longer ops smoke execution time
+- Neutral: No schema changes
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-026
+- Area: ops smoke readiness
+
 ---
 
 ## Superseded Decisions

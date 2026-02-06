@@ -117,7 +117,7 @@
 ### T-026: Explain golden suite gate
 **Completed**: 2026-02-05
 **Commit**: (pending)
-**Summary**: Added golden-case fixtures, runner, ops endpoint, pytest gate, and RC smoke step for Explain v1.
+**Summary**: Added golden-case fixtures, runner, ops endpoint, pytest gate, RC smoke step, and ops smoke golden suite check for Explain v1.
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q backend/tests/test_golden_suite.py`
 - `Invoke-RestMethod -Method Post http://127.0.0.1:8001/api/ops/golden/run`

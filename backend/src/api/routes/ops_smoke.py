@@ -14,6 +14,7 @@ from src.core.db import execute_sql
 from src.policy.contracts import get_active_contract
 from src.api.routes.rag_regulatory import ExplainV1Request, build_explain_contract_v1
 from src.autocomply.domain.explainability.drift import detect_drift
+from src.autocomply.domain.explainability.golden_runner import run_suite
 from src.autocomply.domain.explainability.maintenance import (
     count_runs,
     explain_db_size_mb,
@@ -350,6 +351,41 @@ async def ops_smoke() -> Dict[str, Any]:
                     }
                 )
     record_check("truth_gate", truth_gate_ok)
+
+    golden_suite_ok = True
+    try:
+        golden_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+            "golden_cases",
+            "v1",
+        )
+        report = await run_suite(path=golden_path, limit=10)
+        golden_suite_ok = bool(report.get("ok"))
+        details["golden_suite"] = {
+            "total": report.get("total", 0),
+            "passed": report.get("passed", 0),
+            "failed": report.get("failed", 0),
+            "failures": (report.get("failures") or [])[:3],
+        }
+        if not golden_suite_ok:
+            details["errors"].append(
+                {
+                    "check": "golden_suite",
+                    "detail": "golden suite failed",
+                }
+            )
+    except Exception as exc:
+        golden_suite_ok = False
+        details["golden_suite"] = {
+            "error": f"{type(exc).__name__}",
+        }
+        details["errors"].append(
+            {
+                "check": "golden_suite",
+                "detail": f"golden suite failed: {type(exc).__name__}",
+            }
+        )
+    record_check("golden_suite", golden_suite_ok)
 
     storage_rows = 0
     storage_size_mb = 0.0

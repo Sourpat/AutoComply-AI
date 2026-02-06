@@ -12,6 +12,7 @@ def test_ops_smoke_payload(monkeypatch) -> None:
     assert payload["checks"]["replay_diff"] == "ok"
     assert payload["checks"]["idempotency"] == "ok"
     assert payload["checks"]["drift_lock"] == "ok"
+    assert payload["checks"]["golden_suite"] == "ok"
     assert "storage_health" in payload["checks"]
     assert payload["checks"]["truth_gate"] == "ok"
     assert payload["db_ok"] is True

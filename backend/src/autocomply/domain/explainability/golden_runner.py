@@ -128,3 +128,72 @@ async def run_golden_suite(
         "failures": failures,
         "cases": results,
     }
+
+
+async def run_suite(path: str | Path, limit: int = 10) -> Dict[str, Any]:
+    case_dir = Path(path)
+    cases: List[Dict[str, Any]] = []
+    if case_dir.exists() and case_dir.is_dir():
+        for file_path in sorted(case_dir.glob("*.json")):
+            with file_path.open("r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+            if isinstance(payload, dict):
+                payload.setdefault("_file", str(file_path))
+                cases.append(payload)
+    if limit and limit > 0:
+        cases = cases[:limit]
+
+    results: List[Dict[str, Any]] = []
+    failures: List[Dict[str, Any]] = []
+
+    if not cases:
+        return {
+            "ok": False,
+            "total": 0,
+            "passed": 0,
+            "failed": 0,
+            "failures": [{"case_id": "_suite", "errors": ["no_cases_loaded"]}],
+            "cases": [],
+        }
+
+    for case in cases:
+        case_id = case.get("id") or case.get("_file") or "unknown"
+        try:
+            submission_type = case.get("submission_type")
+            submission = case.get("submission") or {}
+            request = ExplainV1Request(
+                submission_type=submission_type,
+                payload=submission,
+            )
+            result = await build_explain_contract_v1(
+                request,
+                request_id=f"golden-{case_id}",
+            )
+            errors = _validate_case(case, result)
+            case_result = {
+                "case_id": case_id,
+                "ok": not errors,
+                "status": result.status,
+                "risk": result.risk,
+                "errors": errors,
+            }
+            results.append(case_result)
+            if errors:
+                failures.append({"case_id": case_id, "errors": errors})
+        except Exception as exc:
+            error_msg = f"exception_{type(exc).__name__}"
+            results.append({"case_id": case_id, "ok": False, "errors": [error_msg]})
+            failures.append({"case_id": case_id, "errors": [error_msg]})
+
+    total = len(results)
+    failed = len(failures)
+    passed = total - failed
+
+    return {
+        "ok": failed == 0,
+        "total": total,
+        "passed": passed,
+        "failed": failed,
+        "failures": failures,
+        "cases": results,
+    }

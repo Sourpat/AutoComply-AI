@@ -28,7 +28,7 @@ Invoke-Step "Ops smoke" {
 
 Invoke-Step "Golden suite" {
     Set-Location $repoRoot
-    Invoke-RestMethod "http://127.0.0.1:8001/api/ops/golden/run" | Out-Null
+    Invoke-RestMethod -Method Post "http://127.0.0.1:8001/api/ops/golden/run" | Out-Null
 }
 
 Invoke-Step "KB stats" {
