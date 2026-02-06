@@ -172,6 +172,26 @@
 
 **Status**: Accepted
 
+### [2026-02-06] Verifier smoke runner as Phase 4 CI gate
+
+**Context**: Phase 4 needs a fast, deterministic end-to-end workflow check that is easy to run locally and in CI.
+
+**Decision**: Add `/api/ops/verifier-smoke/run` as the canonical Phase 4 smoke runner and execute it in RC Gate via a dedicated pytest test.
+
+**Rationale**:
+- Provides a single, actionable signal for Phase 4 regressions
+- Keeps smoke coverage fast and deterministic
+
+**Alternatives Considered**:
+- Manual-only demo script: rejected because CI must catch regressions
+- Full browser E2E: rejected for speed and flakiness
+
+**Consequences**:
+- Positive: CI failures point directly to the verifier workflow
+- Neutral: Runner is limited to dev/ci environments
+
+**Status**: Accepted
+
 ### [2026-02-06] RC Gate release gate + commit SHA precedence
 
 **Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).

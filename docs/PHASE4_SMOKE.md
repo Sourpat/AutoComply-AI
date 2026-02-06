@@ -1,5 +1,7 @@
 # Phase 4 Smoke Checklist — Verifier Console
 
+See the full demo script in docs/PHASE4_DEMO_SCRIPT.md.
+
 ## Backend start
 ```powershell
 Set-Location backend

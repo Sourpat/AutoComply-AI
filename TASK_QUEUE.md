@@ -89,6 +89,22 @@
 **Notes**: Kickoff for Phase 4 scope.
 
 
+### Phase 4.8 — Verifier smoke runner + demo script + RC Gate
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Add deterministic verifier smoke runner, demo script, and CI gate coverage.
+**Acceptance Criteria**:
+- [x] Smoke runner endpoint returns ok with step report
+- [x] Smoke runner pytest passes
+- [x] RC Gate runs smoke runner test
+- [x] Demo script doc added and linked
+- [x] DECISIONS entry for smoke runner gate
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_verifier_smoke_runner.py`
+- `npm run build`
+**Dependencies**: None
+
+
 
 
 
@@ -195,6 +211,14 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 4.8 — Verifier smoke runner + demo script + RC Gate
+**Completed**: 2026-02-06
+**Commit**: (pending)
+**Summary**: Added verifier smoke runner endpoint, demo script, and RC Gate coverage.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_verifier_smoke_runner.py`
+- `npm run build`
+
 ### Phase 4.7 — Final decision flow + case lock + final packet snapshot
 **Completed**: 2026-02-06
 **Commit**: 1ae1081
@@ -225,13 +249,6 @@
 **Summary**: Hardened RC Gate env/pytest logging, readiness checks, and artifacts.
 **Verification**:
 - GitHub Actions RC Gate success
-
-### Phase 3.9 — Deterministic knowledge pack mode
-**Completed**: 2026-02-06
-**Commit**: 53d38df
-**Summary**: Validated CI-parity pack mode, fixed pack path + ops ci allowances, enforced kp-v1 in rc smoke, and updated pack retriever test.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_pack_retriever.py backend/tests/test_golden_suite.py`
 
 ---
 

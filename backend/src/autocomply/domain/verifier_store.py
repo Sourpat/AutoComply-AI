@@ -440,6 +440,7 @@ def add_action(
     action: str,
     actor: Optional[str] = None,
     reason: Optional[str] = None,
+    payload: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     ensure_schema()
     engine = get_engine()
@@ -448,6 +449,7 @@ def add_action(
         "approve": "approved",
         "reject": "rejected",
         "needs_review": "in_review",
+        "triage": "in_review",
     }
     if action not in action_map:
         raise ValueError("Invalid action")
@@ -460,6 +462,7 @@ def add_action(
             "actor": actor,
             "reason": reason,
             "status": updated_status,
+            "payload": payload,
         }
     )
 

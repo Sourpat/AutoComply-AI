@@ -55,6 +55,15 @@ jobs:
           echo "PYTEST_EXIT_CODE=$code" >> $GITHUB_ENV
           exit $code
 
+      - name: Verifier smoke runner test
+        working-directory: backend
+        env:
+          ENV: ci
+          APP_ENV: dev
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          python -m pytest -q tests/test_verifier_smoke_runner.py
+
       - name: Pytest failure summary
         if: failure()
         working-directory: backend

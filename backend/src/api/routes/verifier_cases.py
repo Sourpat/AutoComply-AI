@@ -5,6 +5,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
+from pydantic import AliasChoices, ConfigDict
 
 from src.autocomply.domain.decision_packet import build_decision_packet
 from src.autocomply.domain.packet_pdf import render_decision_packet_pdf
@@ -70,9 +71,13 @@ class VerifierCaseDetailResponse(BaseModel):
 
 
 class VerifierActionRequest(BaseModel):
-    action: str = Field(..., description="approve|reject|needs_review")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    action: str = Field(
+        ..., validation_alias=AliasChoices("action", "type"), description="approve|reject|needs_review|triage"
+    )
     actor: str | None = None
     reason: str | None = None
+    payload: dict | None = None
 
 
 class VerifierActionResponse(BaseModel):
@@ -81,7 +86,8 @@ class VerifierActionResponse(BaseModel):
 
 
 class VerifierNoteRequest(BaseModel):
-    note: str
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    note: str = Field(..., validation_alias=AliasChoices("note", "text"))
     actor: str | None = None
 
 
@@ -289,6 +295,7 @@ def post_verifier_action(case_id: str, payload: VerifierActionRequest) -> dict:
             payload.action,
             actor=payload.actor,
             reason=payload.reason,
+            payload=payload.payload,
         )
     except ValueError as exc:
         status = 409 if str(exc) == "case locked" else 400
