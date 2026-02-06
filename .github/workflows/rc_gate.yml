@@ -101,15 +101,16 @@ jobs:
           curl -sSf -X POST http://127.0.0.1:8001/api/ops/seed-submissions -H "Content-Type: application/json" -d "{}" > /dev/null
           curl -sSf http://127.0.0.1:8001/api/ops/smoke > ops_smoke.json
           python - <<'PY'
-import json, sys
-with open('ops_smoke.json', 'r', encoding='utf-8') as fh:
-    data = json.load(fh)
-checks = data.get('checks', {})
-required = ['verifier_audit_packet', 'verifier_final_decision']
-for name in required:
-  if checks.get(name) != 'ok':
-    print(f'{name} check failed')
-    sys.exit(1)
+  import json, sys
+  with open("ops_smoke.json", "r", encoding="utf-8") as fh:
+      data = json.load(fh)
+  checks = data.get("checks", {})
+  required = ["verifier_audit_packet", "verifier_final_decision"]
+  missing = [name for name in required if checks.get(name) != "ok"]
+  if missing:
+      print("Ops smoke missing/failed:", ", ".join(missing))
+      sys.exit(1)
+  print("Ops smoke checks OK:", ", ".join(required))
 PY
           curl -sSf http://127.0.0.1:8001/api/ops/kb-stats > /dev/null
           curl -sSf -X POST http://127.0.0.1:8001/api/ops/golden/run -H "Content-Type: application/json" -d "{\"version\":\"v1\",\"limit\":50}" > /dev/null
