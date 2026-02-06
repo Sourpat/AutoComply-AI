@@ -50,19 +50,20 @@
 **Assigned**: GitHub Copilot
 **Goal**: Wire Verifier Console to real cases with backend list/detail endpoints and deterministic demo data.
 **Acceptance Criteria**:
-- [ ] Backend: persist submissions → cases table / case store (or reuse workflow store)
-- [ ] Backend: list cases endpoint for verifier (filter/sort/pagination)
+- [x] Backend: persist submissions → cases table / case store (or reuse workflow store)
+- [x] Backend: list cases endpoint for verifier (filter/sort/pagination)
 - [ ] Backend: case detail endpoint includes latest explain run + citations metadata
-- [ ] Frontend: Verifier Console tabs wired to real API (Submission/Workbench/Queue)
-- [ ] Seed/Fixtures: deterministic 10 demo cases
-- [ ] Tests: API contract tests for list/detail endpoints
+- [x] Frontend: Verifier Console uses /api/verifier/cases (list/detail + filters + errors)
+- [x] Seed/Fixtures: deterministic 10 demo cases
+- [x] Tests: API contract tests for list/detail endpoints
 - [ ] Docs: Phase4 demo script + architecture note
 **Tasks**:
-- [ ] Backend store + schema bootstrap
-- [ ] Seed endpoint (/api/ops/seed-verifier-cases)
-- [ ] Verifier cases list/detail endpoints
-- [ ] Tests: test_verifier_cases_api.py
-- [ ] Docs: PHASE4_PLAN.md + PHASE4_SMOKE.md updates
+- [x] Backend store + schema bootstrap
+- [x] Seed endpoint (/api/ops/seed-verifier-cases)
+- [x] Verifier cases list/detail endpoints
+- [x] Tests: test_verifier_cases_api.py
+- [x] Frontend: Verifier Console wiring (list/detail + filters + errors + seed CTA)
+- [x] Docs: PHASE4_PLAN.md + PHASE4_SMOKE.md updates
 **Verification**:
 - TBD (see docs/PHASE4_SMOKE.md)
 **Dependencies**: None

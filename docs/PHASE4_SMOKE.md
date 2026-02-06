@@ -26,6 +26,13 @@ Set-Location frontend
 npm run build
 ```
 
+## Frontend UI verification
+1. Open http://localhost:5173/console/cases
+2. Verify list loads and shows case rows (case_id, status, jurisdiction, created_at, summary)
+3. Use Status and Jurisdiction filters → list updates
+4. Click a case → detail panel shows fields + recent events
+5. If list is empty in dev, use “Seed demo cases” CTA → list populates
+
 ## Optional: RC smoke
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1

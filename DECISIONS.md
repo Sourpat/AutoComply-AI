@@ -55,6 +55,26 @@
 
 **Status**: Accepted
 
+### [2026-02-06] Verifier Console reads Phase 4 cases API
+
+**Context**: Phase 4.2 requires the Verifier Console to show real verifier cases from the new /api/verifier endpoints with a simple list/detail experience and basic filters.
+
+**Decision**: Wire the Verifier Console UI to `/api/verifier/cases` and `/api/verifier/cases/{case_id}` with client-side filters (status, jurisdiction), list pagination, and explicit loading/empty/error states. Provide a dev-only CTA to seed demo cases via `/api/ops/seed-verifier-cases` when the list is empty.
+
+**Rationale**:
+- Ensures UI reflects the Phase 4 verifier store and contracts
+- Keeps production behavior safe by gating seeding to dev only
+
+**Alternatives Considered**:
+- Reuse workflow cases UI: rejected because it depends on workflow models not present in Phase 4 store
+- Auto-seed on load: rejected to avoid hidden data changes in production
+
+**Consequences**:
+- Positive: Verifier Console reflects real Phase 4 case data and supports basic triage filters
+- Neutral: Dedicated API client and UI path maintained for Phase 4 store
+
+**Status**: Accepted
+
 ### [2026-02-06] RC Gate release gate + commit SHA precedence
 
 **Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).
