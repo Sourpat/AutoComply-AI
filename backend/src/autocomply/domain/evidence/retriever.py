@@ -5,6 +5,7 @@ from time import perf_counter
 from typing import Iterable, List, Optional, Tuple
 
 from src.autocomply.domain.explainability.models import Citation
+from src.autocomply.domain.evidence import pack_retriever
 from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 
 
@@ -32,6 +33,40 @@ def retrieve_evidence(
     jurisdiction: str | None,
     k: int = 4,
 ) -> List[Citation]:
+    if pack_retriever.is_pack_mode():
+        citations: dict[Tuple[str, str], Citation] = {}
+
+        for query in queries:
+            q = query.strip()
+            if not q:
+                continue
+            results = pack_retriever.retrieve(
+                query=q,
+                jurisdiction=jurisdiction,
+                top_k=k,
+            )
+            for citation in results:
+                key = _unique_key(citation.doc_id, citation.chunk_id)
+                existing = citations.get(key)
+                if existing is None:
+                    citations[key] = citation
+                else:
+                    existing_conf = existing.confidence or 0.0
+                    new_conf = citation.confidence or 0.0
+                    if new_conf > existing_conf:
+                        citations[key] = citation
+
+        ordered = sorted(
+            citations.values(),
+            key=lambda item: (
+                -(item.confidence or 0.0),
+                item.doc_id,
+                item.chunk_id,
+            ),
+        )
+
+        return ordered[:k]
+
     knowledge = get_regulatory_knowledge()
     citations: dict[Tuple[str, str], Citation] = {}
 

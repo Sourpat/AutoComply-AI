@@ -22,6 +22,7 @@ from src.api.dependencies.auth import AUTO_ROLE_HEADER, ROLE_HEADER, require_adm
 from src.autocomply.domain.explainability.maintenance import prune_runs, vacuum_if_needed
 from src.autocomply.domain.explainability.golden_runner import run_golden_suite
 from src.autocomply.domain.explainability.versioning import get_knowledge_version
+from src.autocomply.domain.evidence import pack_retriever
 from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 from src.api.routes.ops_smoke import ops_smoke as ops_smoke_handler
 
@@ -148,6 +149,18 @@ async def ops_smoke_alias():
 
 @smoke_router.get("/kb-stats")
 async def kb_stats() -> Dict[str, Any]:
+    if pack_retriever.is_pack_mode():
+        stats = pack_retriever.get_pack_stats()
+        return {
+            "ok": True,
+            "knowledge_version": stats.get("knowledge_version"),
+            "docs_total": stats.get("docs_total"),
+            "chunks_total": stats.get("chunks_total"),
+            "jurisdictions": stats.get("jurisdictions", {}),
+            "last_ingested_at": None,
+            "notes": "knowledge_pack_mode",
+        }
+
     knowledge = get_regulatory_knowledge()
     knowledge_version = get_knowledge_version()
     sources = getattr(knowledge, "_sources_by_id", None)

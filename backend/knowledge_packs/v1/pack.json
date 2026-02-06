@@ -1,0 +1,70 @@
+{
+  "version": "kp-v1",
+  "docs": [
+    {
+      "doc_id": "oh-tddd-overview",
+      "title": "Ohio TDDD Requirement",
+      "jurisdiction": "OH",
+      "effective_date": "2020-01-01",
+      "chunks": [
+        {
+          "chunk_id": "oh-tddd-overview#1",
+          "text": "In Ohio, hospitals handling controlled substances must maintain a Terminal Distributor of Dangerous Drugs (TDDD) certificate. Schedule II controlled substances require an active TDDD registration and documented certificate number.",
+          "tags": ["tddd", "ohio", "hospital", "controlled substances", "schedule ii"]
+        }
+      ]
+    },
+    {
+      "doc_id": "oh-tddd-certificate",
+      "title": "Ohio TDDD Certificate Details",
+      "jurisdiction": "OH",
+      "effective_date": "2020-01-01",
+      "chunks": [
+        {
+          "chunk_id": "oh-tddd-certificate#1",
+          "text": "Ohio requires a TDDD certificate number for hospital facilities distributing or storing controlled substances. Facilities must keep the certificate current and provide the TDDD certificate identifier on request.",
+          "tags": ["tddd", "certificate", "ohio", "facility"]
+        }
+      ]
+    },
+    {
+      "doc_id": "dea-practitioner-registration",
+      "title": "DEA Practitioner Registration Requirement",
+      "jurisdiction": "US",
+      "effective_date": "2019-01-01",
+      "chunks": [
+        {
+          "chunk_id": "dea-practitioner-registration#1",
+          "text": "Practitioners prescribing or handling Schedule II controlled substances must hold a valid DEA registration. DEA registration is required before dispensing controlled substances in any jurisdiction.",
+          "tags": ["dea", "practitioner", "controlled substances", "schedule ii"]
+        }
+      ]
+    },
+    {
+      "doc_id": "license-expiration-review",
+      "title": "License Expiration Review Guidance",
+      "jurisdiction": "US",
+      "effective_date": "2018-01-01",
+      "chunks": [
+        {
+          "chunk_id": "license-expiration-review#1",
+          "text": "When a license expiration date is missing or expired, compliance review is required before approval. Review must confirm current licensure and supporting documentation.",
+          "tags": ["license", "expiration", "review", "compliance"]
+        }
+      ]
+    },
+    {
+      "doc_id": "ny-pharmacy-licensure",
+      "title": "New York Pharmacy Licensure Overview",
+      "jurisdiction": "NY",
+      "effective_date": "2021-01-01",
+      "chunks": [
+        {
+          "chunk_id": "ny-pharmacy-licensure#1",
+          "text": "New York pharmacies must hold an active state license and comply with controlled substance handling requirements. Missing license documentation requires manual verification.",
+          "tags": ["new york", "pharmacy", "license", "controlled substances"]
+        }
+      ]
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 **Last Updated**: 2026-02-05
 
-**Active WIP**: 1
+**Active WIP**: 2
 
 **Demo Ready RC Smoke**: powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1
 
@@ -25,6 +25,22 @@
 - [ ] Uvicorn logs uploaded on all runs
 **Verification**:
 - GitHub Actions RC Gate passes and logs artifact uploaded
+**Dependencies**: None
+
+
+### Phase 3.9 — Deterministic knowledge pack mode
+**Status**: in-progress
+**Assigned**: GitHub Copilot
+**Goal**: Add versioned knowledge pack + offline evidence mode for deterministic citations
+**Acceptance Criteria**:
+- [ ] Knowledge pack v1 stored in repo
+- [ ] Pack retriever used when ENV=ci or KNOWLEDGE_MODE=pack
+- [ ] knowledge_version reports kp-v1 in pack mode
+- [ ] Ops kb-stats returns pack counts in pack mode
+- [ ] Golden cases include pack citations case
+- [ ] Pack retriever tests cover load, ordering, jurisdiction
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_pack_retriever.py backend/tests/test_golden_suite.py`
 **Dependencies**: None
 
 

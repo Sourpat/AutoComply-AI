@@ -66,6 +66,19 @@ def _validate_case(case: Dict[str, Any], result: ExplainResult) -> List[str]:
                 errors.append(f"summary_contains_marker_{marker}")
                 break
 
+    min_citations = expect.get("min_citations")
+    if min_citations is not None:
+        if len(result.citations) < int(min_citations):
+            errors.append("citations_below_min")
+
+    min_evidence_coverage = expect.get("min_evidence_coverage")
+    if min_evidence_coverage is not None:
+        debug_payload = result.debug or {}
+        evidence_payload = debug_payload.get("evidence", {}) if isinstance(debug_payload, dict) else {}
+        coverage = evidence_payload.get("evidence_coverage") if isinstance(evidence_payload, dict) else None
+        if coverage is None or coverage < float(min_evidence_coverage):
+            errors.append("evidence_coverage_below_min")
+
     return errors
 
 
@@ -106,6 +119,7 @@ async def run_golden_suite(
                 "ok": not errors,
                 "status": result.status,
                 "risk": result.risk,
+                "knowledge_version": result.knowledge_version,
                 "errors": errors,
             }
             results.append(case_result)
@@ -175,6 +189,7 @@ async def run_suite(path: str | Path, limit: int = 10) -> Dict[str, Any]:
                 "ok": not errors,
                 "status": result.status,
                 "risk": result.risk,
+                "knowledge_version": result.knowledge_version,
                 "errors": errors,
             }
             results.append(case_result)

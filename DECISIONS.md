@@ -36,6 +36,27 @@
 
 ## Decisions
 
+### [2026-02-05] Deterministic knowledge pack mode for evidence retrieval
+
+**Context**: Evidence citations varied across environments because retrieval depended on whatever KB was available at runtime.
+
+**Decision**: Add a small, versioned knowledge pack in-repo and route evidence retrieval to a deterministic pack retriever when `ENV=ci` or `KNOWLEDGE_MODE=pack`. Surface pack counts in ops kb-stats and set `knowledge_version` to `kp-v1` in explain results.
+
+**Rationale**:
+- Ensures golden suite and ops smoke are reproducible in CI and local demos
+- Removes dependency on external/variable KB contents
+- Keeps retrieval deterministic with a simple token overlap scorer
+
+**Alternatives Considered**:
+- Pinning external KB data: rejected due to operational coupling
+- Disabling evidence in CI entirely: rejected due to losing coverage guarantees
+
+**Consequences**:
+- Positive: Stable, environment-independent evidence behavior
+- Neutral: Pack must be maintained alongside KB updates
+
+**Status**: Accepted
+
 ### [2026-02-05] Explain run retention, compaction, and storage health guardrails
 
 **Context**: Explain runs must remain bounded and storage health needs to be observable to prevent long-run degradation.

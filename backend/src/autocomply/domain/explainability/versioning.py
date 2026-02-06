@@ -5,6 +5,7 @@ import json
 from typing import Any, Dict
 
 from src.autocomply.domain.submissions.canonical import CanonicalSubmission
+from src.autocomply.domain.evidence import pack_retriever
 
 POLICY_VERSION = "explainability-policy-v1"
 KNOWLEDGE_VERSION = "regulatory-knowledge-static-v1"
@@ -15,6 +16,8 @@ def get_policy_version() -> str:
 
 
 def get_knowledge_version() -> str:
+    if pack_retriever.is_pack_mode():
+        return pack_retriever.PACK_VERSION
     return KNOWLEDGE_VERSION
 
 
