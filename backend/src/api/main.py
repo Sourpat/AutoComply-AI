@@ -58,6 +58,7 @@ from src.api.routes import audit_packets
 from src.api.routes import audit_events
 from src.api.routes import policy_contracts
 from src.api.routes import policy_safe_failures
+from src.api.routes import verifier_cases
 
 # Phase 8.1: Distributed Traces API
 from src.api.routes import traces
@@ -434,6 +435,7 @@ app.include_router(audit_packets.router)
 app.include_router(audit_events.router)
 app.include_router(policy_contracts.router)
 app.include_router(policy_safe_failures.router)
+app.include_router(verifier_cases.router)
 
 
 # Workflow Console - Step 2.10

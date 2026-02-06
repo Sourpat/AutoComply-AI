@@ -2,7 +2,7 @@
 
 **Last Updated**: 2026-02-06
 
-**Active WIP**: 0
+**Active WIP**: 1
 
 **Demo Ready RC Smoke**: powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1
 
@@ -43,6 +43,24 @@
 - `C:/Python314/python.exe -m pytest -q`
 **Dependencies**: None
 **Notes**: RC Gate green.
+
+
+### Phase 4: Verifier Console uses real submitted cases
+**Status**: in-progress
+**Assigned**: GitHub Copilot
+**Goal**: Wire Verifier Console to real cases with backend list/detail endpoints and deterministic demo data.
+**Acceptance Criteria**:
+- [ ] Backend: persist submissions → cases table / case store (or reuse workflow store)
+- [ ] Backend: list cases endpoint for verifier (filter/sort/pagination)
+- [ ] Backend: case detail endpoint includes latest explain run + citations metadata
+- [ ] Frontend: Verifier Console tabs wired to real API (Submission/Workbench/Queue)
+- [ ] Seed/Fixtures: deterministic 10 demo cases
+- [ ] Tests: API contract tests for list/detail endpoints
+- [ ] Docs: Phase4 demo script + architecture note
+**Verification**:
+- TBD (see docs/PHASE4_SMOKE.md)
+**Dependencies**: None
+**Notes**: Kickoff for Phase 4 scope.
 
 
 
