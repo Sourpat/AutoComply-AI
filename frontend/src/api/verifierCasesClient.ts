@@ -9,6 +9,8 @@ export type VerifierCase = {
   submission_id: string | null;
   status: string;
   jurisdiction: string | null;
+  assignee: string | null;
+  assigned_at: string | null;
   created_at: string;
   updated_at: string;
   summary: string;
@@ -54,6 +56,11 @@ export type VerifierCaseActionResponse = {
   event: VerifierCaseEvent;
 };
 
+export type VerifierCaseAssignmentRequest = {
+  assignee: string | null;
+  actor?: string;
+};
+
 export type VerifierCaseNoteRequest = {
   note: string;
   actor?: string;
@@ -69,6 +76,7 @@ export async function fetchVerifierCases(params: {
   offset: number;
   status?: string;
   jurisdiction?: string;
+  assignee?: string;
 }): Promise<VerifierCasesResponse> {
   const search = new URLSearchParams({
     limit: params.limit.toString(),
@@ -81,6 +89,10 @@ export async function fetchVerifierCases(params: {
 
   if (params.jurisdiction) {
     search.set("jurisdiction", params.jurisdiction);
+  }
+
+  if (params.assignee) {
+    search.set("assignee", params.assignee);
   }
 
   return apiFetch<VerifierCasesResponse>(`${VERIFIER_BASE}/cases?${search.toString()}`, {
@@ -100,6 +112,17 @@ export async function postVerifierCaseAction(
 ): Promise<VerifierCaseActionResponse> {
   return apiFetch<VerifierCaseActionResponse>(`${VERIFIER_BASE}/cases/${caseId}/actions`, {
     method: "POST",
+    headers: getJsonHeaders(),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function setVerifierCaseAssignment(
+  caseId: string,
+  payload: VerifierCaseAssignmentRequest
+): Promise<VerifierCase> {
+  return apiFetch<VerifierCase>(`${VERIFIER_BASE}/cases/${caseId}/assignment`, {
+    method: "PATCH",
     headers: getJsonHeaders(),
     body: JSON.stringify(payload),
   });
@@ -126,6 +149,39 @@ export async function fetchVerifierCaseNotes(caseId: string): Promise<VerifierNo
   return apiFetch<VerifierNote[]>(`${VERIFIER_BASE}/cases/${caseId}/notes`, {
     headers: getAuthHeaders(),
   });
+}
+
+export async function bulkVerifierCaseAction(payload: {
+  case_ids: string[];
+  action: "approve" | "reject" | "needs_review";
+  actor?: string;
+  reason?: string;
+}): Promise<{ updated_count: number; failures: Array<{ case_id: string; reason: string }> }>
+{
+  return apiFetch<{ updated_count: number; failures: Array<{ case_id: string; reason: string }> }>(
+    `${VERIFIER_BASE}/cases/bulk/actions`,
+    {
+      method: "POST",
+      headers: getJsonHeaders(),
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function bulkVerifierCaseAssign(payload: {
+  case_ids: string[];
+  assignee: string | null;
+  actor?: string;
+}): Promise<{ updated_count: number; failures: Array<{ case_id: string; reason: string }> }>
+{
+  return apiFetch<{ updated_count: number; failures: Array<{ case_id: string; reason: string }> }>(
+    `${VERIFIER_BASE}/cases/bulk/assign`,
+    {
+      method: "POST",
+      headers: getJsonHeaders(),
+      body: JSON.stringify(payload),
+    }
+  );
 }
 
 export async function seedVerifierCases(): Promise<{ inserted_cases: number; inserted_events: number }>

@@ -28,13 +28,15 @@ def get_engine() -> Engine:
 
 def ensure_schema() -> None:
     engine = get_engine()
-    ddl_statements = [
+    table_statements = [
         """
         CREATE TABLE IF NOT EXISTS cases (
             case_id TEXT PRIMARY KEY,
             submission_id TEXT,
             status TEXT,
             jurisdiction TEXT,
+            assignee TEXT,
+            assigned_at TEXT,
             created_at TEXT,
             updated_at TEXT,
             summary TEXT
@@ -67,9 +69,13 @@ def ensure_schema() -> None:
             created_at TEXT
         );
         """,
+    ]
+    index_statements = [
         "CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status);",
         "CREATE INDEX IF NOT EXISTS idx_cases_created_at ON cases(created_at);",
         "CREATE INDEX IF NOT EXISTS idx_cases_submission_id ON cases(submission_id);",
+        "CREATE INDEX IF NOT EXISTS idx_cases_assignee ON cases(assignee);",
+        "CREATE INDEX IF NOT EXISTS idx_cases_assignee_status ON cases(assignee, status);",
         "CREATE INDEX IF NOT EXISTS idx_case_events_case_id ON case_events(case_id);",
         "CREATE INDEX IF NOT EXISTS idx_verifier_events_case_id ON verifier_events(case_id);",
         "CREATE INDEX IF NOT EXISTS idx_verifier_events_created_at ON verifier_events(created_at);",
@@ -77,7 +83,17 @@ def ensure_schema() -> None:
         "CREATE INDEX IF NOT EXISTS idx_verifier_notes_created_at ON verifier_notes(created_at);",
     ]
     with engine.begin() as conn:
-        for statement in ddl_statements:
+        for statement in table_statements:
+            conn.execute(text(statement))
+        existing_columns = {
+            row["name"]
+            for row in conn.execute(text("PRAGMA table_info(cases)")).mappings().all()
+        }
+        if "assignee" not in existing_columns:
+            conn.execute(text("ALTER TABLE cases ADD COLUMN assignee TEXT"))
+        if "assigned_at" not in existing_columns:
+            conn.execute(text("ALTER TABLE cases ADD COLUMN assigned_at TEXT"))
+        for statement in index_statements:
             conn.execute(text(statement))
 
 
@@ -90,7 +106,7 @@ def _fetch_case(conn, case_id: str) -> Optional[Dict[str, Any]]:
         text(
             """
             SELECT case_id, submission_id, status, jurisdiction,
-                   created_at, updated_at, summary
+                   assignee, assigned_at, created_at, updated_at, summary
             FROM cases
             WHERE case_id = :case_id
             """
@@ -124,6 +140,8 @@ def seed_cases(n: int = 10) -> Dict[str, int]:
                 "submission_id": submission_id,
                 "status": status,
                 "jurisdiction": jurisdiction,
+                "assignee": None,
+                "assigned_at": None,
                 "created_at": created_at,
                 "updated_at": updated_at,
                 "summary": summary,
@@ -149,10 +167,10 @@ def seed_cases(n: int = 10) -> Dict[str, int]:
                     """
                     INSERT INTO cases (
                         case_id, submission_id, status, jurisdiction,
-                        created_at, updated_at, summary
+                        assignee, assigned_at, created_at, updated_at, summary
                     ) VALUES (
                         :case_id, :submission_id, :status, :jurisdiction,
-                        :created_at, :updated_at, :summary
+                        :assignee, :assigned_at, :created_at, :updated_at, :summary
                     )
                     """
                 ),
@@ -180,6 +198,7 @@ def list_cases(
     offset: int,
     status: Optional[str] = None,
     jurisdiction: Optional[str] = None,
+    assignee: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], int]:
     ensure_schema()
     engine = get_engine()
@@ -193,6 +212,9 @@ def list_cases(
     if jurisdiction:
         filters.append("jurisdiction = :jurisdiction")
         params["jurisdiction"] = jurisdiction
+    if assignee:
+        filters.append("assignee = :assignee")
+        params["assignee"] = assignee
 
     where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
 
@@ -207,7 +229,7 @@ def list_cases(
             text(
                 f"""
                 SELECT case_id, submission_id, status, jurisdiction,
-                       created_at, updated_at, summary
+                      assignee, assigned_at, created_at, updated_at, summary
                 FROM cases
                 {where_clause}
                 ORDER BY created_at DESC
@@ -260,6 +282,109 @@ def get_case(case_id: str) -> Optional[Dict[str, Any]]:
         "events": [dict(row) for row in events],
         "notes": [dict(row) for row in notes],
     }
+
+
+def assign_case(
+    case_id: str,
+    assignee: Optional[str],
+    actor: Optional[str] = None,
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    ensure_schema()
+    engine = get_engine()
+    now = _now_iso()
+    event_type = "assigned" if assignee else "unassigned"
+    payload = json.dumps({"assignee": assignee, "actor": actor})
+
+    with engine.begin() as conn:
+        case_row = _fetch_case(conn, case_id)
+        if not case_row:
+            return None, None
+
+        conn.execute(
+            text(
+                """
+                UPDATE cases
+                SET assignee = :assignee, assigned_at = :assigned_at, updated_at = :updated_at
+                WHERE case_id = :case_id
+                """
+            ),
+            {
+                "assignee": assignee,
+                "assigned_at": now if assignee else None,
+                "updated_at": now,
+                "case_id": case_id,
+            },
+        )
+
+        conn.execute(
+            text(
+                """
+                INSERT INTO verifier_events (
+                    case_id, event_type, payload_json, created_at
+                ) VALUES (
+                    :case_id, :event_type, :payload_json, :created_at
+                )
+                """
+            ),
+            {
+                "case_id": case_id,
+                "event_type": event_type,
+                "payload_json": payload,
+                "created_at": now,
+            },
+        )
+        event_id = conn.execute(text("SELECT last_insert_rowid() AS id")).mappings().first()["id"]
+        updated_case = _fetch_case(conn, case_id)
+
+    event = {
+        "id": event_id,
+        "case_id": case_id,
+        "event_type": event_type,
+        "payload_json": payload,
+        "created_at": now,
+    }
+    return updated_case, event
+
+
+def bulk_action(
+    case_ids: List[str],
+    action: str,
+    actor: Optional[str] = None,
+    reason: Optional[str] = None,
+) -> Dict[str, Any]:
+    if action not in {"approve", "reject", "needs_review"}:
+        raise ValueError("Invalid action")
+
+    updated = 0
+    failures: List[Dict[str, Any]] = []
+
+    for case_id in case_ids:
+        case_row, _ = add_action(case_id, action, actor=actor, reason=reason)
+
+        if case_row:
+            updated += 1
+        else:
+            failures.append({"case_id": case_id, "reason": "Case not found"})
+
+    return {"updated_count": updated, "failures": failures}
+
+
+def bulk_assign(
+    case_ids: List[str],
+    assignee: Optional[str],
+    actor: Optional[str] = None,
+) -> Dict[str, Any]:
+    updated = 0
+    failures: List[Dict[str, Any]] = []
+
+    for case_id in case_ids:
+        case_row, _ = assign_case(case_id, assignee, actor=actor)
+        if case_row:
+            updated += 1
+        else:
+            failures.append({"case_id": case_id, "reason": "Case not found"})
+
+    return {"updated_count": updated, "failures": failures}
 
 
 def add_action(

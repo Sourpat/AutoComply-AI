@@ -94,6 +94,25 @@
 
 **Status**: Accepted
 
+### [2026-02-06] Verifier Console placeholder user id
+
+**Context**: Phase 4.4 needs a "My Queue" filter and assignment actions before auth is wired.
+
+**Decision**: Use a fixed placeholder current user id `verifier-1` in the frontend for assignment and My Queue filtering. Backend supports `assignee=me` which maps to the same placeholder by default.
+
+**Rationale**:
+- Unblocks queue assignment UX without coupling to auth/RBAC
+- Keeps Phase 4 workflow deterministic for demos
+
+**Alternatives Considered**:
+- Add real auth/user identity: deferred for later phases
+
+**Consequences**:
+- Positive: My Queue and assignment flow work end-to-end now
+- Neutral: Must replace placeholder with auth identity later
+
+**Status**: Accepted
+
 ### [2026-02-06] RC Gate release gate + commit SHA precedence
 
 **Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).

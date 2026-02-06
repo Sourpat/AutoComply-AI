@@ -34,6 +34,8 @@ npm run build
 5. If list is empty in dev, use “Seed demo cases” CTA → list populates
 6. Click Approve/Reject/Needs review → status updates and event appears
 7. Add a note → note appears and event appears in timeline
+8. Toggle My Queue → empty, then Assign to me → toggle My Queue → case appears
+9. Select 3 cases → bulk Needs review → statuses update and events appear
 
 ## Optional: RC smoke
 ```powershell
