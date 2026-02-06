@@ -1,6 +1,6 @@
 # Task Queue
 
-**Last Updated**: 2026-02-05
+**Last Updated**: 2026-02-06
 
 **Active WIP**: 0
 
@@ -15,33 +15,34 @@
 
 
 ### Phase 3.8 — RC Gate readiness + CI env guards
-**Status**: blocked
+**Status**: completed
 **Assigned**: GitHub Copilot
 **Goal**: Harden CI readiness wait, deterministic env, and backend log artifacts
 **Acceptance Criteria**:
-- [ ] Backend startup uses readiness loop (no fixed sleep)
-- [ ] CI sets ENV=ci for backend + ops gates
-- [ ] Backend .data directory ensured in CI
-- [ ] Uvicorn logs uploaded on all runs
+- [x] Backend startup uses readiness loop (no fixed sleep)
+- [x] CI sets ENV=ci for backend + ops gates
+- [x] Backend .data directory ensured in CI
+- [x] Uvicorn logs uploaded on all runs
 **Verification**:
 - GitHub Actions RC Gate passes and logs artifact uploaded
+- Local: `C:/Python314/python.exe -m pytest -q`
 **Dependencies**: None
-**Notes**: Local pytest -q passes with ENV=ci, APP_ENV=dev. CI still failing Backend tests; cannot access pytest.log artifact without auth. Awaiting run logs.
+**Notes**: RC Gate green.
 
 
 ### Phase 3.10 — CI health version + intelligence schema
-**Status**: blocked
+**Status**: completed
 **Assigned**: GitHub Copilot
 **Goal**: Fix health version assertion and ensure intelligence schema bootstrap in CI/tests
 **Acceptance Criteria**:
-- [ ] /health/details version assertion is env-safe (APP_VERSION or git/semver)
-- [ ] intelligence tables + indexes created deterministically
-- [ ] schema bootstrap runs in API startup and pytest fixtures
+- [x] /health/details version assertion is env-safe (APP_VERSION or git/semver)
+- [x] intelligence tables + indexes created deterministically
+- [x] schema bootstrap runs in API startup and pytest fixtures
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q backend/tests/test_signal_intelligence.py backend/tests/test_health_details.py`
 - `C:/Python314/python.exe -m pytest -q`
 **Dependencies**: None
-**Notes**: CI still failing Backend tests. Need Pytest failure summary tail from run logs.
+**Notes**: RC Gate green.
 
 
 
@@ -148,6 +149,21 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 3.10 — CI health version + intelligence schema
+**Completed**: 2026-02-06
+**Commit**: 8afe541, 5bf0658, 79e561a
+**Summary**: Bootstrapped intelligence schema in startup/tests and normalized /health/details version/commit precedence.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_signal_intelligence.py backend/tests/test_health_details.py`
+- `C:/Python314/python.exe -m pytest -q`
+
+### Phase 3.8 — RC Gate readiness + CI env guards
+**Completed**: 2026-02-06
+**Commit**: 057233a, 9fe4389, 45858ef
+**Summary**: Hardened RC Gate env/pytest logging, readiness checks, and artifacts.
+**Verification**:
+- GitHub Actions RC Gate success
+
 ### Phase 3.9 — Deterministic knowledge pack mode
 **Completed**: 2026-02-06
 **Commit**: 53d38df
@@ -169,22 +185,6 @@
 **Summary**: Added retention/compaction utilities, storage health checks, and ops maintenance endpoint with tests.
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q backend/tests/test_explain_maintenance.py backend/tests/test_ops_smoke.py`
-- `powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1`
-
-### T-024: Explain drift detection + ops drift lock
-**Completed**: 2026-02-05
-**Commit**: (pending)
-**Summary**: Added explain drift classification, diff drift metadata, and ops smoke drift lock with tests.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_explain_drift.py backend/tests/test_ops_smoke.py`
-- `powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1`
-
-### T-023: Explain v1 strict validation + claim gate
-**Completed**: 2026-02-05
-**Commit**: (pending)
-**Summary**: Added canonical validation, explain contract validation, and claim gating with tests and RC smoke verification.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_canonical_validation.py backend/tests/test_claim_gate.py backend/tests/test_explainability_contract.py backend/tests/test_ops_smoke.py`
 - `powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1`
 
 ---

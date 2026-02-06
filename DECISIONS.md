@@ -36,6 +36,25 @@
 
 ## Decisions
 
+### [2026-02-06] RC Gate release gate + commit SHA precedence
+
+**Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).
+
+**Decision**: Treat RC Gate as the release gate. Standardize commit SHA precedence as: Render env vars (RENDER_GIT_COMMIT/RENDER_COMMIT_SHA/RENDER_GIT_SHA) → GIT_SHA → GITHUB_SHA → fallback.
+
+**Rationale**:
+- RC Gate is the definitive readiness signal for releases
+- Render deploys should surface their own commit hash before CI metadata
+
+**Alternatives Considered**:
+- Prefer GITHUB_SHA first: rejected because it overrides Render deploy metadata
+
+**Consequences**:
+- Positive: Health metadata is stable and testable across CI and Render
+- Neutral: Additional env var checks in /health/details
+
+**Status**: Accepted
+
 ### [2026-02-06] Reset settings cache between tests
 
 **Context**: Several tests toggle `APP_ENV` and `DEV_SEED_TOKEN`, but `get_settings()` is cached. This caused environment-dependent endpoints (like `/dev/seed`) to intermittently read stale production settings in CI.
