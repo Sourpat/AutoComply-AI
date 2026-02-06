@@ -213,7 +213,7 @@
 
 ### Phase 4.8 — Verifier smoke runner + demo script + RC Gate
 **Completed**: 2026-02-06
-**Commit**: (pending)
+**Commit**: a2711c0
 **Summary**: Added verifier smoke runner endpoint, demo script, and RC Gate coverage.
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q tests/test_verifier_smoke_runner.py`
