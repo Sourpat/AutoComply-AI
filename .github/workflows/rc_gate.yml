@@ -33,17 +33,52 @@ jobs:
 
       - name: Start backend
         working-directory: backend
+        env:
+          ENV: ci
+          PYTHONPATH: ${{ github.workspace }}/backend
         run: |
+          mkdir -p .data
           nohup python -m uvicorn src.api.main:app --host 127.0.0.1 --port 8001 --app-dir . > uvicorn.log 2>&1 &
-          sleep 2
-          curl -sSf http://127.0.0.1:8001/health/full
+          echo "Waiting for backend..."
+          for i in {1..30}; do
+            if curl -sSf http://127.0.0.1:8001/health/full > /dev/null; then
+              echo "Backend ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend failed to become ready"
+          tail -200 uvicorn.log || true
+          exit 1
 
       - name: Ops gates
+        env:
+          ENV: ci
         run: |
           curl -sSf -X POST http://127.0.0.1:8001/api/ops/seed-submissions -H "Content-Type: application/json" -d "{}" > /dev/null
           curl -sSf http://127.0.0.1:8001/api/ops/smoke > /dev/null
           curl -sSf http://127.0.0.1:8001/api/ops/kb-stats > /dev/null
-          curl -sSf -X POST http://127.0.0.1:8001/api/ops/golden/run -H "Content-Type: application/json" -d "{\"version\":\"v1\"}" > /dev/null
+          curl -sSf -X POST http://127.0.0.1:8001/api/ops/golden/run -H "Content-Type: application/json" -d "{\"version\":\"v1\",\"limit\":50}" > /dev/null
+
+      - name: Print routes on failure
+        if: failure()
+        run: |
+          python - <<'PY'
+          import json
+          import sys
+          import urllib.request
+
+          try:
+            data = urllib.request.urlopen("http://127.0.0.1:8001/openapi.json").read()
+            spec = json.loads(data)
+            paths = sorted(spec.get("paths", {}).keys())
+            print("Routes:")
+            for path in paths:
+              print(path)
+          except Exception as exc:
+            print(f"Failed to fetch routes: {exc}", file=sys.stderr)
+            raise
+          PY
 
       - name: Frontend install + build
         working-directory: frontend
@@ -56,9 +91,9 @@ jobs:
         run: |
           npm run rag:smoke
 
-      - name: Upload backend logs on failure
-        if: failure()
+      - name: Upload backend logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: uvicorn-log
+          name: backend-logs
           path: backend/uvicorn.log

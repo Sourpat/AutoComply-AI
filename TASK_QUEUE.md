@@ -2,7 +2,7 @@
 
 **Last Updated**: 2026-02-05
 
-**Active WIP**: 0
+**Active WIP**: 1
 
 **Demo Ready RC Smoke**: powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1
 
@@ -12,6 +12,22 @@
 
 
 > **Status Legend**: `pending` | `in-progress` | `blocked` | `completed`
+
+
+### Phase 3.8 — RC Gate readiness + CI env guards
+**Status**: in-progress
+**Assigned**: GitHub Copilot
+**Goal**: Harden CI readiness wait, deterministic env, and backend log artifacts
+**Acceptance Criteria**:
+- [ ] Backend startup uses readiness loop (no fixed sleep)
+- [ ] CI sets ENV=ci for backend + ops gates
+- [ ] Backend .data directory ensured in CI
+- [ ] Uvicorn logs uploaded on all runs
+**Verification**:
+- GitHub Actions RC Gate passes and logs artifact uploaded
+**Dependencies**: None
+
+
 
 
 ### Example Task Template (DELETE THIS AFTER READING)
@@ -145,14 +161,6 @@
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q backend/tests/test_canonical_validation.py backend/tests/test_claim_gate.py backend/tests/test_explainability_contract.py backend/tests/test_ops_smoke.py`
 - `powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1`
-
-### T-022: Explain v1 concurrency + idempotency + correlation IDs
-**Completed**: 2026-02-05
-**Commit**: (pending)
-**Summary**: Hardened explain run storage for concurrency, idempotency, and correlation IDs; added ops smoke idempotency check and tests.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_explain_runs_store.py backend/tests/test_explain_diff.py backend/tests/test_explain_idempotency.py backend/tests/test_ops_smoke.py`
-- `Invoke-RestMethod http://127.0.0.1:8001/api/rag/explain/runs?submission_id=demo-sub-3 | ConvertTo-Json -Depth 50`
 
 ---
 
