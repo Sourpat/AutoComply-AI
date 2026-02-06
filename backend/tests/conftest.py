@@ -37,9 +37,16 @@ get_settings.cache_clear()
 core_db._engine = None
 core_db._SessionLocal = None
 
-from src.core.db import init_db, get_raw_connection
+from src.core.db import init_db, get_raw_connection, get_engine
+from src.database.schema_intelligence import ensure_intelligence_schema
 
 init_db()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_intelligence_schema() -> None:
+    """Ensure intelligence tables exist for test database."""
+    ensure_intelligence_schema(get_engine())
 
 
 @pytest.fixture(scope="session", autouse=True)

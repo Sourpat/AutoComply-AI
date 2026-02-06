@@ -236,6 +236,13 @@ def _ensure_safe_failure_schema() -> None:
 
 def startup_migrations() -> None:
     init_db()
+    from src.core.db import get_engine
+    from src.database.schema_intelligence import ensure_intelligence_schema
+
+    app_env = settings.APP_ENV.lower()
+    engine = get_engine()
+    if app_env in {"dev", "ci", "local"} or engine.dialect.name == "sqlite":
+        ensure_intelligence_schema(engine)
     _ensure_intelligence_history_schema()
     _ensure_trace_fields_schema()
     _ensure_policy_overrides_schema()

@@ -61,7 +61,7 @@ async def health_check() -> HealthStatus:
     - Provide a 'checks' dict that can be extended later
       (e.g., to include RAG, DB, external LLM provider, etc.).
     """
-    version = os.getenv("AUTOCOMPLY_VERSION", "0.1.0")
+    version = os.getenv("APP_VERSION") or os.getenv("AUTOCOMPLY_VERSION", "0.1.0")
 
     checks = {
         "fastapi": "ok",

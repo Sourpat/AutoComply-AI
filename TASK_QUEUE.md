@@ -29,6 +29,21 @@
 **Notes**: Local pytest -q passes with ENV=ci, APP_ENV=dev. CI still failing Backend tests; cannot access pytest.log artifact without auth. Awaiting run logs.
 
 
+### Phase 3.10 — CI health version + intelligence schema
+**Status**: in-progress
+**Assigned**: GitHub Copilot
+**Goal**: Fix health version assertion and ensure intelligence schema bootstrap in CI/tests
+**Acceptance Criteria**:
+- [ ] /health/details version assertion is env-safe (APP_VERSION or git/semver)
+- [ ] intelligence tables + indexes created deterministically
+- [ ] schema bootstrap runs in API startup and pytest fixtures
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_signal_intelligence.py backend/tests/test_health_details.py`
+- `C:/Python314/python.exe -m pytest -q`
+**Dependencies**: None
+**Notes**: Implement schema_intelligence bootstrap and wire in startup + tests.
+
+
 
 
 

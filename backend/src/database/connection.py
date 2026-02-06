@@ -48,7 +48,9 @@ def init_db():
     Called on application startup.
     """
     from src.database import models  # Import here to avoid circular dependency
+    from src.database.schema_intelligence import ensure_intelligence_schema
     Base.metadata.create_all(bind=engine)
+    ensure_intelligence_schema(engine)
     _ensure_review_queue_notes_schema()
 
 

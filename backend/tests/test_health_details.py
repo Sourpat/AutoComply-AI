@@ -5,11 +5,20 @@ Phase 7.38: Production deployment guardrails and environment validation.
 """
 
 import os
+import re
 import pytest
 from fastapi.testclient import TestClient
 
 from src.api.main import app
 from src.config import validate_runtime_config, get_settings
+
+
+def _is_git_sha_or_semver(value: str) -> bool:
+    if not value:
+        return False
+    git_sha = re.fullmatch(r"[0-9a-f]{7,40}", value, flags=re.IGNORECASE)
+    semver = re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", value)
+    return bool(git_sha or semver)
 
 
 @pytest.fixture
@@ -66,6 +75,25 @@ def test_health_details_with_valid_dev_env(client):
             assert isinstance(value, int)
         else:
             assert isinstance(value, bool), f"Config key {key} should be boolean, got {type(value)}"
+
+
+def test_health_details_version_is_env_safe(client, monkeypatch):
+    """Version should prefer APP_VERSION or be git/semver-like."""
+    get_settings.cache_clear()
+    monkeypatch.delenv("APP_VERSION", raising=False)
+    monkeypatch.delenv("AUTOCOMPLY_VERSION", raising=False)
+
+    response = client.get("/health/details")
+    assert response.status_code == 200
+    version = response.json()["version"]
+
+    app_version = os.getenv("APP_VERSION")
+    if app_version:
+        assert version == app_version
+    else:
+        assert _is_git_sha_or_semver(version)
+
+    get_settings.cache_clear()
 
 
 def test_health_details_no_secrets_leaked(client):
