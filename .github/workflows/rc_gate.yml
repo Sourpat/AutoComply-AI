@@ -1,0 +1,64 @@
+name: RC Gate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  rc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Backend install
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Backend tests
+        working-directory: backend
+        run: |
+          python -m pytest -q
+
+      - name: Start backend
+        working-directory: backend
+        run: |
+          nohup python -m uvicorn src.api.main:app --host 127.0.0.1 --port 8001 --app-dir . > uvicorn.log 2>&1 &
+          sleep 2
+          curl -sSf http://127.0.0.1:8001/health/full
+
+      - name: Ops gates
+        run: |
+          curl -sSf -X POST http://127.0.0.1:8001/api/ops/seed-submissions -H "Content-Type: application/json" -d "{}" > /dev/null
+          curl -sSf http://127.0.0.1:8001/api/ops/smoke > /dev/null
+          curl -sSf http://127.0.0.1:8001/api/ops/kb-stats > /dev/null
+          curl -sSf -X POST http://127.0.0.1:8001/api/ops/golden/run -H "Content-Type: application/json" -d "{\"version\":\"v1\"}" > /dev/null
+
+      - name: Frontend install + build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Frontend rag smoke
+        working-directory: frontend
+        run: |
+          npm run rag:smoke
+
+      - name: Upload backend logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uvicorn-log
+          path: backend/uvicorn.log
