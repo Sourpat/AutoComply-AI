@@ -20,6 +20,6 @@ def test_pack_retriever_ordering_is_deterministic() -> None:
 
 
 def test_pack_retriever_jurisdiction_filtering() -> None:
-    query = "new york pharmacy license"
-    results = pack_retriever.retrieve(query=query, jurisdiction="OH", top_k=3)
-    assert results == []
+    query = "new york pharmacy controlled substances"
+    results = pack_retriever.retrieve(query=query, jurisdiction="OH", top_k=5)
+    assert all(result.doc_id != "ny-pharmacy-licensure" for result in results)

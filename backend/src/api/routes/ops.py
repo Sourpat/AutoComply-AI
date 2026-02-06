@@ -102,7 +102,7 @@ async def explain_maintenance(
     x_autocomply_role: Annotated[str | None, Header(alias=AUTO_ROLE_HEADER)] = None,
 ) -> Dict[str, Any]:
     env = os.getenv("ENV", "local")
-    if env != "local":
+    if env not in {"local", "ci"}:
         require_admin_role(
             x_user_role=x_user_role,
             x_autocomply_role=x_autocomply_role,
@@ -129,7 +129,7 @@ async def golden_run(
     x_autocomply_role: Annotated[str | None, Header(alias=AUTO_ROLE_HEADER)] = None,
 ) -> Dict[str, Any]:
     env = os.getenv("ENV", "local")
-    if env != "local":
+    if env not in {"local", "ci"}:
         require_admin_role(
             x_user_role=x_user_role,
             x_autocomply_role=x_autocomply_role,
@@ -205,8 +205,8 @@ async def kb_stats() -> Dict[str, Any]:
 @smoke_router.post("/seed-submissions", response_model=SeedSubmissionsResponse)
 async def seed_submissions() -> SeedSubmissionsResponse:
     env = os.getenv("ENV", "local")
-    if env != "local":
-        raise HTTPException(status_code=403, detail="Seed endpoint only available in local environment")
+    if env not in {"local", "ci"}:
+        raise HTTPException(status_code=403, detail="Seed endpoint only available in local or ci environment")
 
     store = get_submission_store()
     inserted = seed_demo_submissions(store)

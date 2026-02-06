@@ -19,7 +19,7 @@ def is_pack_mode() -> bool:
 
 
 def get_pack_path() -> Path:
-    return Path(__file__).resolve().parents[5] / "knowledge_packs" / "v1" / "pack.json"
+    return Path(__file__).resolve().parents[4] / "knowledge_packs" / "v1" / "pack.json"
 
 
 @lru_cache(maxsize=4)
@@ -104,9 +104,9 @@ def retrieve(
             chunk_text = str(chunk.get("text", ""))
             tokens = base_tokens | _tokenize(chunk_text)
             overlap = len(query_tokens & tokens)
-            score = overlap + boost
-            if score <= 0:
+            if overlap <= 0:
                 continue
+            score = overlap + boost
             citation = _build_citation(doc, chunk, score)
             scored.append((score, doc_id, citation.chunk_id, citation))
 

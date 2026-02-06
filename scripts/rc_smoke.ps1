@@ -33,7 +33,10 @@ Invoke-Step "Golden suite" {
 
 Invoke-Step "KB stats" {
     Set-Location $repoRoot
-    Invoke-RestMethod "http://127.0.0.1:8001/api/ops/kb-stats" | Out-Null
+    $kb = Invoke-RestMethod "http://127.0.0.1:8001/api/ops/kb-stats"
+    if ($env:ENV -eq "ci" -and $kb.knowledge_version -ne "kp-v1") {
+        throw "CI pack mode not active (knowledge_version=$($kb.knowledge_version))"
+    }
 }
 
 Invoke-Step "Frontend RAG smoke" {

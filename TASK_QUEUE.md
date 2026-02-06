@@ -2,7 +2,7 @@
 
 **Last Updated**: 2026-02-05
 
-**Active WIP**: 2
+**Active WIP**: 1
 
 **Demo Ready RC Smoke**: powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1
 
@@ -15,7 +15,7 @@
 
 
 ### Phase 3.8 — RC Gate readiness + CI env guards
-**Status**: in-progress
+**Status**: blocked
 **Assigned**: GitHub Copilot
 **Goal**: Harden CI readiness wait, deterministic env, and backend log artifacts
 **Acceptance Criteria**:
@@ -26,6 +26,7 @@
 **Verification**:
 - GitHub Actions RC Gate passes and logs artifact uploaded
 **Dependencies**: None
+**Notes**: Awaiting CI run confirmation before completion.
 
 
 ### Phase 3.9 — Deterministic knowledge pack mode
