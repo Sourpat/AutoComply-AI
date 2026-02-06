@@ -14,10 +14,13 @@ from src.autocomply.domain.verifier_store import (
     assign_case,
     bulk_action,
     bulk_assign,
+    get_final_packet,
     get_case,
     list_cases,
     list_events,
     list_notes,
+    set_case_decision,
+    write_final_packet,
 )
 
 router = APIRouter(prefix="/api/verifier", tags=["verifier"])
@@ -30,6 +33,8 @@ class VerifierCase(BaseModel):
     jurisdiction: str | None = None
     assignee: str | None = None
     assigned_at: str | None = None
+    locked: bool = False
+    decision: dict | None = None
     created_at: str
     updated_at: str
     summary: str
@@ -108,6 +113,30 @@ class VerifierBulkResponse(BaseModel):
     failures: list[dict]
 
 
+class VerifierDecisionRequest(BaseModel):
+    type: str = Field(..., description="approve|reject|request_info")
+    reason: str | None = None
+    actor: str | None = None
+
+
+async def _resolve_packet_for_case(case_id: str, include_explain: bool) -> dict:
+    payload = get_case(case_id)
+    if not payload:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    case_row = payload.get("case", {})
+    if case_row.get("locked"):
+        final_packet = get_final_packet(case_id)
+        if final_packet:
+            return final_packet
+
+    return await build_decision_packet(
+        case_id,
+        actor=os.getenv("VERIFIER_DEFAULT_ASSIGNEE", "verifier-1"),
+        include_explain=include_explain,
+    )
+
+
 @router.get("/cases", response_model=VerifierCasesResponse)
 def list_verifier_cases(
     limit: int = Query(50, ge=1, le=200),
@@ -161,11 +190,7 @@ async def get_verifier_decision_packet(
     include_explain: int = Query(1, ge=0, le=1),
 ) -> dict:
     try:
-        return await build_decision_packet(
-            case_id,
-            actor=os.getenv("VERIFIER_DEFAULT_ASSIGNEE", "verifier-1"),
-            include_explain=include_explain == 1,
-        )
+        return await _resolve_packet_for_case(case_id, include_explain == 1)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -176,11 +201,7 @@ async def get_verifier_decision_packet_pdf(
     include_explain: int = Query(1, ge=0, le=1),
 ) -> Response:
     try:
-        packet = await build_decision_packet(
-            case_id,
-            actor=os.getenv("VERIFIER_DEFAULT_ASSIGNEE", "verifier-1"),
-            include_explain=include_explain == 1,
-        )
+        packet = await _resolve_packet_for_case(case_id, include_explain == 1)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -197,11 +218,7 @@ async def get_verifier_audit_zip(
     include_explain: int = Query(1, ge=0, le=1),
 ) -> Response:
     try:
-        packet = await build_decision_packet(
-            case_id,
-            actor=os.getenv("VERIFIER_DEFAULT_ASSIGNEE", "verifier-1"),
-            include_explain=include_explain == 1,
-        )
+        packet = await _resolve_packet_for_case(case_id, include_explain == 1)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -274,7 +291,8 @@ def post_verifier_action(case_id: str, payload: VerifierActionRequest) -> dict:
             reason=payload.reason,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        status = 409 if str(exc) == "case locked" else 400
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
 
     if not case_row or not event_row:
         raise HTTPException(status_code=404, detail="Case not found")
@@ -286,7 +304,8 @@ def post_verifier_note(case_id: str, payload: VerifierNoteRequest) -> dict:
     try:
         note_row, event_row = add_note(case_id, payload.note, actor=payload.actor)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        status = 409 if str(exc) == "case locked" else 400
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
 
     if not note_row or not event_row:
         raise HTTPException(status_code=404, detail="Case not found")
@@ -311,9 +330,58 @@ def get_verifier_notes(case_id: str) -> list[dict]:
 
 @router.patch("/cases/{case_id}/assignment", response_model=VerifierCase)
 def patch_verifier_assignment(case_id: str, payload: VerifierAssignmentRequest) -> dict:
-    case_row, _ = assign_case(case_id, payload.assignee, actor=payload.actor)
+    try:
+        case_row, _ = assign_case(case_id, payload.assignee, actor=payload.actor)
+    except ValueError as exc:
+        status = 409 if str(exc) == "case locked" else 400
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
     if not case_row:
         raise HTTPException(status_code=404, detail="Case not found")
     return case_row
+
+
+@router.post("/cases/{case_id}/decision", response_model=VerifierCase)
+async def post_verifier_decision(
+    case_id: str,
+    payload: VerifierDecisionRequest,
+    include_explain: int = Query(1, ge=0, le=1),
+) -> dict:
+    if payload.type in {"reject", "request_info"} and not (payload.reason or "").strip():
+        raise HTTPException(status_code=400, detail="Reason is required")
+
+    try:
+        case_row, _ = set_case_decision(
+            case_id,
+            payload.type,
+            payload.reason,
+            payload.actor,
+        )
+    except ValueError as exc:
+        status = 409 if str(exc) == "case locked" else 400
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+
+    if not case_row:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    if case_row.get("locked"):
+        packet = await build_decision_packet(
+            case_id,
+            actor=payload.actor or os.getenv("VERIFIER_DEFAULT_ASSIGNEE", "verifier-1"),
+            include_explain=include_explain == 1,
+        )
+        packet.setdefault("finalization", {})
+        packet["finalization"]["is_final"] = True
+        packet["finalization"]["decision"] = case_row.get("decision")
+        write_final_packet(case_id, packet)
+
+    return case_row
+
+
+@router.get("/cases/{case_id}/final-packet")
+def get_verifier_final_packet(case_id: str) -> dict:
+    packet = get_final_packet(case_id)
+    if not packet:
+        raise HTTPException(status_code=404, detail="Final packet not found")
+    return packet
 
 

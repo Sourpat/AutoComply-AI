@@ -152,6 +152,26 @@
 
 **Status**: Accepted
 
+### [2026-02-06] Final decision workflow + case lock + snapshot packets
+
+**Context**: Phase 4.7 needs a final decision workflow (approve/reject/request_info) that locks cases and stores an authoritative dp-v1 snapshot for audit export.
+
+**Decision**: Add a verifier decision endpoint that stores decision metadata on the case, locks the case for approve/reject, and writes a final packet snapshot. Packet/PDF/ZIP endpoints return the snapshot for locked cases. Request-info keeps the case unlocked and does not snapshot.
+
+**Rationale**:
+- Ensures audit exports are deterministic once a decision is final
+- Prevents post-decision edits that would mutate the audit trail
+
+**Alternatives Considered**:
+- Keep live packets only: rejected because post-decision edits would change exports
+- Snapshot all decision types: rejected because request-info is not final
+
+**Consequences**:
+- Positive: Locked decisions have stable, auditable artifacts
+- Neutral: Request-info decisions remain editable until final
+
+**Status**: Accepted
+
 ### [2026-02-06] RC Gate release gate + commit SHA precedence
 
 **Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).

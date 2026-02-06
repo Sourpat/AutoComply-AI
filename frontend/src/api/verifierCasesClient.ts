@@ -11,6 +11,14 @@ export type VerifierCase = {
   jurisdiction: string | null;
   assignee: string | null;
   assigned_at: string | null;
+  locked: boolean;
+  decision: {
+    type: "approve" | "reject" | "request_info";
+    reason?: string | null;
+    actor?: string | null;
+    timestamp?: string | null;
+    version?: string | null;
+  } | null;
   created_at: string;
   updated_at: string;
   summary: string;
@@ -49,6 +57,12 @@ export type VerifierCaseActionRequest = {
   action: "approve" | "reject" | "needs_review";
   actor?: string;
   reason?: string;
+};
+
+export type VerifierDecisionRequest = {
+  type: "approve" | "reject" | "request_info";
+  reason?: string;
+  actor?: string;
 };
 
 export type VerifierCaseActionResponse = {
@@ -136,6 +150,27 @@ export async function postVerifierCaseNote(
     method: "POST",
     headers: getJsonHeaders(),
     body: JSON.stringify(payload),
+  });
+}
+
+export async function decideVerifierCase(
+  caseId: string,
+  payload: VerifierDecisionRequest,
+  includeExplain: boolean = true
+): Promise<VerifierCase> {
+  const flag = includeExplain ? 1 : 0;
+  return apiFetch<VerifierCase>(`${VERIFIER_BASE}/cases/${caseId}/decision?include_explain=${flag}`,
+    {
+      method: "POST",
+      headers: getJsonHeaders(),
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function getFinalPacket(caseId: string): Promise<any> {
+  return apiFetch<any>(`${VERIFIER_BASE}/cases/${caseId}/final-packet`, {
+    headers: getAuthHeaders(),
   });
 }
 

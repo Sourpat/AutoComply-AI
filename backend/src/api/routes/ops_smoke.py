@@ -204,6 +204,7 @@ async def ops_smoke() -> Dict[str, Any]:
     record_check("determinism", determinism_ok)
 
     verifier_packet_ok = True
+    verifier_final_ok = True
     if env_marker == "ci":
         try:
             seed_cases()
@@ -211,6 +212,8 @@ async def ops_smoke() -> Dict[str, Any]:
             if not cases:
                 verifier_packet_ok = False
                 details["errors"].append({"check": "verifier_audit_packet", "detail": "no cases"})
+                verifier_final_ok = False
+                details["errors"].append({"check": "verifier_final_decision", "detail": "no cases"})
             else:
                 case_id = cases[0]["case_id"]
                 async with httpx.AsyncClient() as client:
@@ -228,10 +231,39 @@ async def ops_smoke() -> Dict[str, Any]:
                                 "detail": f"pdf={pdf_resp.status_code}, zip={zip_resp.status_code}",
                             }
                         )
+
+                    decision_resp = await client.post(
+                        f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/decision?include_explain=0",
+                        json={"type": "approve", "reason": "ops smoke", "actor": "ops"},
+                    )
+                    final_resp = await client.get(
+                        f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/final-packet"
+                    )
+                    final_zip = await client.get(
+                        f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/audit.zip?include_explain=0"
+                    )
+                    verifier_final_ok = (
+                        decision_resp.status_code == 200
+                        and final_resp.status_code == 200
+                        and final_zip.status_code == 200
+                    )
+                    if not verifier_final_ok:
+                        details["errors"].append(
+                            {
+                                "check": "verifier_final_decision",
+                                "detail": (
+                                    f"decision={decision_resp.status_code}, "
+                                    f"final={final_resp.status_code}, zip={final_zip.status_code}"
+                                ),
+                            }
+                        )
         except Exception as exc:
             verifier_packet_ok = False
             details["errors"].append({"check": "verifier_audit_packet", "detail": type(exc).__name__})
+            verifier_final_ok = False
+            details["errors"].append({"check": "verifier_final_decision", "detail": type(exc).__name__})
     record_check("verifier_audit_packet", verifier_packet_ok)
+    record_check("verifier_final_decision", verifier_final_ok)
 
     replay_diff_ok = True
     if determinism_target:

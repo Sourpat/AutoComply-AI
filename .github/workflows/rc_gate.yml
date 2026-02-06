@@ -95,9 +95,11 @@ jobs:
 import json, sys
 with open('ops_smoke.json', 'r', encoding='utf-8') as fh:
     data = json.load(fh)
-check = data.get('checks', {}).get('verifier_audit_packet')
-if check != 'ok':
-    print('verifier_audit_packet check failed')
+checks = data.get('checks', {})
+required = ['verifier_audit_packet', 'verifier_final_decision']
+for name in required:
+  if checks.get(name) != 'ok':
+    print(f'{name} check failed')
     sys.exit(1)
 PY
           curl -sSf http://127.0.0.1:8001/api/ops/kb-stats > /dev/null

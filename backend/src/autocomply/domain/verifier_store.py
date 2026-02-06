@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import create_engine, text, Engine
+from sqlalchemy import Engine, create_engine, text
 
 
 BASE_DIR = Path(__file__).resolve().parents[3]
@@ -37,6 +38,8 @@ def ensure_schema() -> None:
             jurisdiction TEXT,
             assignee TEXT,
             assigned_at TEXT,
+            locked INTEGER DEFAULT 0,
+            decision_json TEXT,
             created_at TEXT,
             updated_at TEXT,
             summary TEXT
@@ -69,6 +72,15 @@ def ensure_schema() -> None:
             created_at TEXT
         );
         """,
+        """
+        CREATE TABLE IF NOT EXISTS verifier_final_packets (
+            case_id TEXT PRIMARY KEY,
+            packet_version TEXT,
+            packet_json TEXT,
+            commit_sha TEXT,
+            created_at TEXT
+        );
+        """,
     ]
     index_statements = [
         "CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status);",
@@ -93,6 +105,10 @@ def ensure_schema() -> None:
             conn.execute(text("ALTER TABLE cases ADD COLUMN assignee TEXT"))
         if "assigned_at" not in existing_columns:
             conn.execute(text("ALTER TABLE cases ADD COLUMN assigned_at TEXT"))
+        if "locked" not in existing_columns:
+            conn.execute(text("ALTER TABLE cases ADD COLUMN locked INTEGER DEFAULT 0"))
+        if "decision_json" not in existing_columns:
+            conn.execute(text("ALTER TABLE cases ADD COLUMN decision_json TEXT"))
         for statement in index_statements:
             conn.execute(text(statement))
 
@@ -101,26 +117,43 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _parse_decision(payload_json: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not payload_json:
+        return None
+    try:
+        return json.loads(payload_json)
+    except json.JSONDecodeError:
+        return None
+
+
+def _normalize_case(row: Dict[str, Any]) -> Dict[str, Any]:
+    row = dict(row)
+    row["locked"] = bool(row.get("locked"))
+    row["decision"] = _parse_decision(row.pop("decision_json", None))
+    return row
+
+
 def _fetch_case(conn, case_id: str) -> Optional[Dict[str, Any]]:
     row = conn.execute(
         text(
             """
             SELECT case_id, submission_id, status, jurisdiction,
-                   assignee, assigned_at, created_at, updated_at, summary
+                   assignee, assigned_at, locked, decision_json,
+                   created_at, updated_at, summary
             FROM cases
             WHERE case_id = :case_id
             """
         ),
         {"case_id": case_id},
     ).mappings().first()
-    return dict(row) if row else None
+    return _normalize_case(row) if row else None
 
 
 def seed_cases(n: int = 10) -> Dict[str, int]:
     ensure_schema()
     engine = get_engine()
     base_time = datetime(2026, 2, 1, tzinfo=timezone.utc)
-    statuses = ["pending_review", "approved", "rejected"]
+    statuses = ["open", "in_review", "needs_info"]
     jurisdictions = ["OH", "NY", "CA", "TX"]
 
     cases: List[Dict[str, Any]] = []
@@ -142,6 +175,8 @@ def seed_cases(n: int = 10) -> Dict[str, int]:
                 "jurisdiction": jurisdiction,
                 "assignee": None,
                 "assigned_at": None,
+                "locked": 0,
+                "decision_json": None,
                 "created_at": created_at,
                 "updated_at": updated_at,
                 "summary": summary,
@@ -167,10 +202,12 @@ def seed_cases(n: int = 10) -> Dict[str, int]:
                     """
                     INSERT INTO cases (
                         case_id, submission_id, status, jurisdiction,
-                        assignee, assigned_at, created_at, updated_at, summary
+                        assignee, assigned_at, locked, decision_json,
+                        created_at, updated_at, summary
                     ) VALUES (
                         :case_id, :submission_id, :status, :jurisdiction,
-                        :assignee, :assigned_at, :created_at, :updated_at, :summary
+                        :assignee, :assigned_at, :locked, :decision_json,
+                        :created_at, :updated_at, :summary
                     )
                     """
                 ),
@@ -229,7 +266,8 @@ def list_cases(
             text(
                 f"""
                 SELECT case_id, submission_id, status, jurisdiction,
-                      assignee, assigned_at, created_at, updated_at, summary
+                      assignee, assigned_at, locked, decision_json,
+                      created_at, updated_at, summary
                 FROM cases
                 {where_clause}
                 ORDER BY created_at DESC
@@ -239,7 +277,7 @@ def list_cases(
             params,
         ).mappings().all()
 
-    return [dict(row) for row in rows], count
+    return [_normalize_case(row) for row in rows], count
 
 
 def get_case(case_id: str) -> Optional[Dict[str, Any]]:
@@ -299,6 +337,8 @@ def assign_case(
         case_row = _fetch_case(conn, case_id)
         if not case_row:
             return None, None
+        if case_row.get("locked"):
+            raise ValueError("case locked")
 
         conn.execute(
             text(
@@ -359,7 +399,11 @@ def bulk_action(
     failures: List[Dict[str, Any]] = []
 
     for case_id in case_ids:
-        case_row, _ = add_action(case_id, action, actor=actor, reason=reason)
+        try:
+            case_row, _ = add_action(case_id, action, actor=actor, reason=reason)
+        except ValueError as exc:
+            failures.append({"case_id": case_id, "reason": str(exc)})
+            continue
 
         if case_row:
             updated += 1
@@ -378,7 +422,11 @@ def bulk_assign(
     failures: List[Dict[str, Any]] = []
 
     for case_id in case_ids:
-        case_row, _ = assign_case(case_id, assignee, actor=actor)
+        try:
+            case_row, _ = assign_case(case_id, assignee, actor=actor)
+        except ValueError as exc:
+            failures.append({"case_id": case_id, "reason": str(exc)})
+            continue
         if case_row:
             updated += 1
         else:
@@ -399,7 +447,7 @@ def add_action(
     action_map = {
         "approve": "approved",
         "reject": "rejected",
-        "needs_review": "pending_review",
+        "needs_review": "in_review",
     }
     if action not in action_map:
         raise ValueError("Invalid action")
@@ -419,6 +467,8 @@ def add_action(
         case_row = _fetch_case(conn, case_id)
         if not case_row:
             return None, None
+        if case_row.get("locked"):
+            raise ValueError("case locked")
 
         conn.execute(
             text(
@@ -478,6 +528,8 @@ def add_note(
         case_row = _fetch_case(conn, case_id)
         if not case_row:
             return None, None
+        if case_row.get("locked"):
+            raise ValueError("case locked")
 
         conn.execute(
             text(
@@ -570,3 +622,148 @@ def list_notes(case_id: str) -> List[Dict[str, Any]]:
             {"case_id": case_id},
         ).mappings().all()
     return [dict(row) for row in rows]
+
+
+def set_case_decision(
+    case_id: str,
+    decision_type: str,
+    reason: Optional[str],
+    actor: Optional[str],
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    ensure_schema()
+    engine = get_engine()
+
+    if decision_type not in {"approve", "reject", "request_info"}:
+        raise ValueError("Invalid decision type")
+
+    status_map = {
+        "approve": "approved",
+        "reject": "rejected",
+        "request_info": "needs_info",
+    }
+    locked = 1 if decision_type in {"approve", "reject"} else 0
+    now = _now_iso()
+    decision = {
+        "type": decision_type,
+        "reason": reason,
+        "actor": actor,
+        "timestamp": now,
+        "version": "dv1",
+    }
+
+    with engine.begin() as conn:
+        case_row = _fetch_case(conn, case_id)
+        if not case_row:
+            return None, None
+        if case_row.get("locked"):
+            raise ValueError("case locked")
+
+        conn.execute(
+            text(
+                """
+                UPDATE cases
+                SET status = :status, locked = :locked, decision_json = :decision_json,
+                    updated_at = :updated_at
+                WHERE case_id = :case_id
+                """
+            ),
+            {
+                "status": status_map[decision_type],
+                "locked": locked,
+                "decision_json": json.dumps(decision),
+                "updated_at": now,
+                "case_id": case_id,
+            },
+        )
+
+        payload = json.dumps(
+            {
+                "decision": decision,
+                "status": status_map[decision_type],
+                "locked": bool(locked),
+            }
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO verifier_events (
+                    case_id, event_type, payload_json, created_at
+                ) VALUES (
+                    :case_id, :event_type, :payload_json, :created_at
+                )
+                """
+            ),
+            {
+                "case_id": case_id,
+                "event_type": "decision",
+                "payload_json": payload,
+                "created_at": now,
+            },
+        )
+        event_id = conn.execute(text("SELECT last_insert_rowid() AS id")).mappings().first()["id"]
+        updated_case = _fetch_case(conn, case_id)
+
+    event = {
+        "id": event_id,
+        "case_id": case_id,
+        "event_type": "decision",
+        "payload_json": payload,
+        "created_at": now,
+    }
+    return updated_case, event
+
+
+def get_final_packet(case_id: str) -> Optional[Dict[str, Any]]:
+    ensure_schema()
+    engine = get_engine()
+
+    with engine.begin() as conn:
+        row = conn.execute(
+            text(
+                """
+                SELECT packet_json
+                FROM verifier_final_packets
+                WHERE case_id = :case_id
+                """
+            ),
+            {"case_id": case_id},
+        ).mappings().first()
+
+    if not row:
+        return None
+    try:
+        return json.loads(row["packet_json"])
+    except json.JSONDecodeError:
+        return None
+
+
+def write_final_packet(case_id: str, packet: Dict[str, Any]) -> None:
+    ensure_schema()
+    engine = get_engine()
+    now = _now_iso()
+    commit_sha = (
+        os.getenv("RENDER_GIT_COMMIT")
+        or os.getenv("GIT_SHA")
+        or os.getenv("GITHUB_SHA")
+        or os.getenv("COMMIT_SHA")
+    )
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT OR REPLACE INTO verifier_final_packets (
+                    case_id, packet_version, packet_json, commit_sha, created_at
+                ) VALUES (
+                    :case_id, :packet_version, :packet_json, :commit_sha, :created_at
+                )
+                """
+            ),
+            {
+                "case_id": case_id,
+                "packet_version": packet.get("packet_version"),
+                "packet_json": json.dumps(packet),
+                "commit_sha": commit_sha,
+                "created_at": now,
+            },
+        )

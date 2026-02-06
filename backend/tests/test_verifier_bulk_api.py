@@ -51,7 +51,7 @@ def test_bulk_assign_and_action() -> None:
 
     detail = client.get("/api/verifier/cases/case-002")
     assert detail.status_code == 200
-    assert detail.json()["case"]["status"] == "pending_review"
+    assert detail.json()["case"]["status"] == "in_review"
 
     events_resp = client.get("/api/verifier/cases/case-002/events")
     assert events_resp.status_code == 200

@@ -16,17 +16,17 @@ def test_action_updates_status_and_event() -> None:
 
     action_response = client.post(
         "/api/verifier/cases/case-001/actions",
-        json={"action": "approve", "actor": "qa", "reason": "looks good"},
+        json={"action": "needs_review", "actor": "qa", "reason": "triage"},
     )
     assert action_response.status_code == 200
     payload = action_response.json()
-    assert payload["case"]["status"] == "approved"
+    assert payload["case"]["status"] == "in_review"
     assert payload["event"]["event_type"] == "action"
 
     detail = client.get("/api/verifier/cases/case-001")
     assert detail.status_code == 200
     detail_payload = detail.json()
-    assert detail_payload["case"]["status"] == "approved"
+    assert detail_payload["case"]["status"] == "in_review"
     assert detail_payload["events"][0]["event_type"] == "action"
 
 

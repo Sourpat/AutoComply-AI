@@ -15,15 +15,23 @@ import { PageHeader } from "../components/common/PageHeader";
 import { ErrorState } from "../components/common/ErrorState";
 import { Button } from "../components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
+import {
   bulkVerifierCaseAction,
   bulkVerifierCaseAssign,
+  decideVerifierCase,
   downloadAuditZip,
   downloadDecisionPacketPdf,
   fetchVerifierCaseEvents,
   fetchVerifierCaseDetail,
   fetchVerifierCases,
   getDecisionPacket,
-  postVerifierCaseAction,
   postVerifierCaseNote,
   setVerifierCaseAssignment,
   seedVerifierCases,
@@ -36,6 +44,7 @@ import { safeFormatDate, safeFormatRelative } from "../utils/dateUtils";
 
 export const CaseWorkspace: React.FC = () => {
   const CURRENT_USER = "verifier-1";
+  const DECISION_ACTOR_DEFAULT = "verifier-demo";
   const FILTER_STORAGE_KEY = "verifierQueueFilters";
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedCaseId = searchParams.get("caseId");
@@ -55,14 +64,21 @@ export const CaseWorkspace: React.FC = () => {
   const [notes, setNotes] = useState<VerifierNote[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [assignmentError, setAssignmentError] = useState<string | null>(null);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [noteText, setNoteText] = useState("");
-  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [noteSaving, setNoteSaving] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [assignmentBusy, setAssignmentBusy] = useState(false);
+  const [decisionOpen, setDecisionOpen] = useState(false);
+  const [decisionType, setDecisionType] = useState<"approve" | "reject" | "request_info">(
+    "approve"
+  );
+  const [decisionReason, setDecisionReason] = useState("");
+  const [decisionActor, setDecisionActor] = useState(DECISION_ACTOR_DEFAULT);
+  const [decisionBusy, setDecisionBusy] = useState(false);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
   const [isSeeding, setIsSeeding] = useState(false);
   const [seedError, setSeedError] = useState<string | null>(null);
   const [filtersReady, setFiltersReady] = useState(false);
@@ -200,32 +216,12 @@ export const CaseWorkspace: React.FC = () => {
   }, [selectedCaseId, loadCaseDetail]);
 
 
-  const handleAction = useCallback(
-    async (action: "approve" | "reject" | "needs_review") => {
-      if (!selectedCaseId) return;
-      setActionInProgress(action);
-      setActionError(null);
-      try {
-        const response = await postVerifierCaseAction(selectedCaseId, {
-          action,
-          actor: CURRENT_USER,
-        });
-        setDetail((prev) => (prev ? { ...prev, case: response.case } : prev));
-        setEvents((prev) => [response.event, ...prev]);
-        setCases((prev) =>
-          prev.map((item) => (item.case_id === response.case.case_id ? response.case : item))
-        );
-      } catch (err) {
-        setActionError(err instanceof Error ? err.message : "Failed to update status");
-      } finally {
-        setActionInProgress(null);
-      }
-    },
-    [selectedCaseId]
-  );
-
   const handleAddNote = useCallback(async () => {
     if (!selectedCaseId) return;
+    if (detail?.case?.locked) {
+      setNoteError("Case is locked");
+      return;
+    }
     if (!noteText.trim()) {
       setNoteError("Note cannot be empty");
       return;
@@ -245,7 +241,7 @@ export const CaseWorkspace: React.FC = () => {
     } finally {
       setNoteSaving(false);
     }
-  }, [noteText, selectedCaseId]);
+  }, [noteText, selectedCaseId, detail?.case?.locked]);
 
   const filteredCases = useMemo(() => {
     if (!searchQuery.trim()) {
@@ -282,10 +278,11 @@ export const CaseWorkspace: React.FC = () => {
   const toggleSelectAll = useCallback(() => {
     if (filteredCases.length === 0) return;
     setSelectedIds((prev) => {
-      if (prev.size === filteredCases.length) {
+      const selectable = filteredCases.filter((item) => !item.locked);
+      if (prev.size === selectable.length) {
         return new Set();
       }
-      return new Set(filteredCases.map((item) => item.case_id));
+      return new Set(selectable.map((item) => item.case_id));
     });
   }, [filteredCases]);
 
@@ -343,7 +340,7 @@ export const CaseWorkspace: React.FC = () => {
     async (assignee: string | null) => {
       if (!selectedCaseId) return;
       setAssignmentBusy(true);
-      setActionError(null);
+      setAssignmentError(null);
       try {
         const updated = await setVerifierCaseAssignment(selectedCaseId, {
           assignee,
@@ -354,13 +351,69 @@ export const CaseWorkspace: React.FC = () => {
         const latestEvents = await fetchVerifierCaseEvents(selectedCaseId);
         setEvents(latestEvents);
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : "Assignment failed");
+        setAssignmentError(err instanceof Error ? err.message : "Assignment failed");
       } finally {
         setAssignmentBusy(false);
       }
     },
     [selectedCaseId]
   );
+
+  const openDecisionModal = useCallback(() => {
+    setDecisionType("approve");
+    setDecisionReason("");
+    setDecisionActor(DECISION_ACTOR_DEFAULT);
+    setDecisionError(null);
+    setDecisionOpen(true);
+  }, [DECISION_ACTOR_DEFAULT]);
+
+  const handleFinalizeDecision = useCallback(async () => {
+    if (!selectedCaseId) return;
+    const trimmedReason = decisionReason.trim();
+    if (decisionType !== "approve" && !trimmedReason) {
+      setDecisionError("Reason is required for reject/request info.");
+      return;
+    }
+    setDecisionBusy(true);
+    setDecisionError(null);
+    try {
+      await decideVerifierCase(
+        selectedCaseId,
+        {
+          type: decisionType,
+          reason: trimmedReason || undefined,
+          actor: decisionActor.trim() || undefined,
+        },
+        true
+      );
+      setDecisionOpen(false);
+      setDecisionReason("");
+      setDecisionActor(DECISION_ACTOR_DEFAULT);
+      setDecisionType("approve");
+      setPacketCache((prev) => {
+        const next = { ...prev };
+        delete next[`${selectedCaseId}:1`];
+        delete next[`${selectedCaseId}:0`];
+        return next;
+      });
+      await loadCaseDetail(selectedCaseId);
+      await loadCases({ reset: true });
+      await loadDecisionPacket(selectedCaseId, true);
+    } catch (err) {
+      setDecisionError(err instanceof Error ? err.message : "Decision failed");
+    } finally {
+      setDecisionBusy(false);
+    }
+  }, [
+    selectedCaseId,
+    decisionReason,
+    decisionType,
+    decisionActor,
+    DECISION_ACTOR_DEFAULT,
+    loadCaseDetail,
+    loadCases,
+    loadDecisionPacket,
+  ]);
 
   const loadDecisionPacket = useCallback(
     async (caseId: string, includeExplain: boolean = true) => {
@@ -448,7 +501,7 @@ export const CaseWorkspace: React.FC = () => {
   }, [selectedCaseId, loadDecisionPacket]);
 
   const statusOptions = useMemo(() => {
-    const values = new Set(["pending_review", "approved", "rejected"]);
+    const values = new Set(["open", "in_review", "needs_info", "approved", "rejected"]);
     cases.forEach((item) => item.status && values.add(item.status));
     return Array.from(values);
   }, [cases]);
@@ -461,17 +514,28 @@ export const CaseWorkspace: React.FC = () => {
 
   const hasMore = cases.length < count;
   const isEmpty = !isLoading && cases.length === 0;
+  const selectableCount = filteredCases.filter((item) => !item.locked).length;
 
 
   useEffect(() => {
     if (selectedIds.size === 0) return;
-    const visible = new Set(filteredCases.map((item) => item.case_id));
-    setSelectedIds((prev) => new Set([...prev].filter((id) => visible.has(id))));
+    const visible = new Map(filteredCases.map((item) => [item.case_id, item]));
+    setSelectedIds(
+      (prev) =>
+        new Set(
+          [...prev].filter((id) => {
+            const item = visible.get(id);
+            return item && !item.locked;
+          })
+        )
+    );
   }, [filteredCases, selectedIds.size]);
 
   const packetKey = selectedCaseId ? `${selectedCaseId}:1` : null;
   const decisionPacket = packetKey ? packetCache[packetKey] : null;
   const citations = decisionPacket?.explain?.citations || [];
+  const isLocked = detail?.case?.locked ?? false;
+  const isNeedsInfo = detail?.case?.status === "needs_info";
 
 
   return (
@@ -618,7 +682,7 @@ export const CaseWorkspace: React.FC = () => {
                 <div className="flex items-center gap-2 px-4 py-2 text-xs text-slate-500">
                   <input
                     type="checkbox"
-                    checked={selectedIds.size > 0 && selectedIds.size === filteredCases.length}
+                    checked={selectedIds.size > 0 && selectedIds.size === selectableCount}
                     onChange={toggleSelectAll}
                   />
                   Select all
@@ -633,6 +697,7 @@ export const CaseWorkspace: React.FC = () => {
                     <input
                       type="checkbox"
                       checked={selectedIds.has(item.case_id)}
+                      disabled={item.locked}
                       onChange={() => toggleSelectCase(item.case_id)}
                       onClick={(event) => event.stopPropagation()}
                       className="mt-1"
@@ -643,9 +708,16 @@ export const CaseWorkspace: React.FC = () => {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="text-sm font-semibold text-slate-800">{item.case_id}</div>
-                        <span className="text-[11px] uppercase tracking-wide text-slate-500">
-                          {item.status}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                            {item.status}
+                          </span>
+                          {item.locked && (
+                            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-700">
+                              Locked
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="mt-1 text-xs text-slate-500">
                         {item.jurisdiction || "—"} · {safeFormatRelative(item.created_at)}
@@ -699,9 +771,16 @@ export const CaseWorkspace: React.FC = () => {
                   <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-2">
                     <div className="flex items-center justify-between">
                       <h2 className="text-lg font-semibold text-slate-800">{detail.case.case_id}</h2>
-                      <span className="text-xs uppercase tracking-wide text-slate-500">
-                        {detail.case.status}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs uppercase tracking-wide text-slate-500">
+                          {detail.case.status}
+                        </span>
+                        {detail.case.locked && (
+                          <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-700">
+                            Locked
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="text-sm text-slate-600">{detail.case.summary}</div>
                     <div className="grid grid-cols-2 gap-4 text-xs text-slate-500">
@@ -732,49 +811,62 @@ export const CaseWorkspace: React.FC = () => {
                     </div>
                   </div>
 
+                  {isNeedsInfo && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                      Awaiting submitter updates.
+                    </div>
+                  )}
+
                   <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-semibold text-slate-700">Actions</h3>
-                      {actionError && <span className="text-xs text-red-600">{actionError}</span>}
+                      <h3 className="text-sm font-semibold text-slate-700">Decision</h3>
+                      {decisionError && <span className="text-xs text-red-600">{decisionError}</span>}
                     </div>
+                    {detail.case.decision ? (
+                      <div className="rounded-md border border-slate-100 bg-slate-50 p-2 text-xs text-slate-600">
+                        <div className="font-semibold text-slate-700">
+                          {detail.case.decision.type}
+                        </div>
+                        {detail.case.decision.reason && (
+                          <div className="mt-1">Reason: {detail.case.decision.reason}</div>
+                        )}
+                        <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                          <span>{detail.case.decision.actor || "verifier"}</span>
+                          <span>
+                            {detail.case.decision.timestamp
+                              ? safeFormatRelative(detail.case.decision.timestamp)
+                              : ""}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500">No final decision yet.</p>
+                    )}
                     <div className="flex flex-wrap gap-2">
                       <button
-                        onClick={() => handleAction("approve")}
-                        disabled={actionInProgress !== null}
-                        className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                        onClick={openDecisionModal}
+                        disabled={isLocked}
+                        className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                       >
-                        {actionInProgress === "approve" ? "Approving…" : "Approve"}
-                      </button>
-                      <button
-                        onClick={() => handleAction("reject")}
-                        disabled={actionInProgress !== null}
-                        className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
-                      >
-                        {actionInProgress === "reject" ? "Rejecting…" : "Reject"}
-                      </button>
-                      <button
-                        onClick={() => handleAction("needs_review")}
-                        disabled={actionInProgress !== null}
-                        className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
-                      >
-                        {actionInProgress === "needs_review" ? "Updating…" : "Needs review"}
+                        {isLocked ? "Case locked" : "Finalize decision"}
                       </button>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={() => handleAssign(CURRENT_USER)}
-                        disabled={assignmentBusy}
+                        disabled={assignmentBusy || isLocked}
                         className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                       >
                         {assignmentBusy ? "Assigning…" : "Assign to me"}
                       </button>
                       <button
                         onClick={() => handleAssign(null)}
-                        disabled={assignmentBusy}
+                        disabled={assignmentBusy || isLocked}
                         className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                       >
                         {assignmentBusy ? "Updating…" : "Unassign"}
                       </button>
+                      {assignmentError && <span className="text-xs text-red-600">{assignmentError}</span>}
                     </div>
                   </div>
 
@@ -787,18 +879,22 @@ export const CaseWorkspace: React.FC = () => {
                       value={noteText}
                       onChange={(e) => setNoteText(e.target.value)}
                       rows={3}
-                      className="w-full rounded-md border border-slate-200 p-2 text-sm"
+                      disabled={isLocked}
+                      className="w-full rounded-md border border-slate-200 p-2 text-sm disabled:bg-slate-50"
                       placeholder="Add a note for this case…"
                     />
                     <div className="flex justify-end">
                       <button
                         onClick={handleAddNote}
-                        disabled={noteSaving}
+                        disabled={noteSaving || isLocked}
                         className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                       >
                         {noteSaving ? "Saving…" : "Add note"}
                       </button>
                     </div>
+                    {isLocked && (
+                      <p className="text-xs text-slate-500">Case locked. Notes are disabled.</p>
+                    )}
                     {notes.length === 0 ? (
                       <p className="text-xs text-slate-500">No notes yet.</p>
                     ) : (
@@ -945,6 +1041,65 @@ export const CaseWorkspace: React.FC = () => {
                       </ul>
                     )}
                   </div>
+
+                  <Dialog open={decisionOpen} onOpenChange={setDecisionOpen}>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Finalize decision</DialogTitle>
+                        <DialogDescription>
+                          Choose the final decision for this case. Approve or Reject will lock the case.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-3 text-sm">
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs font-semibold text-slate-600">Decision type</span>
+                          <select
+                            value={decisionType}
+                            onChange={(event) =>
+                              setDecisionType(event.target.value as "approve" | "reject" | "request_info")
+                            }
+                            className="rounded-md border border-slate-200 px-2 py-1.5 text-sm"
+                          >
+                            <option value="approve">Approve</option>
+                            <option value="reject">Reject</option>
+                            <option value="request_info">Request info</option>
+                          </select>
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs font-semibold text-slate-600">Reason</span>
+                          <textarea
+                            value={decisionReason}
+                            onChange={(event) => setDecisionReason(event.target.value)}
+                            rows={3}
+                            className="rounded-md border border-slate-200 px-2 py-1.5 text-sm"
+                            placeholder="Reason for decision (required for reject/request info)"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs font-semibold text-slate-600">Actor</span>
+                          <input
+                            value={decisionActor}
+                            onChange={(event) => setDecisionActor(event.target.value)}
+                            className="rounded-md border border-slate-200 px-2 py-1.5 text-sm"
+                            placeholder="verifier-demo"
+                          />
+                        </label>
+                        {decisionError && <p className="text-xs text-red-600">{decisionError}</p>}
+                      </div>
+                      <DialogFooter>
+                        <Button
+                          variant="secondary"
+                          onClick={() => setDecisionOpen(false)}
+                          disabled={decisionBusy}
+                        >
+                          Cancel
+                        </Button>
+                        <Button onClick={handleFinalizeDecision} disabled={decisionBusy}>
+                          {decisionBusy ? "Finalizing…" : "Finalize"}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 </>
               )}
             </div>

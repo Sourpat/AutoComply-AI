@@ -93,6 +93,8 @@
 
 
 
+
+
 ### Example Task Template (DELETE THIS AFTER READING)
 ```markdown
 ### T-001: Fix critical bug in X
@@ -193,6 +195,14 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 4.7 — Final decision flow + case lock + final packet snapshot
+**Completed**: 2026-02-06
+**Commit**: (pending)
+**Summary**: Added final decision endpoint with lock + snapshot, UI modal, and ops smoke coverage.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_verifier_decision_flow.py`
+- `npm run build`
+
 ### Phase 4: Verifier Console uses real submitted cases
 **Completed**: 2026-02-06
 **Commit**: d799866
@@ -222,14 +232,6 @@
 **Summary**: Validated CI-parity pack mode, fixed pack path + ops ci allowances, enforced kp-v1 in rc smoke, and updated pack retriever test.
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q backend/tests/test_pack_retriever.py backend/tests/test_golden_suite.py`
-
-### T-026: Explain golden suite gate
-**Completed**: 2026-02-05
-**Commit**: (pending)
-**Summary**: Added golden-case fixtures, runner, ops endpoint, pytest gate, RC smoke step, and ops smoke golden suite check for Explain v1.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_golden_suite.py`
-- `Invoke-RestMethod -Method Post http://127.0.0.1:8001/api/ops/golden/run`
 
 ---
 

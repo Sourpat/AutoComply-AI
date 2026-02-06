@@ -32,14 +32,15 @@ npm run build
 3. Use Status and Jurisdiction filters → list updates
 4. Click a case → detail panel shows fields + recent events
 5. If list is empty in dev, use “Seed demo cases” CTA → list populates
-6. Click Approve/Reject/Needs review → status updates and event appears
-7. Add a note → note appears and event appears in timeline
-8. Toggle My Queue → empty, then Assign to me → toggle My Queue → case appears
-9. Select 3 cases → bulk Needs review → statuses update and events appear
-10. Open Decision Packet panel → Overview + Evidence tabs load
-11. Export JSON → decision-packet-<id>.json downloads with citations
-12. Export PDF → decision-packet-<id>.pdf downloads
-13. Download Audit ZIP → contains decision-packet json/pdf, citations.json, timeline.json, README.txt
+6. Add a note → note appears and event appears in timeline
+7. Toggle My Queue → empty, then Assign to me → toggle My Queue → case appears
+8. Select 3 cases → bulk Needs review → statuses update and events appear (locked cases skipped)
+9. Click Finalize decision → choose Approve → case locks and decision appears in timeline
+10. Open another case → Finalize decision → Request info → status moves to needs_info and remains editable
+11. Open Decision Packet panel → Overview + Evidence tabs load
+12. Export JSON → decision-packet-<id>.json downloads with citations
+13. Export PDF → decision-packet-<id>.pdf downloads (finalization included when locked)
+14. Download Audit ZIP → contains decision-packet json/pdf, citations.json, timeline.json, README.txt
 
 ## Optional: RC smoke
 ```powershell

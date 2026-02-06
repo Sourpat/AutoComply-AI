@@ -120,10 +120,15 @@ async def build_decision_packet(
             "jurisdiction": case.get("jurisdiction"),
             "created_at": case.get("created_at"),
             "assignee": case.get("assignee"),
+            "locked": case.get("locked"),
         },
         "verifier": {
             "actor": actor,
             "generated_at": _now_iso(),
+        },
+        "finalization": {
+            "is_final": bool(case.get("locked")),
+            "decision": case.get("decision"),
         },
         "actions": actions,
         "timeline": timeline,

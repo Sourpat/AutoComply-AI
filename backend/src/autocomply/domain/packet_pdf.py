@@ -67,6 +67,13 @@ def render_decision_packet_pdf(packet: Dict[str, Any]) -> bytes:
     story.append(_paragraph(json.dumps(timeline, indent=2), mono))
     story.append(Spacer(1, 0.15 * inch))
 
+    finalization = packet.get("finalization")
+    if finalization:
+        title = "Finalization (FINAL)" if finalization.get("is_final") else "Finalization"
+        story.append(Paragraph(title, heading))
+        story.append(_paragraph(json.dumps(finalization, indent=2), mono))
+        story.append(Spacer(1, 0.15 * inch))
+
     story.append(Paragraph("Evidence", heading))
     explain = packet.get("explain") or {}
     citations = _sort_citations(explain.get("citations", []))
