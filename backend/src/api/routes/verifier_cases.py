@@ -3,6 +3,7 @@ import os
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from src.autocomply.domain.decision_packet import build_decision_packet
 from src.autocomply.domain.verifier_store import (
     add_action,
     add_note,
@@ -148,6 +149,21 @@ def post_verifier_bulk_action(payload: VerifierBulkActionRequest) -> dict:
 def post_verifier_bulk_assign(payload: VerifierBulkAssignRequest) -> dict:
     result = bulk_assign(payload.case_ids, payload.assignee, actor=payload.actor)
     return result
+
+
+@router.get("/cases/{case_id}/packet")
+async def get_verifier_decision_packet(
+    case_id: str,
+    include_explain: int = Query(1, ge=0, le=1),
+) -> dict:
+    try:
+        return await build_decision_packet(
+            case_id,
+            actor=os.getenv("VERIFIER_DEFAULT_ASSIGNEE", "verifier-1"),
+            include_explain=include_explain == 1,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/cases/{case_id}", response_model=VerifierCaseDetailResponse)

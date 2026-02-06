@@ -54,14 +54,16 @@
 - [x] Backend: list cases endpoint for verifier (filter/sort/pagination)
 - [x] Backend: actions + notes + events endpoints (persisted)
 - [x] Backend: assignment + bulk endpoints with assignee filters
-- [ ] Backend: case detail endpoint includes latest explain run + citations metadata
+- [x] Backend: decision packet endpoint (dp-v1) with explain citations
 - [x] Frontend: Verifier Console uses /api/verifier/cases (list/detail + filters + errors)
 - [x] Frontend: Verifier actions + notes + timeline
 - [x] Frontend: My Queue + bulk actions + assignment controls
+- [x] Frontend: Decision Packet panel + export JSON
 - [x] Seed/Fixtures: deterministic 10 demo cases
 - [x] Tests: API contract tests for list/detail endpoints
 - [x] Tests: verifier actions + notes
 - [x] Tests: verifier bulk + assignment
+- [x] Tests: decision packet API
 - [ ] Docs: Phase4 demo script + architecture note
 **Tasks**:
 - [x] Backend store + schema bootstrap
@@ -73,6 +75,8 @@
 - [x] Tests: test_verifier_actions_api.py
 - [x] Backend + frontend: assignment + bulk ops + my queue
 - [x] Tests: test_verifier_bulk_api.py
+- [x] Backend + frontend: decision packet panel + export JSON
+- [x] Tests: test_decision_packet_api.py
 - [x] Docs: PHASE4_PLAN.md + PHASE4_SMOKE.md updates
 **Verification**:
 - TBD (see docs/PHASE4_SMOKE.md)

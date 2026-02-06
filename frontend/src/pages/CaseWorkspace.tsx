@@ -20,6 +20,7 @@ import {
   fetchVerifierCaseEvents,
   fetchVerifierCaseDetail,
   fetchVerifierCases,
+  getDecisionPacket,
   postVerifierCaseAction,
   postVerifierCaseNote,
   setVerifierCaseAssignment,
@@ -63,6 +64,10 @@ export const CaseWorkspace: React.FC = () => {
   const [isSeeding, setIsSeeding] = useState(false);
   const [seedError, setSeedError] = useState<string | null>(null);
   const [filtersReady, setFiltersReady] = useState(false);
+  const [packetTab, setPacketTab] = useState<"overview" | "evidence">("overview");
+  const [packetLoading, setPacketLoading] = useState(false);
+  const [packetError, setPacketError] = useState<string | null>(null);
+  const [packetCache, setPacketCache] = useState<Record<string, any>>({});
 
   const casesCountRef = useRef(0);
 
@@ -190,6 +195,7 @@ export const CaseWorkspace: React.FC = () => {
     }
     loadCaseDetail(selectedCaseId);
   }, [selectedCaseId, loadCaseDetail]);
+
 
   const handleAction = useCallback(
     async (action: "approve" | "reject" | "needs_review") => {
@@ -353,6 +359,48 @@ export const CaseWorkspace: React.FC = () => {
     [selectedCaseId]
   );
 
+  const loadDecisionPacket = useCallback(
+    async (caseId: string, includeExplain: boolean = true) => {
+      const cacheKey = `${caseId}:${includeExplain ? "1" : "0"}`;
+      if (packetCache[cacheKey]) {
+        return packetCache[cacheKey];
+      }
+      setPacketLoading(true);
+      setPacketError(null);
+      try {
+        const packet = await getDecisionPacket(caseId, includeExplain);
+        setPacketCache((prev) => ({ ...prev, [cacheKey]: packet }));
+        return packet;
+      } catch (err) {
+        setPacketError(err instanceof Error ? err.message : "Failed to load packet");
+        return null;
+      } finally {
+        setPacketLoading(false);
+      }
+    },
+    [packetCache]
+  );
+
+  const handleExportPacket = useCallback(async () => {
+    if (!selectedCaseId) return;
+    const packet = await loadDecisionPacket(selectedCaseId, true);
+    if (!packet) return;
+    const blob = new Blob([JSON.stringify(packet, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `decision-packet-${selectedCaseId}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [selectedCaseId, loadDecisionPacket]);
+
+  useEffect(() => {
+    if (!selectedCaseId) return;
+    loadDecisionPacket(selectedCaseId, true);
+  }, [selectedCaseId, loadDecisionPacket]);
+
   const statusOptions = useMemo(() => {
     const values = new Set(["pending_review", "approved", "rejected"]);
     cases.forEach((item) => item.status && values.add(item.status));
@@ -374,6 +422,10 @@ export const CaseWorkspace: React.FC = () => {
     const visible = new Set(filteredCases.map((item) => item.case_id));
     setSelectedIds((prev) => new Set([...prev].filter((id) => visible.has(id))));
   }, [filteredCases, selectedIds.size]);
+
+  const packetKey = selectedCaseId ? `${selectedCaseId}:1` : null;
+  const decisionPacket = packetKey ? packetCache[packetKey] : null;
+  const citations = decisionPacket?.explain?.citations || [];
 
 
   return (
@@ -714,6 +766,99 @@ export const CaseWorkspace: React.FC = () => {
                             <p className="mt-1 text-slate-700 whitespace-pre-wrap">{note.note}</p>
                           </div>
                         ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-slate-700">Decision Packet</h3>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleExportPacket}
+                          className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          Export JSON
+                        </button>
+                        <button
+                          onClick={() => loadDecisionPacket(detail.case.case_id, true)}
+                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500"
+                        >
+                          Refresh
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setPacketTab("overview")}
+                        className={`rounded-md px-3 py-1 text-xs font-semibold ${
+                          packetTab === "overview"
+                            ? "bg-slate-900 text-white"
+                            : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        Overview
+                      </button>
+                      <button
+                        onClick={() => setPacketTab("evidence")}
+                        className={`rounded-md px-3 py-1 text-xs font-semibold ${
+                          packetTab === "evidence"
+                            ? "bg-slate-900 text-white"
+                            : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        Evidence
+                      </button>
+                    </div>
+
+                    {packetLoading && <p className="text-xs text-slate-500">Loading packet…</p>}
+                    {packetError && <p className="text-xs text-red-600">{packetError}</p>}
+
+                    {!packetLoading && !packetError && decisionPacket && packetTab === "overview" && (
+                      <div className="grid grid-cols-2 gap-3 text-xs text-slate-600">
+                        <div>
+                          <div className="font-semibold text-slate-700">Status</div>
+                          <div>{decisionPacket.case?.status}</div>
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-700">Assignee</div>
+                          <div>{decisionPacket.case?.assignee || "Unassigned"}</div>
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-700">Priority</div>
+                          <div>{decisionPacket.case?.priority}</div>
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-700">Generated</div>
+                          <div>{safeFormatDate(decisionPacket.verifier?.generated_at)}</div>
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-700">Actions</div>
+                          <div>{decisionPacket.actions?.length ?? 0}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {!packetLoading && !packetError && decisionPacket && packetTab === "evidence" && (
+                      <div className="space-y-2 text-xs">
+                        {citations.length === 0 ? (
+                          <p className="text-slate-500">No citations available.</p>
+                        ) : (
+                          citations.map((citation: any, index: number) => (
+                            <div key={`${citation.doc_id}-${citation.chunk_id}-${index}`} className="rounded border border-slate-100 bg-slate-50 p-2">
+                              <div className="font-semibold text-slate-700">
+                                {citation.source_title || citation.doc_id || "Citation"}
+                              </div>
+                              {citation.jurisdiction && (
+                                <div className="text-[11px] text-slate-500">{citation.jurisdiction}</div>
+                              )}
+                              <div className="mt-1 text-slate-600 whitespace-pre-wrap">
+                                {citation.snippet || "No snippet available."}
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
                     )}
                   </div>

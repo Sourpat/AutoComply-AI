@@ -113,6 +113,26 @@
 
 **Status**: Accepted
 
+### [2026-02-06] Decision packet contract (dp-v1)
+
+**Context**: Phase 4.5 needs a deterministic, exportable JSON packet for verifier cases with optional explain evidence.
+
+**Decision**: Introduce a dp-v1 decision packet contract produced by `/api/verifier/cases/{case_id}/packet`. The packet includes case metadata, verifier metadata, actions/timeline, and explain evidence when available. Explain data is sourced from the existing explain pipeline when possible and falls back to a minimal stub when unavailable.
+
+**Rationale**:
+- Provides a stable audit/export artifact for downstream review and training
+- Avoids blocking UI when explain data is unavailable
+
+**Alternatives Considered**:
+- PDF export first: deferred to Phase 4.6
+- Require explain always: rejected to keep packet generation resilient
+
+**Consequences**:
+- Positive: Deterministic JSON export with citations when available
+- Neutral: Explain stub can be returned if submission data is missing
+
+**Status**: Accepted
+
 ### [2026-02-06] RC Gate release gate + commit SHA precedence
 
 **Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).

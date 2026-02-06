@@ -36,6 +36,8 @@ npm run build
 7. Add a note → note appears and event appears in timeline
 8. Toggle My Queue → empty, then Assign to me → toggle My Queue → case appears
 9. Select 3 cases → bulk Needs review → statuses update and events appear
+10. Open Decision Packet panel → Overview + Evidence tabs load
+11. Export JSON → decision-packet-<id>.json downloads with citations
 
 ## Optional: RC smoke
 ```powershell

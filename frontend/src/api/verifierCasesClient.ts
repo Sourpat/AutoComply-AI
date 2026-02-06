@@ -184,6 +184,16 @@ export async function bulkVerifierCaseAssign(payload: {
   );
 }
 
+export async function getDecisionPacket(
+  caseId: string,
+  includeExplain: boolean = true
+): Promise<any> {
+  const flag = includeExplain ? 1 : 0;
+  return apiFetch<any>(`${VERIFIER_BASE}/cases/${caseId}/packet?include_explain=${flag}`, {
+    headers: getAuthHeaders(),
+  });
+}
+
 export async function seedVerifierCases(): Promise<{ inserted_cases: number; inserted_events: number }>
 {
   return apiFetch<{ inserted_cases: number; inserted_events: number }>(
