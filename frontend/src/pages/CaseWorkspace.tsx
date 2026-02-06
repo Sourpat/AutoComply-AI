@@ -17,9 +17,13 @@ import { Button } from "../components/ui/button";
 import {
   fetchVerifierCaseDetail,
   fetchVerifierCases,
+  postVerifierCaseAction,
+  postVerifierCaseNote,
   seedVerifierCases,
   type VerifierCase,
   type VerifierCaseDetail,
+  type VerifierCaseEvent,
+  type VerifierNote,
 } from "../api/verifierCasesClient";
 import { safeFormatDate, safeFormatRelative } from "../utils/dateUtils";
 
@@ -35,8 +39,15 @@ export const CaseWorkspace: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<VerifierCaseDetail | null>(null);
+  const [events, setEvents] = useState<VerifierCaseEvent[]>([]);
+  const [notes, setNotes] = useState<VerifierNote[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState("");
+  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const [noteSaving, setNoteSaving] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
   const [seedError, setSeedError] = useState<string | null>(null);
 
@@ -87,9 +98,13 @@ export const CaseWorkspace: React.FC = () => {
     try {
       const payload = await fetchVerifierCaseDetail(caseId);
       setDetail(payload);
+      setEvents(payload.events ?? []);
+      setNotes(payload.notes ?? []);
     } catch (err) {
       setDetailError(err instanceof Error ? err.message : "Failed to load case detail");
       setDetail(null);
+      setEvents([]);
+      setNotes([]);
     } finally {
       setDetailLoading(false);
     }
@@ -125,10 +140,59 @@ export const CaseWorkspace: React.FC = () => {
   useEffect(() => {
     if (!selectedCaseId) {
       setDetail(null);
+      setEvents([]);
+      setNotes([]);
       return;
     }
     loadCaseDetail(selectedCaseId);
   }, [selectedCaseId, loadCaseDetail]);
+
+  const handleAction = useCallback(
+    async (action: "approve" | "reject" | "needs_review") => {
+      if (!selectedCaseId) return;
+      setActionInProgress(action);
+      setActionError(null);
+      try {
+        const response = await postVerifierCaseAction(selectedCaseId, {
+          action,
+          actor: "verifier",
+        });
+        setDetail((prev) => (prev ? { ...prev, case: response.case } : prev));
+        setEvents((prev) => [response.event, ...prev]);
+        setCases((prev) =>
+          prev.map((item) => (item.case_id === response.case.case_id ? response.case : item))
+        );
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "Failed to update status");
+      } finally {
+        setActionInProgress(null);
+      }
+    },
+    [selectedCaseId]
+  );
+
+  const handleAddNote = useCallback(async () => {
+    if (!selectedCaseId) return;
+    if (!noteText.trim()) {
+      setNoteError("Note cannot be empty");
+      return;
+    }
+    setNoteSaving(true);
+    setNoteError(null);
+    try {
+      const response = await postVerifierCaseNote(selectedCaseId, {
+        note: noteText.trim(),
+        actor: "verifier",
+      });
+      setNotes((prev) => [response.note, ...prev]);
+      setEvents((prev) => [response.event, ...prev]);
+      setNoteText("");
+    } catch (err) {
+      setNoteError(err instanceof Error ? err.message : "Failed to add note");
+    } finally {
+      setNoteSaving(false);
+    }
+  }, [noteText, selectedCaseId]);
 
   const statusOptions = useMemo(() => {
     const values = new Set(["pending_review", "approved", "rejected"]);
@@ -316,16 +380,84 @@ export const CaseWorkspace: React.FC = () => {
                     </div>
                   </div>
 
+                  <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-slate-700">Actions</h3>
+                      {actionError && <span className="text-xs text-red-600">{actionError}</span>}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => handleAction("approve")}
+                        disabled={actionInProgress !== null}
+                        className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                      >
+                        {actionInProgress === "approve" ? "Approving…" : "Approve"}
+                      </button>
+                      <button
+                        onClick={() => handleAction("reject")}
+                        disabled={actionInProgress !== null}
+                        className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                      >
+                        {actionInProgress === "reject" ? "Rejecting…" : "Reject"}
+                      </button>
+                      <button
+                        onClick={() => handleAction("needs_review")}
+                        disabled={actionInProgress !== null}
+                        className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        {actionInProgress === "needs_review" ? "Updating…" : "Needs review"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-slate-700">Notes</h3>
+                      {noteError && <span className="text-xs text-red-600">{noteError}</span>}
+                    </div>
+                    <textarea
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      rows={3}
+                      className="w-full rounded-md border border-slate-200 p-2 text-sm"
+                      placeholder="Add a note for this case…"
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        onClick={handleAddNote}
+                        disabled={noteSaving}
+                        className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        {noteSaving ? "Saving…" : "Add note"}
+                      </button>
+                    </div>
+                    {notes.length === 0 ? (
+                      <p className="text-xs text-slate-500">No notes yet.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {notes.map((note) => (
+                          <div key={note.id} className="rounded border border-slate-100 bg-slate-50 p-2 text-xs">
+                            <div className="flex items-center justify-between text-slate-500">
+                              <span>{note.actor || "verifier"}</span>
+                              <span>{safeFormatRelative(note.created_at)}</span>
+                            </div>
+                            <p className="mt-1 text-slate-700 whitespace-pre-wrap">{note.note}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="rounded-lg border border-slate-200 bg-white p-4">
                     <div className="flex items-center justify-between">
                       <h3 className="text-sm font-semibold text-slate-700">Recent events</h3>
-                      <span className="text-xs text-slate-500">{detail.events.length} events</span>
+                      <span className="text-xs text-slate-500">{events.length} events</span>
                     </div>
-                    {detail.events.length === 0 ? (
+                    {events.length === 0 ? (
                       <p className="mt-3 text-xs text-slate-500">No events recorded.</p>
                     ) : (
                       <ul className="mt-3 space-y-2">
-                        {detail.events.map((event) => (
+                        {events.map((event) => (
                           <li key={event.id} className="rounded border border-slate-100 bg-slate-50 p-2">
                             <div className="flex items-center justify-between text-xs text-slate-600">
                               <span className="font-semibold text-slate-700">{event.event_type}</span>

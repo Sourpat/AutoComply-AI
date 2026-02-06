@@ -6,7 +6,7 @@ const VERIFIER_BASE = "/api/verifier";
 
 export type VerifierCase = {
   case_id: string;
-  submission_id: string;
+  submission_id: string | null;
   status: string;
   jurisdiction: string | null;
   created_at: string;
@@ -22,6 +22,14 @@ export type VerifierCaseEvent = {
   created_at: string;
 };
 
+export type VerifierNote = {
+  id: number;
+  case_id: string;
+  note: string;
+  actor: string | null;
+  created_at: string;
+};
+
 export type VerifierCasesResponse = {
   items: VerifierCase[];
   limit: number;
@@ -32,6 +40,28 @@ export type VerifierCasesResponse = {
 export type VerifierCaseDetail = {
   case: VerifierCase;
   events: VerifierCaseEvent[];
+  notes: VerifierNote[];
+};
+
+export type VerifierCaseActionRequest = {
+  action: "approve" | "reject" | "needs_review";
+  actor?: string;
+  reason?: string;
+};
+
+export type VerifierCaseActionResponse = {
+  case: VerifierCase;
+  event: VerifierCaseEvent;
+};
+
+export type VerifierCaseNoteRequest = {
+  note: string;
+  actor?: string;
+};
+
+export type VerifierCaseNoteResponse = {
+  note: VerifierNote;
+  event: VerifierCaseEvent;
 };
 
 export async function fetchVerifierCases(params: {
@@ -60,6 +90,40 @@ export async function fetchVerifierCases(params: {
 
 export async function fetchVerifierCaseDetail(caseId: string): Promise<VerifierCaseDetail> {
   return apiFetch<VerifierCaseDetail>(`${VERIFIER_BASE}/cases/${caseId}`, {
+    headers: getAuthHeaders(),
+  });
+}
+
+export async function postVerifierCaseAction(
+  caseId: string,
+  payload: VerifierCaseActionRequest
+): Promise<VerifierCaseActionResponse> {
+  return apiFetch<VerifierCaseActionResponse>(`${VERIFIER_BASE}/cases/${caseId}/actions`, {
+    method: "POST",
+    headers: getJsonHeaders(),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function postVerifierCaseNote(
+  caseId: string,
+  payload: VerifierCaseNoteRequest
+): Promise<VerifierCaseNoteResponse> {
+  return apiFetch<VerifierCaseNoteResponse>(`${VERIFIER_BASE}/cases/${caseId}/notes`, {
+    method: "POST",
+    headers: getJsonHeaders(),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchVerifierCaseEvents(caseId: string): Promise<VerifierCaseEvent[]> {
+  return apiFetch<VerifierCaseEvent[]>(`${VERIFIER_BASE}/cases/${caseId}/events`, {
+    headers: getAuthHeaders(),
+  });
+}
+
+export async function fetchVerifierCaseNotes(caseId: string): Promise<VerifierNote[]> {
+  return apiFetch<VerifierNote[]>(`${VERIFIER_BASE}/cases/${caseId}/notes`, {
     headers: getAuthHeaders(),
   });
 }

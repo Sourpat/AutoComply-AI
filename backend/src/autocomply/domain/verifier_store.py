@@ -49,14 +49,55 @@ def ensure_schema() -> None:
             created_at TEXT
         );
         """,
+        """
+        CREATE TABLE IF NOT EXISTS verifier_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            case_id TEXT,
+            event_type TEXT,
+            payload_json TEXT,
+            created_at TEXT
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS verifier_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            case_id TEXT,
+            note TEXT,
+            actor TEXT,
+            created_at TEXT
+        );
+        """,
         "CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status);",
         "CREATE INDEX IF NOT EXISTS idx_cases_created_at ON cases(created_at);",
         "CREATE INDEX IF NOT EXISTS idx_cases_submission_id ON cases(submission_id);",
         "CREATE INDEX IF NOT EXISTS idx_case_events_case_id ON case_events(case_id);",
+        "CREATE INDEX IF NOT EXISTS idx_verifier_events_case_id ON verifier_events(case_id);",
+        "CREATE INDEX IF NOT EXISTS idx_verifier_events_created_at ON verifier_events(created_at);",
+        "CREATE INDEX IF NOT EXISTS idx_verifier_notes_case_id ON verifier_notes(case_id);",
+        "CREATE INDEX IF NOT EXISTS idx_verifier_notes_created_at ON verifier_notes(created_at);",
     ]
     with engine.begin() as conn:
         for statement in ddl_statements:
             conn.execute(text(statement))
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _fetch_case(conn, case_id: str) -> Optional[Dict[str, Any]]:
+    row = conn.execute(
+        text(
+            """
+            SELECT case_id, submission_id, status, jurisdiction,
+                   created_at, updated_at, summary
+            FROM cases
+            WHERE case_id = :case_id
+            """
+        ),
+        {"case_id": case_id},
+    ).mappings().first()
+    return dict(row) if row else None
 
 
 def seed_cases(n: int = 10) -> Dict[str, int]:
@@ -98,6 +139,8 @@ def seed_cases(n: int = 10) -> Dict[str, int]:
         )
 
     with engine.begin() as conn:
+        conn.execute(text("DELETE FROM verifier_events"))
+        conn.execute(text("DELETE FROM verifier_notes"))
         conn.execute(text("DELETE FROM case_events"))
         conn.execute(text("DELETE FROM cases"))
         for case in cases:
@@ -119,7 +162,7 @@ def seed_cases(n: int = 10) -> Dict[str, int]:
             conn.execute(
                 text(
                     """
-                    INSERT INTO case_events (
+                    INSERT INTO verifier_events (
                         case_id, event_type, payload_json, created_at
                     ) VALUES (
                         :case_id, :event_type, :payload_json, :created_at
@@ -182,17 +225,7 @@ def get_case(case_id: str) -> Optional[Dict[str, Any]]:
     engine = get_engine()
 
     with engine.begin() as conn:
-        case_row = conn.execute(
-            text(
-                """
-                SELECT case_id, submission_id, status, jurisdiction,
-                       created_at, updated_at, summary
-                FROM cases
-                WHERE case_id = :case_id
-                """
-            ),
-            {"case_id": case_id},
-        ).mappings().first()
+        case_row = _fetch_case(conn, case_id)
 
         if not case_row:
             return None
@@ -201,16 +234,214 @@ def get_case(case_id: str) -> Optional[Dict[str, Any]]:
             text(
                 """
                 SELECT id, case_id, event_type, payload_json, created_at
-                FROM case_events
+                FROM verifier_events
                 WHERE case_id = :case_id
                 ORDER BY created_at DESC
-                LIMIT 10
+                LIMIT 50
+                """
+            ),
+            {"case_id": case_id},
+        ).mappings().all()
+
+        notes = conn.execute(
+            text(
+                """
+                SELECT id, case_id, note, actor, created_at
+                FROM verifier_notes
+                WHERE case_id = :case_id
+                ORDER BY created_at DESC
                 """
             ),
             {"case_id": case_id},
         ).mappings().all()
 
     return {
-        "case": dict(case_row),
+        "case": case_row,
         "events": [dict(row) for row in events],
+        "notes": [dict(row) for row in notes],
     }
+
+
+def add_action(
+    case_id: str,
+    action: str,
+    actor: Optional[str] = None,
+    reason: Optional[str] = None,
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    ensure_schema()
+    engine = get_engine()
+
+    action_map = {
+        "approve": "approved",
+        "reject": "rejected",
+        "needs_review": "pending_review",
+    }
+    if action not in action_map:
+        raise ValueError("Invalid action")
+
+    updated_status = action_map[action]
+    now = _now_iso()
+    payload = json.dumps(
+        {
+            "action": action,
+            "actor": actor,
+            "reason": reason,
+            "status": updated_status,
+        }
+    )
+
+    with engine.begin() as conn:
+        case_row = _fetch_case(conn, case_id)
+        if not case_row:
+            return None, None
+
+        conn.execute(
+            text(
+                """
+                UPDATE cases
+                SET status = :status, updated_at = :updated_at
+                WHERE case_id = :case_id
+                """
+            ),
+            {"status": updated_status, "updated_at": now, "case_id": case_id},
+        )
+
+        conn.execute(
+            text(
+                """
+                INSERT INTO verifier_events (
+                    case_id, event_type, payload_json, created_at
+                ) VALUES (
+                    :case_id, :event_type, :payload_json, :created_at
+                )
+                """
+            ),
+            {
+                "case_id": case_id,
+                "event_type": "action",
+                "payload_json": payload,
+                "created_at": now,
+            },
+        )
+        event_id = conn.execute(text("SELECT last_insert_rowid() AS id")).mappings().first()["id"]
+        updated_case = _fetch_case(conn, case_id)
+
+    event = {
+        "id": event_id,
+        "case_id": case_id,
+        "event_type": "action",
+        "payload_json": payload,
+        "created_at": now,
+    }
+    return updated_case, event
+
+
+def add_note(
+    case_id: str,
+    note: str,
+    actor: Optional[str] = None,
+    max_length: int = 2000,
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    ensure_schema()
+    engine = get_engine()
+
+    if len(note) > max_length:
+        raise ValueError("Note too long")
+
+    now = _now_iso()
+    with engine.begin() as conn:
+        case_row = _fetch_case(conn, case_id)
+        if not case_row:
+            return None, None
+
+        conn.execute(
+            text(
+                """
+                INSERT INTO verifier_notes (
+                    case_id, note, actor, created_at
+                ) VALUES (
+                    :case_id, :note, :actor, :created_at
+                )
+                """
+            ),
+            {
+                "case_id": case_id,
+                "note": note,
+                "actor": actor,
+                "created_at": now,
+            },
+        )
+        note_id = conn.execute(text("SELECT last_insert_rowid() AS id")).mappings().first()["id"]
+
+        payload = json.dumps({"note_id": note_id, "actor": actor, "note": note})
+        conn.execute(
+            text(
+                """
+                INSERT INTO verifier_events (
+                    case_id, event_type, payload_json, created_at
+                ) VALUES (
+                    :case_id, :event_type, :payload_json, :created_at
+                )
+                """
+            ),
+            {
+                "case_id": case_id,
+                "event_type": "note",
+                "payload_json": payload,
+                "created_at": now,
+            },
+        )
+        event_id = conn.execute(text("SELECT last_insert_rowid() AS id")).mappings().first()["id"]
+
+    note_row = {
+        "id": note_id,
+        "case_id": case_id,
+        "note": note,
+        "actor": actor,
+        "created_at": now,
+    }
+    event_row = {
+        "id": event_id,
+        "case_id": case_id,
+        "event_type": "note",
+        "payload_json": payload,
+        "created_at": now,
+    }
+    return note_row, event_row
+
+
+def list_events(case_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+    ensure_schema()
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(
+            text(
+                """
+                SELECT id, case_id, event_type, payload_json, created_at
+                FROM verifier_events
+                WHERE case_id = :case_id
+                ORDER BY created_at DESC
+                LIMIT :limit
+                """
+            ),
+            {"case_id": case_id, "limit": limit},
+        ).mappings().all()
+    return [dict(row) for row in rows]
+
+
+def list_notes(case_id: str) -> List[Dict[str, Any]]:
+    ensure_schema()
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(
+            text(
+                """
+                SELECT id, case_id, note, actor, created_at
+                FROM verifier_notes
+                WHERE case_id = :case_id
+                ORDER BY created_at DESC
+                """
+            ),
+            {"case_id": case_id},
+        ).mappings().all()
+    return [dict(row) for row in rows]

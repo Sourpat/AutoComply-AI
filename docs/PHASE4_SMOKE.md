@@ -32,6 +32,8 @@ npm run build
 3. Use Status and Jurisdiction filters → list updates
 4. Click a case → detail panel shows fields + recent events
 5. If list is empty in dev, use “Seed demo cases” CTA → list populates
+6. Click Approve/Reject/Needs review → status updates and event appears
+7. Add a note → note appears and event appears in timeline
 
 ## Optional: RC smoke
 ```powershell

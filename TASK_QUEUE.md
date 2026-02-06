@@ -52,10 +52,13 @@
 **Acceptance Criteria**:
 - [x] Backend: persist submissions → cases table / case store (or reuse workflow store)
 - [x] Backend: list cases endpoint for verifier (filter/sort/pagination)
+- [x] Backend: actions + notes + events endpoints (persisted)
 - [ ] Backend: case detail endpoint includes latest explain run + citations metadata
 - [x] Frontend: Verifier Console uses /api/verifier/cases (list/detail + filters + errors)
+- [x] Frontend: Verifier actions + notes + timeline
 - [x] Seed/Fixtures: deterministic 10 demo cases
 - [x] Tests: API contract tests for list/detail endpoints
+- [x] Tests: verifier actions + notes
 - [ ] Docs: Phase4 demo script + architecture note
 **Tasks**:
 - [x] Backend store + schema bootstrap
@@ -63,6 +66,8 @@
 - [x] Verifier cases list/detail endpoints
 - [x] Tests: test_verifier_cases_api.py
 - [x] Frontend: Verifier Console wiring (list/detail + filters + errors + seed CTA)
+- [x] Backend + frontend: verifier actions + notes + events
+- [x] Tests: test_verifier_actions_api.py
 - [x] Docs: PHASE4_PLAN.md + PHASE4_SMOKE.md updates
 **Verification**:
 - TBD (see docs/PHASE4_SMOKE.md)

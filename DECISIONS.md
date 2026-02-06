@@ -75,6 +75,25 @@
 
 **Status**: Accepted
 
+### [2026-02-06] Verifier actions + notes stored in Phase 4 verifier store
+
+**Context**: Phase 4.3 needs actionable verifier workflow (approve/reject/needs_review) with notes and a timeline, all persisted in the Phase 4 verifier store.
+
+**Decision**: Add `verifier_events` and `verifier_notes` tables to the Phase 4 SQLite store. Expose `/api/verifier/cases/{case_id}/actions`, `/notes`, and `/events` endpoints, and surface these in the Verifier Console UI with immediate status updates and timeline rendering.
+
+**Rationale**:
+- Keeps Phase 4 workflow state and audit trail isolated to the verifier store
+- Enables deterministic, testable action and note flows without touching workflow DB
+
+**Alternatives Considered**:
+- Reuse workflow audit tables: rejected to keep Phase 4 scope minimal and deterministic
+
+**Consequences**:
+- Positive: End-to-end verifier actions and notes persisted with timeline visibility
+- Neutral: Additional tables in verifier store to maintain
+
+**Status**: Accepted
+
 ### [2026-02-06] RC Gate release gate + commit SHA precedence
 
 **Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).
