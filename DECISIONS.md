@@ -36,6 +36,248 @@
 
 ## Decisions
 
+### [2026-02-06] RC Gate release gate + commit SHA precedence
+
+**Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).
+
+**Decision**: Treat RC Gate as the release gate. Standardize commit SHA precedence as: Render env vars (RENDER_GIT_COMMIT/RENDER_COMMIT_SHA/RENDER_GIT_SHA) → GIT_SHA → GITHUB_SHA → fallback.
+
+**Rationale**:
+- RC Gate is the definitive readiness signal for releases
+- Render deploys should surface their own commit hash before CI metadata
+
+**Alternatives Considered**:
+- Prefer GITHUB_SHA first: rejected because it overrides Render deploy metadata
+
+**Consequences**:
+- Positive: Health metadata is stable and testable across CI and Render
+- Neutral: Additional env var checks in /health/details
+
+**Status**: Accepted
+
+### [2026-02-06] Reset settings cache between tests
+
+**Context**: Several tests toggle `APP_ENV` and `DEV_SEED_TOKEN`, but `get_settings()` is cached. This caused environment-dependent endpoints (like `/dev/seed`) to intermittently read stale production settings in CI.
+
+**Decision**: Add an autouse pytest fixture in [backend/tests/conftest.py](backend/tests/conftest.py) that clears `get_settings` cache before and after each test.
+
+**Rationale**:
+- Keeps environment overrides reliable without restructuring app initialization
+- Eliminates cross-test leakage from cached settings
+
+**Alternatives Considered**:
+- Remove caching from `get_settings`: rejected due to broader runtime impact
+- Rebuild the FastAPI app per test: rejected due to cost and test complexity
+
+**Consequences**:
+- Positive: Stable, deterministic test behavior across env overrides
+- Negative: Minor overhead from cache resets per test
+
+**Status**: Accepted
+
+### [2026-02-05] Deterministic knowledge pack mode for evidence retrieval
+
+**Context**: Evidence citations varied across environments because retrieval depended on whatever KB was available at runtime.
+
+**Decision**: Add a small, versioned knowledge pack in-repo and route evidence retrieval to a deterministic pack retriever when `ENV=ci` or `KNOWLEDGE_MODE=pack`. Surface pack counts in ops kb-stats and set `knowledge_version` to `kp-v1` in explain results.
+
+**Rationale**:
+- Ensures golden suite and ops smoke are reproducible in CI and local demos
+- Removes dependency on external/variable KB contents
+- Keeps retrieval deterministic with a simple token overlap scorer
+
+**Alternatives Considered**:
+- Pinning external KB data: rejected due to operational coupling
+- Disabling evidence in CI entirely: rejected due to losing coverage guarantees
+
+**Consequences**:
+- Positive: Stable, environment-independent evidence behavior
+- Neutral: Pack must be maintained alongside KB updates
+
+**Status**: Accepted
+
+### [2026-02-05] Explain run retention, compaction, and storage health guardrails
+
+**Context**: Explain runs must remain bounded and storage health needs to be observable to prevent long-run degradation.
+
+**Decision**: Add retention and compaction utilities, a guarded ops maintenance endpoint, and storage health checks in ops smoke with warn/fail thresholds.
+
+**Rationale**:
+- Prevents unbounded growth of explain run storage
+- Enables manual or scheduled maintenance without blocking explain path
+- Surfaces storage risk early in ops checks
+
+**Alternatives Considered**:
+- External job/cron only: rejected to keep local ops control
+
+**Consequences**:
+- Positive: Operational durability for explain runs
+- Neutral: Occasional VACUUM overhead when thresholds are met
+
+**Status**: Accepted
+
+### [2026-02-05] Explain drift detection and ops drift lock
+
+**Context**: Explainability must be stable and any change must be classified and surfaced for auditability.
+
+**Decision**: Add a drift classifier that attributes changes to input, policy, knowledge, or engine versions, and enforce a drift lock in ops smoke that fails on unexpected changes.
+
+**Rationale**:
+- Prevents silent behavior changes
+- Makes drift attributable for audits and ops
+
+**Alternatives Considered**:
+- Only compare run IDs: rejected because it hides causal drift
+
+**Consequences**:
+- Positive: Strong stability guarantees for explain replay
+- Neutral: Adds drift metadata to diff response
+
+**Status**: Accepted
+
+### [2026-02-05] Strict canonical validation and claim gating for explain v1
+
+**Context**: Explain v1 requires deterministic validation and a guardrail to prevent unsupported claims in summaries, especially before any richer narrative generation is introduced.
+
+**Decision**: Add canonical validation that returns MissingField entries without raising, enforce ExplainResult contract validation at runtime, and gate summaries with a deterministic claim gate that replaces unsafe summaries with safe templates.
+
+**Rationale**:
+- Ensures malformed payloads cannot be marked approved
+- Enforces contract integrity before responses are returned
+- Prevents regulatory claims without supporting evidence
+
+**Alternatives Considered**:
+- Add LLM-only moderation: rejected to keep deterministic safeguards
+- Skip runtime validation: rejected due to silent contract drift risk
+
+**Consequences**:
+- Positive: Stronger reliability wall for explainability responses
+- Neutral: Additional validation logic on each request
+
+**Status**: Accepted
+
+### [2026-02-05] Explain run idempotency, correlation IDs, and SQLite hardening
+
+**Context**: Explain v1 runs need to be production-safe under concurrent requests, with traceable request IDs and idempotent deduplication.
+
+**Decision**: Enable SQLite WAL + busy_timeout, serialize writes with a process lock, and add idempotency + request ID metadata to explain run records. Use a deterministic `run_dedupe_key` when `Idempotency-Key` is present to reuse runs.
+
+**Rationale**:
+- Avoids write contention errors under concurrent traffic
+- Prevents duplicate runs for retry storms
+- Provides end-to-end traceability via `X-Request-Id`
+
+**Alternatives Considered**:
+- Move to a separate DB: rejected to keep local storage lightweight
+- Ignore idempotency: rejected due to retry duplication risk
+
+**Consequences**:
+- Positive: Explain runs are reliable and traceable in production-like load
+- Neutral: Adds a small amount of metadata to SQLite rows
+
+**Status**: Accepted
+
+### [2026-02-05] Explain run IDs include timestamp for immutable replay
+
+**Context**: Replay/diff auditing requires multiple Explain v1 runs to be stored for the same submission without collisions.
+
+**Decision**: Append a timestamp suffix to the Explain run ID to guarantee uniqueness while preserving the submission hash prefix.
+
+**Rationale**:
+- Prevents SQLite primary key collisions when replaying the same submission
+- Keeps run IDs human-readable and traceable to a submission hash
+- Enables ops smoke replay_diff to compare consecutive runs reliably
+
+**Alternatives Considered**:
+- Use UUIDs only: rejected to keep run IDs traceable to submission hash
+- Overwrite existing runs: rejected because audit trail must be immutable
+
+**Consequences**:
+- Positive: Immutable audit log supports multiple replays per submission
+- Neutral: Run IDs are slightly longer due to timestamp suffix
+
+**Status**: Accepted
+
+### [2026-02-05] Deterministic evidence retrieval with truth gate for Explain v1
+
+**Context**: Explain v1 needed to attach regulatory evidence to fired rules without allowing RAG to alter decisions or fabricate citations.
+
+**Decision**: Add a deterministic evidence retriever backed by existing regulatory knowledge search, map rule IDs to fixed query templates, and enforce a truth gate that withholds regulatory claims when no citations are found.
+
+**Rationale**:
+- Ensures evidence attachment is reproducible and grounded in existing KB
+- Keeps policy engine deterministic and independent from retrieval
+- Prevents hallucinated citations by requiring matches or returning empty results
+
+**Alternatives Considered**:
+- Use free-form RAG generation: rejected due to hallucination risk
+- Add a new vector database: rejected to keep infra unchanged
+
+**Consequences**:
+- Positive: Explain v1 now returns citations when available and safe summaries when not
+- Neutral: Evidence coverage depends on KB content and query templates
+
+**Status**: Accepted
+
+### [2026-02-04] Explainability Contract v1 with canonical normalization
+
+**Context**: The RAG explainability flow needed a deterministic, backend-first contract to avoid hallucinated decisions and ensure consistent evaluation across payload variants.
+
+**Decision**: Introduce a canonical ExplainResult contract, submission normalizers for csf_practitioner and csf_hospital_ohio, and a deterministic policy engine wired to a new /api/rag/explain/v1 endpoint with explicit versioning.
+
+**Rationale**:
+- Guarantees explainability output only depends on canonical payload + rules
+- Provides a stable response shape for frontend integration
+- Enables future contract evolution via versioned helpers
+
+**Alternatives Considered**:
+- Continue using legacy explain debug payloads: rejected due to inconsistent schemas
+- Add ad-hoc logic in the endpoint: rejected to keep normalization and evaluation reusable
+
+**Consequences**:
+- Positive: Stable contract and deterministic outputs for explainability
+- Neutral: Additional versioning metadata added to responses
+
+**Status**: Accepted
+
+### [2026-02-04] RAG Explorer explainability layout + required-field completeness
+
+**Context**: The RAG Explorer View Details page needed a clearer, premium explainability layout and data completeness scoring that does not show 0% when the submission payload is missing.
+
+**Decision**: Refactor the explainability UI into summary cards plus evidence/completeness columns, and compute completeness using a fixed required-field list with explicit empty-state handling when payload data is missing.
+
+**Rationale**:
+- Keeps explainability aligned with compliance reviewer expectations
+- Prevents misleading 0% completeness when payloads are absent
+- Provides consistent decision status/risk cues based on missing BLOCK/REVIEW fields
+
+**Alternatives Considered**:
+- Continue rule-expectations scoring: rejected because it can show 0% when payload is missing
+- Leave layout unchanged: rejected due to clarity and UX requirements
+
+**Consequences**:
+- Positive: Clearer explainability flow and more accurate completeness messaging
+- Neutral: Completeness logic is now independent of rule expectation metadata
+
+**Status**: Accepted
+
+### [2026-02-03] Ops smoke endpoint exposed at /api/ops/smoke
+
+**Context**: Local smoke checks needed a stable, unauthenticated endpoint and OpenAPI visibility at `/api/ops/smoke` to mirror production.
+
+**Decision**: Expose the smoke check under `/api/ops/smoke` via an ops router alias with no auth dependencies so it appears in OpenAPI and can be called directly.
+
+**Rationale**:
+- Keeps smoke checks decoupled from admin auth
+- Preserves a single canonical smoke handler
+- Ensures documentation parity with production
+
+**Consequences**:
+- Positive: `/api/ops/smoke` is callable without headers and documented
+- Neutral: No schema changes
+
+**Status**: Accepted
+
 ### [2026-02-03] Demo answers + forced health refresh for Console
 
 **Context**: Console displayed “Backend Not Reachable” even after backend recovery due to cached health checks, and demo questions in Chat were routed to the backend and queued.
@@ -1071,6 +1313,57 @@
 - Commit: 075c245
 - Issue: Cases list 500 error
 - File: backend/app/workflow/sla.py
+
+### [2026-02-05] Add Explain v1 golden suite gate
+
+**Context**: Explain v1 changes need a deterministic regression gate that exercises the full contract without relying on HTTP calls.
+
+**Decision**: Add versioned golden case fixtures and a runner that reuses `build_explain_contract_v1`, validating status/risk/missing fields/rules and claim gating when citations are absent. Expose the runner via `/api/ops/golden/run` and include it in pytest + RC smoke.
+
+**Rationale**:
+- Ensures explain contract regressions are caught in CI and ops smoke
+- Reuses the same build path to avoid divergence
+- Keeps fixtures stable and easy to extend
+
+**Alternatives Considered**:
+- HTTP-only golden runs: Rejected (slower, less deterministic in tests)
+- Snapshotting raw responses: Rejected (too brittle across benign changes)
+
+**Consequences**:
+- Positive: Deterministic gating for explain v1 behavior
+- Negative: Adds lightweight fixture maintenance
+- Neutral: No schema changes
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-026
+- Area: explainability golden suite
+
+### [2026-02-05] Include golden suite in ops smoke readiness
+
+**Context**: Demo readiness should be validated by a single authoritative endpoint without requiring separate golden suite calls.
+
+**Decision**: Execute a limited golden suite run inside `/api/ops/smoke` and surface the result as `checks.golden_suite` with a brief failure summary.
+
+**Rationale**:
+- Ensures a single demo-ready signal for Console
+- Keeps the golden suite fast via a fixed limit
+- Avoids two sources of truth during RC smoke
+
+**Alternatives Considered**:
+- Keep golden suite separate: Rejected (split readiness indicators)
+
+**Consequences**:
+- Positive: One-call readiness signal includes golden regression coverage
+- Negative: Slightly longer ops smoke execution time
+- Neutral: No schema changes
+
+**Status**: Accepted
+
+**Related**:
+- Tasks: T-026
+- Area: ops smoke readiness
 
 ---
 

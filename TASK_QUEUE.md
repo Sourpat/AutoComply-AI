@@ -1,8 +1,10 @@
 # Task Queue
 
-**Last Updated**: 2026-02-03
+**Last Updated**: 2026-02-06
 
 **Active WIP**: 0
+
+**Demo Ready RC Smoke**: powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1
 
 ---
 
@@ -10,6 +12,42 @@
 
 
 > **Status Legend**: `pending` | `in-progress` | `blocked` | `completed`
+
+
+### Phase 3.8 — RC Gate readiness + CI env guards
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Harden CI readiness wait, deterministic env, and backend log artifacts
+**Acceptance Criteria**:
+- [x] Backend startup uses readiness loop (no fixed sleep)
+- [x] CI sets ENV=ci for backend + ops gates
+- [x] Backend .data directory ensured in CI
+- [x] Uvicorn logs uploaded on all runs
+**Verification**:
+- GitHub Actions RC Gate passes and logs artifact uploaded
+- Local: `C:/Python314/python.exe -m pytest -q`
+**Dependencies**: None
+**Notes**: RC Gate green.
+
+
+### Phase 3.10 — CI health version + intelligence schema
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Fix health version assertion and ensure intelligence schema bootstrap in CI/tests
+**Acceptance Criteria**:
+- [x] /health/details version assertion is env-safe (APP_VERSION or git/semver)
+- [x] intelligence tables + indexes created deterministically
+- [x] schema bootstrap runs in API startup and pytest fixtures
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_signal_intelligence.py backend/tests/test_health_details.py`
+- `C:/Python314/python.exe -m pytest -q`
+**Dependencies**: None
+**Notes**: RC Gate green.
+
+
+
+
+
 
 ### Example Task Template (DELETE THIS AFTER READING)
 ```markdown
@@ -82,6 +120,8 @@
 
 ## P1 - High Priority (Do Next)
 
+
+
 ### T-016: Audit suite demo readiness
 **Status**: deferred
 **Assigned**: (none)
@@ -109,50 +149,43 @@
 
 **Phase 8 Status**: DONE
 
-### BUG-204: Fix workflow proxy for console health
-**Completed**: 2026-02-03
-**Commit**: (pending)
-**Summary**: Added /workflow proxy so Console health checks hit the backend in dev.
+### Phase 3.10 — CI health version + intelligence schema
+**Completed**: 2026-02-06
+**Commit**: 8afe541, 5bf0658, 79e561a
+**Summary**: Bootstrapped intelligence schema in startup/tests and normalized /health/details version/commit precedence.
 **Verification**:
-- `Invoke-RestMethod http://localhost:5173/workflow/health`
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_signal_intelligence.py backend/tests/test_health_details.py`
+- `C:/Python314/python.exe -m pytest -q`
 
-### BUG-203: Fix console recovery + demo questions
-**Completed**: 2026-02-03
-**Commit**: (pending)
-**Summary**: Standardized dev proxy/API base usage, added forced health refresh on retry, and demo question answers in chat.
+### Phase 3.8 — RC Gate readiness + CI env guards
+**Completed**: 2026-02-06
+**Commit**: 057233a, 9fe4389, 45858ef
+**Summary**: Hardened RC Gate env/pytest logging, readiness checks, and artifacts.
 **Verification**:
-- `irm "http://127.0.0.1:8001/health/full" | ConvertTo-Json -Depth 10`
-- `npm -C frontend run build`
-- `http://localhost:5173/chat` demo questions answer locally
+- GitHub Actions RC Gate success
 
-### BUG-202: Fix dev routing + chat queue end-to-end
-**Completed**: 2026-02-03
-**Commit**: (pending)
-**Summary**: Limited Vite proxy to API-only routes, standardized chat client on `/api/v1/chat`, and verified chat-to-review-queue flow.
+### Phase 3.9 — Deterministic knowledge pack mode
+**Completed**: 2026-02-06
+**Commit**: 53d38df
+**Summary**: Validated CI-parity pack mode, fixed pack path + ops ci allowances, enforced kp-v1 in rc smoke, and updated pack retriever test.
 **Verification**:
-- GET http://127.0.0.1:8001/health/full
-- GET http://localhost:5173/chat (SPA HTML)
-- POST http://127.0.0.1:8001/api/v1/chat/ask (200)
-- GET http://127.0.0.1:8001/api/v1/admin/review-queue/items?limit=20 (item created)
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_pack_retriever.py backend/tests/test_golden_suite.py`
 
-### Fix Review Queue 403 (Auth headers parity)
-**Completed**: 2026-02-03
+### T-026: Explain golden suite gate
+**Completed**: 2026-02-05
 **Commit**: (pending)
-**Summary**: Normalized role + dev seed token headers across stack and tightened Review Queue auth.
+**Summary**: Added golden-case fixtures, runner, ops endpoint, pytest gate, RC smoke step, and ops smoke golden suite check for Explain v1.
 **Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_review_queue_auth.py`
-- `npm -C frontend run build`
-- Manual: http://localhost:5173/admin/review loads without 403
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_golden_suite.py`
+- `Invoke-RestMethod -Method Post http://127.0.0.1:8001/api/ops/golden/run`
 
-### Fix Chat page 404 (Chat API parity)
-**Completed**: 2026-02-03
+### T-025: Explain run retention + storage health
+**Completed**: 2026-02-05
 **Commit**: (pending)
-**Summary**: Added /api/chat alias + health endpoint and aligned Chat UI to shared API base with diagnostics.
+**Summary**: Added retention/compaction utilities, storage health checks, and ops maintenance endpoint with tests.
 **Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_chat_alias_routes.py`
-- `npm -C frontend run build`
-- Manual: http://localhost:5173/chat loads without {"detail":"Not Found"}
-
+- `C:/Python314/python.exe -m pytest -q backend/tests/test_explain_maintenance.py backend/tests/test_ops_smoke.py`
+- `powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1`
 
 ---
 
@@ -190,4 +223,19 @@
 - Refactoring for code quality
 - Documentation improvements
 - Tech debt cleanup
+
+
+### BUG-205: Restore ops smoke endpoint
+**Status**: blocked
+**Assigned**: GitHub Copilot
+**Goal**: Ensure GET /api/ops/smoke returns 200 locally and appears in OpenAPI
+**Acceptance Criteria**:
+- [ ] GET /api/ops/smoke returns 200 locally
+- [ ] /api/ops/smoke appears in /openapi.json
+- [ ] No auth required for /api/ops/smoke
+**Verification**:
+- `Invoke-RestMethod http://127.0.0.1:8001/api/ops/smoke`
+- `Invoke-RestMethod http://127.0.0.1:8001/openapi.json | Select-String /api/ops/smoke`
+**Dependencies**: None
+**Notes**: Port 8001 is currently bound by an unknown process; need it freed to verify locally.
 

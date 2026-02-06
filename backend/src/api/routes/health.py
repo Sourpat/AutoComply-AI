@@ -61,7 +61,7 @@ async def health_check() -> HealthStatus:
     - Provide a 'checks' dict that can be extended later
       (e.g., to include RAG, DB, external LLM provider, etc.).
     """
-    version = os.getenv("AUTOCOMPLY_VERSION", "0.1.0")
+    version = os.getenv("APP_VERSION") or os.getenv("AUTOCOMPLY_VERSION", "0.1.0")
 
     checks = {
         "fastapi": "ok",
@@ -219,9 +219,11 @@ async def health_details() -> HealthDetails:
     # Check multiple env var sources for commit SHA (platform-specific)
     commit_sha = (
         os.getenv("RENDER_GIT_COMMIT")  # Render platform
-        or os.getenv("SOURCE_VERSION")  # Azure
-        or os.getenv("GITHUB_SHA")  # GitHub Actions
+        or os.getenv("RENDER_COMMIT_SHA")
+        or os.getenv("RENDER_GIT_SHA")
         or os.getenv("GIT_SHA")  # Custom
+        or os.getenv("GITHUB_SHA")  # GitHub Actions
+        or os.getenv("SOURCE_VERSION")  # Azure
         or os.getenv("COMMIT_SHA")  # Generic
     )
     

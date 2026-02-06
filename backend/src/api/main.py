@@ -28,7 +28,11 @@ from src.api.routes.ohio_tddd_explain import router as ohio_tddd_explain_router
 from src.api.routes.license_ohio_tddd import router as license_ohio_tddd_router
 from src.api.routes.pdma_sample import router as pdma_sample_router
 from src.api.routes import decision_audit
-from src.api.routes.rag_regulatory import router as rag_regulatory_router
+from src.api.routes.rag_regulatory import (
+    router as rag_regulatory_router,
+    explain_contract_v1,
+)
+from src.autocomply.domain.explainability.models import ExplainResult
 from src.api.routes import regulatory_search
 from src.api.routes import license_validation as license_validation_module
 from src.api.routes.order_mock_approval import router as order_mock_router
@@ -49,7 +53,6 @@ from src.api.routes import kb_admin
 from src.api.routes import demo
 from src.api.routes import ops
 from src.api.routes import demo_reset
-from src.api.routes import ops_smoke
 from src.api.routes import agentic
 from src.api.routes import audit_packets
 from src.api.routes import audit_events
@@ -233,6 +236,13 @@ def _ensure_safe_failure_schema() -> None:
 
 def startup_migrations() -> None:
     init_db()
+    from src.core.db import get_engine
+    from src.database.schema_intelligence import ensure_intelligence_schema
+
+    app_env = settings.APP_ENV.lower()
+    engine = get_engine()
+    if app_env in {"dev", "ci", "local"} or engine.dialect.name == "sqlite":
+        ensure_intelligence_schema(engine)
     _ensure_intelligence_history_schema()
     _ensure_trace_fields_schema()
     _ensure_policy_overrides_schema()
@@ -383,6 +393,14 @@ app.include_router(csf_facility_v1_router)
 app.include_router(csf_ems_router)
 app.include_router(csf_explain_router)
 app.include_router(rag_regulatory_router)
+app.include_router(rag_regulatory_router, prefix="/api")
+app.add_api_route(
+    "/api/rag/explain/v1",
+    explain_contract_v1,
+    methods=["POST"],
+    response_model=ExplainResult,
+    tags=["rag_regulatory"],
+)
 app.include_router(regulatory_search.router)
 app.include_router(pdma_sample_router)
 app.include_router(decision_history.router)
@@ -409,13 +427,14 @@ app.include_router(metrics.router)
 app.include_router(kb_admin.router)
 app.include_router(demo.router)
 app.include_router(ops.router)
+app.include_router(ops.smoke_router)
 app.include_router(demo_reset.router)
-app.include_router(ops_smoke.router)
 app.include_router(agentic.router)
 app.include_router(audit_packets.router)
 app.include_router(audit_events.router)
 app.include_router(policy_contracts.router)
 app.include_router(policy_safe_failures.router)
+
 
 # Workflow Console - Step 2.10
 app.include_router(workflow_router)
@@ -429,6 +448,7 @@ app.include_router(policy_router)
 
 # Submissions persistence
 app.include_router(submissions_router)
+app.include_router(submissions_router, prefix="/api")
 
 # Analytics - Step 2.11, 2.12
 app.include_router(analytics_router)

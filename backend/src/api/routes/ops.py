@@ -6,9 +6,9 @@ Read-only endpoints that provide operational metrics and review queue analytics.
 SECURITY: All endpoints require admin role via X-User-Role header.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Any, Annotated, Dict, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case
 from datetime import datetime, timedelta, timezone
@@ -16,13 +16,23 @@ from datetime import datetime, timedelta, timezone
 from src.database.connection import get_db
 from src.database.models import ReviewQueueItem, ReviewStatus, QuestionEvent, QuestionStatus
 from src.autocomply.domain.submissions_store import get_submission_store, SubmissionStatus
-from src.api.dependencies.auth import require_admin_role
+from app.submissions.seed import seed_demo_submissions
+import os
+from src.api.dependencies.auth import AUTO_ROLE_HEADER, ROLE_HEADER, require_admin_role
+from src.autocomply.domain.explainability.maintenance import prune_runs, vacuum_if_needed
+from src.autocomply.domain.explainability.golden_runner import run_golden_suite
+from src.autocomply.domain.explainability.versioning import get_knowledge_version
+from src.autocomply.domain.evidence import pack_retriever
+from src.autocomply.regulations.knowledge import get_regulatory_knowledge
+from src.api.routes.ops_smoke import ops_smoke as ops_smoke_handler
 
 router = APIRouter(
     prefix="/api/v1/admin/ops",
     tags=["admin", "ops"],
     dependencies=[Depends(require_admin_role)],  # All endpoints require admin role
 )
+
+smoke_router = APIRouter(prefix="/api/ops", tags=["ops"])
 
 
 # ============================================================================
@@ -68,6 +78,143 @@ class OpsSubmissionResponse(BaseModel):
     decision_status: Optional[str]
     risk_level: Optional[str]
     trace_id: str
+
+
+class SeedSubmissionsResponse(BaseModel):
+    inserted: int
+    ids: List[str]
+
+
+class ExplainMaintenanceRequest(BaseModel):
+    max_age_days: int = 30
+    max_rows: int = 5000
+    vacuum_threshold: int = 500
+
+
+class GoldenRunRequest(BaseModel):
+    version: str = "v1"
+
+
+@smoke_router.post("/explain/maintenance")
+async def explain_maintenance(
+    payload: ExplainMaintenanceRequest,
+    x_user_role: Annotated[str | None, Header(alias=ROLE_HEADER)] = None,
+    x_autocomply_role: Annotated[str | None, Header(alias=AUTO_ROLE_HEADER)] = None,
+) -> Dict[str, Any]:
+    env = os.getenv("ENV", "local")
+    if env not in {"local", "ci"}:
+        require_admin_role(
+            x_user_role=x_user_role,
+            x_autocomply_role=x_autocomply_role,
+        )
+
+    result = prune_runs(
+        max_age_days=payload.max_age_days,
+        max_rows=payload.max_rows,
+    )
+    vacuum_ran = vacuum_if_needed(payload.vacuum_threshold)
+
+    return {
+        "ok": True,
+        "deleted_rows": result.get("deleted_rows", 0),
+        "remaining_rows": result.get("remaining_rows", 0),
+        "vacuum_ran": vacuum_ran,
+    }
+
+
+@smoke_router.post("/golden/run")
+async def golden_run(
+    payload: GoldenRunRequest = GoldenRunRequest(),
+    x_user_role: Annotated[str | None, Header(alias=ROLE_HEADER)] = None,
+    x_autocomply_role: Annotated[str | None, Header(alias=AUTO_ROLE_HEADER)] = None,
+) -> Dict[str, Any]:
+    env = os.getenv("ENV", "local")
+    if env not in {"local", "ci"}:
+        require_admin_role(
+            x_user_role=x_user_role,
+            x_autocomply_role=x_autocomply_role,
+        )
+
+    result = await run_golden_suite(version=payload.version)
+    if not result.get("ok"):
+        raise HTTPException(status_code=500, detail={"message": "Golden suite failed", "result": result})
+
+    return result
+
+
+@smoke_router.get("/smoke")
+async def ops_smoke_alias():
+    return await ops_smoke_handler()
+
+
+@smoke_router.get("/kb-stats")
+async def kb_stats() -> Dict[str, Any]:
+    if pack_retriever.is_pack_mode():
+        stats = pack_retriever.get_pack_stats()
+        return {
+            "ok": True,
+            "knowledge_version": stats.get("knowledge_version"),
+            "docs_total": stats.get("docs_total"),
+            "chunks_total": stats.get("chunks_total"),
+            "jurisdictions": stats.get("jurisdictions", {}),
+            "last_ingested_at": None,
+            "notes": "knowledge_pack_mode",
+        }
+
+    knowledge = get_regulatory_knowledge()
+    knowledge_version = get_knowledge_version()
+    sources = getattr(knowledge, "_sources_by_id", None)
+    notes: List[str] = []
+
+    if not isinstance(sources, dict):
+        return {
+            "ok": False,
+            "knowledge_version": knowledge_version,
+            "docs_total": None,
+            "chunks_total": None,
+            "jurisdictions": {},
+            "last_ingested_at": None,
+            "notes": "Knowledge inventory unavailable",
+        }
+
+    source_list = list(sources.values())
+    if not source_list:
+        notes.append("No regulatory sources loaded")
+
+    doc_ids = {getattr(src, "id", None) for src in source_list if getattr(src, "id", None)}
+    docs_total = len(doc_ids) if doc_ids else None
+    chunks_total = len(source_list) if source_list else None
+
+    jurisdictions: Dict[str, int] = {}
+    for src in source_list:
+        jurisdiction = getattr(src, "jurisdiction", None) or "unknown"
+        jurisdictions[jurisdiction] = jurisdictions.get(jurisdiction, 0) + 1
+
+    ok = docs_total is not None and chunks_total is not None
+    return {
+        "ok": ok,
+        "knowledge_version": knowledge_version,
+        "docs_total": docs_total,
+        "chunks_total": chunks_total,
+        "jurisdictions": jurisdictions,
+        "last_ingested_at": None,
+        "notes": "; ".join(notes) if notes else None,
+    }
+
+
+@smoke_router.post("/seed-submissions", response_model=SeedSubmissionsResponse)
+async def seed_submissions() -> SeedSubmissionsResponse:
+    env = os.getenv("ENV", "local")
+    if env not in {"local", "ci"}:
+        raise HTTPException(status_code=403, detail="Seed endpoint only available in local or ci environment")
+
+    store = get_submission_store()
+    inserted = seed_demo_submissions(store)
+
+    return SeedSubmissionsResponse(
+        inserted=len(inserted),
+        ids=[item["id"] for item in inserted],
+    )
 
 
 # ============================================================================

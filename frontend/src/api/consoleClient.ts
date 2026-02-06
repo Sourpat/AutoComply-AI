@@ -24,6 +24,14 @@ export interface WorkQueueSubmission {
   reviewed_at: string | null;
 }
 
+export async function getConsoleSubmission(
+  submissionId: string
+): Promise<WorkQueueSubmission> {
+  return apiFetch<WorkQueueSubmission>(`${CONSOLE_BASE}/submissions/${submissionId}`, {
+    headers: getAuthHeaders(),
+  });
+}
+
 export interface WorkQueueResponse {
   items: WorkQueueSubmission[];
   statistics: Record<string, unknown>;

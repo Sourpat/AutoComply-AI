@@ -18,6 +18,7 @@ export default function RagExplorerPage() {
   const [searchParams] = useSearchParams();
   const [selectedExplainRequest, setSelectedExplainRequest] = useState<ExplainRequest | null>(null);
   const explainPanelRef = useRef<HTMLDivElement>(null);
+  const submissionIdFromRoute = searchParams.get("submission_id") ?? searchParams.get("submissionId") ?? undefined;
 
   // Handle auto-scroll on mount if autoload=1
   useEffect(() => {
@@ -94,29 +95,24 @@ export default function RagExplorerPage() {
         <div className="space-y-6 pb-8">
           {/* Helper Text */}
           <div className="rounded-lg bg-white border-2 border-slate-300 shadow-md px-5 py-4">
-            <h3 className="text-base font-bold text-slate-900 mb-3">How to use this page</h3>
-            <ul className="space-y-2 text-sm text-slate-800 leading-6">
-              <li className="flex items-start gap-2">
-                <span className="shrink-0 mt-0.5">🔍</span>
-                <span><strong>Search:</strong> Query the regulatory knowledge base to see ranked snippets</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="shrink-0 mt-0.5">⚙️</span>
-                <span><strong>Explain:</strong> Simulate CSF decisions and see which rules fired. Choose between <strong>Sandbox mode</strong> (pre-defined scenarios) or <strong>Connected mode</strong> (load from your last CSF submission)</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="shrink-0 mt-0.5">📄</span>
-                <span><strong>Preview:</strong> View full regulatory documents stored in the knowledge base</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="shrink-0 mt-0.5">💡</span>
-                <span><strong>Tip:</strong> Use Jurisdiction filter to narrow results</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="shrink-0 mt-0.5">ℹ️</span>
-                <span><strong>Note:</strong> Sandbox explorer; does not change production data</span>
-              </li>
-            </ul>
+            <h3 className="text-base font-bold text-slate-900 mb-3">Explainability briefing</h3>
+            <div className="grid gap-3 md:grid-cols-3 text-sm text-slate-800">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="font-semibold text-slate-900 mb-1">Submission data</div>
+                <p className="text-xs text-slate-600">Facility, license IDs, expiration dates, and payload fields drive the decision input.</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="font-semibold text-slate-900 mb-1">Policy rules</div>
+                <p className="text-xs text-slate-600">Deterministic rules evaluate the submission and mark pass/fail requirements.</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="font-semibold text-slate-900 mb-1">Regulatory evidence</div>
+                <p className="text-xs text-slate-600">Cited snippets show the exact guidance used for each rule.</p>
+              </div>
+            </div>
+            <div className="mt-3 text-xs text-slate-600">
+              Use Step 1 to search the knowledge base, Step 2 to explain a decision, and Step 3 to preview source documents.
+            </div>
           </div>
 
           <section className="console-section">
@@ -148,13 +144,14 @@ export default function RagExplorerPage() {
                 2
               </span>
               <h2 className="text-base font-bold text-slate-900">
-                Decision explainability (simulated scenarios)
+                Decision explainability (what drove the outcome)
               </h2>
             </div>
             <RegulatoryDecisionExplainPanel 
               selectedExplainRequest={selectedExplainRequest}
               onConsumed={() => setSelectedExplainRequest(null)}
               explainPanelRef={explainPanelRef}
+              submissionIdFromRoute={submissionIdFromRoute}
             />
           </section>
 

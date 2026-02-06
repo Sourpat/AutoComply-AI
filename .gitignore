@@ -52,6 +52,7 @@ frontend/build/
 # Local data folders
 data/
 tmp/
+.data/
 backend/app/data/
 backend/data/
 backend/tmp/

@@ -1,6 +1,7 @@
-from fastapi import APIRouter
-from pydantic import BaseModel, Field, root_validator
+from fastapi import APIRouter, HTTPException, Request, Response
+from pydantic import BaseModel, Field, ValidationError, root_validator
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 from src.autocomply.domain.rag_regulatory_explain import (
     RegulatoryRagAnswer,
@@ -29,6 +30,32 @@ from src.api.models.compliance_models import RegulatoryExplainResponse, Regulato
 from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 from src.stores.decision_store import get_decision_store
 from src.autocomply.domain.submissions_store import get_submission_store
+from src.autocomply.domain.explainability.claim_gate import gate_summary
+from src.autocomply.domain.explainability.drift import ENGINE_VERSION, detect_drift
+from src.autocomply.domain.explainability.models import ExplainResult, NextStep, validate_explain_result
+from src.autocomply.domain.explainability.store import (
+    diff_explain_runs,
+    get_run,
+    insert_run,
+    list_runs,
+)
+from src.autocomply.domain.explainability.versioning import (
+    get_knowledge_version,
+    get_policy_version,
+    hash_canonical_submission,
+    make_run_id,
+)
+from src.autocomply.domain.policy.engine import evaluate_submission
+from src.autocomply.domain.policy.rule_evidence import RULE_EVIDENCE_QUERIES
+from src.autocomply.domain.evidence.retriever import retrieve_evidence_with_stats
+from src.autocomply.domain.submissions.normalizers import (
+    normalize_csf_hospital_ohio,
+    normalize_csf_practitioner,
+)
+from src.autocomply.domain.submissions.validate import validate_canonical
+from src.utils.logger import get_logger
+
+logger = get_logger("rag_regulatory")
 
 router = APIRouter(
     prefix="/rag",
@@ -88,6 +115,12 @@ class RegulatoryRagResponse(RegulatoryExplainResponse):
     """
 
     pass
+
+
+class ExplainV1Request(BaseModel):
+    submission_type: Optional[str] = Field(None, description="Canonical submission type")
+    submission_id: Optional[str] = None
+    payload: Dict[str, Any] = Field(default_factory=dict)
 
 
 class RegulatoryPreviewRequest(BaseModel):
@@ -256,10 +289,29 @@ async def regulatory_explain_endpoint(
                         "id": fr.id,
                         "title": fr.title,
                         "severity": fr.severity,
+                        "jurisdiction": fr.jurisdiction,
                         "citation": fr.citation,
+                        "rationale": fr.rationale,
+                        "requirement": fr.requirement,
+                        "snippet": fr.snippet,
                     }
                     for fr in eval_result.fired_rules
                 ],
+                "evaluated_rules": [
+                    {
+                        "id": rule.id,
+                        "title": rule.title,
+                        "severity": rule.severity,
+                        "jurisdiction": rule.jurisdiction,
+                        "citation": rule.citation,
+                        "rationale": rule.rationale,
+                        "requirement": rule.requirement,
+                        "status": rule.status,
+                    }
+                    for rule in getattr(eval_result, "evaluated_rules", [])
+                ],
+                "satisfied_requirements": getattr(eval_result, "satisfied_requirements", []),
+                "decision_summary": getattr(eval_result, "decision_summary", ""),
                 "missing_evidence": eval_result.missing_evidence,
                 "next_steps": eval_result.next_steps,
             },
@@ -291,6 +343,269 @@ async def regulatory_explain_endpoint(
         answer.regulatory_references = [src.id for src in fallback_sources if src.id]
 
     return RegulatoryRagResponse(**answer.model_dump())
+
+
+async def build_explain_contract_v1(
+    payload: ExplainV1Request,
+    request_id: Optional[str] = None,
+    idempotency_key: Optional[str] = None,
+) -> ExplainResult:
+    submission_type = (payload.submission_type or "").strip().lower()
+    submission_payload = payload.payload
+
+    if not submission_payload and payload.submission_id:
+        store = get_submission_store()
+        stored = store.get_submission(payload.submission_id)
+        if not stored:
+            raise HTTPException(status_code=404, detail=f"Submission not found: {payload.submission_id}")
+        submission_payload = stored.payload or {}
+        if not submission_type:
+            csf_type = (stored.csf_type or "").strip().lower()
+            if csf_type == "practitioner":
+                submission_type = "csf_practitioner"
+            elif csf_type == "hospital":
+                submission_type = "csf_hospital_ohio"
+
+    if submission_type == "csf_practitioner":
+        canonical = normalize_csf_practitioner(submission_payload)
+    elif submission_type in {"csf_hospital_ohio", "ohio_tddd"}:
+        canonical = normalize_csf_hospital_ohio(submission_payload)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported submission_type: {payload.submission_type}")
+
+    if payload.submission_id:
+        canonical = canonical.model_copy(update={"submission_id": payload.submission_id})
+
+    missing_from_validation = validate_canonical(canonical)
+    if not canonical.submission_id:
+        canonical = canonical.model_copy(update={"submission_id": "unknown"})
+
+    status, risk, missing_fields, fired_rules, next_steps = evaluate_submission(canonical)
+    merged_missing_fields = list(missing_fields)
+    existing_missing_keys = {(field.key, field.category) for field in merged_missing_fields}
+    for field in missing_from_validation:
+        key = (field.key, field.category)
+        if key in existing_missing_keys:
+            continue
+        merged_missing_fields.append(field)
+        existing_missing_keys.add(key)
+
+    existing_actions = {step.action for step in next_steps}
+    for field in merged_missing_fields:
+        action = f"Provide {field.label}"
+        if action in existing_actions:
+            continue
+        next_steps.append(
+            NextStep(
+                action=action,
+                blocking=field.category == "BLOCK",
+                rationale=field.reason,
+            )
+        )
+        existing_actions.add(action)
+
+    block_missing = [field for field in merged_missing_fields if field.category == "BLOCK"]
+    review_missing = [field for field in merged_missing_fields if field.category == "REVIEW"]
+
+    if block_missing:
+        status = "blocked"
+        risk = "high"
+    elif review_missing:
+        if status == "approved":
+            status = "needs_review"
+            risk = "medium"
+        elif status == "needs_review":
+            risk = "medium"
+
+    if status == "approved":
+        summary = "Approved: all required fields satisfied."
+    elif status == "needs_review":
+        summary = f"Needs review: {len(review_missing)} item(s) require review."
+    else:
+        summary = f"Blocked: {len(block_missing)} blocking field(s) missing."
+
+    retrieval_k = 4
+    citations = []
+    rules_with_citations = 0
+    total_elapsed_ms = 0
+    for rule in fired_rules:
+        queries = RULE_EVIDENCE_QUERIES.get(rule.id, [])
+        if not queries:
+            continue
+        rule_citations, stats = retrieve_evidence_with_stats(
+            queries=queries,
+            jurisdiction=canonical.jurisdiction,
+            k=retrieval_k,
+        )
+        total_elapsed_ms += stats.elapsed_ms
+        if rule_citations:
+            rules_with_citations += 1
+        citations.extend(rule_citations)
+
+    seen_keys = set()
+    unique_citations = []
+    for citation in citations:
+        key = (citation.doc_id, citation.chunk_id)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        unique_citations.append(citation)
+
+    citations = unique_citations
+    unique_docs = len({citation.doc_id for citation in citations if citation.doc_id})
+    fired_rules_count = len(fired_rules)
+    citations_count = len(citations)
+    evidence_coverage = rules_with_citations / max(1, fired_rules_count)
+
+    debug_notes: List[str] = []
+    if fired_rules and not citations:
+        debug_notes.append("no_supporting_evidence_found")
+        summary = "Blocking rule triggered. No supporting citation returned yet."
+
+    submission_hash = hash_canonical_submission(canonical)
+
+    debug_payload: Dict[str, Any] = {
+        "submission_type": canonical.kind,
+        "jurisdiction": canonical.jurisdiction or "",
+        "engine_version": ENGINE_VERSION,
+        "retrieval": {
+            "top_k": retrieval_k,
+            "elapsed_ms": total_elapsed_ms,
+            "unique_docs": unique_docs,
+        },
+        "evidence": {
+            "fired_rules_count": fired_rules_count,
+            "citations_count": citations_count,
+            "rules_with_citations": rules_with_citations,
+            "evidence_coverage": evidence_coverage,
+        },
+        "knowledge": {
+            "knowledge_version": get_knowledge_version(),
+        },
+    }
+    if request_id:
+        debug_payload["request_id"] = request_id
+    if idempotency_key:
+        debug_payload["idempotency_key"] = idempotency_key
+    if debug_notes:
+        debug_payload["note"] = ";".join(debug_notes)
+
+    summary = gate_summary(summary, merged_missing_fields, fired_rules, citations, status)
+
+    explain_result = ExplainResult(
+        run_id=make_run_id(submission_hash),
+        submission_id=canonical.submission_id,
+        submission_hash=submission_hash,
+        policy_version=get_policy_version(),
+        knowledge_version=get_knowledge_version(),
+        status=status,
+        risk=risk,
+        summary=summary,
+        missing_fields=merged_missing_fields,
+        fired_rules=fired_rules,
+        citations=citations,
+        next_steps=next_steps,
+        debug=debug_payload,
+    )
+
+    debug_payload = explain_result.debug or {}
+    debug_payload["validation"] = {
+        "missing_count": len(missing_from_validation),
+        "sources": ["canonical_validator"],
+    }
+    explain_result.debug = debug_payload
+
+    try:
+        stored_run_id = insert_run(
+            explain_result,
+            request_id=request_id,
+            idempotency_key=idempotency_key,
+        )
+        if stored_run_id != explain_result.run_id:
+            explain_result.run_id = stored_run_id
+            debug_payload = explain_result.debug or {}
+            existing_note = str(debug_payload.get("note", "")).strip()
+            if existing_note:
+                debug_payload["note"] = f"{existing_note};idempotent_reuse"
+            else:
+                debug_payload["note"] = "idempotent_reuse"
+            explain_result.debug = debug_payload
+    except Exception as exc:
+        logger.exception("Explain run persistence failed", exc_info=exc)
+        debug_payload = explain_result.debug or {}
+        existing_note = str(debug_payload.get("note", "")).strip()
+        if existing_note:
+            debug_payload["note"] = f"{existing_note};run_persist_failed"
+        else:
+            debug_payload["note"] = "run_persist_failed"
+        explain_result.debug = debug_payload
+
+    try:
+        explain_result = validate_explain_result(explain_result.model_dump())
+    except ValidationError as exc:
+        logger.exception(
+            "ExplainResult contract invalid",
+            exc_info=exc,
+            extra={"request_id": request_id or ""},
+        )
+        raise HTTPException(status_code=500, detail="ExplainResult contract invalid")
+
+    return explain_result
+
+
+@router.post("/explain/v1", response_model=ExplainResult)
+async def explain_contract_v1(
+    payload: ExplainV1Request,
+    request: Request,
+    response: Response,
+) -> ExplainResult:
+    request_id = request.headers.get("X-Request-Id") or str(uuid4())
+    idempotency_key = request.headers.get("Idempotency-Key")
+    response.headers["X-Request-Id"] = request_id
+    return await build_explain_contract_v1(
+        payload,
+        request_id=request_id,
+        idempotency_key=idempotency_key,
+    )
+
+
+@router.get("/explain/runs")
+async def list_explain_runs(
+    submission_id: Optional[str] = None,
+    limit: int = 50,
+) -> Dict[str, Any]:
+    runs = list_runs(submission_id=submission_id, limit=limit)
+    return {"ok": True, "runs": runs}
+
+
+@router.get("/explain/runs/{run_id}")
+async def get_explain_run(run_id: str) -> Dict[str, Any]:
+    run = get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+    return {"ok": True, "run": run}
+
+
+@router.get("/explain/diff")
+async def diff_explain_runs_endpoint(run_a: str, run_b: str) -> Dict[str, Any]:
+    record_a = get_run(run_a)
+    record_b = get_run(run_b)
+    if not record_a or not record_b:
+        missing = run_a if not record_a else run_b
+        raise HTTPException(status_code=404, detail=f"Run not found: {missing}")
+    response = diff_explain_runs(record_a, record_b)
+    drift = detect_drift(record_a, record_b)
+    response["drift"] = {
+        "changed": drift.changed,
+        "reason": drift.reason,
+        "fields_changed": drift.fields_changed,
+    }
+    if drift.changed and drift.reason == "unknown":
+        debug_payload = response.setdefault("debug", {})
+        existing_note = str(debug_payload.get("note", "")).strip()
+        note = "unattributed_drift_detected"
+        debug_payload["note"] = f"{existing_note};{note}" if existing_note else note
+    return response
 
 
 @router.get("/regulatory/scenarios")

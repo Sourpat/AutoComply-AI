@@ -1,0 +1,21 @@
+{
+  "id": "case_007",
+  "submission_type": "csf_hospital_ohio",
+  "submission": {
+    "submission_id": "golden-sub-007",
+    "form": {
+      "state": "OH",
+      "authorized_schedules": ["II"],
+      "attestation_complete": "yes",
+      "tddd_expiration": "2026-05-01"
+    }
+  },
+  "expect": {
+    "status": "blocked",
+    "risk": "high",
+    "must_include_rules": ["OH_TDDD_REQUIRED"],
+    "must_include_missing_keys": ["tddd_cert"],
+    "min_citations": 1,
+    "min_evidence_coverage": 0.1
+  }
+}

@@ -9,7 +9,7 @@ import { getAuthHeaders, getJsonHeaders } from '../lib/authHeaders';
 import { cachedFetchJson } from './apiCache';
 import type { SubmissionRecord, CreateSubmissionInput } from '../submissions/submissionTypes';
 
-const SUBMISSIONS_BASE = `${API_BASE}/submissions`;
+const SUBMISSIONS_BASE = `${API_BASE}/api/submissions`;
 
 export interface SubmissionFilters {
   decisionType?: string;

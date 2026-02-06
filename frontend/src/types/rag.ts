@@ -24,3 +24,56 @@ export interface RegulatoryPreviewItem extends Partial<RagSource> {
 export interface RegulatoryPreviewResponse {
   items: RegulatoryPreviewItem[];
 }
+
+export type ExplainStatus = "approved" | "needs_review" | "blocked";
+export type ExplainRiskLevel = "low" | "medium" | "high";
+export type ExplainFieldCategory = "BLOCK" | "REVIEW" | "INFO";
+
+export interface ExplainMissingField {
+  key: string;
+  label: string;
+  category: ExplainFieldCategory;
+  path?: string | null;
+  reason?: string | null;
+}
+
+export interface ExplainFiredRule {
+  id: string;
+  name: string;
+  severity: ExplainFieldCategory;
+  rationale: string;
+  inputs: Record<string, string>;
+  conditions?: Record<string, string> | null;
+}
+
+export interface ExplainCitation {
+  doc_id: string;
+  chunk_id: string;
+  snippet: string;
+  jurisdiction?: string | null;
+  confidence?: number | null;
+  source_title?: string | null;
+  url?: string | null;
+}
+
+export interface ExplainNextStep {
+  action: string;
+  blocking: boolean;
+  rationale?: string | null;
+}
+
+export interface ExplainResult {
+  run_id: string;
+  submission_id: string;
+  submission_hash: string;
+  policy_version: string;
+  knowledge_version: string;
+  status: ExplainStatus;
+  risk: ExplainRiskLevel;
+  summary: string;
+  missing_fields: ExplainMissingField[];
+  fired_rules: ExplainFiredRule[];
+  citations: ExplainCitation[];
+  next_steps: ExplainNextStep[];
+  debug?: Record<string, any> | null;
+}

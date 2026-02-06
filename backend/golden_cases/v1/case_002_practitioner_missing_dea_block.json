@@ -1,0 +1,21 @@
+{
+  "id": "case_002",
+  "submission_type": "csf_practitioner",
+  "submission": {
+    "submission_id": "golden-sub-002",
+    "form": {
+      "dea_expiration": "2026-01-01",
+      "state_license_number": "SL-456",
+      "state_license_expiration": "2026-01-01",
+      "state": "OH",
+      "requested_schedules": ["II"]
+    }
+  },
+  "expect": {
+    "status": "blocked",
+    "risk": "high",
+    "must_include_rules": ["CSF_DEA_REQUIRED"],
+    "must_include_missing_keys": ["dea_number"],
+    "must_not_claim_when_no_citations": false
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "case_006",
+  "submission_type": "csf_practitioner",
+  "submission": {
+    "form": {
+      "dea_number": "AB1234567",
+      "dea_expiration": "2026-01-01",
+      "state_license_number": "SL-789",
+      "state_license_expiration": "2026-01-01",
+      "state": "OH",
+      "requested_schedules": ["II"],
+      "unknown_field": "unexpected"
+    },
+    "extra": {
+      "mystery": true
+    }
+  },
+  "expect": {
+    "status": "needs_review",
+    "risk": "medium",
+    "must_include_rules": [],
+    "must_include_missing_keys": ["submission_id"],
+    "must_not_claim_when_no_citations": false
+  }
+}

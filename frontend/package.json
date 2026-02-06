@@ -12,7 +12,8 @@
     "test": "vitest",
     "typecheck": "tsc --noEmit",
     "check:bundle": "node scripts/check_bundle_size.js",
-    "smoke:prod": "node scripts/prodSmoke.js"
+    "smoke:prod": "node scripts/prodSmoke.js",
+    "rag:smoke": "node scripts/rag_e2e_smoke.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",

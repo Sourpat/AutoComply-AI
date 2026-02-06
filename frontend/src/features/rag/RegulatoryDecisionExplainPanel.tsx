@@ -1,30 +1,40 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ragExplain, type DecisionExplainResponse } from "../../api/ragClient";
+import { ragExplain, explainV1, type DecisionExplainResponse } from "../../api/ragClient";
+import { getWorkQueue, getConsoleSubmission, type WorkQueueSubmission } from "../../api/consoleClient";
 import { get_mock_scenarios } from "../../api/mockScenarios";
 import { useRagDebug } from "../../devsupport/RagDebugContext";
 import { demoStore } from "../../lib/demoStore";
-import * as submissionSelector from "../../submissions/submissionStoreSelector";
 import type { Submission } from "../../types/workQueue";
-import { normalizeTrace, type NormalizedTrace } from "../../lib/traceNormalizer";
+import type {
+  ExplainResult,
+  ExplainFiredRule,
+  ExplainMissingField
+} from "../../types/rag";
+import type { NormalizedTrace } from "../../lib/traceNormalizer";
 import { buildDecisionPacket } from "../../utils/buildDecisionPacket";
 import { downloadJson, downloadHtml } from "../../utils/exportPacket";
 import { generateDecisionPacketHtml } from "../../templates/decisionPacketTemplate";
-import { calculateCompleteness, getFieldDisplayName, type CompletenessScore } from "../../lib/completenessScorer";
+import type { CompletenessScore } from "../../lib/completenessScorer";
+import { API_BASE } from "../../lib/api";
 import { generateCounterfactuals, type Counterfactual } from "../../lib/counterfactualGenerator";
 import { generateRequestInfoMessage, type RequestInfoTemplate } from "../../lib/requestInfoGenerator";
+import {
+  completenessSchemas,
+  type CompletenessField,
+  type CompletenessSchema,
+} from "../../submissions/submissionTypes";
 import { useRole } from "../../context/RoleContext";
-import { 
-  canViewEvidence, 
-  canViewRuleIds, 
+import {
+  canViewEvidence,
+  canViewRuleIds,
   canUseConnectedMode,
   canViewDebugPanels,
   canDownloadPackets,
   canViewFiredRules,
   canViewCounterfactuals,
   canExportHtml,
-  canViewCompletenessDetails,
-  getRagExplorerInstructions
+  canViewCompletenessDetails
 } from "../../auth/permissions";
 import { Timeline } from "../../components/Timeline";
 import type { AuditEvent } from "../../types/audit";
@@ -66,11 +76,154 @@ interface EvaluatedRule {
   status: string; // "passed" | "failed" | "info"
 }
 
+type LocalCompleteness = {
+  scorePct: number;
+  presentCount: number;
+  totalCount: number;
+  missing: {
+    block: string[];
+    review: string[];
+    info: string[];
+  };
+  missingByCategory: Record<"block" | "review" | "info", CompletenessField[]>;
+};
+
+const getValueByPath = (source: Record<string, unknown> | null, path: string): unknown => {
+  if (!source) return undefined;
+  return path.split(".").reduce<unknown>((acc, key) => {
+    if (acc && typeof acc === "object" && key in (acc as Record<string, unknown>)) {
+      return (acc as Record<string, unknown>)[key];
+    }
+    return undefined;
+  }, source);
+};
+
+const getValueByPathSet = (
+  source: Record<string, unknown> | null,
+  path: string | string[]
+): unknown => {
+  if (!source) return undefined;
+  const paths = Array.isArray(path) ? path : [path];
+  for (const candidate of paths) {
+    const value = getValueByPath(source, candidate);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+};
+
+const isValuePresent = (value: unknown): boolean => {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
+  return true;
+};
+
+const computeCompleteness = (
+  payload: Record<string, unknown> | null,
+  schema: CompletenessSchema
+): LocalCompleteness => {
+  const totalCount = schema.fields.length;
+  const missingByCategory = {
+    block: [] as CompletenessField[],
+    review: [] as CompletenessField[],
+    info: [] as CompletenessField[]
+  };
+
+  let presentCount = 0;
+
+  for (const field of schema.fields) {
+    const isPresent = isValuePresent(getValueByPathSet(payload, field.path));
+    if (isPresent) {
+      presentCount += 1;
+    } else {
+      missingByCategory[field.category].push(field);
+    }
+  }
+
+  const scorePct = totalCount === 0 ? 0 : Math.round((presentCount / totalCount) * 100);
+  return {
+    presentCount,
+    totalCount,
+    scorePct,
+    missingByCategory,
+    missing: {
+      block: missingByCategory.block.map((field) => field.label),
+      review: missingByCategory.review.map((field) => field.label),
+      info: missingByCategory.info.map((field) => field.label)
+    }
+  };
+};
+
+const getDecisionTraceFromPayload = (payload: Record<string, unknown> | null) => {
+  if (!payload) return null;
+  const decision = (payload as Record<string, unknown>).decision;
+  if (decision && typeof decision === "object") {
+    return decision as Record<string, unknown>;
+  }
+  return null;
+};
+
+const mapWorkQueueSubmission = (item: WorkQueueSubmission): Submission => {
+  const payload = (item.payload ?? {}) as Record<string, unknown>;
+  const decisionTrace = getDecisionTraceFromPayload(payload);
+  const formPayload = (payload as Record<string, unknown>).form as Record<string, unknown> | undefined;
+
+  return {
+    id: item.submission_id,
+    kind: "csf",
+    displayName: item.title,
+    submittedAt: item.created_at,
+    payload: formPayload ?? payload,
+    decisionTrace: decisionTrace ?? {
+      status: item.decision_status,
+      risk_level: item.risk_level,
+      decision_summary: item.summary ?? "",
+      fired_rules: [],
+      missing_evidence: [],
+      next_steps: [],
+    },
+    status: item.status as any,
+    traceId: item.trace_id,
+    csfType: item.csf_type,
+    tenantId: item.tenant,
+  };
+};
+
+const resolveSchemaKey = (candidate?: string | null): string => {
+  if (!candidate) return "default";
+  const normalized = candidate.toLowerCase();
+  if (normalized in completenessSchemas) return normalized;
+  if (normalized.includes("csf") && normalized.includes("practitioner")) return "csf_practitioner";
+  if (normalized.includes("csf") && normalized.includes("facility")) return "csf_facility";
+  if (normalized.includes("csf") && normalized.includes("hospital")) return "csf_hospital";
+  if (normalized.includes("tddd")) return "ohio_tddd";
+  return "default";
+};
+
+const extractPayload = (detail: Record<string, unknown> | null) => {
+  if (!detail) return null;
+  const candidates = [
+    detail.payload,
+    detail.submission_payload,
+    detail.form_data,
+    detail.data,
+    (detail.submission as Record<string, unknown> | undefined)?.payload,
+  ];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === "object" && Object.keys(candidate as Record<string, unknown>).length > 0) {
+      return candidate as Record<string, unknown>;
+    }
+  }
+  return null;
+};
+
 interface RegulatoryDecisionExplainPanelProps {
   selectedExplainRequest?: any;
   onConsumed?: () => void;
   explainPanelRef?: React.RefObject<HTMLDivElement>;
   caseId?: string; // For evidence packet tracking
+  submissionIdFromRoute?: string;
 }
 
 export function RegulatoryDecisionExplainPanel({
@@ -78,6 +231,7 @@ export function RegulatoryDecisionExplainPanel({
   onConsumed,
   explainPanelRef,
   caseId = 'explainability-default', // Default case ID for standalone explainability
+  submissionIdFromRoute,
 }: RegulatoryDecisionExplainPanelProps) {
   const ragDebugContext = useRagDebug();
   const aiDebugEnabled = ragDebugContext?.enabled || false;
@@ -91,18 +245,21 @@ export function RegulatoryDecisionExplainPanel({
   // Connected mode state
   const [recentSubmissions, setRecentSubmissions] = useState<Submission[]>([]);
   const [filteredSubmissions, setFilteredSubmissions] = useState<Submission[]>([]);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'blocked' | 'submitted'>('all');
   const [selectedSubmission, setSelectedSubmission] = useState<string>("");
   const [loadedTrace, setLoadedTrace] = useState<Submission | null>(null);
+  const [selectedSubmissionPayload, setSelectedSubmissionPayload] = useState<Record<string, unknown> | null>(null);
+  const [selectedSchemaKey, setSelectedSchemaKey] = useState<string>("default");
+  const [submissionMenuOpen, setSubmissionMenuOpen] = useState(false);
   
   const [state, setState] = useState<RequestState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<DecisionExplainResponse | null>(null);
   const [normalizedTrace, setNormalizedTrace] = useState<NormalizedTrace | null>(null);
+  const [explainResult, setExplainResult] = useState<ExplainResult | null>(null);
   const [readyBanner, setReadyBanner] = useState<string | null>(null);
   
   // Explainability quality state
-  const [completenessScore, setCompletenessScore] = useState<CompletenessScore | null>(null);
+  const [completenessScore, setCompletenessScore] = useState<LocalCompleteness | null>(null);
   const [counterfactuals, setCounterfactuals] = useState<Counterfactual[]>([]);
 
   // Evidence Drawer state
@@ -150,29 +307,33 @@ export function RegulatoryDecisionExplainPanel({
     }
   }, [decisionSource]);
 
-  // Apply status filtering
+  // Keep submissions list unfiltered in connected mode
   useEffect(() => {
-    if (statusFilter === 'all') {
-      setFilteredSubmissions(recentSubmissions);
-    } else {
-      const workQueue = demoStore.getWorkQueue();
-      const filtered = recentSubmissions.filter(sub => {
-        const queueItem = workQueue.find(item => item.submissionId === sub.id);
-        if (!queueItem) return statusFilter === 'submitted';
-        return statusFilter === 'blocked' 
-          ? queueItem.status === 'blocked'
-          : queueItem.status === 'submitted' || queueItem.status === 'needs_review';
-      });
-      setFilteredSubmissions(filtered);
+    setFilteredSubmissions(recentSubmissions);
+  }, [recentSubmissions]);
+
+  const loadExplainById = async (submissionId: string) => {
+    setState("loading");
+    setError(null);
+    setExplainResult(null);
+    setResult(null);
+    setNormalizedTrace(null);
+    try {
+      const response = await explainV1(submissionId);
+      setExplainResult(response);
+      setState("success");
+    } catch (err: any) {
+      console.error("Explain v1 error:", err);
+      setError(err.message || "Failed to load explain v1 result");
+      setState("error");
     }
-  }, [recentSubmissions, statusFilter]);
+  };
 
   // Handle deep linking - auto-load trace from URL params
   useEffect(() => {
     const mode = searchParams.get("mode");
-    const submissionId = searchParams.get("submissionId");
+    const submissionId = submissionIdFromRoute ?? searchParams.get("submission_id") ?? searchParams.get("submissionId");
     const caseId = searchParams.get("caseId"); // Step 2.4: Support caseId from CaseWorkspace
-    const traceId = searchParams.get("traceId");
     const autoload = searchParams.get("autoload");
     const decisionType = searchParams.get("decisionType"); // Coverage deep-linking
     
@@ -194,83 +355,102 @@ export function RegulatoryDecisionExplainPanel({
           setSelectedSubmission(queueItem.submissionId);
           if (autoload === "1") {
             // Auto-trigger explain - navigate to connected mode
-            submissionSelector.getSubmission(queueItem.submissionId).then(submissionRecord => {
-              if (submissionRecord) {
-                window.location.href = `/console/rag?mode=connected&submissionId=${submissionRecord.id}`;
-              }
-            });
+            getConsoleSubmission(queueItem.submissionId)
+              .then((submissionRecord) => {
+                if (submissionRecord) {
+                  window.location.href = `/console/rag?mode=connected&submission_id=${submissionRecord.submission_id}`;
+                }
+              })
+              .catch(() => null);
           }
         }
       } else if (submissionId) {
         setSelectedSubmission(submissionId);
-        
-        if (autoload === "1") {
-          // Auto-load after a brief delay to ensure submissions are loaded
-          setTimeout(() => {
-            loadTraceById(submissionId);
-          }, 300);
-        }
+        loadExplainById(submissionId);
+      } else if (autoload === "1") {
+        setError("No submission_id provided");
+        setState("error");
       }
     }
   }, [searchParams]);
 
   const loadRecentSubmissions = () => {
-    try {
-      // Load from demoStore
-      const allSubmissions = demoStore.getRecentSubmissionsByType('csf', 50);
-      
-      // Deduplicate by submission.id
-      const seen = new Set<string>();
-      const deduped = allSubmissions.filter(sub => {
-        if (seen.has(sub.id)) return false;
-        seen.add(sub.id);
-        return true;
-      });
-      
-      // Sort by submittedAt desc
-      const sorted = deduped.sort((a, b) => 
-        new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
-      );
-      
-      console.log('[Connected] Loaded submissions from demoStore:', sorted.length);
-      setRecentSubmissions(sorted);
-      
-      if (sorted.length > 0 && !selectedSubmission) {
-        setSelectedSubmission(sorted[0].id);
-      }
-    } catch (err: any) {
-      console.error("Failed to load recent submissions:", err);
-      setError(err.message || "Failed to load submissions");
+    const isDev = (import.meta as any)?.env?.DEV === true;
+    const consoleUrl = `${API_BASE}/api/console/work-queue?limit=50`;
+    if (isDev) {
+      console.log("[Connected] Submissions list URL:", consoleUrl);
     }
+
+    getWorkQueue(undefined, undefined, 50)
+      .then((response) => {
+        const submissions = response.items.map(mapWorkQueueSubmission);
+        const deduped = submissions.filter((sub, idx, arr) =>
+          arr.findIndex((item) => item.id === sub.id) === idx
+        );
+        const sorted = deduped.sort((a, b) =>
+          new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+        );
+
+        console.log("[Connected] Loaded submissions from console API:", sorted.length);
+        setRecentSubmissions(sorted);
+        if (sorted.length > 0 && !selectedSubmission) {
+          setSelectedSubmission(sorted[0].id);
+        }
+      })
+      .catch((err: any) => {
+        console.warn("[Connected] Console API failed, falling back to demoStore:", err);
+        try {
+          const allSubmissions = demoStore.getRecentSubmissionsByType('csf', 50);
+          const seen = new Set<string>();
+          const deduped = allSubmissions.filter(sub => {
+            if (seen.has(sub.id)) return false;
+            seen.add(sub.id);
+            return true;
+          });
+          const sorted = deduped.sort((a, b) =>
+            new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+          );
+          console.log('[Connected] Loaded submissions from demoStore:', sorted.length);
+          setRecentSubmissions(sorted);
+          if (sorted.length > 0 && !selectedSubmission) {
+            setSelectedSubmission(sorted[0].id);
+          }
+        } catch (fallbackErr: any) {
+          console.error("Failed to load recent submissions:", fallbackErr);
+          setError(fallbackErr.message || "Failed to load submissions");
+        }
+      });
   };
 
   const loadTraceById = async (submissionId: string) => {
     setState("loading");
     setError(null);
     setLoadedTrace(null);
+    setExplainResult(null);
+    setSelectedSubmissionPayload(null);
+    console.log("[Connected] Loading submission by id:", submissionId);
+    const isDev = (import.meta as any)?.env?.DEV === true;
+    const detailUrl = `${API_BASE}/api/console/submissions/${submissionId}`;
+    if (isDev) {
+      console.log("[Connected] Submission detail URL:", detailUrl);
+    }
 
     try {
-      // Load from submission store by ID
-      const submissionRecord = await submissionSelector.getSubmission(submissionId);
-      if (!submissionRecord) {
-        throw new Error(`Submission ${submissionId} not found in store`);
-      }
-      
-      // Convert SubmissionRecord to Submission format expected by UI
-      const submission: Submission = {
-        id: submissionRecord.id,
-        submittedAt: submissionRecord.createdAt,
-        kind: submissionRecord.decisionType as any,
-        displayName: (submissionRecord.formData as any)?.practitioner?.facilityName || 
-                     (submissionRecord.formData as any)?.hospital?.facilityName ||
-                     `Submission ${submissionRecord.id}`,
-        payload: submissionRecord.formData || {},
-        traceId: (submissionRecord.rawPayload as any)?.trace_id || submissionRecord.id,
-        decisionTrace: submissionRecord.evaluatorOutput || {},
-      };
+      const detail = await getConsoleSubmission(submissionId);
+      const submission = mapWorkQueueSubmission(detail);
+      const payload = extractPayload({ payload: submission.payload }) || {};
+      const payloadKeys = payload ? Object.keys(payload).length : 0;
+      console.log("[Connected] Loaded submission payload keys:", payloadKeys);
       
       setLoadedTrace(submission);
       setSelectedSubmission(submissionId);
+      const schemaKey = resolveSchemaKey(detail.csf_type || detail.title || detail.tenant);
+      setSelectedSchemaKey(schemaKey);
+      setSelectedSubmissionPayload(payloadKeys > 0 ? payload : null);
+      const hasPayload = payload && Object.keys(payload).length > 0;
+      const schema = completenessSchemas[schemaKey] || completenessSchemas.default;
+      const completeness = hasPayload ? computeCompleteness(payload, schema) : null;
+      setCompletenessScore(completeness);
       
       // Load audit events for timeline
       const workQueue = demoStore.getWorkQueue();
@@ -282,10 +462,25 @@ export function RegulatoryDecisionExplainPanel({
         setAuditEvents([]);
       }
       
-      setState("idle");
+      setState(explainResult ? "success" : "idle");
       setReadyBanner(`Loaded ${submission.displayName} from ${new Date(submission.submittedAt).toLocaleString()}`);
       setTimeout(() => setReadyBanner(null), 3000);
     } catch (err: any) {
+      console.warn("[Connected] Console submission load failed, trying demoStore:", err);
+      const fallback = demoStore.getSubmission(submissionId);
+      if (fallback) {
+        setLoadedTrace(fallback);
+        setSelectedSubmission(submissionId);
+        setSelectedSubmissionPayload(fallback.payload || null);
+        const hasPayload = fallback.payload && Object.keys(fallback.payload).length > 0;
+        const schemaKey = resolveSchemaKey(fallback.csfType || fallback.kind || fallback.displayName);
+        setSelectedSchemaKey(schemaKey);
+        const schema = completenessSchemas[schemaKey] || completenessSchemas.default;
+        const completeness = hasPayload ? computeCompleteness(fallback.payload, schema) : null;
+        setCompletenessScore(completeness);
+        setState(explainResult ? "success" : "idle");
+        return;
+      }
       console.error("Load trace error:", err);
       setError(err.message || "Failed to load submission");
       setState("error");
@@ -296,33 +491,34 @@ export function RegulatoryDecisionExplainPanel({
     setState("loading");
     setError(null);
     setLoadedTrace(null);
+    setExplainResult(null);
+    setSelectedSubmissionPayload(null);
+    console.log("[Connected] Loading submission by trace id:", traceId);
 
     try {
-      // Load all submissions and find by traceId
-      const allSubmissions = await submissionSelector.listSubmissions();
-      const submissionRecord = allSubmissions.find(
-        (s) => s.rawPayload?.trace_id === traceId || s.id === traceId
+      const response = await getWorkQueue(undefined, undefined, 200);
+      const match = response.items.find(
+        (item) => item.trace_id === traceId || item.submission_id === traceId
       );
-      
-      if (!submissionRecord) {
+
+      if (!match) {
         throw new Error(`Submission with trace ID ${traceId} not found. Please refresh the Compliance Console.`);
       }
-      
-      // Convert SubmissionRecord to Submission format
-      const submission: Submission = {
-        id: submissionRecord.id,
-        submittedAt: submissionRecord.createdAt,
-        kind: submissionRecord.decisionType as any,
-        displayName: (submissionRecord.formData as any)?.practitioner?.facilityName || 
-                     (submissionRecord.formData as any)?.hospital?.facilityName ||
-                     `Submission ${submissionRecord.id}`,
-        payload: submissionRecord.formData || {},
-        traceId: (submissionRecord.rawPayload as any)?.trace_id || submissionRecord.id,
-        decisionTrace: submissionRecord.evaluatorOutput || {},
-      };
+
+      const submission = mapWorkQueueSubmission(match);
+      const payload = extractPayload({ payload: submission.payload }) || {};
+      const payloadKeys = payload ? Object.keys(payload).length : 0;
+      console.log("[Connected] Loaded trace payload keys:", payloadKeys);
       
       setLoadedTrace(submission);
       setSelectedSubmission(submission.id);
+      const schemaKey = resolveSchemaKey(match.csf_type || match.title || match.tenant);
+      setSelectedSchemaKey(schemaKey);
+      setSelectedSubmissionPayload(payloadKeys > 0 ? payload : null);
+      const hasPayload = payload && Object.keys(payload).length > 0;
+      const schema = completenessSchemas[schemaKey] || completenessSchemas.default;
+      const completeness = hasPayload ? computeCompleteness(payload, schema) : null;
+      setCompletenessScore(completeness);
       
       // Load audit events for timeline
       const workQueue = demoStore.getWorkQueue();
@@ -334,7 +530,7 @@ export function RegulatoryDecisionExplainPanel({
         setAuditEvents([]);
       }
       
-      setState("idle");
+      setState(explainResult ? "success" : "idle");
       setReadyBanner(`Loaded ${submission.displayName} from ${new Date(submission.submittedAt).toLocaleString()}`);
       setTimeout(() => setReadyBanner(null), 3000);
     } catch (err: any) {
@@ -349,6 +545,7 @@ export function RegulatoryDecisionExplainPanel({
       setError("Please select a submission");
       return;
     }
+    console.log("[Connected] Load Submission clicked:", selectedSubmission);
     loadTraceById(selectedSubmission);
   };
 
@@ -357,6 +554,12 @@ export function RegulatoryDecisionExplainPanel({
     setError(null);
     setResult(null);
     setNormalizedTrace(null);
+    setExplainResult(null);
+    const isDev = (import.meta as any)?.env?.DEV === true;
+    const explainUrl = `${API_BASE}/rag/regulatory-explain`;
+    if (isDev) {
+      console.log("[Explain] Endpoint URL:", explainUrl);
+    }
 
     try {
       if (decisionSource === "sandbox") {
@@ -380,6 +583,7 @@ export function RegulatoryDecisionExplainPanel({
         );
 
         console.log("[Sandbox] ragExplain response:", response);
+        console.log("[Sandbox] Explain fired_rules:", response.debug?.fired_rules?.length || 0);
         setResult(response);
         
         if (response.debug?.fired_rules?.length > 0) {
@@ -391,10 +595,17 @@ export function RegulatoryDecisionExplainPanel({
         // Compute explainability quality metrics
         const csfType = scenario.decision_type || 'csf_practitioner';
         const payload = scenario.evidence || {};
+        const schemaKey = resolveSchemaKey(scenario.decision_type);
+        const schema = completenessSchemas[schemaKey] || completenessSchemas.default;
+        setSelectedSchemaKey(schemaKey);
         const firedRuleIds = (response.debug?.fired_rules || []).map((r: any) => r.id || r.ruleId);
+        const hasPayload = payload && Object.keys(payload).length > 0;
+        
+        console.log("[Sandbox] Explain completed:", { scenario: scenario.id, hasPayload, firedRuleCount: firedRuleIds.length });
+        setSelectedSubmissionPayload(payload);
         
         // Completeness
-        const completeness = calculateCompleteness(payload, csfType);
+        const completeness = hasPayload ? computeCompleteness(payload, schema) : null;
         setCompletenessScore(completeness);
         
         // Counterfactuals
@@ -402,108 +613,29 @@ export function RegulatoryDecisionExplainPanel({
         setCounterfactuals(counterf);
         
         // Request info
-        const reqInfo = generateRequestInfoMessage(
-          completeness,
-          scenario.id || null,
-          csfType
-        );
-        setRequestInfo(reqInfo);
-      } else {
-        // Connected mode: Trace-first with evaluator fallback
-        if (!loadedTrace) {
-          throw new Error("No trace loaded. Please select and load a submission first.");
-        }
-        
-        console.log("[Connected] Loading stored trace from submission:", {
-          submission_id: loadedTrace.id,
-          trace_id: loadedTrace.traceId,
-          has_decisionTrace: !!loadedTrace.decisionTrace,
-          has_payload: !!loadedTrace.payload
-        });
-
-        // TRACE-FIRST: If decisionTrace exists, use it directly
-        if (loadedTrace.decisionTrace) {
-          console.log("[Connected] Using decisionTrace (trace-first mode)");
-          const normalized = normalizeTrace(loadedTrace.decisionTrace);
-          setNormalizedTrace(normalized);
-          
-          // Determine state based on trace content
-          if (normalized.outcome === "approved" && normalized.fired_rules.length === 0) {
-            setState("success");
-          } else if (normalized.fired_rules.length > 0 || normalized.missing_evidence.length > 0 || normalized.next_steps.length > 0) {
-            setState("success");
-          } else {
-            setState("empty");
-          }
-          
-          // Compute explainability quality metrics
-          const csfType = loadedTrace.kind || 'csf_practitioner';
-          const payload = loadedTrace.payload || {};
-          const firedRuleIds = normalized.fired_rules.map(r => r.id);
-          
-          // Completeness
-          const completeness = calculateCompleteness(payload, csfType);
-          setCompletenessScore(completeness);
-          
-          // Counterfactuals
-          const counterf = generateCounterfactuals(csfType, payload, firedRuleIds, 5);
-          setCounterfactuals(counterf);
-          
-          // Request info
+        if (completeness) {
           const reqInfo = generateRequestInfoMessage(
-            completeness,
-            loadedTrace.id || null,
-            csfType
-          );
-          setRequestInfo(reqInfo);
-        } 
-        // EVALUATOR FALLBACK: If no decisionTrace, run evaluator
-        else if (loadedTrace.payload) {
-          console.log("[Connected] No decisionTrace found - falling back to evaluator");
-          
-          // Extract decision_type and evidence from payload
-          const decision_type = loadedTrace.kind || 'csf';
-          const evidence = loadedTrace.payload;
-          
-          const response = await ragExplain(
-            decision_type,
-            'csf',
-            evidence,
-            `Explain this ${decision_type} submission.`
-          );
-
-          console.log("[Connected] Evaluator fallback response:", response);
-          setResult(response);
-          
-          if (response.debug?.fired_rules?.length > 0) {
-            setState("success");
-          } else {
-            setState("empty");
-          }
-          
-          // Compute explainability quality metrics
-          const csfType = loadedTrace.kind || 'csf_practitioner';
-          const payload = loadedTrace.payload || {};
-          const firedRuleIds = (response.debug?.fired_rules || []).map((r: any) => r.id || r.ruleId);
-          
-          // Completeness
-          const completeness = calculateCompleteness(payload, csfType);
-          setCompletenessScore(completeness);
-          
-          // Counterfactuals
-          const counterf = generateCounterfactuals(csfType, payload, firedRuleIds, 5);
-          setCounterfactuals(counterf);
-          
-          // Request info
-          const reqInfo = generateRequestInfoMessage(
-            completeness,
-            loadedTrace.id || null,
+            {
+              scorePct: completeness.scorePct,
+              presentCount: completeness.presentCount,
+              totalCount: completeness.totalCount,
+              missing: completeness.missing,
+              missingFieldDetails: []
+            } as CompletenessScore,
+            scenario.id || null,
             csfType
           );
           setRequestInfo(reqInfo);
         } else {
-          throw new Error("No trace data or payload found in submission");
+          setRequestInfo(null);
         }
+      } else {
+        // Connected mode: Explain v1 by submission_id
+        const submissionId = selectedSubmission || loadedTrace?.id;
+        if (!submissionId) {
+          throw new Error("No submission selected. Please select a submission first.");
+        }
+        await loadExplainById(submissionId);
       }
     } catch (err: any) {
       console.error("Explain error:", err);
@@ -535,18 +667,27 @@ export function RegulatoryDecisionExplainPanel({
     );
   };
 
-  const groupRulesBySeverity = (firedRules: FiredRule[]) => {
+  const normalizeSeverity = (severity?: string) => (severity || "info").toLowerCase();
+
+  const groupRulesBySeverity = (firedRules: Array<FiredRule | ExplainFiredRule>) => {
     const groups = {
-      block: firedRules.filter(r => r.severity === "block"),
-      review: firedRules.filter(r => r.severity === "review"),
-      info: firedRules.filter(r => r.severity === "info"),
+      block: firedRules.filter(r => normalizeSeverity(r.severity) === "block"),
+      review: firedRules.filter(r => normalizeSeverity(r.severity) === "review"),
+      info: firedRules.filter(r => normalizeSeverity(r.severity) === "info"),
     };
     return groups;
   };
 
-  const renderRule = (rule: FiredRule, index: number) => {
-    // Extract evidence from rule (max 3)
-    const evidenceChips = rule.evidence?.slice(0, 3) || [];
+  const renderRule = (rule: FiredRule | ExplainFiredRule, index: number, maskDetails: boolean = false) => {
+    const ruleTitle = "title" in rule ? rule.title : rule.name;
+    const ruleRequirement = "requirement" in rule ? rule.requirement : rule.rationale;
+    const requirementText = maskDetails ? "Evidence not retrieved yet." : ruleRequirement;
+    const ruleCitation = "citation" in rule ? rule.citation : "";
+    const ruleJurisdiction = "jurisdiction" in rule
+      ? rule.jurisdiction
+      : rule.inputs?.jurisdiction || rule.inputs?.state || "Jurisdiction not specified";
+    const severityValue = typeof rule.severity === "string" ? rule.severity.toLowerCase() : "info";
+    const evidenceChips = "evidence" in rule ? rule.evidence?.slice(0, 3) || [] : [];
 
     return (
       <div
@@ -554,15 +695,15 @@ export function RegulatoryDecisionExplainPanel({
         className="rounded-lg border border-zinc-700 bg-zinc-900/70 px-3 py-2.5 text-[11px]"
       >
         <div className="flex items-start justify-between gap-2 mb-1">
-          <div className="font-medium text-zinc-100">{rule.title}</div>
-          {canViewRuleIds(role) && rule.citation && (
+          <div className="font-medium text-zinc-100">{ruleTitle}</div>
+          {canViewRuleIds(role) && ruleCitation && (
             <div className="text-[10px] text-zinc-400 font-mono shrink-0">
-              {rule.citation}
+              {ruleCitation}
             </div>
           )}
         </div>
         
-        <div className="text-zinc-50 mb-2 leading-relaxed">{rule.requirement}</div>
+        <div className="text-zinc-50 mb-2 leading-relaxed">{requirementText}</div>
         
         {/* Evidence chips - Verifier/Admin only */}
         {canViewEvidence(role) && evidenceChips.length > 0 && (
@@ -577,11 +718,11 @@ export function RegulatoryDecisionExplainPanel({
                     const evidence: EvidenceItem = {
                       id: ev.resultId ?? `evidence-${rule.id}-${idx}`,
                       label: ev.docTitle,
-                      jurisdiction: ev.jurisdiction ?? rule.jurisdiction,
-                      citation: ev.section ?? rule.citation,
+                      jurisdiction: ev.jurisdiction ?? ruleJurisdiction,
+                      citation: ev.section ?? ruleCitation,
                       snippet: ev.snippet,
-                      decisionType: rule.severity,
-                      tags: [rule.severity],
+                      decisionType: severityValue,
+                      tags: [severityValue],
                     };
                     handleOpenEvidence(evidence);
                   }}
@@ -597,7 +738,7 @@ export function RegulatoryDecisionExplainPanel({
         
         {canViewRuleIds(role) && (
           <div className="flex items-center gap-2 text-[10px] text-zinc-400">
-            <span>{rule.jurisdiction}</span>
+            <span>{ruleJurisdiction}</span>
             <span>•</span>
             <span className="font-mono">{rule.id}</span>
           </div>
@@ -605,6 +746,137 @@ export function RegulatoryDecisionExplainPanel({
       </div>
     );
   };
+
+  const explainFiredRules = explainResult?.fired_rules ?? [];
+  const explainCitations = explainResult?.citations ?? [];
+  const explainMissingFields = explainResult?.missing_fields ?? [];
+  const explainNextSteps = explainResult?.next_steps ?? [];
+
+  const explainMissingByCategory = explainMissingFields.reduce(
+    (acc, field) => {
+      acc[field.category].push(field);
+      return acc;
+    },
+    { BLOCK: [] as ExplainMissingField[], REVIEW: [] as ExplainMissingField[], INFO: [] as ExplainMissingField[] }
+  );
+
+  const activeFiredRules: Array<FiredRule | ExplainFiredRule> = explainResult
+    ? explainFiredRules
+    : normalizedTrace?.fired_rules ?? (result?.debug?.fired_rules || []);
+  const activeDrivers = explainResult ? [] : normalizedTrace?.drivers ?? (result?.debug?.drivers || []);
+  const missingBlockCount = explainResult
+    ? explainMissingByCategory.BLOCK.length
+    : completenessScore?.missingByCategory.block.length ?? 0;
+  const missingReviewCount = explainResult
+    ? explainMissingByCategory.REVIEW.length
+    : completenessScore?.missingByCategory.review.length ?? 0;
+  const hasPayload = !!selectedSubmissionPayload && Object.keys(selectedSubmissionPayload).length > 0;
+  const completenessPct = completenessScore?.scorePct ?? null;
+  const truthGateActive = !!explainResult && explainFiredRules.length > 0 && explainCitations.length === 0;
+  const evidenceDebug = explainResult?.debug?.evidence as
+    | { fired_rules_count?: number; citations_count?: number; rules_with_citations?: number; evidence_coverage?: number }
+    | undefined;
+  const retrievalDebug = explainResult?.debug?.retrieval as
+    | { top_k?: number; elapsed_ms?: number; unique_docs?: number }
+    | undefined;
+  const knowledgeDebug = explainResult?.debug?.knowledge as
+    | { knowledge_version?: string }
+    | undefined;
+  const evidenceCoveragePct =
+    typeof evidenceDebug?.evidence_coverage === "number"
+      ? Math.round(evidenceDebug.evidence_coverage * 100)
+      : null;
+  const uniqueSources =
+    typeof retrievalDebug?.unique_docs === "number" ? retrievalDebug.unique_docs : null;
+  const retrievalMs =
+    typeof retrievalDebug?.elapsed_ms === "number" ? retrievalDebug.elapsed_ms : null;
+  const knowledgeVersion =
+    typeof knowledgeDebug?.knowledge_version === "string"
+      ? knowledgeDebug.knowledge_version
+      : explainResult?.knowledge_version ?? null;
+
+  const formatLabel = (value?: string | null) => {
+    if (!value) return "Unknown";
+    return value
+      .toString()
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  const decisionStatusLabel = (() => {
+    if (explainResult?.status) return formatLabel(explainResult.status);
+    if (normalizedTrace?.outcome) {
+      if (normalizedTrace.outcome === "approved") return "Approved";
+      if (normalizedTrace.outcome === "blocked") return "Blocked";
+      if (normalizedTrace.outcome === "needs_review") return "Needs Review";
+    }
+    if (missingBlockCount > 0) return "Blocked";
+    if (missingReviewCount > 0) return "Needs Review";
+    if (hasPayload && completenessPct !== null && completenessPct >= 80) return "Approved";
+    if (hasPayload) return "Pending Review";
+    return "Unknown";
+  })();
+
+  const decisionRiskLabel = (() => {
+    if (explainResult?.risk) return formatLabel(explainResult.risk);
+    if (normalizedTrace?.risk_level) return normalizedTrace.risk_level;
+    if (missingBlockCount > 0) return "High";
+    if (missingReviewCount > 0) return "Medium";
+    if (completenessPct !== null && completenessPct >= 90) return "Low";
+    if (completenessPct !== null && completenessPct >= 70) return "Moderate";
+    if (hasPayload) return "Moderate";
+    return "Unknown";
+  })();
+
+  const topMissingFields = explainResult
+    ? [...explainMissingByCategory.BLOCK, ...explainMissingByCategory.REVIEW]
+        .slice(0, 4)
+        .map((field) => field.label)
+    : completenessScore
+      ? [...completenessScore.missingByCategory.block, ...completenessScore.missingByCategory.review]
+          .slice(0, 4)
+          .map((field) => field.label)
+      : [];
+
+  const selectedSubmissionLabel = (() => {
+    const sub = filteredSubmissions.find((item) => item.id === selectedSubmission);
+    if (!sub) return "Select a submission";
+    const queueItem = demoStore.getWorkQueue().find((item) => item.submissionId === sub.id);
+    const status = queueItem?.status || "submitted";
+    return `${sub.displayName} · ${status} · ${new Date(sub.submittedAt).toLocaleString()}`;
+  })();
+
+  const decisionSummaryText = (() => {
+    if (explainResult) {
+      if (truthGateActive) {
+        return "Rule triggered; evidence not retrieved yet.";
+      }
+      if (explainResult.summary && explainResult.summary.trim().length > 0) {
+        return explainResult.summary;
+      }
+      if (explainFiredRules.length > 0) {
+        return `Decision based on ${explainFiredRules.length} fired rule${explainFiredRules.length !== 1 ? "s" : ""}.`;
+      }
+      if (explainMissingFields.length > 0) {
+        return `Decision pending due to missing ${explainMissingFields.length} required field${explainMissingFields.length !== 1 ? "s" : ""}.`;
+      }
+      return "No rule evidence returned yet.";
+    }
+
+    if (normalizedTrace?.decision_summary && normalizedTrace.decision_summary.trim().length > 0) {
+      return normalizedTrace.decision_summary;
+    }
+    if (result?.answer && result.answer.trim().length > 0) {
+      return result.answer;
+    }
+    if (activeFiredRules.length > 0) {
+      return `Decision based on ${activeFiredRules.length} fired rule${activeFiredRules.length !== 1 ? "s" : ""}.`;
+    }
+    if (topMissingFields.length > 0) {
+      return `Decision pending due to missing ${topMissingFields.length} required field${topMissingFields.length !== 1 ? "s" : ""}.`;
+    }
+    return "No rule evidence returned yet. Load submission payload and run Explain Decision.";
+  })();
 
   return (
     <div className="flex flex-col gap-3">
@@ -615,7 +887,7 @@ export function RegulatoryDecisionExplainPanel({
             Decision Explainability
           </h2>
           <p className="text-[11px] text-zinc-400 mt-0.5">
-            {getRagExplorerInstructions(role)}
+            Based on submission data, policy rules, and cited regulatory sources.
           </p>
         </div>
       </div>
@@ -632,9 +904,13 @@ export function RegulatoryDecisionExplainPanel({
             onChange={(e) => {
               setDecisionSource(e.target.value as DecisionSource);
               setResult(null);
+              setExplainResult(null);
               setError(null);
               setState("idle");
               setLoadedTrace(null);
+              setSelectedSubmissionPayload(null);
+              setCompletenessScore(null);
+              setRequestInfo(null);
             }}
             className="flex-1 px-3 py-1.5 text-[11px] bg-zinc-900 border border-zinc-700 rounded-md text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
@@ -678,56 +954,65 @@ export function RegulatoryDecisionExplainPanel({
       {/* Connected Mode: Submissions dropdown + Load button */}
       {decisionSource === "connected" && (
         <div className="space-y-3">
-          {/* Filter chips */}
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-zinc-400 shrink-0">Filter:</span>
-            <div className="flex gap-2">
-              {(['all', 'blocked', 'submitted'] as const).map((filter) => (
-                <button
-                  key={filter}
-                  onClick={() => setStatusFilter(filter)}
-                  className={`px-3 py-1 text-[10px] font-medium rounded-full transition-colors ${
-                    statusFilter === filter
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                  }`}
-                >
-                  {filter === 'all' ? 'All' : filter === 'blocked' ? 'Blocked' : 'Submitted'}
-                </button>
-              ))}
-            </div>
-            <span className="text-[10px] text-zinc-500 ml-auto">
-              {filteredSubmissions.length} submission{filteredSubmissions.length !== 1 ? 's' : ''}
-            </span>
-          </div>
-
           {/* Submission dropdown */}
-          <div className="flex items-center gap-2">
-            <label htmlFor="submission" className="text-[11px] text-zinc-400 shrink-0">
+          <div className="flex items-start gap-2">
+            <label htmlFor="submission" className="text-[11px] text-zinc-400 shrink-0 pt-2">
               Submission:
             </label>
-            <select
-              id="submission"
-              value={selectedSubmission}
-              onChange={(e) => setSelectedSubmission(e.target.value)}
-              className="flex-1 px-3 py-1.5 text-[11px] bg-zinc-900 border border-zinc-700 rounded-md text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              {filteredSubmissions.length === 0 && (
-                <option value="">No submissions found for this filter. Try another filter or submit a CSF.</option>
+            <div className="relative flex-1">
+              <button
+                id="submission"
+                type="button"
+                onClick={() => setSubmissionMenuOpen((prev) => !prev)}
+                className="w-full px-3 py-2 text-left text-[11px] bg-zinc-900 border border-zinc-700 rounded-md text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {filteredSubmissions.length === 0 ? "No submissions found. Submit a CSF to load connected mode." : selectedSubmissionLabel}
+              </button>
+              {submissionMenuOpen && filteredSubmissions.length > 0 && (
+                <div className="absolute z-20 mt-1 w-full rounded-md border border-zinc-700 bg-zinc-950 shadow-lg">
+                  <div className="px-3 py-2 text-[10px] uppercase tracking-wide text-zinc-500">Latest 5</div>
+                  <div className="max-h-40 overflow-y-auto border-b border-zinc-800">
+                    {filteredSubmissions.slice(0, 5).map((sub) => {
+                      const queueItem = demoStore.getWorkQueue().find((item) => item.submissionId === sub.id);
+                      const status = queueItem?.status || "submitted";
+                      return (
+                        <button
+                          key={sub.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedSubmission(sub.id);
+                            setSubmissionMenuOpen(false);
+                          }}
+                          className="w-full px-3 py-2 text-left text-[11px] text-zinc-200 hover:bg-zinc-800"
+                        >
+                          {sub.displayName} · {status} · {new Date(sub.submittedAt).toLocaleString()}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="px-3 py-2 text-[10px] uppercase tracking-wide text-zinc-500">All submissions</div>
+                  <div className="max-h-56 overflow-y-auto">
+                    {filteredSubmissions.slice(5).map((sub) => {
+                      const queueItem = demoStore.getWorkQueue().find((item) => item.submissionId === sub.id);
+                      const status = queueItem?.status || "submitted";
+                      return (
+                        <button
+                          key={sub.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedSubmission(sub.id);
+                            setSubmissionMenuOpen(false);
+                          }}
+                          className="w-full px-3 py-2 text-left text-[11px] text-zinc-200 hover:bg-zinc-800"
+                        >
+                          {sub.displayName} · {status} · {new Date(sub.submittedAt).toLocaleString()}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
-              {filteredSubmissions.map((sub) => {
-                // Get status from work queue if available
-                const workQueue = demoStore.getWorkQueue();
-                const queueItem = workQueue.find(item => item.submissionId === sub.id);
-                const status = queueItem?.status || 'submitted';
-                
-                return (
-                  <option key={sub.id} value={sub.id}>
-                    {sub.displayName} | {status} | {new Date(sub.submittedAt).toLocaleString()}
-                  </option>
-                );
-              })}
-            </select>
+            </div>
           </div>
 
           {/* Load button - right aligned, normal size */}
@@ -765,7 +1050,7 @@ export function RegulatoryDecisionExplainPanel({
           disabled={
             state === "loading" || 
             (decisionSource === "sandbox" && !selectedScenario) ||
-            (decisionSource === "connected" && !loadedTrace)
+            (decisionSource === "connected" && !selectedSubmission)
           }
           className="px-4 py-1.5 text-[11px] font-medium bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-md transition-colors"
         >
@@ -774,9 +1059,11 @@ export function RegulatoryDecisionExplainPanel({
       </div>
 
       {/* Debug Info */}
-      {aiDebugEnabled && result && (
+      {aiDebugEnabled && (explainResult || result) && (
         <div className="text-[9px] text-zinc-600 font-mono">
-          Debug: outcome={result.debug?.outcome} | rules={result.debug?.fired_rules_count} | missing={result.debug?.missing_evidence_count} | steps={result.debug?.next_steps_count}
+          {explainResult
+            ? `Debug: run_id=${explainResult.run_id} | policy=${explainResult.policy_version} | knowledge=${explainResult.knowledge_version}`
+            : `Debug: outcome=${result?.debug?.outcome} | rules=${result?.debug?.fired_rules_count} | missing=${result?.debug?.missing_evidence_count} | steps=${result?.debug?.next_steps_count}`}
         </div>
       )}
 
@@ -809,19 +1096,6 @@ export function RegulatoryDecisionExplainPanel({
           
           {/* CTAs */}
           <div className="flex flex-col gap-3 w-full max-w-sm">
-            {decisionSource === "connected" && (
-              <button
-                onClick={() => {
-                  setStatusFilter('blocked');
-                  setState('idle');
-                  setNormalizedTrace(null);
-                  setResult(null);
-                }}
-                className="px-4 py-2 text-sm font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-md transition-colors"
-              >
-                Load a BLOCKED recent submission
-              </button>
-            )}
             <button
               onClick={() => {
                 setDecisionSource('sandbox');
@@ -844,315 +1118,371 @@ export function RegulatoryDecisionExplainPanel({
       )}
 
       {/* Success State */}
-      {state === "success" && (result || normalizedTrace) && (
+      {state === "success" && (explainResult || result || normalizedTrace) && (
         <div className="space-y-4">
-          {/* Outcome Badge */}
-          <div className="flex items-center gap-3">
-            {getOutcomeBadge(normalizedTrace ? normalizedTrace.outcome : result!.debug.outcome)}
-            <div className="text-[11px] text-zinc-400">
-              {normalizedTrace ? normalizedTrace.decision_summary : result!.answer}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {getOutcomeBadge(explainResult ? explainResult.status : normalizedTrace ? normalizedTrace.outcome : result!.debug.outcome)}
+              <div>
+                <div className="text-[12px] font-semibold text-zinc-200">Decision summary</div>
+                <div className="text-[11px] text-zinc-400">
+                  {decisionSummaryText}
+                </div>
+              </div>
             </div>
-          </div>
 
-          {/* Export Decision Packet Buttons - Verifier/Admin only */}
-          {canDownloadPackets(role) && (
-            <div className="flex items-center gap-2 py-2 border-y border-zinc-800">
-              <button
-                onClick={() => {
-                  const packet = buildDecisionPacket(
-                    normalizedTrace 
-                      ? { normalizedTrace, sourceType: 'rag_explorer' }
-                      : result 
-                        ? { explainResponse: result, sourceType: 'rag_explorer' }
-                        : { trace: { source_type: 'rag_explorer' } }
-                  );
-                  downloadJson(packet);
-                }}
-                className="px-3 py-1.5 text-[11px] font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors flex items-center gap-1.5"
-                title="Download decision packet as JSON for API integration"
-              >
-                <span>📦</span>
-                <span>Export JSON</span>
-              </button>
-              {canExportHtml(role) && (
+            {canDownloadPackets(role) && (
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => {
                     const packet = buildDecisionPacket(
-                      normalizedTrace 
+                      normalizedTrace
                         ? { normalizedTrace, sourceType: 'rag_explorer' }
-                        : result 
+                        : result
                           ? { explainResponse: result, sourceType: 'rag_explorer' }
                           : { trace: { source_type: 'rag_explorer' } }
                     );
-                    const html = generateDecisionPacketHtml(packet);
-                    downloadHtml(packet, html);
+                    downloadJson(packet);
                   }}
-                  className="px-3 py-1.5 text-[11px] font-medium bg-zinc-700 hover:bg-zinc-600 text-white rounded-md transition-colors flex items-center gap-1.5"
-                  title="Download as HTML for printing or audit records"
+                  className="px-3 py-1.5 text-[11px] font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors flex items-center gap-1.5"
+                  title="Download decision packet as JSON for API integration"
                 >
-                  <span>📄</span>
-                  <span>Export HTML</span>
+                  <span>📦</span>
+                  <span>Export JSON</span>
                 </button>
-              )}
-              <span className="text-[10px] text-zinc-500 ml-auto">
-                Audit-ready decision packet
-              </span>
+                {canExportHtml(role) && (
+                  <button
+                    onClick={() => {
+                      const packet = buildDecisionPacket(
+                        normalizedTrace
+                          ? { normalizedTrace, sourceType: 'rag_explorer' }
+                          : result
+                            ? { explainResponse: result, sourceType: 'rag_explorer' }
+                            : { trace: { source_type: 'rag_explorer' } }
+                      );
+                      const html = generateDecisionPacketHtml(packet);
+                      downloadHtml(packet, html);
+                    }}
+                    className="px-3 py-1.5 text-[11px] font-medium bg-zinc-700 hover:bg-zinc-600 text-white rounded-md transition-colors flex items-center gap-1.5"
+                    title="Download as HTML for printing or audit records"
+                  >
+                    <span>📄</span>
+                    <span>Export HTML</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {truthGateActive && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+              <div className="text-[11px] font-semibold text-amber-200">Evidence not retrieved yet for triggered rules</div>
+              <div className="text-[10px] text-amber-200/80">
+                Rule triggered; evidence not retrieved yet.
+              </div>
             </div>
           )}
 
-          {/* APPROVED OUTCOME: Show Decision Summary + Evaluated Rules */}
-          {((normalizedTrace && normalizedTrace.outcome === "approved") || (result && result.debug.outcome === "approved")) && (
-            <div className="space-y-3">
-              {/* Decision Summary */}
-              {(normalizedTrace?.decision_summary || result?.debug.decision_summary) && (
-                <div className="rounded-lg bg-green-900/20 border border-green-600/30 px-3 py-2.5">
-                  <div className="text-xs font-semibold text-green-400 mb-1.5">
-                    ✓ Why This Decision Was Approved
-                  </div>
-                  <p className="text-[11px] text-green-200/90 leading-relaxed">
-                    {normalizedTrace?.decision_summary || result?.debug.decision_summary}
-                  </p>
-                </div>
+          {explainResult && (
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-[11px] text-zinc-300">
+              <div className="flex flex-wrap gap-3">
+                <span>Evidence coverage: {evidenceCoveragePct !== null ? `${evidenceCoveragePct}%` : "n/a"}</span>
+                <span>Unique sources: {uniqueSources ?? "n/a"}</span>
+                <span>Retrieval time: {retrievalMs !== null ? `${retrievalMs} ms` : "n/a"}</span>
+                <span>Knowledge version: {knowledgeVersion ?? "unknown"}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-3">
+              <div className="text-[10px] uppercase tracking-wide text-zinc-500">Decision status</div>
+              <div className="text-lg font-semibold text-zinc-100 mt-1">{decisionStatusLabel}</div>
+              <div className="text-[11px] text-zinc-400 mt-1">
+                {activeFiredRules.length} fired rule{activeFiredRules.length !== 1 ? "s" : ""}
+              </div>
+            </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-3">
+              <div className="text-[10px] uppercase tracking-wide text-zinc-500">Risk level</div>
+              <div className="text-lg font-semibold text-zinc-100 mt-1">{decisionRiskLabel}</div>
+              <div className="text-[11px] text-zinc-400 mt-1">
+                {missingBlockCount > 0 ? `${missingBlockCount} BLOCK gaps` : missingReviewCount > 0 ? `${missingReviewCount} REVIEW gaps` : "No blocking gaps detected"}
+              </div>
+            </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-3">
+              <div className="text-[10px] uppercase tracking-wide text-zinc-500">Completeness</div>
+              <div className="text-lg font-semibold text-zinc-100 mt-1">
+                {hasPayload && completenessPct !== null ? `${completenessPct}%` : "Not available"}
+              </div>
+              <div className="text-[11px] text-zinc-400 mt-1">
+                {hasPayload && completenessScore ? `${completenessScore.presentCount}/${completenessScore.totalCount} fields present` : "Load submission payload"}
+              </div>
+            </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-3">
+              <div className="text-[10px] uppercase tracking-wide text-zinc-500">Decision basis</div>
+              <div className="text-[12px] font-semibold text-zinc-100 mt-1">
+                {activeDrivers.length > 0 ? "Rule drivers" : topMissingFields.length > 0 ? "Missing data" : "Policy rules"}
+              </div>
+              <div className="text-[11px] text-zinc-400 mt-1">
+                {activeDrivers.length > 0
+                  ? activeDrivers.slice(0, 3).map((driver: any) => driver.label).join(", ")
+                  : topMissingFields.length > 0
+                    ? topMissingFields.join(", ")
+                    : "No critical data gaps detected"}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            <div className="lg:col-span-2 rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-3">
+              <div className="text-xs font-semibold text-zinc-200 mb-2">Evidence & rule drivers</div>
+              {explainResult ? (
+                <>
+                  {explainMissingFields.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-[11px] text-amber-200 font-semibold mb-1">Missing fields</div>
+                      <ul className="space-y-1">
+                        {explainMissingFields.map((field) => (
+                          <li key={field.key} className="text-[11px] text-amber-100/80 flex items-start gap-2">
+                            <span className="shrink-0">•</span>
+                            <span>{field.label}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {explainNextSteps.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-[11px] text-blue-200 font-semibold mb-1">Next steps</div>
+                      <ul className="space-y-1">
+                        {explainNextSteps.map((step, idx) => (
+                          <li key={`${step.action}-${idx}`} className="text-[11px] text-blue-100/80 flex items-start gap-2">
+                            <span className="shrink-0">•</span>
+                            <span>{step.action}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {explainCitations.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-[11px] text-emerald-200 font-semibold mb-1">Citations</div>
+                      <ul className="space-y-2">
+                        {explainCitations.map((citation, idx) => (
+                          <li key={`${citation.doc_id}-${citation.chunk_id}-${idx}`} className="rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2 py-2 text-[11px] text-emerald-100/90">
+                            <div className="font-medium text-emerald-200">
+                              {citation.source_title || citation.doc_id}
+                            </div>
+                            <div className="text-[10px] text-emerald-300/80">
+                              {citation.jurisdiction || "Jurisdiction unknown"}
+                            </div>
+                            <div className="mt-1 text-emerald-100/80">
+                              {citation.snippet}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {(normalizedTrace?.missing_evidence?.length || result?.debug.missing_evidence?.length) && (
+                    <div className="mb-3">
+                      <div className="text-[11px] text-amber-200 font-semibold mb-1">Missing evidence</div>
+                      <ul className="space-y-1">
+                        {(normalizedTrace?.missing_evidence || result?.debug.missing_evidence || []).map((item, idx) => (
+                          <li key={idx} className="text-[11px] text-amber-100/80 flex items-start gap-2">
+                            <span className="shrink-0">•</span>
+                            <span>{String(item).replace(/\n/g, " ").replace(/\s+/g, " ").trim()}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {(normalizedTrace?.next_steps?.length || result?.debug.next_steps?.length) && (
+                    <div className="mb-3">
+                      <div className="text-[11px] text-blue-200 font-semibold mb-1">Next steps</div>
+                      <ul className="space-y-1">
+                        {(normalizedTrace?.next_steps || result?.debug.next_steps || []).map((step, idx) => (
+                          <li key={idx} className="text-[11px] text-blue-100/80 flex items-start gap-2">
+                            <span className="shrink-0">•</span>
+                            <span>{String(step).replace(/\n/g, " ").replace(/\s+/g, " ").trim()}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
               )}
-
-              {/* Satisfied Requirements */}
-              {(normalizedTrace?.satisfied_requirements?.length || result?.debug.satisfied_requirements?.length) ? (
-                <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2">
-                  <div className="text-xs font-semibold text-zinc-200 mb-2">
-                    ✓ Checks Passed ({(normalizedTrace?.satisfied_requirements || result?.debug.satisfied_requirements || []).length})
+              {canViewFiredRules(role) && (activeFiredRules.length > 0 || activeDrivers.length > 0) ? (
+                <div className="space-y-2">
+                  <div className="text-[11px] text-zinc-300 font-semibold">
+                    Evidence drivers ({Math.max(activeFiredRules.length, activeDrivers.length)})
                   </div>
-                  <ul className="space-y-1">
-                    {(normalizedTrace?.satisfied_requirements || result?.debug.satisfied_requirements || []).map((req, idx) => (
-                      <li key={idx} className="text-[11px] text-zinc-400 flex items-start gap-2">
-                        <span className="text-green-400 shrink-0">✓</span>
-                        <span>{req}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              {/* Evaluated Rules (Passed + Info) */}
-              {(normalizedTrace?.evaluated_rules?.length || result?.debug.evaluated_rules?.length) ? (
-                <div>
-                  <div className="text-xs font-semibold text-zinc-200 mb-2">
-                    Rules Evaluated ({(normalizedTrace?.evaluated_rules || result?.debug.evaluated_rules || []).length})
-                  </div>
-                  <div className="space-y-2">
-                    {(normalizedTrace?.evaluated_rules || result?.debug.evaluated_rules || []).map((rule) => (
-                      <div
-                        key={rule.id}
-                        className="rounded-lg border border-zinc-700 bg-zinc-900/70 px-3 py-2.5 text-[11px]"
-                      >
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-zinc-100">{rule.title}</span>
-                            {rule.status === "passed" && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 border border-green-500/30">
-                                PASSED
-                              </span>
-                            )}
-                            {rule.status === "info" && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                                INFO
-                              </span>
-                            )}
-                          </div>
-                          {rule.citation && (
-                            <div className="text-[10px] text-zinc-500 font-mono shrink-0">
-                              {rule.citation}
+                  {activeFiredRules.length > 0 ? (
+                    (() => {
+                      const groups = groupRulesBySeverity(activeFiredRules);
+                      return (
+                        <>
+                          {groups.block.length > 0 && (
+                            <div>
+                              <div className="text-[11px] font-semibold text-red-300 mb-1">🚫 Block ({groups.block.length})</div>
+                              <div className="space-y-1.5">
+                                {groups.block.map((rule, idx) => renderRule(rule, idx, truthGateActive))}
+                              </div>
                             </div>
                           )}
+                          {groups.review.length > 0 && (
+                            <div>
+                              <div className="text-[11px] font-semibold text-yellow-300 mb-1">⚠️ Review ({groups.review.length})</div>
+                              <div className="space-y-1.5">
+                                {groups.review.map((rule, idx) => renderRule(rule, idx, truthGateActive))}
+                              </div>
+                            </div>
+                          )}
+                          {groups.info.length > 0 && (
+                            <div>
+                              <div className="text-[11px] font-semibold text-blue-300 mb-1">ℹ️ Info ({groups.info.length})</div>
+                              <div className="space-y-1.5">
+                                {groups.info.map((rule, idx) => renderRule(rule, idx, truthGateActive))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()
+                  ) : (
+                    <div className="space-y-1">
+                      {activeDrivers.slice(0, 6).map((driver: any, idx: number) => (
+                        <div key={idx} className="rounded-md border border-zinc-700 bg-zinc-900/60 px-3 py-2 text-[11px]">
+                          <div className="text-zinc-100 font-medium">{driver.label}</div>
+                          {driver.details && (
+                            <div className="text-zinc-400 mt-1">{driver.details}</div>
+                          )}
                         </div>
-                        
-                        <div className="text-zinc-50 mb-1 leading-relaxed">{rule.requirement}</div>
-                        
-                        <div className="flex items-center gap-2 text-[10px] text-zinc-400">
-                          <span>{rule.jurisdiction}</span>
-                          <span>•</span>
-                          <span className="font-mono">{rule.id}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-[11px] text-zinc-500">No fired rules to display.</div>
+              )}
+            </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-3">
+              <div className="text-xs font-semibold text-zinc-200 mb-1">Data completeness</div>
+              {explainResult ? (
+                <div className="space-y-2">
+                  <div className="text-[10px] text-zinc-500">Explain v1 missing fields</div>
+                  {explainMissingFields.length === 0 ? (
+                    <div className="text-[11px] text-green-300">✓ No missing fields reported</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {explainMissingByCategory.BLOCK.length > 0 && (
+                        <div>
+                          <div className="text-[11px] font-semibold text-red-300 mb-1">
+                            Missing BLOCK ({explainMissingByCategory.BLOCK.length})
+                          </div>
+                          <ul className="space-y-1">
+                            {explainMissingByCategory.BLOCK.map((field) => (
+                              <li key={field.key} className="text-[11px] text-red-200/80">• {field.label}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {explainMissingByCategory.REVIEW.length > 0 && (
+                        <div>
+                          <div className="text-[11px] font-semibold text-yellow-300 mb-1">
+                            Missing REVIEW ({explainMissingByCategory.REVIEW.length})
+                          </div>
+                          <ul className="space-y-1">
+                            {explainMissingByCategory.REVIEW.map((field) => (
+                              <li key={field.key} className="text-[11px] text-yellow-200/80">• {field.label}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {explainMissingByCategory.INFO.length > 0 && (
+                        <div>
+                          <div className="text-[11px] font-semibold text-blue-300 mb-1">
+                            Missing INFO ({explainMissingByCategory.INFO.length})
+                          </div>
+                          <ul className="space-y-1">
+                            {explainMissingByCategory.INFO.map((field) => (
+                              <li key={field.key} className="text-[11px] text-blue-200/80">• {field.label}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="text-[10px] text-zinc-500 mb-2">
+                    Schema: {completenessSchemas[selectedSchemaKey]?.label || "Not selected"}
+                  </div>
+                  {!hasPayload && (
+                    <div className="text-[11px] text-zinc-400">
+                      {selectedSchemaKey === "default"
+                        ? "Schema not selected yet. Load a submission payload to determine the correct completeness checks."
+                        : "No payload loaded yet. Load a submission or run Explain Decision."}
+                    </div>
+                  )}
+                  {hasPayload && completenessScore && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[11px] text-zinc-400">Required fields present</div>
+                        <div className={`text-sm font-semibold ${
+                          completenessScore.scorePct >= 90 ? "text-green-400" :
+                          completenessScore.scorePct >= 70 ? "text-yellow-400" :
+                          "text-red-400"
+                        }`}>
+                          {completenessScore.scorePct}%
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          )}
-
-          {/* BLOCKED or NEEDS_REVIEW OUTCOME: Show Original Layout */}
-          {((normalizedTrace && (normalizedTrace.outcome === "blocked" || normalizedTrace.outcome === "needs_review")) || 
-            (result && (result.debug.outcome === "blocked" || result.debug.outcome === "needs_review"))) && (
-            <div className="space-y-3">
-              {/* Missing Evidence */}
-              {(normalizedTrace?.missing_evidence?.length || result?.debug.missing_evidence?.length) ? (
-                <div className="rounded-lg border border-amber-500/70 bg-amber-900/60 px-4 py-3">
-                  <div className="text-sm font-bold text-amber-100 mb-2">
-                    Missing Evidence ({(normalizedTrace?.missing_evidence || result?.debug.missing_evidence || []).length})
-                  </div>
-                  <ul className="space-y-1.5">
-                    {(normalizedTrace?.missing_evidence || result?.debug.missing_evidence || []).map((item, idx) => (
-                      <li key={idx} className="text-xs text-amber-50 flex items-start gap-2 leading-relaxed">
-                        <span className="shrink-0">❗</span>
-                        <span>{String(item).replace(/\\n/g, ' ').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim()}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              {/* Next Steps */}
-              {(normalizedTrace?.next_steps?.length || result?.debug.next_steps?.length) ? (
-                <div className="rounded-lg border border-blue-500/70 bg-blue-900/60 px-4 py-3">
-                  <div className="text-sm font-bold text-blue-100 mb-2">
-                    Next Steps ({(normalizedTrace?.next_steps || result?.debug.next_steps || []).length})
-                  </div>
-                  <ul className="space-y-1.5">
-                    {(normalizedTrace?.next_steps || result?.debug.next_steps || []).map((step, idx) => (
-                      <li key={idx} className="text-xs text-blue-50 flex items-start gap-2 leading-relaxed">
-                        <span className="shrink-0">→</span>
-                        <span>{String(step).replace(/\\n/g, ' ').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim()}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              {/* Fired Rules by Severity - Verifier/Admin only */}
-              {canViewFiredRules(role) && (normalizedTrace?.fired_rules?.length || result?.debug.fired_rules?.length) ? (
-                <div className="space-y-3">
-                  <div className="text-xs font-bold text-zinc-100">
-                    Fired Rules ({(normalizedTrace?.fired_rules || result?.debug.fired_rules || []).length} total)
-                  </div>
-
-                  {(() => {
-                    const groups = groupRulesBySeverity(normalizedTrace?.fired_rules || result?.debug.fired_rules || []);
-                    return (
-                      <>
-                        {/* BLOCK Rules */}
-                        {groups.block.length > 0 && (
-                          <div>
-                            <div className="text-[11px] font-bold text-red-300 mb-2 flex items-center gap-2">
-                              <span>🚫 BLOCK</span>
-                              <span className="text-zinc-400">({groups.block.length} rules)</span>
-                            </div>
-                            <div className="space-y-1.5">
-                              {groups.block.map((rule, idx) => renderRule(rule, idx))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* REVIEW Rules */}
-                        {groups.review.length > 0 && (
-                          <div>
-                            <div className="text-[11px] font-bold text-yellow-300 mb-2 flex items-center gap-2">
-                              <span>⚠️ REVIEW</span>
-                              <span className="text-zinc-400">({groups.review.length} rules)</span>
-                            </div>
-                            <div className="space-y-1.5">
-                              {groups.review.map((rule, idx) => renderRule(rule, idx))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* INFO Rules */}
-                        {groups.info.length > 0 && (
-                          <div>
-                            <div className="text-[11px] font-bold text-blue-300 mb-2 flex items-center gap-2">
-                              <span>ℹ️ INFO</span>
-                              <span className="text-zinc-400">({groups.info.length} rules)</span>
-                            </div>
-                            <div className="space-y-1.5">
-                              {groups.info.map((rule, idx) => renderRule(rule, idx))}
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              ) : null}
-            </div>
-          )}
-          
-          {/* NEW SECTIONS: Completeness, Counterfactuals, Request Info */}
-          
-          {/* Data Completeness Score */}
-          {completenessScore && (
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900/70 px-4 py-3">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-sm font-bold text-zinc-100">
-                  📊 Data Completeness
-                </div>
-                <div className={`text-2xl font-bold ${
-                  completenessScore.scorePct === 100 ? 'text-green-400' :
-                  completenessScore.scorePct >= 75 ? 'text-yellow-400' :
-                  'text-red-400'
-                }`}>
-                  {completenessScore.scorePct}%
-                </div>
-              </div>
-              
-              <div className="text-xs text-zinc-400 mb-3">
-                {completenessScore.presentCount} of {completenessScore.totalCount} required fields present
-              </div>
-              
-              {completenessScore.missing.block.length > 0 && (
-                <div className="mb-2">
-                  <div className="text-[11px] font-semibold text-red-300 mb-1">
-                    🚫 Missing BLOCK Fields ({completenessScore.missing.block.length})
-                  </div>
-                  <ul className="space-y-1">
-                    {completenessScore.missing.block.map((field, idx) => (
-                      <li key={idx} className="text-[11px] text-red-200/80 flex items-start gap-2">
-                        <span className="shrink-0">•</span>
-                        <span>{getFieldDisplayName(field)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              
-              {completenessScore.missing.review.length > 0 && (
-                <div className="mb-2">
-                  <div className="text-[11px] font-semibold text-yellow-300 mb-1">
-                    ⚠️ Missing REVIEW Fields ({completenessScore.missing.review.length})
-                  </div>
-                  <ul className="space-y-1">
-                    {completenessScore.missing.review.map((field, idx) => (
-                      <li key={idx} className="text-[11px] text-yellow-200/80 flex items-start gap-2">
-                        <span className="shrink-0">•</span>
-                        <span>{getFieldDisplayName(field)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              
-              {completenessScore.missing.info.length > 0 && (
-                <div>
-                  <div className="text-[11px] font-semibold text-blue-300 mb-1">
-                    ℹ️ Missing INFO Fields ({completenessScore.missing.info.length})
-                  </div>
-                  <ul className="space-y-1">
-                    {completenessScore.missing.info.map((field, idx) => (
-                      <li key={idx} className="text-[11px] text-blue-200/80 flex items-start gap-2">
-                        <span className="shrink-0">•</span>
-                        <span>{getFieldDisplayName(field)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              
-              {completenessScore.scorePct === 100 && (
-                <div className="text-[11px] text-green-300 flex items-center gap-2">
-                  <span>✓</span>
-                  <span>All required data fields are present</span>
-                </div>
+                      <div className="text-[11px] text-zinc-400">
+                        {completenessScore.presentCount} of {completenessScore.totalCount} fields present
+                      </div>
+                      {completenessScore.missingByCategory.block.length > 0 && (
+                        <div>
+                          <div className="text-[11px] font-semibold text-red-300 mb-1">Missing BLOCK</div>
+                          <ul className="space-y-1">
+                            {completenessScore.missingByCategory.block.map((field) => (
+                              <li key={field.label} className="text-[11px] text-red-200/80">• {field.label}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {completenessScore.missingByCategory.review.length > 0 && (
+                        <div>
+                          <div className="text-[11px] font-semibold text-yellow-300 mb-1">Missing REVIEW</div>
+                          <ul className="space-y-1">
+                            {completenessScore.missingByCategory.review.map((field) => (
+                              <li key={field.label} className="text-[11px] text-yellow-200/80">• {field.label}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {completenessScore.missingByCategory.info.length > 0 && (
+                        <div>
+                          <div className="text-[11px] font-semibold text-blue-300 mb-1">Missing INFO</div>
+                          <ul className="space-y-1">
+                            {completenessScore.missingByCategory.info.map((field) => (
+                              <li key={field.label} className="text-[11px] text-blue-200/80">• {field.label}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {completenessScore.scorePct === 100 && (
+                        <div className="text-[11px] text-green-300">✓ All required fields are present</div>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
-          )}
+          </div>
           
           {/* Counterfactuals - Why Other Rules Did Not Fire - Verifier/Admin only */}
           {canViewCounterfactuals(role) && counterfactuals.length > 0 && (
@@ -1256,7 +1586,13 @@ export function RegulatoryDecisionExplainPanel({
                     if (completenessScore && loadedTrace) {
                       const csfType = loadedTrace.kind || 'csf_practitioner';
                       const reqInfo = generateRequestInfoMessage(
-                        completenessScore,
+                        {
+                          scorePct: completenessScore.scorePct,
+                          presentCount: completenessScore.presentCount,
+                          totalCount: completenessScore.totalCount,
+                          missing: completenessScore.missing,
+                          missingFieldDetails: []
+                        } as CompletenessScore,
                         loadedTrace.id || null,
                         csfType
                       );
