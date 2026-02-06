@@ -47,8 +47,9 @@ jobs:
           APP_ENV: dev
           PYTHONPATH: ${{ github.workspace }}/backend
         run: |
+          set -o pipefail
           mkdir -p .data
-          python -m pytest -q
+          python -m pytest -q 2>&1 | tee pytest.log
 
       - name: Start backend
         working-directory: backend
@@ -113,4 +114,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: backend-logs
-          path: backend/uvicorn.log
+          path: |
+            backend/uvicorn.log
+            backend/pytest.log
