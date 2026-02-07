@@ -81,6 +81,28 @@
 **Related**:
 - Commit: (HEAD)
 
+### [2026-02-07] SLA stats derived from submission state
+
+**Context**: SLA stats in CI were overcounting due to event-based aggregation and needed to reflect distinct active submissions.
+
+**Decision**: Compute SLA stats directly from current submission state and due fields, counting distinct submissions per bucket and excluding closed submissions.
+
+**Rationale**:
+- Aligns stats with current SLA status rather than historical event volume
+- Matches expected CI behavior for overdue counters
+
+**Alternatives Considered**:
+- Event-table aggregation: rejected due to double-counting across reminders
+- Global caps on counts: rejected because it masks real backlog size
+
+**Consequences**:
+- Positive: Accurate, distinct submission counts for SLA dashboards
+- Neutral: Stats reflect current state only, not historical reminder volume
+
+**Status**: Accepted
+**Related**:
+- Commit: (HEAD)
+
 ### [2026-02-06] Phase 4 verifier cases store
 
 **Context**: Phase 4 needs deterministic verifier cases for list/detail APIs and smoke checks, independent of the main workflow DB.

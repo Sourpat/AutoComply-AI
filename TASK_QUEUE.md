@@ -24,6 +24,18 @@
 **Dependencies**: None
 **Notes**: Commit (HEAD)
 
+### CI Hotfix — SLA stats distinct submission counts
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Compute SLA stats from current submission state with distinct submission counts, excluding closed submissions.
+**Acceptance Criteria**:
+- [x] SLA stats count distinct submissions for needs-info/decision/verifier buckets
+- [x] Closed submissions excluded from SLA stats
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_sla_reminders.py`
+**Dependencies**: None
+**Notes**: Post-CI stats fix.
+
 
 > **Status Legend**: `pending` | `in-progress` | `blocked` | `completed`
 

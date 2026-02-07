@@ -6,19 +6,16 @@ Read-only endpoints that provide operational metrics and review queue analytics.
 SECURITY: All endpoints require admin role via X-User-Role header.
 """
 
-import json
-
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from typing import Any, Annotated, Dict, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case, text
+from sqlalchemy import func, case
 from datetime import datetime, timedelta, timezone
 
 from src.database.connection import get_db
 from src.database.models import ReviewQueueItem, ReviewStatus, QuestionEvent, QuestionStatus
 from src.autocomply.domain.submissions_store import get_submission_store, SubmissionStatus
-from src.autocomply.domain import notification_store as notification_store_module
 from src.autocomply.domain.notification_store import emit_event
 from src.autocomply.domain import sla_policy
 from src.autocomply.domain.verifier_store import get_case_by_submission_id
@@ -296,10 +293,10 @@ def run_sla_reminders(
 
 
 def _collect_sla_stats_from_events() -> Dict[str, int]:
+    """Count distinct submissions in SLA buckets based on current submission state."""
     store = get_submission_store()
-    active_ids = {submission.submission_id for submission in store.list_submissions(limit=10000)}
-    notification_store_module.ensure_schema()
-    engine = notification_store_module.get_engine()
+    submissions = store.list_submissions(limit=10000)
+    now = sla_policy.utc_now()
 
     needs_info_due_soon: set[str] = set()
     needs_info_overdue: set[str] = set()
@@ -307,70 +304,47 @@ def _collect_sla_stats_from_events() -> Dict[str, int]:
     decision_overdue: set[str] = set()
     verifier_due_soon: set[str] = set()
     verifier_overdue: set[str] = set()
-    event_ids: set[str] = set()
 
-    with engine.begin() as conn:
-        rows = conn.execute(
-            text(
-                """
-                SELECT submission_id, event_type, payload_json
-                FROM submission_events
-                WHERE event_type IN ('sla_due_soon', 'sla_overdue')
-                """
-            )
-        ).mappings().all()
-
-    for row in rows:
-        submission_id = row.get("submission_id")
-        event_type = row.get("event_type")
-        payload_json = row.get("payload_json")
-        sla_type = None
-        if payload_json:
-            try:
-                payload = json.loads(payload_json)
-                sla_type = payload.get("sla_type")
-            except json.JSONDecodeError:
-                sla_type = None
-
-        if not submission_id or not sla_type:
+    for submission in submissions:
+        submission_id = submission.submission_id
+        status_value = (
+            submission.status.value
+            if isinstance(submission.status, SubmissionStatus)
+            else submission.status
+        )
+        if status_value in {SubmissionStatus.APPROVED.value, SubmissionStatus.REJECTED.value}:
             continue
-        if active_ids and submission_id not in active_ids:
-            continue
-        event_ids.add(submission_id)
 
-    now = sla_policy.utc_now()
-    for submission in store.list_submissions(limit=10000):
-        if submission.submission_id not in event_ids:
-            continue
         first_touch_due_at = submission.sla_first_touch_due_at
         needs_info_due_at = submission.sla_needs_info_due_at
         decision_due_at = submission.sla_decision_due_at
 
-        if needs_info_due_at:
-            due_dt = sla_policy.parse_iso(needs_info_due_at)
-            delta = (due_dt - now).total_seconds()
-            if delta < 0:
-                needs_info_overdue.add(submission.submission_id)
-            elif delta <= sla_policy.DUE_SOON_HOURS * 3600:
-                needs_info_due_soon.add(submission.submission_id)
+        if status_value == SubmissionStatus.NEEDS_INFO.value:
+            if needs_info_due_at:
+                due_dt = sla_policy.parse_iso(needs_info_due_at)
+                delta = (due_dt - now).total_seconds()
+                if delta < 0:
+                    needs_info_overdue.add(submission_id)
+                elif delta <= sla_policy.DUE_SOON_HOURS * 3600:
+                    needs_info_due_soon.add(submission_id)
 
         if decision_due_at:
             due_dt = sla_policy.parse_iso(decision_due_at)
             delta = (due_dt - now).total_seconds()
             if delta < 0:
-                decision_overdue.add(submission.submission_id)
-                verifier_overdue.add(submission.submission_id)
+                decision_overdue.add(submission_id)
+                verifier_overdue.add(submission_id)
             elif delta <= sla_policy.DUE_SOON_HOURS * 3600:
-                decision_due_soon.add(submission.submission_id)
-                verifier_due_soon.add(submission.submission_id)
+                decision_due_soon.add(submission_id)
+                verifier_due_soon.add(submission_id)
 
         if first_touch_due_at:
             due_dt = sla_policy.parse_iso(first_touch_due_at)
             delta = (due_dt - now).total_seconds()
             if delta < 0:
-                verifier_overdue.add(submission.submission_id)
+                verifier_overdue.add(submission_id)
             elif delta <= sla_policy.DUE_SOON_HOURS * 3600:
-                verifier_due_soon.add(submission.submission_id)
+                verifier_due_soon.add(submission_id)
 
     return {
         "verifier_due_soon": len(verifier_due_soon),
