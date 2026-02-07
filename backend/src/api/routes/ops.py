@@ -25,6 +25,7 @@ from src.autocomply.domain.explainability.versioning import get_knowledge_versio
 from src.autocomply.domain.evidence import pack_retriever
 from src.autocomply.regulations.knowledge import get_regulatory_knowledge
 from src.api.routes.ops_smoke import ops_smoke as ops_smoke_handler
+from src.autocomply.domain.verifier_store import seed_cases
 
 router = APIRouter(
     prefix="/api/v1/admin/ops",
@@ -83,6 +84,11 @@ class OpsSubmissionResponse(BaseModel):
 class SeedSubmissionsResponse(BaseModel):
     inserted: int
     ids: List[str]
+
+
+class SeedVerifierCasesResponse(BaseModel):
+    inserted_cases: int
+    inserted_events: int
 
 
 class ExplainMaintenanceRequest(BaseModel):
@@ -214,6 +220,19 @@ async def seed_submissions() -> SeedSubmissionsResponse:
     return SeedSubmissionsResponse(
         inserted=len(inserted),
         ids=[item["id"] for item in inserted],
+    )
+
+
+@smoke_router.post("/seed-verifier-cases", response_model=SeedVerifierCasesResponse)
+async def seed_verifier_cases() -> SeedVerifierCasesResponse:
+    env = os.getenv("ENV", "local")
+    if env not in {"local", "ci"}:
+        raise HTTPException(status_code=403, detail="Seed endpoint only available in local or ci environment")
+
+    result = seed_cases()
+    return SeedVerifierCasesResponse(
+        inserted_cases=result.get("inserted_cases", 0),
+        inserted_events=result.get("inserted_events", 0),
     )
 
 

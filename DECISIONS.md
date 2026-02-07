@@ -36,6 +36,181 @@
 
 ## Decisions
 
+### [2026-02-06] Phase 4 verifier cases store
+
+**Context**: Phase 4 needs deterministic verifier cases for list/detail APIs and smoke checks, independent of the main workflow DB.
+
+**Decision**: Create a dedicated SQLite store under backend/.data/verifier_cases.sqlite with a minimal cases + case_events schema and deterministic seed.
+
+**Rationale**:
+- Keeps Phase 4 data isolated and deterministic
+- Simplifies verifier list/detail API development
+
+**Alternatives Considered**:
+- Reuse workflow DB: rejected for Phase 4.1 to keep scope minimal
+
+**Consequences**:
+- Positive: Stable seeds and predictable API responses
+- Neutral: Separate SQLite file to manage
+
+**Status**: Accepted
+
+### [2026-02-06] Verifier Console reads Phase 4 cases API
+
+**Context**: Phase 4.2 requires the Verifier Console to show real verifier cases from the new /api/verifier endpoints with a simple list/detail experience and basic filters.
+
+**Decision**: Wire the Verifier Console UI to `/api/verifier/cases` and `/api/verifier/cases/{case_id}` with client-side filters (status, jurisdiction), list pagination, and explicit loading/empty/error states. Provide a dev-only CTA to seed demo cases via `/api/ops/seed-verifier-cases` when the list is empty.
+
+**Rationale**:
+- Ensures UI reflects the Phase 4 verifier store and contracts
+- Keeps production behavior safe by gating seeding to dev only
+
+**Alternatives Considered**:
+- Reuse workflow cases UI: rejected because it depends on workflow models not present in Phase 4 store
+- Auto-seed on load: rejected to avoid hidden data changes in production
+
+**Consequences**:
+- Positive: Verifier Console reflects real Phase 4 case data and supports basic triage filters
+- Neutral: Dedicated API client and UI path maintained for Phase 4 store
+
+**Status**: Accepted
+
+### [2026-02-06] Verifier actions + notes stored in Phase 4 verifier store
+
+**Context**: Phase 4.3 needs actionable verifier workflow (approve/reject/needs_review) with notes and a timeline, all persisted in the Phase 4 verifier store.
+
+**Decision**: Add `verifier_events` and `verifier_notes` tables to the Phase 4 SQLite store. Expose `/api/verifier/cases/{case_id}/actions`, `/notes`, and `/events` endpoints, and surface these in the Verifier Console UI with immediate status updates and timeline rendering.
+
+**Rationale**:
+- Keeps Phase 4 workflow state and audit trail isolated to the verifier store
+- Enables deterministic, testable action and note flows without touching workflow DB
+
+**Alternatives Considered**:
+- Reuse workflow audit tables: rejected to keep Phase 4 scope minimal and deterministic
+
+**Consequences**:
+- Positive: End-to-end verifier actions and notes persisted with timeline visibility
+- Neutral: Additional tables in verifier store to maintain
+
+**Status**: Accepted
+
+### [2026-02-06] Verifier Console placeholder user id
+
+**Context**: Phase 4.4 needs a "My Queue" filter and assignment actions before auth is wired.
+
+**Decision**: Use a fixed placeholder current user id `verifier-1` in the frontend for assignment and My Queue filtering. Backend supports `assignee=me` which maps to the same placeholder by default.
+
+**Rationale**:
+- Unblocks queue assignment UX without coupling to auth/RBAC
+- Keeps Phase 4 workflow deterministic for demos
+
+**Alternatives Considered**:
+- Add real auth/user identity: deferred for later phases
+
+**Consequences**:
+- Positive: My Queue and assignment flow work end-to-end now
+- Neutral: Must replace placeholder with auth identity later
+
+**Status**: Accepted
+
+### [2026-02-06] Decision packet contract (dp-v1)
+
+**Context**: Phase 4.5 needs a deterministic, exportable JSON packet for verifier cases with optional explain evidence.
+
+**Decision**: Introduce a dp-v1 decision packet contract produced by `/api/verifier/cases/{case_id}/packet`. The packet includes case metadata, verifier metadata, actions/timeline, and explain evidence when available. Explain data is sourced from the existing explain pipeline when possible and falls back to a minimal stub when unavailable.
+
+**Rationale**:
+- Provides a stable audit/export artifact for downstream review and training
+- Avoids blocking UI when explain data is unavailable
+
+**Alternatives Considered**:
+- PDF export first: deferred to Phase 4.6
+- Require explain always: rejected to keep packet generation resilient
+
+**Consequences**:
+- Positive: Deterministic JSON export with citations when available
+- Neutral: Explain stub can be returned if submission data is missing
+
+**Status**: Accepted
+
+### [2026-02-06] Decision packet PDF + audit ZIP bundle
+
+**Context**: Phase 4.6 requires deterministic PDF export and a downloadable audit ZIP with JSON/PDF + evidence artifacts.
+
+**Decision**: Implement a simple reportlab-based PDF renderer and an in-memory ZIP bundle that includes decision packet JSON/PDF, citations.json, timeline.json, and README.txt. Expose via `/api/verifier/cases/{case_id}/packet.pdf` and `/api/verifier/cases/{case_id}/audit.zip`.
+
+**Rationale**:
+- Keeps output deterministic and text-first
+- Avoids external renderers and simplifies audit exports
+
+**Alternatives Considered**:
+- HTML-to-PDF renderers: rejected for determinism and dependency complexity
+
+**Consequences**:
+- Positive: Verifiable export artifacts for audit/training
+- Neutral: PDF styling remains minimal until Phase 4.6+ enhancements
+
+**Status**: Accepted
+
+### [2026-02-06] Final decision workflow + case lock + snapshot packets
+
+**Context**: Phase 4.7 needs a final decision workflow (approve/reject/request_info) that locks cases and stores an authoritative dp-v1 snapshot for audit export.
+
+**Decision**: Add a verifier decision endpoint that stores decision metadata on the case, locks the case for approve/reject, and writes a final packet snapshot. Packet/PDF/ZIP endpoints return the snapshot for locked cases. Request-info keeps the case unlocked and does not snapshot.
+
+**Rationale**:
+- Ensures audit exports are deterministic once a decision is final
+- Prevents post-decision edits that would mutate the audit trail
+
+**Alternatives Considered**:
+- Keep live packets only: rejected because post-decision edits would change exports
+- Snapshot all decision types: rejected because request-info is not final
+
+**Consequences**:
+- Positive: Locked decisions have stable, auditable artifacts
+- Neutral: Request-info decisions remain editable until final
+
+**Status**: Accepted
+
+### [2026-02-06] Verifier smoke runner as Phase 4 CI gate
+
+**Context**: Phase 4 needs a fast, deterministic end-to-end workflow check that is easy to run locally and in CI.
+
+**Decision**: Add `/api/ops/verifier-smoke/run` as the canonical Phase 4 smoke runner and execute it in RC Gate via a dedicated pytest test.
+
+**Rationale**:
+- Provides a single, actionable signal for Phase 4 regressions
+- Keeps smoke coverage fast and deterministic
+
+**Alternatives Considered**:
+- Manual-only demo script: rejected because CI must catch regressions
+- Full browser E2E: rejected for speed and flakiness
+
+**Consequences**:
+- Positive: CI failures point directly to the verifier workflow
+- Neutral: Runner is limited to dev/ci environments
+
+**Status**: Accepted
+
+### [2026-02-06] Phase 4 verifier console complete
+
+**Context**: Phase 4 delivered the Verifier Console with end-to-end workflow coverage and CI smoke gating.
+
+**Decision**: Mark Phase 4 as complete with real cases APIs, actions/notes/timeline, bulk ops, decision packet JSON/PDF/ZIP exports, final decision lock + snapshot, and the verifier smoke runner enforced in RC Gate.
+
+**Rationale**:
+- Confirms Phase 4 scope is complete and demo-ready
+- Establishes RC Gate as the acceptance signal for the workflow
+
+**Alternatives Considered**:
+- Defer completion until Phase 5: rejected to keep milestones clear
+
+**Consequences**:
+- Positive: Phase 4 is stable, demoable, and CI-gated
+- Neutral: Future phases build on a locked audit workflow
+
+**Status**: Accepted
+
 ### [2026-02-06] RC Gate release gate + commit SHA precedence
 
 **Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).

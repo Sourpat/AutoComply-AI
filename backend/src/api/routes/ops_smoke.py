@@ -5,6 +5,8 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
+import httpx
+
 from fastapi import APIRouter
 
 from app.submissions.seed import seed_demo_submissions
@@ -21,6 +23,7 @@ from src.autocomply.domain.explainability.maintenance import (
     get_explain_db_path,
 )
 from src.autocomply.domain.explainability.store import diff_explain_runs, list_runs
+from src.autocomply.domain.verifier_store import list_cases, seed_cases
 
 router = APIRouter(tags=["ops"])
 
@@ -199,6 +202,68 @@ async def ops_smoke() -> Dict[str, Any]:
         determinism_ok = False
         details["errors"].append({"check": "determinism", "detail": "no submission for determinism"})
     record_check("determinism", determinism_ok)
+
+    verifier_packet_ok = True
+    verifier_final_ok = True
+    if env_marker == "ci":
+        try:
+            seed_cases()
+            cases, _ = list_cases(limit=1, offset=0)
+            if not cases:
+                verifier_packet_ok = False
+                details["errors"].append({"check": "verifier_audit_packet", "detail": "no cases"})
+                verifier_final_ok = False
+                details["errors"].append({"check": "verifier_final_decision", "detail": "no cases"})
+            else:
+                case_id = cases[0]["case_id"]
+                async with httpx.AsyncClient() as client:
+                    pdf_resp = await client.get(
+                        f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/packet.pdf?include_explain=0"
+                    )
+                    zip_resp = await client.get(
+                        f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/audit.zip?include_explain=0"
+                    )
+                    verifier_packet_ok = pdf_resp.status_code == 200 and zip_resp.status_code == 200
+                    if not verifier_packet_ok:
+                        details["errors"].append(
+                            {
+                                "check": "verifier_audit_packet",
+                                "detail": f"pdf={pdf_resp.status_code}, zip={zip_resp.status_code}",
+                            }
+                        )
+
+                    decision_resp = await client.post(
+                        f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/decision?include_explain=0",
+                        json={"type": "approve", "reason": "ops smoke", "actor": "ops"},
+                    )
+                    final_resp = await client.get(
+                        f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/final-packet"
+                    )
+                    final_zip = await client.get(
+                        f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/audit.zip?include_explain=0"
+                    )
+                    verifier_final_ok = (
+                        decision_resp.status_code == 200
+                        and final_resp.status_code == 200
+                        and final_zip.status_code == 200
+                    )
+                    if not verifier_final_ok:
+                        details["errors"].append(
+                            {
+                                "check": "verifier_final_decision",
+                                "detail": (
+                                    f"decision={decision_resp.status_code}, "
+                                    f"final={final_resp.status_code}, zip={final_zip.status_code}"
+                                ),
+                            }
+                        )
+        except Exception as exc:
+            verifier_packet_ok = False
+            details["errors"].append({"check": "verifier_audit_packet", "detail": type(exc).__name__})
+            verifier_final_ok = False
+            details["errors"].append({"check": "verifier_final_decision", "detail": type(exc).__name__})
+    record_check("verifier_audit_packet", verifier_packet_ok)
+    record_check("verifier_final_decision", verifier_final_ok)
 
     replay_diff_ok = True
     if determinism_target:

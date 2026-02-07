@@ -45,6 +45,77 @@
 **Notes**: RC Gate green.
 
 
+### Phase 4: Verifier Console uses real submitted cases
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Wire Verifier Console to real cases with backend list/detail endpoints and deterministic demo data.
+**Phase 4.1–4.8**: COMPLETE (RC Gate: PASS — 2026-02-06)
+**Phase 4 Subphases**:
+- [x] 4.1–4.2: Real cases list/detail + filters
+- [x] 4.3: Actions/notes/timeline
+- [x] 4.4: Assignment + bulk ops + My Queue
+- [x] 4.5: Decision packet JSON
+- [x] 4.6: Decision packet PDF + audit ZIP
+- [x] 4.7: Final decision + lock + snapshot
+- [x] 4.8: Smoke runner + RC Gate coverage
+**Acceptance Criteria**:
+- [x] Backend: persist submissions → cases table / case store (or reuse workflow store)
+- [x] Backend: list cases endpoint for verifier (filter/sort/pagination)
+- [x] Backend: actions + notes + events endpoints (persisted)
+- [x] Backend: assignment + bulk endpoints with assignee filters
+- [x] Backend: decision packet endpoint (dp-v1) with explain citations
+- [x] Backend: decision packet PDF + audit ZIP downloads
+- [x] Frontend: Verifier Console uses /api/verifier/cases (list/detail + filters + errors)
+- [x] Frontend: Verifier actions + notes + timeline
+- [x] Frontend: My Queue + bulk actions + assignment controls
+- [x] Frontend: Decision Packet panel + export JSON
+- [x] Frontend: Export PDF + Audit ZIP download
+- [x] Seed/Fixtures: deterministic 10 demo cases
+- [x] Tests: API contract tests for list/detail endpoints
+- [x] Tests: verifier actions + notes
+- [x] Tests: verifier bulk + assignment
+- [x] Tests: decision packet API
+- [x] Tests: audit packet downloads
+- [x] Docs: Phase4 demo script + architecture note
+**Tasks**:
+- [x] Backend store + schema bootstrap
+- [x] Seed endpoint (/api/ops/seed-verifier-cases)
+- [x] Verifier cases list/detail endpoints
+- [x] Tests: test_verifier_cases_api.py
+- [x] Frontend: Verifier Console wiring (list/detail + filters + errors + seed CTA)
+- [x] Backend + frontend: verifier actions + notes + events
+- [x] Tests: test_verifier_actions_api.py
+- [x] Backend + frontend: assignment + bulk ops + my queue
+- [x] Tests: test_verifier_bulk_api.py
+- [x] Backend + frontend: decision packet panel + export JSON
+- [x] Tests: test_decision_packet_api.py
+- [x] Docs: PHASE4_PLAN.md + PHASE4_SMOKE.md updates
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_audit_packet_downloads.py`
+- `npm run build`
+- See docs/PHASE4_SMOKE.md
+**Dependencies**: None
+**Notes**: Kickoff for Phase 4 scope.
+
+
+### Phase 4.8 — Verifier smoke runner + demo script + RC Gate
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Add deterministic verifier smoke runner, demo script, and CI gate coverage.
+**Acceptance Criteria**:
+- [x] Smoke runner endpoint returns ok with step report
+- [x] Smoke runner pytest passes
+- [x] RC Gate runs smoke runner test
+- [x] Demo script doc added and linked
+- [x] DECISIONS entry for smoke runner gate
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_verifier_smoke_runner.py`
+- `npm run build`
+**Dependencies**: None
+
+
+
+
 
 
 
@@ -149,6 +220,30 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 4.8 — Verifier smoke runner + demo script + RC Gate
+**Completed**: 2026-02-06
+**Commit**: a2711c0
+**Summary**: Added verifier smoke runner endpoint, demo script, and RC Gate coverage.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_verifier_smoke_runner.py`
+- `npm run build`
+
+### Phase 4.7 — Final decision flow + case lock + final packet snapshot
+**Completed**: 2026-02-06
+**Commit**: 1ae1081
+**Summary**: Added final decision endpoint with lock + snapshot, UI modal, and ops smoke coverage.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_verifier_decision_flow.py`
+- `npm run build`
+
+### Phase 4: Verifier Console uses real submitted cases
+**Completed**: 2026-02-06
+**Commit**: d799866
+**Summary**: Wired verifier console to real cases, actions/notes, assignments, decision packet JSON/PDF, and audit ZIP exports with CI smoke gate and tests.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_audit_packet_downloads.py`
+- `npm run build`
+
 ### Phase 3.10 — CI health version + intelligence schema
 **Completed**: 2026-02-06
 **Commit**: 8afe541, 5bf0658, 79e561a
@@ -163,29 +258,6 @@
 **Summary**: Hardened RC Gate env/pytest logging, readiness checks, and artifacts.
 **Verification**:
 - GitHub Actions RC Gate success
-
-### Phase 3.9 — Deterministic knowledge pack mode
-**Completed**: 2026-02-06
-**Commit**: 53d38df
-**Summary**: Validated CI-parity pack mode, fixed pack path + ops ci allowances, enforced kp-v1 in rc smoke, and updated pack retriever test.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_pack_retriever.py backend/tests/test_golden_suite.py`
-
-### T-026: Explain golden suite gate
-**Completed**: 2026-02-05
-**Commit**: (pending)
-**Summary**: Added golden-case fixtures, runner, ops endpoint, pytest gate, RC smoke step, and ops smoke golden suite check for Explain v1.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_golden_suite.py`
-- `Invoke-RestMethod -Method Post http://127.0.0.1:8001/api/ops/golden/run`
-
-### T-025: Explain run retention + storage health
-**Completed**: 2026-02-05
-**Commit**: (pending)
-**Summary**: Added retention/compaction utilities, storage health checks, and ops maintenance endpoint with tests.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_explain_maintenance.py backend/tests/test_ops_smoke.py`
-- `powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1`
 
 ---
 
