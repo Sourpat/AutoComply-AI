@@ -39,6 +39,11 @@ export type SubmitterSubmissionDetail = {
   last_status_at?: string | null;
   last_status_by?: string | null;
   request_info?: SubmitterRequestInfo | null;
+  sla_first_touch_due_at?: string | null;
+  sla_needs_info_due_at?: string | null;
+  sla_decision_due_at?: string | null;
+  sla_escalation_level?: number | null;
+  sla_last_notified_at?: string | null;
   title: string;
   subtitle: string;
   summary?: string | null;
@@ -59,6 +64,11 @@ export type SubmitterEvent = {
   message?: string | null;
   payload_json?: string | null;
   created_at: string;
+};
+
+export type SubmitterSlaStats = {
+  needs_info_due_soon: number;
+  needs_info_overdue: number;
 };
 
 export async function createSubmitterSubmission(
@@ -120,4 +130,10 @@ export async function fetchSubmitterSubmissionEvents(
       headers: getJsonHeaders(),
     }
   );
+}
+
+export async function fetchSubmitterSubmissionStats(): Promise<SubmitterSlaStats> {
+  return apiFetch<SubmitterSlaStats>("/api/submitter/submissions/stats", {
+    headers: getJsonHeaders(),
+  });
 }

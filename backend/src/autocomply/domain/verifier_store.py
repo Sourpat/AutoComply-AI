@@ -40,6 +40,8 @@ def ensure_schema() -> None:
             assigned_at TEXT,
             locked INTEGER DEFAULT 0,
             decision_json TEXT,
+            first_opened_at TEXT,
+            finalized_at TEXT,
             created_at TEXT,
             updated_at TEXT,
             summary TEXT
@@ -109,6 +111,10 @@ def ensure_schema() -> None:
             conn.execute(text("ALTER TABLE cases ADD COLUMN locked INTEGER DEFAULT 0"))
         if "decision_json" not in existing_columns:
             conn.execute(text("ALTER TABLE cases ADD COLUMN decision_json TEXT"))
+        if "first_opened_at" not in existing_columns:
+            conn.execute(text("ALTER TABLE cases ADD COLUMN first_opened_at TEXT"))
+        if "finalized_at" not in existing_columns:
+            conn.execute(text("ALTER TABLE cases ADD COLUMN finalized_at TEXT"))
         for statement in index_statements:
             conn.execute(text(statement))
 
@@ -137,9 +143,10 @@ def _fetch_case(conn, case_id: str) -> Optional[Dict[str, Any]]:
     row = conn.execute(
         text(
             """
-            SELECT case_id, submission_id, status, jurisdiction,
-                   assignee, assigned_at, locked, decision_json,
-                   created_at, updated_at, summary
+                 SELECT case_id, submission_id, status, jurisdiction,
+                     assignee, assigned_at, locked, decision_json,
+                   first_opened_at, finalized_at,
+                     created_at, updated_at, summary
             FROM cases
             WHERE case_id = :case_id
             """
@@ -147,6 +154,62 @@ def _fetch_case(conn, case_id: str) -> Optional[Dict[str, Any]]:
         {"case_id": case_id},
     ).mappings().first()
     return _normalize_case(row) if row else None
+
+
+def mark_case_first_opened(case_id: str, opened_at: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    ensure_schema()
+    engine = get_engine()
+    now = opened_at or _now_iso()
+
+    with engine.begin() as conn:
+        case_row = _fetch_case(conn, case_id)
+        if not case_row:
+            return None
+        if case_row.get("first_opened_at"):
+            return case_row
+        conn.execute(
+            text(
+                """
+                UPDATE cases
+                SET first_opened_at = :first_opened_at, updated_at = :updated_at
+                WHERE case_id = :case_id AND first_opened_at IS NULL
+                """
+            ),
+            {
+                "first_opened_at": now,
+                "updated_at": now,
+                "case_id": case_id,
+            },
+        )
+        return _fetch_case(conn, case_id)
+
+
+def mark_case_finalized(case_id: str, finalized_at: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    ensure_schema()
+    engine = get_engine()
+    now = finalized_at or _now_iso()
+
+    with engine.begin() as conn:
+        case_row = _fetch_case(conn, case_id)
+        if not case_row:
+            return None
+        if case_row.get("finalized_at"):
+            return case_row
+        conn.execute(
+            text(
+                """
+                UPDATE cases
+                SET finalized_at = :finalized_at, updated_at = :updated_at
+                WHERE case_id = :case_id AND finalized_at IS NULL
+                """
+            ),
+            {
+                "finalized_at": now,
+                "updated_at": now,
+                "case_id": case_id,
+            },
+        )
+        return _fetch_case(conn, case_id)
 
 
 def seed_cases(n: int = 10) -> Dict[str, int]:
@@ -177,6 +240,8 @@ def seed_cases(n: int = 10) -> Dict[str, int]:
                 "assigned_at": None,
                 "locked": 0,
                 "decision_json": None,
+                "first_opened_at": None,
+                "finalized_at": None,
                 "created_at": created_at,
                 "updated_at": updated_at,
                 "summary": summary,
@@ -203,10 +268,12 @@ def seed_cases(n: int = 10) -> Dict[str, int]:
                     INSERT INTO cases (
                         case_id, submission_id, status, jurisdiction,
                         assignee, assigned_at, locked, decision_json,
+                        first_opened_at, finalized_at,
                         created_at, updated_at, summary
                     ) VALUES (
                         :case_id, :submission_id, :status, :jurisdiction,
                         :assignee, :assigned_at, :locked, :decision_json,
+                        :first_opened_at, :finalized_at,
                         :created_at, :updated_at, :summary
                     )
                     """
@@ -265,9 +332,10 @@ def list_cases(
         rows = conn.execute(
             text(
                 f"""
-                SELECT case_id, submission_id, status, jurisdiction,
-                      assignee, assigned_at, locked, decision_json,
-                      created_at, updated_at, summary
+                    SELECT case_id, submission_id, status, jurisdiction,
+                        assignee, assigned_at, locked, decision_json,
+                        first_opened_at, finalized_at,
+                        created_at, updated_at, summary
                 FROM cases
                 {where_clause}
                 ORDER BY created_at DESC
@@ -329,9 +397,10 @@ def get_case_by_submission_id(submission_id: str) -> Optional[Dict[str, Any]]:
         row = conn.execute(
             text(
                 """
-                SELECT case_id, submission_id, status, jurisdiction,
-                       assignee, assigned_at, locked, decision_json,
-                       created_at, updated_at, summary
+                  SELECT case_id, submission_id, status, jurisdiction,
+                      assignee, assigned_at, locked, decision_json,
+                      first_opened_at, finalized_at,
+                      created_at, updated_at, summary
                 FROM cases
                 WHERE submission_id = :submission_id
                 """
@@ -357,9 +426,10 @@ def get_or_create_case_for_submission(
         existing = conn.execute(
             text(
                 """
-                SELECT case_id, submission_id, status, jurisdiction,
-                       assignee, assigned_at, locked, decision_json,
-                       created_at, updated_at, summary
+                  SELECT case_id, submission_id, status, jurisdiction,
+                      assignee, assigned_at, locked, decision_json,
+                      first_opened_at, finalized_at,
+                      created_at, updated_at, summary
                 FROM cases
                 WHERE submission_id = :submission_id
                 """
@@ -376,10 +446,12 @@ def get_or_create_case_for_submission(
                 INSERT INTO cases (
                     case_id, submission_id, status, jurisdiction,
                     assignee, assigned_at, locked, decision_json,
+                    first_opened_at, finalized_at,
                     created_at, updated_at, summary
                 ) VALUES (
                     :case_id, :submission_id, :status, :jurisdiction,
                     :assignee, :assigned_at, :locked, :decision_json,
+                    :first_opened_at, :finalized_at,
                     :created_at, :updated_at, :summary
                 )
                 """
@@ -393,6 +465,8 @@ def get_or_create_case_for_submission(
                 "assigned_at": now,
                 "locked": 0,
                 "decision_json": None,
+                "first_opened_at": None,
+                "finalized_at": None,
                 "created_at": now,
                 "updated_at": now,
                 "summary": summary,
@@ -445,9 +519,10 @@ def get_or_create_case_for_submission(
         created = conn.execute(
             text(
                 """
-                SELECT case_id, submission_id, status, jurisdiction,
-                       assignee, assigned_at, locked, decision_json,
-                       created_at, updated_at, summary
+                  SELECT case_id, submission_id, status, jurisdiction,
+                      assignee, assigned_at, locked, decision_json,
+                      first_opened_at, finalized_at,
+                      created_at, updated_at, summary
                 FROM cases
                 WHERE case_id = :case_id
                 """

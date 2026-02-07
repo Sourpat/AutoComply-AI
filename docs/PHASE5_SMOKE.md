@@ -61,6 +61,14 @@ Invoke-RestMethod http://127.0.0.1:8001/api/submitter/submissions/<submission_id
 Invoke-RestMethod http://127.0.0.1:8001/api/verifier/cases/<case_id>/events?limit=50
 ```
 
+## SLA reminders + stats
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8001/api/ops/sla/run
+Invoke-RestMethod http://127.0.0.1:8001/api/ops/sla/stats
+Invoke-RestMethod http://127.0.0.1:8001/api/verifier/cases/stats
+Invoke-RestMethod http://127.0.0.1:8001/api/submitter/submissions/stats
+```
+
 ## Upload submission attachment
 ```powershell
 $filePath = "$PWD\\sample-attachment.txt"

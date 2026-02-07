@@ -36,6 +36,29 @@
 
 ## Decisions
 
+### [2026-02-07] Phase 5.6 deterministic SLA reminders + escalation
+
+**Context**: Phase 5.6 needs SLA tracking (first touch, needs-info, decision) with reminders and escalation in a deterministic, CI-friendly manner.
+
+**Decision**: Add SLA due fields to submissions, first_opened/finalized fields to cases, and a deterministic `/api/ops/sla/run` endpoint that emits due-soon/overdue events with escalation and email outbox stubs. Provide stats endpoints for verifier and submitter UI counters.
+
+**Rationale**:
+- Avoids background schedulers while keeping reminders deterministic
+- Enables tests to control time via monkeypatch
+- Keeps SLA signals visible in existing events feed
+
+**Alternatives Considered**:
+- Background scheduler: rejected due to non-determinism in CI and demo runs
+- External job runner: rejected to keep Phase 5.6 self-contained
+
+**Consequences**:
+- Positive: Deterministic SLA reminders and counters across submitter/verifier views
+- Neutral: Ops SLA run must be invoked explicitly in dev/ci flows
+
+**Status**: Accepted
+**Related**:
+- Commit: (HEAD)
+
 ### [2026-02-06] Phase 4 verifier cases store
 
 **Context**: Phase 4 needs deterministic verifier cases for list/detail APIs and smoke checks, independent of the main workflow DB.

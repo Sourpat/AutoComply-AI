@@ -19,6 +19,7 @@ import {
   type SubmitterEvent,
 } from '../api/submitterApi';
 import { listSubmissionAttachments, uploadSubmissionAttachment } from '../api/attachmentsApi';
+import { formatDue, isOverdue } from '../workflow/sla';
 
 interface CsfFacilityFormData {
   facilityName: string;
@@ -78,6 +79,8 @@ export function CsfFacilitySubmissionPage() {
   const [respondError, setRespondError] = useState<string | null>(null);
   const [eventsError, setEventsError] = useState<string | null>(null);
   const isDev = (import.meta as any)?.env?.DEV ?? false;
+  const needsInfoDueAt = submitterDetail?.sla_needs_info_due_at || undefined;
+  const needsInfoOverdue = isOverdue(needsInfoDueAt);
 
   const loadSubmitterEvents = async (submissionId: string) => {
     try {
@@ -264,6 +267,17 @@ export function CsfFacilitySubmissionPage() {
                 {submitterDetail.status === 'needs_info' && (
                   <div className="rounded border border-amber-200 bg-amber-50 p-2 text-amber-800 space-y-1">
                     <div className="font-semibold">Needs info from verifier</div>
+                    {needsInfoDueAt && (
+                      <div
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                          needsInfoOverdue
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}
+                      >
+                        {formatDue(needsInfoDueAt)}
+                      </div>
+                    )}
                     {submitterDetail.request_info?.message && (
                       <div>Message: {submitterDetail.request_info.message}</div>
                     )}

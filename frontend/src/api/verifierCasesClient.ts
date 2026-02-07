@@ -25,6 +25,8 @@ export type VerifierCase = {
     timestamp?: string | null;
     version?: string | null;
   } | null;
+  first_opened_at?: string | null;
+  finalized_at?: string | null;
   submission_summary?: {
     submitter_name?: string | null;
     created_at?: string | null;
@@ -62,6 +64,15 @@ export type VerifierCasesResponse = {
   limit: number;
   offset: number;
   count: number;
+};
+
+export type VerifierCaseStats = {
+  verifier_due_soon: number;
+  verifier_overdue: number;
+  needs_info_due_soon: number;
+  needs_info_overdue: number;
+  decision_due_soon: number;
+  decision_overdue: number;
 };
 
 export type VerifierCaseDetail = {
@@ -109,6 +120,7 @@ export async function fetchVerifierCases(params: {
   jurisdiction?: string;
   assignee?: string;
   submission_status?: string;
+  sla_filter?: string;
 }): Promise<VerifierCasesResponse> {
   const search = new URLSearchParams({
     limit: params.limit.toString(),
@@ -130,9 +142,18 @@ export async function fetchVerifierCases(params: {
   if (params.submission_status) {
     search.set("submission_status", params.submission_status);
   }
+  if (params.sla_filter) {
+    search.set("sla_filter", params.sla_filter);
+  }
 
   return apiFetch<VerifierCasesResponse>(`${VERIFIER_BASE}/cases?${search.toString()}`, {
     headers: getAuthHeaders(),
+  });
+}
+
+export async function fetchVerifierCaseStats(): Promise<VerifierCaseStats> {
+  return apiFetch<VerifierCaseStats>(`${VERIFIER_BASE}/cases/stats`, {
+    headers: getJsonHeaders(),
   });
 }
 

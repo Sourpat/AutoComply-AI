@@ -16,6 +16,11 @@ from datetime import datetime, timedelta, timezone
 from src.database.connection import get_db
 from src.database.models import ReviewQueueItem, ReviewStatus, QuestionEvent, QuestionStatus
 from src.autocomply.domain.submissions_store import get_submission_store, SubmissionStatus
+from src.autocomply.domain.notification_store import emit_event
+from src.autocomply.domain import sla_policy
+from src.autocomply.domain.sla_tracker import compute_sla_stats
+from src.autocomply.domain.verifier_store import get_case_by_submission_id
+from src.autocomply.integrations.email_hooks import enqueue_email
 from app.submissions.seed import seed_demo_submissions
 import os
 from src.api.dependencies.auth import AUTO_ROLE_HEADER, ROLE_HEADER, require_admin_role
@@ -151,6 +156,164 @@ async def golden_run(
 @smoke_router.get("/smoke")
 async def ops_smoke_alias():
     return await ops_smoke_handler()
+
+
+@smoke_router.post("/sla/run")
+def run_sla_reminders(
+    x_user_role: Annotated[str | None, Header(alias=ROLE_HEADER)] = None,
+    x_autocomply_role: Annotated[str | None, Header(alias=AUTO_ROLE_HEADER)] = None,
+) -> Dict[str, Any]:
+    env = os.getenv("ENV", "local")
+    if env not in {"local", "ci"}:
+        require_admin_role(
+            x_user_role=x_user_role,
+            x_autocomply_role=x_autocomply_role,
+        )
+
+    store = get_submission_store()
+    submissions = store.list_submissions(limit=10000)
+    now = sla_policy.utc_now()
+    now_iso = sla_policy.now_iso()
+
+    emitted_count = 0
+    escalated_count = 0
+    by_type: Dict[str, int] = {}
+
+    for submission in submissions:
+        submission_id = submission.submission_id
+        case = get_case_by_submission_id(submission_id)
+        case_id = case.get("case_id") if case else None
+
+        def maybe_emit(event_type: str, title: str, message: str, payload: Dict[str, Any]) -> None:
+            nonlocal emitted_count
+            event = emit_event(
+                submission_id=submission_id,
+                case_id=case_id,
+                actor_type="system",
+                actor_id="sla",
+                event_type=event_type,
+                title=title,
+                message=message,
+                payload=payload,
+                dedupe_by_day=True,
+            )
+            if event:
+                emitted_count += 1
+                by_type[event_type] = by_type.get(event_type, 0) + 1
+                submission.sla_last_notified_at = now_iso
+                escalation_level = payload.get("escalation_level")
+                if isinstance(escalation_level, int) and escalation_level >= 2:
+                    enqueue_email(event)
+
+        status_value = (
+            submission.status.value
+            if isinstance(submission.status, SubmissionStatus)
+            else submission.status
+        )
+        if status_value in {SubmissionStatus.APPROVED.value, SubmissionStatus.REJECTED.value}:
+            continue
+
+        first_touch_due_at = submission.sla_first_touch_due_at
+        needs_info_due_at = submission.sla_needs_info_due_at
+        decision_due_at = submission.sla_decision_due_at
+
+        if first_touch_due_at:
+            if sla_policy.is_due_soon(first_touch_due_at, now=now):
+                maybe_emit(
+                    "sla_due_soon",
+                    "First touch due soon",
+                    "Verifier has a first-touch SLA due soon.",
+                    {"sla_type": "first_touch", "due_at": first_touch_due_at},
+                )
+            elif sla_policy.is_overdue(first_touch_due_at, now=now):
+                overdue = sla_policy.overdue_hours(first_touch_due_at, now=now)
+                level = sla_policy.escalation_level_for_overdue(overdue)
+                if level > submission.sla_escalation_level:
+                    submission.sla_escalation_level = level
+                    escalated_count += 1
+                maybe_emit(
+                    "sla_overdue",
+                    "First touch overdue",
+                    "Verifier first-touch SLA is overdue.",
+                    {
+                        "sla_type": "first_touch",
+                        "due_at": first_touch_due_at,
+                        "escalation_level": submission.sla_escalation_level,
+                    },
+                )
+
+        if needs_info_due_at:
+            if sla_policy.is_due_soon(needs_info_due_at, now=now):
+                maybe_emit(
+                    "sla_due_soon",
+                    "Needs info due soon",
+                    "Submitter response is due soon.",
+                    {"sla_type": "needs_info", "due_at": needs_info_due_at},
+                )
+            elif sla_policy.is_overdue(needs_info_due_at, now=now):
+                overdue = sla_policy.overdue_hours(needs_info_due_at, now=now)
+                level = sla_policy.escalation_level_for_overdue(overdue)
+                if level > submission.sla_escalation_level:
+                    submission.sla_escalation_level = level
+                    escalated_count += 1
+                maybe_emit(
+                    "sla_overdue",
+                    "Needs info overdue",
+                    "Submitter response SLA is overdue.",
+                    {
+                        "sla_type": "needs_info",
+                        "due_at": needs_info_due_at,
+                        "escalation_level": submission.sla_escalation_level,
+                    },
+                )
+
+        if decision_due_at:
+            if sla_policy.is_due_soon(decision_due_at, now=now):
+                maybe_emit(
+                    "sla_due_soon",
+                    "Decision due soon",
+                    "Final decision SLA is due soon.",
+                    {"sla_type": "decision", "due_at": decision_due_at},
+                )
+            elif sla_policy.is_overdue(decision_due_at, now=now):
+                overdue = sla_policy.overdue_hours(decision_due_at, now=now)
+                level = sla_policy.escalation_level_for_overdue(overdue)
+                if level > submission.sla_escalation_level:
+                    submission.sla_escalation_level = level
+                    escalated_count += 1
+                maybe_emit(
+                    "sla_overdue",
+                    "Decision overdue",
+                    "Final decision SLA is overdue.",
+                    {
+                        "sla_type": "decision",
+                        "due_at": decision_due_at,
+                        "escalation_level": submission.sla_escalation_level,
+                    },
+                )
+
+    return {
+        "scanned_count": len(submissions),
+        "emitted_count": emitted_count,
+        "escalated_count": escalated_count,
+        "by_type": by_type,
+    }
+
+
+@smoke_router.get("/sla/stats")
+def get_sla_stats(
+    x_user_role: Annotated[str | None, Header(alias=ROLE_HEADER)] = None,
+    x_autocomply_role: Annotated[str | None, Header(alias=AUTO_ROLE_HEADER)] = None,
+) -> Dict[str, Any]:
+    env = os.getenv("ENV", "local")
+    if env not in {"local", "ci"}:
+        require_admin_role(
+            x_user_role=x_user_role,
+            x_autocomply_role=x_autocomply_role,
+        )
+    store = get_submission_store()
+    submissions = store.list_submissions(limit=10000)
+    return compute_sla_stats(submissions, sla_policy.utc_now())
 
 
 @smoke_router.get("/kb-stats")

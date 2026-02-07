@@ -1,6 +1,6 @@
 # Task Queue
 
-**Last Updated**: 2026-02-06
+**Last Updated**: 2026-02-07
 
 **Active WIP**: 0
 
@@ -148,6 +148,22 @@
 - `npm run build`
 **Dependencies**: None
 **Notes**: Commit 2b26396
+
+### Phase 5.6 — SLA reminders + escalation + counters
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Deterministic SLA reminders/escalation with stats counters for verifier + submitter.
+**Acceptance Criteria**:
+- [x] SLA due fields persisted and updated across lifecycle
+- [x] Ops SLA runner emits due-soon/overdue events with escalation + email hook stubs
+- [x] Stats endpoints for verifier + submitter + UI counters/filters
+- [x] Tests added + passing
+- [x] Docs updated (PHASE5 plan + smoke)
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_sla_reminders.py`
+- `npm run build`
+**Dependencies**: None
+**Notes**: Commit (HEAD)
 
 
 

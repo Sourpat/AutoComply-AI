@@ -498,6 +498,39 @@ async def ops_smoke() -> Dict[str, Any]:
             details["errors"].append({"check": "submission_events_feed", "detail": type(exc).__name__})
     record_check("submission_events_feed", submission_events_ok)
 
+    sla_run_ok = True
+    if env_marker == "ci":
+        try:
+            async with httpx.AsyncClient() as client:
+                submit_resp = await client.post(
+                    "http://127.0.0.1:8001/api/submitter/submissions",
+                    json={
+                        "client_token": "ops-smoke-sla",
+                        "subject": "Ops smoke SLA",
+                        "submitter_name": "ops",
+                        "jurisdiction": "OH",
+                        "doc_type": "csf_facility",
+                        "notes": "ops sla",
+                    },
+                )
+                if submit_resp.status_code != 200:
+                    sla_run_ok = False
+                else:
+                    run_resp = await client.post("http://127.0.0.1:8001/api/ops/sla/run")
+                    if run_resp.status_code != 200:
+                        sla_run_ok = False
+                    else:
+                        payload = run_resp.json()
+                        required_keys = {"scanned_count", "emitted_count", "escalated_count", "by_type"}
+                        if not required_keys.issubset(payload.keys()):
+                            sla_run_ok = False
+            if not sla_run_ok:
+                details["errors"].append({"check": "sla_run", "detail": "missing sla keys"})
+        except Exception as exc:
+            sla_run_ok = False
+            details["errors"].append({"check": "sla_run", "detail": type(exc).__name__})
+    record_check("sla_run", sla_run_ok)
+
     replay_diff_ok = True
     if determinism_target:
         try:

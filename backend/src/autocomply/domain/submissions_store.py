@@ -12,11 +12,16 @@ Future: Replace with SQLAlchemy models or document store
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
+
+from src.autocomply.domain import sla_policy
+
+
+def _now_iso() -> str:
+    return sla_policy.now_iso()
 
 
 class SubmissionStatus(str, Enum):
@@ -106,6 +111,21 @@ class Submission(BaseModel):
     reviewed_at: Optional[str] = Field(
         None, description="ISO 8601 timestamp when reviewed (approved/rejected)"
     )
+    sla_first_touch_due_at: Optional[str] = Field(
+        None, description="ISO 8601 timestamp when first touch is due"
+    )
+    sla_needs_info_due_at: Optional[str] = Field(
+        None, description="ISO 8601 timestamp when needs-info response is due"
+    )
+    sla_decision_due_at: Optional[str] = Field(
+        None, description="ISO 8601 timestamp when final decision is due"
+    )
+    sla_escalation_level: int = Field(
+        0, description="Current SLA escalation level"
+    )
+    sla_last_notified_at: Optional[str] = Field(
+        None, description="ISO 8601 timestamp when SLA reminder last emitted"
+    )
 
     class Config:
         use_enum_values = True
@@ -156,7 +176,8 @@ class SubmissionStore:
         Returns:
             Created Submission object
         """
-        now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        now = sla_policy.utc_now()
+        now_iso = now.isoformat().replace('+00:00', 'Z')
         if submission_id is None:
             submission_id = str(uuid.uuid4())
 
@@ -165,11 +186,11 @@ class SubmissionStore:
             csf_type=csf_type,
             tenant=tenant,
             status=SubmissionStatus.SUBMITTED,
-            last_status_at=now,
+            last_status_at=now_iso,
             last_status_by="submitter",
             priority=priority,
-            created_at=now,
-            updated_at=now,
+            created_at=now_iso,
+            updated_at=now_iso,
             title=title,
             subtitle=subtitle,
             summary=summary,
@@ -177,6 +198,10 @@ class SubmissionStore:
             payload=payload,
             decision_status=decision_status,
             risk_level=risk_level,
+            sla_first_touch_due_at=sla_policy.add_hours_iso(now, sla_policy.FIRST_TOUCH_HOURS),
+            sla_decision_due_at=sla_policy.add_hours_iso(now, sla_policy.DECISION_HOURS),
+            sla_escalation_level=0,
+            sla_last_notified_at=None,
         )
 
         self._store[submission_id] = submission
@@ -238,19 +263,30 @@ class SubmissionStore:
             return None
 
         submission.status = status
-        submission.last_status_at = datetime.now(timezone.utc).isoformat().replace(
-            '+00:00', 'Z'
-        )
+        submission.last_status_at = _now_iso()
         submission.last_status_by = by
         if request_info is not None:
             submission.request_info = request_info
         if status != SubmissionStatus.NEEDS_INFO and request_info is None:
             submission.request_info = None
+        if status == SubmissionStatus.NEEDS_INFO:
+            submission.sla_needs_info_due_at = sla_policy.add_hours_iso(
+                sla_policy.utc_now(), sla_policy.NEEDS_INFO_HOURS
+            )
+        elif status != SubmissionStatus.NEEDS_INFO:
+            submission.sla_needs_info_due_at = None
+        if status == SubmissionStatus.IN_REVIEW:
+            submission.sla_first_touch_due_at = None
         if status in [SubmissionStatus.APPROVED, SubmissionStatus.REJECTED]:
             if not submission.reviewed_at:
                 submission.reviewed_at = submission.last_status_at
             if by:
                 submission.reviewed_by = by
+            submission.sla_first_touch_due_at = None
+            submission.sla_needs_info_due_at = None
+            submission.sla_decision_due_at = None
+            submission.sla_escalation_level = 0
+            submission.sla_last_notified_at = None
         submission.updated_at = submission.last_status_at
         return submission
 
@@ -281,7 +317,7 @@ class SubmissionStore:
         if reviewed_by is not None:
             submission.reviewed_by = reviewed_by
         
-        submission.updated_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        submission.updated_at = _now_iso()
         return submission
 
     def delete_submission(self, submission_id: str) -> bool:

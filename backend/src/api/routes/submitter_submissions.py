@@ -14,6 +14,8 @@ from src.autocomply.domain.submissions_store import (
     get_submission_store,
     set_submission_status,
 )
+from src.autocomply.domain import sla_policy
+from src.autocomply.domain.sla_tracker import compute_sla_stats
 from src.autocomply.domain.notification_store import (
     emit_event,
     list_events_by_submission,
@@ -176,6 +178,18 @@ def list_submitter_submissions(
             raise HTTPException(status_code=400, detail="Invalid status")
     submissions = store.list_submissions(status=statuses, limit=limit)
     return [submission.model_dump() for submission in submissions]
+
+
+@router.get("/submissions/stats")
+def get_submitter_submission_stats() -> dict:
+    _ensure_allowed()
+    store = get_submission_store()
+    submissions = store.list_submissions(limit=10000)
+    stats = compute_sla_stats(submissions, sla_policy.utc_now())
+    return {
+        "needs_info_due_soon": stats.get("needs_info_due_soon", 0),
+        "needs_info_overdue": stats.get("needs_info_overdue", 0),
+    }
 
 
 @router.get("/submissions/{submission_id}")

@@ -12,6 +12,8 @@ from src.autocomply.domain.audit_zip import (
     build_audit_zip_bundle,
 )
 from src.autocomply.domain.notification_store import emit_event, list_events_by_case
+from src.autocomply.domain import sla_policy
+from src.autocomply.domain.sla_tracker import compute_sla_stats
 from src.autocomply.domain.submissions_store import (
     SubmissionStatus,
     get_submission_store,
@@ -29,6 +31,8 @@ from src.autocomply.domain.verifier_store import (
     get_case,
     list_cases,
     list_notes,
+    mark_case_finalized,
+    mark_case_first_opened,
     set_case_decision,
     write_final_packet,
 )
@@ -46,6 +50,8 @@ class VerifierCase(BaseModel):
     assigned_at: str | None = None
     locked: bool = False
     decision: dict | None = None
+    first_opened_at: str | None = None
+    finalized_at: str | None = None
     created_at: str
     updated_at: str
     summary: str
@@ -194,6 +200,7 @@ def list_verifier_cases(
     jurisdiction: str | None = Query(None),
     assignee: str | None = Query(None),
     submission_status: str | None = Query(None),
+    sla_filter: str | None = Query(None, description="due_soon|overdue|needs_info"),
 ) -> dict:
     assignee_filter = assignee
     if assignee == "me":
@@ -205,14 +212,39 @@ def list_verifier_cases(
         jurisdiction=jurisdiction,
         assignee=assignee_filter,
     )
+    now = sla_policy.utc_now()
     store = get_submission_store()
     filtered_items = []
     for item in items:
         submission_id = item.get("submission_id")
         submission = store.get_submission(submission_id) if submission_id else None
+        submission_status_value = None
+        if submission:
+            submission_status_value = (
+                submission.status.value
+                if isinstance(submission.status, SubmissionStatus)
+                else submission.status
+            )
         if submission_status:
-            if not submission or submission.status != submission_status:
+            if not submission or submission_status_value != submission_status:
                 continue
+        if sla_filter:
+            if not submission:
+                continue
+            if sla_filter == "needs_info" and submission_status_value != SubmissionStatus.NEEDS_INFO.value:
+                continue
+            if sla_filter == "due_soon":
+                if not sla_policy.any_due_soon(
+                    [submission.sla_first_touch_due_at, submission.sla_decision_due_at],
+                    now=now,
+                ):
+                    continue
+            if sla_filter == "overdue":
+                if not sla_policy.any_overdue(
+                    [submission.sla_first_touch_due_at, submission.sla_decision_due_at],
+                    now=now,
+                ):
+                    continue
         item["submission_status"] = submission.status if submission else None
         item["request_info"] = submission.request_info if submission else None
         item["submission_summary"] = _build_submission_summary(submission_id)
@@ -223,6 +255,13 @@ def list_verifier_cases(
         "offset": offset,
         "count": count,
     }
+
+
+@router.get("/cases/stats")
+def get_verifier_case_stats() -> dict:
+    store = get_submission_store()
+    submissions = store.list_submissions(limit=10000)
+    return compute_sla_stats(submissions, sla_policy.utc_now())
 
 
 @router.post("/cases/bulk/actions", response_model=VerifierBulkResponse)
@@ -362,6 +401,9 @@ def get_verifier_case(case_id: str) -> dict:
         if submission and submission.status == SubmissionStatus.SUBMITTED:
             set_submission_status(submission_id, SubmissionStatus.IN_REVIEW, "verifier")
             submission = store.get_submission(submission_id)
+            updated_case = mark_case_first_opened(case_id)
+            if updated_case:
+                payload["case"] = updated_case
             emit_event(
                 submission_id=submission_id,
                 case_id=case_id,
@@ -546,6 +588,9 @@ async def post_verifier_decision(
             enqueue_email(event)
     if payload.type == "approve" and submission_id:
         set_submission_status(submission_id, SubmissionStatus.APPROVED, "verifier")
+        updated_case = mark_case_finalized(case_id)
+        if updated_case:
+            case_row = updated_case
         event = emit_event(
             submission_id=submission_id,
             case_id=case_id,
@@ -560,6 +605,9 @@ async def post_verifier_decision(
             enqueue_email(event)
     if payload.type == "reject" and submission_id:
         set_submission_status(submission_id, SubmissionStatus.REJECTED, "verifier")
+        updated_case = mark_case_finalized(case_id)
+        if updated_case:
+            case_row = updated_case
         event = emit_event(
             submission_id=submission_id,
             case_id=case_id,

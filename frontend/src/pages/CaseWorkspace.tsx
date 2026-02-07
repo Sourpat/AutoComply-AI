@@ -34,6 +34,7 @@ import {
   fetchVerifierCaseSubmission,
   fetchVerifierCaseDetail,
   fetchVerifierCases,
+  fetchVerifierCaseStats,
   getDecisionPacket,
   postVerifierCaseNote,
   setVerifierCaseAssignment,
@@ -42,6 +43,7 @@ import {
   type VerifierCaseDetail,
   type VerifierCaseEvent,
   type VerifierNote,
+  type VerifierCaseStats,
 } from "../api/verifierCasesClient";
 import { safeFormatDate, safeFormatRelative } from "../utils/dateUtils";
 
@@ -58,11 +60,14 @@ export const CaseWorkspace: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [jurisdictionFilter, setJurisdictionFilter] = useState("all");
   const [submissionStatusFilter, setSubmissionStatusFilter] = useState("all");
+  const [slaFilter, setSlaFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [myQueueOnly, setMyQueueOnly] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [slaStats, setSlaStats] = useState<VerifierCaseStats | null>(null);
+  const [slaStatsError, setSlaStatsError] = useState<string | null>(null);
   const [detail, setDetail] = useState<VerifierCaseDetail | null>(null);
   const [events, setEvents] = useState<VerifierCaseEvent[]>([]);
   const [notes, setNotes] = useState<VerifierNote[]>([]);
@@ -125,6 +130,7 @@ export const CaseWorkspace: React.FC = () => {
           assignee: myQueueOnly ? "me" : undefined,
           submission_status:
             submissionStatusFilter === "all" ? undefined : submissionStatusFilter,
+          sla_filter: slaFilter === "all" ? undefined : slaFilter,
         });
 
         setCount(response.count);
@@ -133,13 +139,21 @@ export const CaseWorkspace: React.FC = () => {
         } else {
           setCases((prev) => [...prev, ...response.items]);
         }
+        try {
+          const stats = await fetchVerifierCaseStats();
+          setSlaStats(stats);
+          setSlaStatsError(null);
+        } catch (err) {
+          setSlaStatsError(err instanceof Error ? err.message : "Failed to load SLA stats");
+          setSlaStats(null);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load cases");
       } finally {
         setIsLoading(false);
       }
     },
-    [statusFilter, jurisdictionFilter, myQueueOnly, submissionStatusFilter]
+    [statusFilter, jurisdictionFilter, myQueueOnly, submissionStatusFilter, slaFilter]
   );
 
   const loadCaseDetail = useCallback(async (caseId: string) => {
@@ -185,6 +199,7 @@ export const CaseWorkspace: React.FC = () => {
         if (parsed.status) setStatusFilter(parsed.status);
         if (parsed.jurisdiction) setJurisdictionFilter(parsed.jurisdiction);
         if (parsed.submission_status) setSubmissionStatusFilter(parsed.submission_status);
+        if (parsed.sla_filter) setSlaFilter(parsed.sla_filter);
         if (typeof parsed.myQueueOnly === "boolean") setMyQueueOnly(parsed.myQueueOnly);
         if (typeof parsed.searchQuery === "string") setSearchQuery(parsed.searchQuery);
       } catch {
@@ -197,7 +212,7 @@ export const CaseWorkspace: React.FC = () => {
   useEffect(() => {
     if (!filtersReady) return;
     loadCases({ reset: true });
-  }, [loadCases, statusFilter, jurisdictionFilter, myQueueOnly, submissionStatusFilter, filtersReady]);
+  }, [loadCases, statusFilter, jurisdictionFilter, myQueueOnly, submissionStatusFilter, slaFilter, filtersReady]);
 
   useEffect(() => {
     if (!filtersReady) return;
@@ -207,11 +222,12 @@ export const CaseWorkspace: React.FC = () => {
         status: statusFilter,
         jurisdiction: jurisdictionFilter,
         submission_status: submissionStatusFilter,
+        sla_filter: slaFilter,
         myQueueOnly,
         searchQuery,
       })
     );
-  }, [statusFilter, jurisdictionFilter, submissionStatusFilter, myQueueOnly, searchQuery, filtersReady]);
+  }, [statusFilter, jurisdictionFilter, submissionStatusFilter, slaFilter, myQueueOnly, searchQuery, filtersReady]);
 
   useEffect(() => {
     if (!selectedCaseId && cases.length > 0) {
@@ -608,6 +624,26 @@ export const CaseWorkspace: React.FC = () => {
   const isLocked = detail?.case?.locked ?? false;
   const submissionStatus = detail?.case?.submission_status || "";
   const isNeedsInfo = submissionStatus === "needs_info";
+  const slaCounters = [
+    {
+      key: "due_soon",
+      label: "Due soon",
+      value: slaStats?.verifier_due_soon ?? 0,
+      tone: "text-amber-700",
+    },
+    {
+      key: "overdue",
+      label: "Overdue",
+      value: slaStats?.verifier_overdue ?? 0,
+      tone: "text-red-700",
+    },
+    {
+      key: "needs_info",
+      label: "Needs info aging",
+      value: slaStats?.needs_info_overdue ?? 0,
+      tone: "text-rose-700",
+    },
+  ];
 
 
   return (
@@ -648,6 +684,39 @@ export const CaseWorkspace: React.FC = () => {
                 />
                 My Queue ({CURRENT_USER})
               </label>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-[11px]">
+              <div className="grid grid-cols-3 gap-2">
+                {slaCounters.map((counter) => (
+                  <div key={counter.key} className="rounded-md bg-white p-2 text-center">
+                    <div className="text-[10px] uppercase tracking-wide text-slate-400">
+                      {counter.label}
+                    </div>
+                    <div className={`text-sm font-semibold ${counter.tone}`}>{counter.value}</div>
+                  </div>
+                ))}
+              </div>
+              {slaStatsError && (
+                <div className="mt-2 text-[10px] text-red-600">{slaStatsError}</div>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {["all", "due_soon", "overdue", "needs_info"].map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setSlaFilter(filter)}
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                    slaFilter === filter
+                      ? "border-slate-700 bg-slate-800 text-white"
+                      : "border-slate-200 bg-white text-slate-600"
+                  }`}
+                >
+                  {filter === "all" && "All"}
+                  {filter === "due_soon" && "Due soon"}
+                  {filter === "overdue" && "Overdue"}
+                  {filter === "needs_info" && "Needs info"}
+                </button>
+              ))}
             </div>
             <div className="flex flex-wrap gap-2">
               <label className="flex flex-col text-xs text-slate-600">
