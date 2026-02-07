@@ -103,6 +103,28 @@
 **Related**:
 - Commit: (HEAD)
 
+### [2026-02-07] Scope SLA stats to SLA-tracked submissions
+
+**Context**: CI showed SLA stats inflated by seeded or unrelated submissions with overdue due dates.
+
+**Decision**: Limit SLA stats aggregation to submissions that have non-zero SLA escalation or emitted SLA events, and continue excluding closed submissions.
+
+**Rationale**:
+- Prevents test suite data from polluting operational KPIs
+- Ensures SLA stats reflect active, tracked workflows
+
+**Alternatives Considered**:
+- Global cleanup of seeded data: rejected to avoid side effects in other tests
+- Event-only counts: rejected because stats should reflect current submission state
+
+**Consequences**:
+- Positive: Stable SLA stats in CI and demo runs
+- Neutral: New submissions with due dates but no SLA events are excluded until tracking begins
+
+**Status**: Accepted
+**Related**:
+- Commit: (HEAD)
+
 ### [2026-02-06] Phase 4 verifier cases store
 
 **Context**: Phase 4 needs deterministic verifier cases for list/detail APIs and smoke checks, independent of the main workflow DB.

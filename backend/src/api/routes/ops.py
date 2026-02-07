@@ -10,13 +10,18 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from typing import Any, Annotated, Dict, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy import func, case, text
 from datetime import datetime, timedelta, timezone
 
 from src.database.connection import get_db
 from src.database.models import ReviewQueueItem, ReviewStatus, QuestionEvent, QuestionStatus
 from src.autocomply.domain.submissions_store import get_submission_store, SubmissionStatus
-from src.autocomply.domain.notification_store import emit_event
+from src.autocomply.domain.notification_store import (
+    emit_event,
+    ensure_schema,
+    get_engine,
+    list_events_by_submission,
+)
 from src.autocomply.domain import sla_policy
 from src.autocomply.domain.verifier_store import get_case_by_submission_id
 from src.autocomply.integrations.email_hooks import enqueue_email
@@ -292,11 +297,67 @@ def run_sla_reminders(
     }
 
 
+def _get_sla_tracked_submission_ids(submissions: List[Any]) -> set[str]:
+    tracked: set[str] = set()
+    for submission in submissions:
+        if getattr(submission, "sla_escalation_level", 0) > 0:
+            tracked.add(submission.submission_id)
+
+    ensure_schema()
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(
+            text(
+                """
+                SELECT DISTINCT submission_id
+                FROM submission_events
+                WHERE event_type LIKE :sla_prefix
+                """
+            ),
+            {"sla_prefix": "sla_%"},
+        ).mappings().all()
+    tracked.update(row["submission_id"] for row in rows)
+    return tracked
+
+
+def _infer_submission_status(submission: Any) -> Optional[str]:
+    status_value = (
+        submission.status.value
+        if isinstance(submission.status, SubmissionStatus)
+        else submission.status
+    )
+    if status_value:
+        return status_value
+
+    events = list_events_by_submission(submission.submission_id, limit=10)
+    for event in events:
+        event_type = event.get("event_type")
+        if event_type == "verifier_requested_info":
+            return SubmissionStatus.NEEDS_INFO.value
+        if event_type == "verifier_approved":
+            return SubmissionStatus.APPROVED.value
+        if event_type == "verifier_rejected":
+            return SubmissionStatus.REJECTED.value
+    return None
+
+
 def _collect_sla_stats_from_events() -> Dict[str, int]:
     """Count distinct submissions in SLA buckets based on current submission state."""
     store = get_submission_store()
     submissions = store.list_submissions(limit=10000)
     now = sla_policy.utc_now()
+
+    # Stats are scoped to SLA-tracked submissions to avoid seeded/demo data inflating KPI during test suite runs.
+    tracked_ids = _get_sla_tracked_submission_ids(submissions)
+    if not tracked_ids:
+        return {
+            "verifier_due_soon": 0,
+            "verifier_overdue": 0,
+            "needs_info_due_soon": 0,
+            "needs_info_overdue": 0,
+            "decision_due_soon": 0,
+            "decision_overdue": 0,
+        }
 
     needs_info_due_soon: set[str] = set()
     needs_info_overdue: set[str] = set()
@@ -307,11 +368,10 @@ def _collect_sla_stats_from_events() -> Dict[str, int]:
 
     for submission in submissions:
         submission_id = submission.submission_id
-        status_value = (
-            submission.status.value
-            if isinstance(submission.status, SubmissionStatus)
-            else submission.status
-        )
+        if submission_id not in tracked_ids:
+            continue
+
+        status_value = _infer_submission_status(submission)
         if status_value in {SubmissionStatus.APPROVED.value, SubmissionStatus.REJECTED.value}:
             continue
 

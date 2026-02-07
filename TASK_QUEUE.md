@@ -36,6 +36,18 @@
 **Dependencies**: None
 **Notes**: Post-CI stats fix.
 
+### CI Hotfix — Scope SLA stats to SLA-tracked submissions
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Restrict SLA stats to SLA-tracked submissions to avoid seeded/demo data inflating KPI during tests.
+**Acceptance Criteria**:
+- [x] SLA stats include only submissions with SLA escalation or emitted SLA events
+- [x] Closed submissions excluded
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_sla_reminders.py`
+- `C:/Python314/python.exe -m pytest -q tests/test_verifier_bulk_api.py tests/test_verifier_actions_api.py tests/test_decision_packet_api.py tests/test_sla_reminders.py`
+**Dependencies**: None
+
 
 > **Status Legend**: `pending` | `in-progress` | `blocked` | `completed`
 
