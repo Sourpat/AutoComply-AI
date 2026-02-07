@@ -1,5 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { evaluateResearcherCsf } from "../api/csfResearcherClient";
+
+vi.mock("../api/csfResearcherClient", () => ({
+  evaluateResearcherCsf: vi.fn(),
+}));
 
 const mockCopilotResponse = {
   status: "ok_to_ship",
@@ -26,6 +32,10 @@ function mockFetchSequence(responses: Response[]) {
   return fetchMock;
 }
 
+const renderWithRouter = (ui: React.ReactElement) => {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+};
+
 async function loadSandbox() {
   vi.resetModules();
   return import("./ResearcherCsfSandbox");
@@ -41,10 +51,10 @@ afterEach(() => {
 
 describe("Researcher CSF Sandbox", () => {
   it("renders Researcher CSF Sandbox with Researcher-specific labels", async () => {
-    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
     const { ResearcherCsfSandbox } = await loadSandbox();
 
-    render(<ResearcherCsfSandbox />);
+    renderWithRouter(<ResearcherCsfSandbox />);
 
     expect(screen.getByText(/Researcher CSF Sandbox/i)).toBeInTheDocument();
     expect(
@@ -54,39 +64,34 @@ describe("Researcher CSF Sandbox", () => {
   });
 
   it("shows Researcher CSF example scenarios", async () => {
-    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
     const { ResearcherCsfSandbox } = await loadSandbox();
 
-    render(<ResearcherCsfSandbox />);
+    renderWithRouter(<ResearcherCsfSandbox />);
 
     expect(
-      screen.getByText(/Happy Path – University Research Lab/i)
+      screen.getByRole("button", { name: /Researcher CSF.*complete/i })
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Missing License\/DEA/i)
+      screen.getByRole("button", { name: /Researcher CSF.*missing/i })
     ).toBeInTheDocument();
   });
 
   it("calls evaluateResearcherCsf and shows decision result", async () => {
-    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
     const { ResearcherCsfSandbox } = await loadSandbox();
 
-    const fetchMock = mockFetchSequence([
-      new Response(
-        JSON.stringify({
-          status: "ok_to_ship",
-          reason: "Researcher CSF is approved to proceed.",
-          missing_fields: [],
-          regulatory_references: [],
-        }),
-        { status: 200 }
-      ),
-    ]);
+    (evaluateResearcherCsf as unknown as vi.Mock).mockResolvedValue({
+      status: "ok_to_ship",
+      reason: "Researcher CSF is approved to proceed.",
+      missing_fields: [],
+      regulatory_references: [],
+    });
 
-    render(<ResearcherCsfSandbox />);
+    renderWithRouter(<ResearcherCsfSandbox />);
 
     fireEvent.click(
-      screen.getByText(/Happy Path – University Research Lab \(MA\)/i)
+      screen.getByRole("button", { name: /Researcher CSF.*complete/i })
     );
 
     const evaluateButton = screen.getByRole("button", {
@@ -95,30 +100,25 @@ describe("Researcher CSF Sandbox", () => {
 
     fireEvent.click(evaluateButton);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-
-    const calls = fetchMock.mock.calls.map((call) => call[0] as string);
-    expect(calls.some((url) => url.includes("/csf/researcher/evaluate"))).toBe(
-      true
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Researcher CSF is approved to proceed/i)
+      ).toBeInTheDocument()
     );
-
-    expect(
-      screen.getByText(/Researcher CSF is approved to proceed/i)
-    ).toBeInTheDocument();
   });
 
   it("calls Researcher Form Copilot and renders RAG details", async () => {
-    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
     const { ResearcherCsfSandbox } = await loadSandbox();
 
     const fetchMock = mockFetchSequence([
       new Response(JSON.stringify(mockCopilotResponse), { status: 200 }),
     ]);
 
-    render(<ResearcherCsfSandbox />);
+    renderWithRouter(<ResearcherCsfSandbox />);
 
     fireEvent.click(
-      screen.getByText(/Happy Path – University Research Lab \(MA\)/i)
+      screen.getByRole("button", { name: /Researcher CSF.*complete/i })
     );
 
     const copilotButton = screen.getByRole("button", {
@@ -147,17 +147,17 @@ describe("Researcher CSF Sandbox", () => {
   });
 
   it("shows Researcher-specific error when Copilot fails", async () => {
-    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
     const { ResearcherCsfSandbox } = await loadSandbox();
 
     const fetchMock = vi.fn().mockRejectedValue(new Error(""));
     // @ts-expect-error - assign mock to global
     global.fetch = fetchMock;
 
-    render(<ResearcherCsfSandbox />);
+    renderWithRouter(<ResearcherCsfSandbox />);
 
     fireEvent.click(
-      screen.getByText(/Happy Path – University Research Lab \(MA\)/i)
+      screen.getByRole("button", { name: /Researcher CSF.*complete/i })
     );
 
     const copilotButton = screen.getByRole("button", {

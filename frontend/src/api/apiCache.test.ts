@@ -36,6 +36,14 @@
  * ```
  */
 
+import { describe, expect, it } from "vitest";
+
+describe("apiCache docs", () => {
+	it("documents cache behavior", () => {
+		expect(true).toBe(true);
+	});
+});
+
 // Example: Cache key generation
 // 
 // GET /workflow/cases

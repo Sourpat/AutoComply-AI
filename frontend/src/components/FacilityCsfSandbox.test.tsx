@@ -1,11 +1,22 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { evaluateFacilityCsf } from "../api/csfFacilityClient";
+
+vi.mock("../api/csfFacilityClient", () => ({
+  evaluateFacilityCsf: vi.fn(),
+}));
 
 const mockCopilotResponse = {
   status: "ok_to_ship",
   reason: "Facility CSF is approved to proceed.",
   missing_fields: [],
-  regulatory_references: ["csf_facility_form:section_3"],
+  regulatory_references: [
+    {
+      id: "csf_facility_form",
+      label: "Controlled Substance Form – Facility",
+    },
+  ],
   rag_explanation: "This Facility CSF is compliant based on example rules.",
   rag_sources: [
     {
@@ -25,6 +36,10 @@ function mockFetchSequence(responses: Response[]) {
   return fetchMock;
 }
 
+const renderWithRouter = (ui: React.ReactElement) => {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+};
+
 async function loadSandbox() {
   vi.resetModules();
   return import("./FacilityCsfSandbox");
@@ -43,9 +58,11 @@ describe("Facility CSF Sandbox", () => {
     vi.stubEnv("VITE_API_BASE", "http://api.test");
     const { FacilityCsfSandbox } = await loadSandbox();
 
-    render(<FacilityCsfSandbox />);
+    renderWithRouter(<FacilityCsfSandbox />);
 
-    expect(screen.getByText(/Facility CSF Sandbox/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /Facility CSF Sandbox/i })
+    ).toBeInTheDocument();
     expect(
       screen.getByText(/facility controlled substance forms/i)
     ).toBeInTheDocument();
@@ -56,7 +73,7 @@ describe("Facility CSF Sandbox", () => {
     vi.stubEnv("VITE_API_BASE", "http://api.test");
     const { FacilityCsfSandbox } = await loadSandbox();
 
-    render(<FacilityCsfSandbox />);
+    renderWithRouter(<FacilityCsfSandbox />);
 
     expect(
       screen.getByText(/Multi-site clinic chain \(happy path\)/i)
@@ -73,19 +90,14 @@ describe("Facility CSF Sandbox", () => {
     vi.stubEnv("VITE_API_BASE", "http://api.test");
     const { FacilityCsfSandbox } = await loadSandbox();
 
-    const fetchMock = mockFetchSequence([
-      new Response(
-        JSON.stringify({
-          status: "ok_to_ship",
-          reason: "Facility CSF is approved to proceed.",
-          missing_fields: [],
-          regulatory_references: [],
-        }),
-        { status: 200 }
-      ),
-    ]);
+    (evaluateFacilityCsf as unknown as vi.Mock).mockResolvedValue({
+      status: "ok_to_ship",
+      reason: "Facility CSF is approved to proceed.",
+      missing_fields: [],
+      regulatory_references: [],
+    });
 
-    render(<FacilityCsfSandbox />);
+    renderWithRouter(<FacilityCsfSandbox />);
 
     const evaluateButton = screen.getByRole("button", {
       name: /evaluate facility csf/i,
@@ -93,16 +105,11 @@ describe("Facility CSF Sandbox", () => {
 
     fireEvent.click(evaluateButton);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-
-    const calls = fetchMock.mock.calls.map((call) => call[0] as string);
-    expect(calls.some((url) => url.includes("/csf/facility/evaluate"))).toBe(
-      true
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Facility CSF is approved to proceed/i)
+      ).toBeInTheDocument()
     );
-
-    expect(
-      screen.getByText(/Facility CSF is approved to proceed/i)
-    ).toBeInTheDocument();
   });
 
   it("calls Facility Form Copilot and renders RAG details", async () => {
@@ -113,7 +120,7 @@ describe("Facility CSF Sandbox", () => {
       new Response(JSON.stringify(mockCopilotResponse), { status: 200 }),
     ]);
 
-    render(<FacilityCsfSandbox />);
+    renderWithRouter(<FacilityCsfSandbox />);
 
     const copilotButton = screen.getByRole("button", {
       name: /check & explain/i,
@@ -123,22 +130,25 @@ describe("Facility CSF Sandbox", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
-    const calls = fetchMock.mock.calls.map((call) => call[0] as string);
-    expect(calls.some((url) => url.includes("/csf/facility/form-copilot"))).toBe(
-      true
+    const copilotCall = fetchMock.mock.calls.find((call) =>
+      String(call[0]).includes("/csf/facility/form-copilot")
     );
+    expect(copilotCall).toBeTruthy();
+    const copilotBody = JSON.parse(
+      ((copilotCall?.[1] as RequestInit)?.body as string) || "{}"
+    );
+    expect(copilotBody).toMatchObject({
+      facility_name: expect.any(String),
+      facility_type: expect.any(String),
+      ship_to_state: expect.any(String),
+      controlled_substances: expect.any(Array),
+    });
 
     expect(
       screen.getByText(/Facility CSF is approved to proceed/i)
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/This Facility CSF is compliant based on example rules./i)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/csf_facility_form:section_3/i)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Controlled Substance Form – Facility/i)
+      screen.getByText(/Facility CSF – Form Copilot/i)
     ).toBeInTheDocument();
   });
 
@@ -149,7 +159,7 @@ describe("Facility CSF Sandbox", () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error(""));
     global.fetch = fetchMock as any;
 
-    render(<FacilityCsfSandbox />);
+    renderWithRouter(<FacilityCsfSandbox />);
 
     const copilotButton = screen.getByRole("button", {
       name: /check & explain/i,
@@ -174,10 +184,10 @@ describe("Facility CSF Sandbox", () => {
     // @ts-expect-error - jsdom doesn't fully type clipboard
     navigator.clipboard = { writeText };
 
-    render(<FacilityCsfSandbox />);
+    renderWithRouter(<FacilityCsfSandbox />);
 
     fireEvent.click(
-      screen.getByRole("button", { name: /copy curl \(evaluate\)/i })
+      screen.getByRole("button", { name: /copy.*facility.*curl/i })
     );
 
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));

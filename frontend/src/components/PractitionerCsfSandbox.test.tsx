@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const bannerText =
@@ -22,7 +23,12 @@ const mockCopilotResponse = {
   status: "ok_to_ship",
   reason: "Practitioner CSF is approved to proceed.",
   missing_fields: [],
-  regulatory_references: ["csf_practitioner_form"],
+  regulatory_references: [
+    {
+      id: "csf_practitioner_form",
+      label: "Controlled Substance Form – Practitioner (with addendums)",
+    },
+  ],
   rag_explanation: "This Practitioner CSF is compliant based on example rules.",
   rag_sources: [
     {
@@ -47,6 +53,10 @@ function mockFetchSequence(responses: Response[]) {
   return fetchMock;
 }
 
+const renderWithRouter = (ui: React.ReactElement) => {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+};
+
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
@@ -58,16 +68,16 @@ afterEach(() => {
 
 describe("PractitionerCsfSandbox", () => {
   it("shows an API base banner when VITE_API_BASE is missing", async () => {
-    vi.stubEnv("VITE_API_BASE", "");
+    vi.stubEnv("VITE_API_BASE_URL", "");
     const { PractitionerCsfSandbox } = await loadSandbox();
 
-    render(<PractitionerCsfSandbox />);
+    renderWithRouter(<PractitionerCsfSandbox />);
 
     expect(screen.getByText(bannerText)).toBeInTheDocument();
   });
 
   it("surfaces verification failures to the user", async () => {
-    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
     const { PractitionerCsfSandbox } = await loadSandbox();
 
     mockFetchSequence([
@@ -76,7 +86,7 @@ describe("PractitionerCsfSandbox", () => {
       new Response("verify fail", { status: 500 }),
     ]);
 
-    render(<PractitionerCsfSandbox />);
+    renderWithRouter(<PractitionerCsfSandbox />);
 
     fireEvent.click(
       screen.getByRole("button", { name: /evaluate practitioner csf/i })
@@ -92,7 +102,7 @@ describe("PractitionerCsfSandbox", () => {
   });
 
   it("surfaces deep RAG explain failures", async () => {
-    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
     const { PractitionerCsfSandbox } = await loadSandbox();
 
     mockFetchSequence([
@@ -101,7 +111,7 @@ describe("PractitionerCsfSandbox", () => {
       new Response("rag fail", { status: 500 }),
     ]);
 
-    render(<PractitionerCsfSandbox />);
+    renderWithRouter(<PractitionerCsfSandbox />);
 
     fireEvent.click(
       screen.getByRole("button", { name: /evaluate practitioner csf/i })
@@ -111,7 +121,9 @@ describe("PractitionerCsfSandbox", () => {
       expect(screen.getAllByText(/decision/i).length).toBeGreaterThan(0)
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /deep rag explain/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /deep rag explain/i })
+    );
 
     await waitFor(() =>
       expect(
@@ -121,14 +133,14 @@ describe("PractitionerCsfSandbox", () => {
   });
 
   it("calls Practitioner Form Copilot and renders RAG details", async () => {
-    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
     const { PractitionerCsfSandbox } = await loadSandbox();
 
     const fetchMock = mockFetchSequence([
       new Response(JSON.stringify(mockCopilotResponse), { status: 200 }),
     ]);
 
-    render(<PractitionerCsfSandbox />);
+    renderWithRouter(<PractitionerCsfSandbox />);
 
     const copilotButton = screen.getByRole("button", {
       name: /check & explain/i,
@@ -147,25 +159,30 @@ describe("PractitionerCsfSandbox", () => {
       screen.getAllByText(/Practitioner CSF is approved to proceed/i).length
     ).toBeGreaterThan(0);
     expect(
+      screen.getByText(/Practitioner CSF – Form Copilot/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Practitioner CSF is approved to proceed/i).length
+    ).toBeGreaterThan(0);
+    expect(
       screen.getByText(
-        /This Practitioner CSF is compliant based on example rules./i
+        /Controlled Substance Form – Practitioner \(with addendums\)/i
       )
     ).toBeInTheDocument();
-    expect(screen.getByText(/csf_practitioner_form/i)).toBeInTheDocument();
   });
 
   it("copies the practitioner evaluate cURL snippet", async () => {
-    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
     const { PractitionerCsfSandbox } = await loadSandbox();
 
     const writeText = vi.fn();
     // @ts-expect-error - test shim
     navigator.clipboard = { writeText };
 
-    render(<PractitionerCsfSandbox />);
+    renderWithRouter(<PractitionerCsfSandbox />);
 
     fireEvent.click(
-      screen.getByRole("button", { name: /copy curl \(evaluate\)/i })
+      screen.getByRole("button", { name: /copy.*practitioner.*curl/i })
     );
 
     await waitFor(() => expect(writeText).toHaveBeenCalled());

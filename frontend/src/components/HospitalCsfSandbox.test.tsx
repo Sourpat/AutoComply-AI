@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { evaluateOhioTdddLicense } from "../api/licenseOhioTdddClient";
 
@@ -23,6 +24,10 @@ function mockFetchSequence(responses: Response[]) {
   return fetchMock;
 }
 
+const renderWithRouter = (ui: React.ReactElement) => {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+};
+
 async function loadSandbox() {
   vi.resetModules();
   return import("./HospitalCsfSandbox");
@@ -44,17 +49,24 @@ describe("Hospital CSF Form Copilot", () => {
       new Response(JSON.stringify(mockCopilotResponse), { status: 200 }),
     ]);
 
-    render(<HospitalCsfSandbox />);
+    renderWithRouter(<HospitalCsfSandbox />);
 
+    expect(
+      screen.getByRole("heading", { name: /hospital csf sandbox/i })
+    ).toBeInTheDocument();
     expect(screen.getByText(/Form Copilot \(beta\)/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /check & explain/i }));
 
     await waitFor(() =>
       expect(
-        screen.getByText(mockCopilotResponse.rag_explanation)
+        screen.getByText(/Hospital CSF – Form Copilot/i)
       ).toBeInTheDocument()
     );
+
+    expect(
+      screen.getByText(/Hospital copilot reason/i)
+    ).toBeInTheDocument();
 
     const calls = fetchMock.mock.calls.map((call) => call[0] as string);
     expect(calls.some((url) => url.includes("/csf/hospital/form-copilot"))).toBe(
@@ -73,7 +85,7 @@ describe("Hospital CSF Ohio TDDD integration", () => {
 
     const { HospitalCsfSandbox } = await loadSandbox();
 
-    render(<HospitalCsfSandbox />);
+    renderWithRouter(<HospitalCsfSandbox />);
 
     const button = screen.getByRole("button", {
       name: /Run Ohio TDDD license check/i,

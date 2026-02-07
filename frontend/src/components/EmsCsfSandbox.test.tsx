@@ -1,5 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { evaluateEmsCsf } from "../api/csfEmsClient";
+
+vi.mock("../api/csfEmsClient", () => ({
+  evaluateEmsCsf: vi.fn(),
+}));
 
 const mockCopilotResponse = {
   status: "ok_to_ship",
@@ -25,6 +31,10 @@ function mockFetchSequence(responses: Response[]) {
   return fetchMock;
 }
 
+const renderWithRouter = (ui: React.ReactElement) => {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+};
+
 async function loadSandbox() {
   vi.resetModules();
   return import("./EmsCsfSandbox");
@@ -40,10 +50,10 @@ afterEach(() => {
 
 describe("EMS CSF Sandbox", () => {
   it("renders EMS CSF Sandbox with EMS-specific labels", async () => {
-    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
     const { EmsCsfSandbox } = await loadSandbox();
 
-    render(<EmsCsfSandbox />);
+    renderWithRouter(<EmsCsfSandbox />);
 
     expect(screen.getByText(/EMS CSF Sandbox/i)).toBeInTheDocument();
     expect(
@@ -53,35 +63,34 @@ describe("EMS CSF Sandbox", () => {
   });
 
   it("shows multiple EMS CSF example scenarios", async () => {
-    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
     const { EmsCsfSandbox } = await loadSandbox();
 
-    render(<EmsCsfSandbox />);
+    renderWithRouter(<EmsCsfSandbox />);
 
-    expect(screen.getByText(/Happy Path – Metro EMS/i)).toBeInTheDocument();
-    expect(screen.getByText(/Needs Review – Missing DEA/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/Blocked – No License \/ Attestation/i)
+      screen.getByRole("button", { name: /EMS CSF – complete & compliant/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /EMS CSF – missing critical info/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /EMS CSF – high-risk responses/i })
     ).toBeInTheDocument();
   });
 
   it("calls evaluateEmsCsf and shows decision result", async () => {
-    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
     const { EmsCsfSandbox } = await loadSandbox();
 
-    const fetchMock = mockFetchSequence([
-      new Response(
-        JSON.stringify({
-          status: "ok_to_ship",
-          reason: "EMS CSF is approved to proceed.",
-          missing_fields: [],
-          regulatory_references: [],
-        }),
-        { status: 200 }
-      ),
-    ]);
+    (evaluateEmsCsf as unknown as vi.Mock).mockResolvedValue({
+      status: "ok_to_ship",
+      reason: "EMS CSF is approved to proceed.",
+      missing_fields: [],
+      regulatory_references: [],
+    });
 
-    render(<EmsCsfSandbox />);
+    renderWithRouter(<EmsCsfSandbox />);
 
     const evaluateButton = screen.getByRole("button", {
       name: /evaluate ems csf/i,
@@ -89,25 +98,22 @@ describe("EMS CSF Sandbox", () => {
 
     fireEvent.click(evaluateButton);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-
-    const calls = fetchMock.mock.calls.map((call) => call[0] as string);
-    expect(calls.some((url) => url.includes("/csf/ems/evaluate"))).toBe(true);
-
-    expect(
-      screen.getByText(/EMS CSF is approved to proceed/i)
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByText(/EMS CSF is approved to proceed/i)
+      ).toBeInTheDocument()
+    );
   });
 
   it("calls EMS Form Copilot and renders RAG details", async () => {
-    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
     const { EmsCsfSandbox } = await loadSandbox();
 
     const fetchMock = mockFetchSequence([
       new Response(JSON.stringify(mockCopilotResponse), { status: 200 }),
     ]);
 
-    render(<EmsCsfSandbox />);
+    renderWithRouter(<EmsCsfSandbox />);
 
     const copilotButton = screen.getByRole("button", {
       name: /check & explain/i,
@@ -133,13 +139,13 @@ describe("EMS CSF Sandbox", () => {
   });
 
   it("shows EMS-specific error when Copilot fails", async () => {
-    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
     const { EmsCsfSandbox } = await loadSandbox();
 
     const fetchMock = vi.fn().mockRejectedValue(new Error(""));
     global.fetch = fetchMock as any;
 
-    render(<EmsCsfSandbox />);
+    renderWithRouter(<EmsCsfSandbox />);
 
     const copilotButton = screen.getByRole("button", {
       name: /check & explain/i,
@@ -157,14 +163,14 @@ describe("EMS CSF Sandbox", () => {
   });
 
   it("renders cURL snippet pointing to /csf/ems/evaluate", async () => {
-    vi.stubEnv("VITE_API_BASE", "http://api.test");
+    vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
     const { EmsCsfSandbox } = await loadSandbox();
 
     const writeText = vi.fn().mockResolvedValue(undefined);
     // @ts-expect-error - jsdom doesn't fully type clipboard
     navigator.clipboard = { writeText };
 
-    render(<EmsCsfSandbox />);
+    renderWithRouter(<EmsCsfSandbox />);
 
     fireEvent.click(
       screen.getByRole("button", { name: /copy curl \(evaluate\)/i })
