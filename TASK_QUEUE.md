@@ -240,7 +240,7 @@
 
 ### Phase 5.1 — Submitter → Verifier Queue linkage
 **Completed**: 2026-02-06
-**Commit**: (pending)
+**Commit**: f955479
 **Summary**: Submitter submissions now create linked verifier cases with idempotency and smoke coverage.
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q tests/test_submitter_to_verifier_flow.py`
