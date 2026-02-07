@@ -838,6 +838,46 @@ def list_notes(case_id: str) -> List[Dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def insert_event(
+    case_id: str,
+    event_type: str,
+    payload: Optional[Dict[str, Any]] = None,
+    created_at: Optional[str] = None,
+) -> Dict[str, Any]:
+    ensure_schema()
+    engine = get_engine()
+    now = created_at or _now_iso()
+    payload_json = json.dumps(payload) if payload is not None else None
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO verifier_events (
+                    case_id, event_type, payload_json, created_at
+                ) VALUES (
+                    :case_id, :event_type, :payload_json, :created_at
+                )
+                """
+            ),
+            {
+                "case_id": case_id,
+                "event_type": event_type,
+                "payload_json": payload_json,
+                "created_at": now,
+            },
+        )
+        event_id = conn.execute(text("SELECT last_insert_rowid() AS id")).mappings().first()["id"]
+
+    return {
+        "id": event_id,
+        "case_id": case_id,
+        "event_type": event_type,
+        "payload_json": payload_json,
+        "created_at": now,
+    }
+
+
 def set_case_decision(
     case_id: str,
     decision_type: str,

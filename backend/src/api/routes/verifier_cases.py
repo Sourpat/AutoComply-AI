@@ -29,6 +29,7 @@ from src.autocomply.domain.verifier_store import (
     bulk_assign,
     get_final_packet,
     get_case,
+    insert_event,
     list_events,
     list_cases,
     list_notes,
@@ -47,6 +48,9 @@ _EVENT_TYPE_MAP = {
     "verifier_action": "action",
     "case_action": "action",
     "action_taken": "action",
+    "assigned": "assigned",
+    "unassigned": "unassigned",
+    "action": "action",
 }
 
 
@@ -302,12 +306,32 @@ def post_verifier_bulk_action(payload: VerifierBulkActionRequest) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    failure_ids = {item.get("case_id") for item in result.get("failures", []) if item.get("case_id")}
+    for case_id in payload.case_ids:
+        if case_id in failure_ids:
+            continue
+        insert_event(
+            case_id=case_id,
+            event_type="verifier_action",
+            payload={"action": payload.action, "actor": payload.actor, "reason": payload.reason},
+        )
+
     return result
 
 
 @router.post("/cases/bulk/assign", response_model=VerifierBulkResponse)
 def post_verifier_bulk_assign(payload: VerifierBulkAssignRequest) -> dict:
     result = bulk_assign(payload.case_ids, payload.assignee, actor=payload.actor)
+    failure_ids = {item.get("case_id") for item in result.get("failures", []) if item.get("case_id")}
+    event_type = "verifier_assigned" if payload.assignee else "verifier_unassigned"
+    for case_id in payload.case_ids:
+        if case_id in failure_ids:
+            continue
+        insert_event(
+            case_id=case_id,
+            event_type=event_type,
+            payload={"assignee": payload.assignee, "actor": payload.actor},
+        )
     return result
 
 
@@ -524,7 +548,8 @@ def get_verifier_events(case_id: str, limit: int = Query(50, ge=1, le=200)) -> l
     payload = get_case(case_id)
     if not payload:
         raise HTTPException(status_code=404, detail="Case not found")
-    return _public_events(list_events(case_id, limit=limit))
+    raw_events = list_events(case_id, limit=limit)
+    return _public_events([dict(event) for event in raw_events])
 
 
 @router.get("/cases/{case_id}/notes", response_model=list[VerifierNote])
@@ -545,22 +570,35 @@ def patch_verifier_assignment(case_id: str, payload: VerifierAssignmentRequest) 
     if not case_row:
         raise HTTPException(status_code=404, detail="Case not found")
     submission_id = case_row.get("submission_id")
-    if submission_id and payload.assignee:
+    if submission_id:
         store = get_submission_store()
         submission = store.get_submission(submission_id)
         if submission and submission.status == SubmissionStatus.SUBMITTED:
             set_submission_status(submission_id, SubmissionStatus.IN_REVIEW, "verifier")
-        emit_event(
-            submission_id=submission_id,
-            case_id=case_id,
-            actor_type="verifier",
-            actor_id=payload.assignee,
-            event_type="verifier_assigned",
-            title="Verifier assigned",
-            message=f"Assigned to {payload.assignee}",
-            payload={"assignee": payload.assignee},
-            dedupe_by_day=True,
-        )
+        if payload.assignee:
+            emit_event(
+                submission_id=submission_id,
+                case_id=case_id,
+                actor_type="verifier",
+                actor_id=payload.assignee,
+                event_type="verifier_assigned",
+                title="Verifier assigned",
+                message=f"Assigned to {payload.assignee}",
+                payload={"assignee": payload.assignee},
+                dedupe_by_day=True,
+            )
+        else:
+            emit_event(
+                submission_id=submission_id,
+                case_id=case_id,
+                actor_type="verifier",
+                actor_id=payload.actor,
+                event_type="verifier_unassigned",
+                title="Verifier unassigned",
+                message="Assignment cleared",
+                payload={"assignee": None},
+                dedupe_by_day=True,
+            )
     return case_row
 
 

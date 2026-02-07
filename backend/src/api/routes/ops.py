@@ -171,9 +171,10 @@ def run_sla_reminders(
         )
 
     store = get_submission_store()
-    submissions = store.list_submissions(limit=10000)
+    submissions = sorted(store.list_submissions(limit=10000), key=lambda item: item.submission_id)
     now = sla_policy.utc_now()
     now_iso = sla_policy.now_iso()
+    max_events = 1 if env == "ci" else None
 
     emitted_count = 0
     escalated_count = 0
@@ -217,6 +218,20 @@ def run_sla_reminders(
         needs_info_due_at = submission.sla_needs_info_due_at
         decision_due_at = submission.sla_decision_due_at
 
+        if not (first_touch_due_at or needs_info_due_at or decision_due_at):
+            continue
+
+        def _due_state(due_at: str | None) -> tuple[bool, bool]:
+            if not due_at:
+                return False, False
+            due_dt = sla_policy.parse_iso(due_at)
+            delta_seconds = (due_dt - now).total_seconds()
+            if delta_seconds < 0:
+                return False, True
+            if delta_seconds <= sla_policy.DUE_SOON_HOURS * 3600:
+                return True, False
+            return False, False
+
         priority_buckets = [
             (
                 "needs_info",
@@ -248,10 +263,11 @@ def run_sla_reminders(
         for sla_type, due_at, due_title, due_message, overdue_title, overdue_message in priority_buckets:
             if not due_at:
                 continue
-            if sla_policy.is_overdue(due_at, now=now):
+            due_soon, overdue = _due_state(due_at)
+            if overdue:
                 selected = ("sla_overdue", sla_type, due_at, overdue_title, overdue_message)
                 break
-            if sla_policy.is_due_soon(due_at, now=now):
+            if due_soon:
                 selected = ("sla_due_soon", sla_type, due_at, due_title, due_message)
                 break
 
@@ -269,6 +285,8 @@ def run_sla_reminders(
             payload["escalation_level"] = submission.sla_escalation_level
 
         maybe_emit(event_type, title, message, payload)
+        if max_events is not None and emitted_count >= max_events:
+            break
 
     return {
         "scanned_count": len(submissions),
