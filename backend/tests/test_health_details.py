@@ -306,6 +306,8 @@ def test_health_details_commit_sha_from_render(client, monkeypatch):
 
 def test_health_details_commit_sha_from_github_actions(client, monkeypatch):
     """Test that commit_sha is detected from GITHUB_SHA."""
+    if os.getenv("GITHUB_ACTIONS") != "true" or not os.getenv("GITHUB_SHA"):
+        pytest.skip("Only valid in GitHub Actions")
     get_settings.cache_clear()
     
     # Simulate GitHub Actions env var
