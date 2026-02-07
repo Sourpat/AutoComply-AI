@@ -36,6 +36,117 @@
 
 ## Decisions
 
+### [2026-02-07] CI hotfix for verifier events + SLA dedupe
+
+**Context**: CI failures showed verifier event types mismatched expectations, event id type mismatches, missing events after bulk actions, and SLA runner emitting too many reminders.
+
+**Decision**: Normalize verifier events in API responses (string ids + public event_type mapping), ensure verifier events endpoint returns verifier store events, and constrain SLA reminders to a single prioritized event per submission per run with per-day dedupe.
+
+**Rationale**:
+- Keeps API backward compatible with tests and existing UI expectations
+- Ensures deterministic, low-noise SLA reminders
+
+**Alternatives Considered**:
+- Change tests: rejected to keep API compatibility
+- Keep multiple SLA events per run: rejected due to noisy reminders
+
+**Consequences**:
+- Positive: CI stability and predictable event feeds
+- Neutral: SLA runner now requires priority ordering
+
+**Status**: Accepted
+**Related**:
+- Commit: (HEAD)
+
+### [2026-02-07] Phase 5.6 deterministic SLA reminders + escalation
+
+**Context**: Phase 5.6 needs SLA tracking (first touch, needs-info, decision) with reminders and escalation in a deterministic, CI-friendly manner.
+
+**Decision**: Add SLA due fields to submissions, first_opened/finalized fields to cases, and a deterministic `/api/ops/sla/run` endpoint that emits due-soon/overdue events with escalation and email outbox stubs. Provide stats endpoints for verifier and submitter UI counters.
+
+**Rationale**:
+- Avoids background schedulers while keeping reminders deterministic
+- Enables tests to control time via monkeypatch
+- Keeps SLA signals visible in existing events feed
+
+**Alternatives Considered**:
+- Background scheduler: rejected due to non-determinism in CI and demo runs
+- External job runner: rejected to keep Phase 5.6 self-contained
+
+**Consequences**:
+- Positive: Deterministic SLA reminders and counters across submitter/verifier views
+- Neutral: Ops SLA run must be invoked explicitly in dev/ci flows
+
+**Status**: Accepted
+**Related**:
+- Commit: (HEAD)
+
+### [2026-02-07] SLA stats derived from submission state
+
+**Context**: SLA stats in CI were overcounting due to event-based aggregation and needed to reflect distinct active submissions.
+
+**Decision**: Compute SLA stats directly from current submission state and due fields, counting distinct submissions per bucket and excluding closed submissions.
+
+**Rationale**:
+- Aligns stats with current SLA status rather than historical event volume
+- Matches expected CI behavior for overdue counters
+
+**Alternatives Considered**:
+- Event-table aggregation: rejected due to double-counting across reminders
+- Global caps on counts: rejected because it masks real backlog size
+
+**Consequences**:
+- Positive: Accurate, distinct submission counts for SLA dashboards
+- Neutral: Stats reflect current state only, not historical reminder volume
+
+**Status**: Accepted
+**Related**:
+- Commit: (HEAD)
+
+### [2026-02-07] Scope SLA stats to SLA-tracked submissions
+
+**Context**: CI showed SLA stats inflated by seeded or unrelated submissions with overdue due dates.
+
+**Decision**: Limit SLA stats aggregation to submissions that have non-zero SLA escalation or emitted SLA events, and continue excluding closed submissions.
+
+**Rationale**:
+- Prevents test suite data from polluting operational KPIs
+- Ensures SLA stats reflect active, tracked workflows
+
+**Alternatives Considered**:
+- Global cleanup of seeded data: rejected to avoid side effects in other tests
+- Event-only counts: rejected because stats should reflect current submission state
+
+**Consequences**:
+- Positive: Stable SLA stats in CI and demo runs
+- Neutral: New submissions with due dates but no SLA events are excluded until tracking begins
+
+**Status**: Accepted
+**Related**:
+- Commit: (HEAD)
+
+### [2026-02-07] Reset singleton stores between tests
+
+**Context**: Full test runs showed SLA stats polluted by in-memory/SQLite singleton stores across tests.
+
+**Decision**: Add per-test fixtures to reset submission, notification, and verifier stores, and provide explicit reset helpers in the store modules.
+
+**Rationale**:
+- Prevents cross-test data leakage into SLA stats
+- Keeps test expectations deterministic without relaxing assertions
+
+**Alternatives Considered**:
+- Weaken SLA assertions: rejected to preserve correctness
+- Manual cleanup in each test: rejected to avoid repetition
+
+**Consequences**:
+- Positive: Clean isolation for in-memory and SQLite-backed singleton stores
+- Neutral: Tests recreate store schema as needed
+
+**Status**: Accepted
+**Related**:
+- Commit: (HEAD)
+
 ### [2026-02-06] Phase 4 verifier cases store
 
 **Context**: Phase 4 needs deterministic verifier cases for list/detail APIs and smoke checks, independent of the main workflow DB.
@@ -208,6 +319,110 @@
 **Consequences**:
 - Positive: Phase 4 is stable, demoable, and CI-gated
 - Neutral: Future phases build on a locked audit workflow
+
+**Status**: Accepted
+
+### [2026-02-06] Phase 5.1 submitter → verifier linkage and idempotency
+
+**Context**: Phase 5.1 needs a deterministic path from submitter submissions into the verifier queue, with idempotency to avoid duplicate cases.
+
+**Decision**: Add `/api/submitter/submissions` to persist submissions in the unified in-memory store and create (or reuse) a verifier case keyed by `submission_id`. Idempotency is enforced via `submission_id` or `client_token`.
+
+**Rationale**:
+- Keeps submissions deterministic for CI and demos
+- Prevents duplicate verifier cases on retries
+
+**Alternatives Considered**:
+- Reuse workflow submissions endpoint: rejected to avoid coupling to workflow case model
+- Require database uniqueness: deferred while submissions store remains in-memory
+
+**Consequences**:
+- Positive: Submitter flow is predictable and verifier queue stays clean
+- Neutral: Idempotency scope is limited to process lifetime
+
+**Status**: Accepted
+
+### [2026-02-06] Phase 5.2 submitter attachments stored on filesystem
+
+**Context**: Phase 5.2 requires submitter evidence uploads that can be listed/downloaded by verifiers and included in decision packets without introducing new database tables.
+
+**Decision**: Store submitter attachments on the filesystem under backend/.data/uploads with per-submission indexes and a global index, expose /api/submissions/{submission_id}/attachments for upload/list, and surface attachments via verifier case endpoints and decision packet evidence metadata.
+
+**Rationale**:
+- Keeps attachment storage deterministic and lightweight for CI and local demos
+- Avoids schema changes while enabling verifier download and packet inclusion
+- Allows tests to isolate storage via ATTACHMENTS_UPLOAD_DIR
+
+**Alternatives Considered**:
+- Store attachments in the workflow attachments table: rejected to avoid coupling to workflow cases
+- Introduce a new database table: rejected to keep Phase 5.2 minimal and fast
+
+**Consequences**:
+- Positive: Submitter evidence can be downloaded and audited in decision packets
+- Neutral: Attachments are stored on disk and must be managed by retention policies later
+
+**Status**: Accepted
+
+### [2026-02-06] Phase 5.3 audit ZIP bundles snapshot + evidence
+
+**Context**: Phase 5.3 requires audit ZIP exports to be snapshot-aware and include attachments with a verifiable manifest for downstream audit review.
+
+**Decision**: Package audit ZIPs with decision_packet.json (snapshot when locked), manifest.json (packet hash + attachment hashes), and evidence files stored under deterministic evidence/{index}_{attachment_id}_{sanitized_filename} paths. Provide a manifest endpoint for preview/debug.
+
+**Rationale**:
+- Ensures final decisions export immutable snapshot data
+- Adds tamper-evident hashes for packet + evidence
+- Keeps evidence filenames deterministic and safe for CI
+
+**Alternatives Considered**:
+- Include PDFs/citations in the ZIP: deferred to keep Phase 5.3 focused on evidence and manifest
+- Store evidence in the database: rejected to avoid schema changes
+
+**Consequences**:
+- Positive: Audit ZIPs are self-describing with evidence hashes
+- Neutral: Evidence files are copied into ZIP on demand
+
+**Status**: Accepted
+
+### [2026-02-07] Phase 5.4 submission status lifecycle
+
+**Context**: Phase 5.4 requires a single submission status source of truth shared between submitter and verifier views with automatic updates from verifier actions and submitter responses.
+
+**Decision**: Persist submission status in the unified submissions store with status metadata (last_status_at/by) and request_info payload. Update status on verifier assignment/open, request-info decisions, final decisions, and submitter responses/uploads. Expose status and request_info in submitter and verifier APIs with optional filtering.
+
+**Rationale**:
+- Keeps submitter and verifier views consistent without duplicating state
+- Supports needs-info loop with explicit request info payload
+- Avoids new tables while maintaining deterministic CI behavior
+
+**Alternatives Considered**:
+- Store status only on verifier cases: rejected because submitter UI needs a direct source of truth
+- Create a dedicated status table: deferred to keep Phase 5.4 minimal
+
+**Consequences**:
+- Positive: Status transitions are centralized and auditable
+- Neutral: Submission store remains in-memory until DB migration later
+
+**Status**: Accepted
+
+### [2026-02-07] Phase 5.5 submission events feed + email hooks
+
+**Context**: Phase 5.5 needs a durable submission events feed shared by submitter and verifier views with enterprise-ready email hooks.
+
+**Decision**: Introduce a dedicated SQLite-backed submission_events store with indexed queries by submission and case. Emit canonical events across submitter + verifier actions. Provide submitter and verifier events endpoints and a dev/ci-only email outbox hook for request-info and final decision events.
+
+**Rationale**:
+- Keeps notification history durable without altering existing workflow tables
+- Supports submitter-facing updates and verifier activity with a single event stream
+- Email hooks stay safe in dev/ci while enabling future integration
+
+**Alternatives Considered**:
+- Reuse verifier_events only: rejected because submitter feed needs durable cross-case access
+- Integrate with external email service now: deferred to keep scope minimal
+
+**Consequences**:
+- Positive: Unified notification feed and event emission points
+- Neutral: Additional SQLite file to manage under .data
 
 **Status**: Accepted
 

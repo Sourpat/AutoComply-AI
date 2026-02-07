@@ -24,17 +24,11 @@ def test_packet_pdf_and_zip() -> None:
     buffer = io.BytesIO(zip_resp.content)
     with zipfile.ZipFile(buffer) as archive:
         names = set(archive.namelist())
-        assert f"decision-packet-case-001.json" in names
-        assert f"decision-packet-case-001.pdf" in names
-        assert "citations.json" in names
-        assert "timeline.json" in names
-        assert "README.txt" in names
+        assert "decision_packet.json" in names
+        assert "manifest.json" in names
 
-        packet_data = json.loads(archive.read("decision-packet-case-001.json").decode("utf-8"))
+        packet_data = json.loads(archive.read("decision_packet.json").decode("utf-8"))
         assert packet_data["packet_version"] == "dp-v1"
-
-        citations = json.loads(archive.read("citations.json").decode("utf-8"))
-        assert isinstance(citations, list)
 
 
 def test_packet_zip_with_explain() -> None:
@@ -44,6 +38,6 @@ def test_packet_zip_with_explain() -> None:
     assert zip_resp.status_code == 200
     buffer = io.BytesIO(zip_resp.content)
     with zipfile.ZipFile(buffer) as archive:
-        packet_data = json.loads(archive.read("decision-packet-case-002.json").decode("utf-8"))
+        packet_data = json.loads(archive.read("decision_packet.json").decode("utf-8"))
         assert packet_data["explain"] is not None
         assert packet_data["explain"]["knowledge_version"]

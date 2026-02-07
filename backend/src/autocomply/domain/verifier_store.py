@@ -27,6 +27,16 @@ def get_engine() -> Engine:
     return _engine
 
 
+def reset_verifier_store() -> None:
+    """Reset the verifier store (for testing)."""
+    global _engine
+    if _engine is not None:
+        _engine.dispose()
+        _engine = None
+    if DB_PATH.exists():
+        DB_PATH.unlink()
+
+
 def ensure_schema() -> None:
     engine = get_engine()
     table_statements = [
@@ -40,6 +50,8 @@ def ensure_schema() -> None:
             assigned_at TEXT,
             locked INTEGER DEFAULT 0,
             decision_json TEXT,
+            first_opened_at TEXT,
+            finalized_at TEXT,
             created_at TEXT,
             updated_at TEXT,
             summary TEXT
@@ -109,6 +121,10 @@ def ensure_schema() -> None:
             conn.execute(text("ALTER TABLE cases ADD COLUMN locked INTEGER DEFAULT 0"))
         if "decision_json" not in existing_columns:
             conn.execute(text("ALTER TABLE cases ADD COLUMN decision_json TEXT"))
+        if "first_opened_at" not in existing_columns:
+            conn.execute(text("ALTER TABLE cases ADD COLUMN first_opened_at TEXT"))
+        if "finalized_at" not in existing_columns:
+            conn.execute(text("ALTER TABLE cases ADD COLUMN finalized_at TEXT"))
         for statement in index_statements:
             conn.execute(text(statement))
 
@@ -137,9 +153,10 @@ def _fetch_case(conn, case_id: str) -> Optional[Dict[str, Any]]:
     row = conn.execute(
         text(
             """
-            SELECT case_id, submission_id, status, jurisdiction,
-                   assignee, assigned_at, locked, decision_json,
-                   created_at, updated_at, summary
+                 SELECT case_id, submission_id, status, jurisdiction,
+                     assignee, assigned_at, locked, decision_json,
+                   first_opened_at, finalized_at,
+                     created_at, updated_at, summary
             FROM cases
             WHERE case_id = :case_id
             """
@@ -147,6 +164,62 @@ def _fetch_case(conn, case_id: str) -> Optional[Dict[str, Any]]:
         {"case_id": case_id},
     ).mappings().first()
     return _normalize_case(row) if row else None
+
+
+def mark_case_first_opened(case_id: str, opened_at: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    ensure_schema()
+    engine = get_engine()
+    now = opened_at or _now_iso()
+
+    with engine.begin() as conn:
+        case_row = _fetch_case(conn, case_id)
+        if not case_row:
+            return None
+        if case_row.get("first_opened_at"):
+            return case_row
+        conn.execute(
+            text(
+                """
+                UPDATE cases
+                SET first_opened_at = :first_opened_at, updated_at = :updated_at
+                WHERE case_id = :case_id AND first_opened_at IS NULL
+                """
+            ),
+            {
+                "first_opened_at": now,
+                "updated_at": now,
+                "case_id": case_id,
+            },
+        )
+        return _fetch_case(conn, case_id)
+
+
+def mark_case_finalized(case_id: str, finalized_at: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    ensure_schema()
+    engine = get_engine()
+    now = finalized_at or _now_iso()
+
+    with engine.begin() as conn:
+        case_row = _fetch_case(conn, case_id)
+        if not case_row:
+            return None
+        if case_row.get("finalized_at"):
+            return case_row
+        conn.execute(
+            text(
+                """
+                UPDATE cases
+                SET finalized_at = :finalized_at, updated_at = :updated_at
+                WHERE case_id = :case_id AND finalized_at IS NULL
+                """
+            ),
+            {
+                "finalized_at": now,
+                "updated_at": now,
+                "case_id": case_id,
+            },
+        )
+        return _fetch_case(conn, case_id)
 
 
 def seed_cases(n: int = 10) -> Dict[str, int]:
@@ -177,6 +250,8 @@ def seed_cases(n: int = 10) -> Dict[str, int]:
                 "assigned_at": None,
                 "locked": 0,
                 "decision_json": None,
+                "first_opened_at": None,
+                "finalized_at": None,
                 "created_at": created_at,
                 "updated_at": updated_at,
                 "summary": summary,
@@ -203,10 +278,12 @@ def seed_cases(n: int = 10) -> Dict[str, int]:
                     INSERT INTO cases (
                         case_id, submission_id, status, jurisdiction,
                         assignee, assigned_at, locked, decision_json,
+                        first_opened_at, finalized_at,
                         created_at, updated_at, summary
                     ) VALUES (
                         :case_id, :submission_id, :status, :jurisdiction,
                         :assignee, :assigned_at, :locked, :decision_json,
+                        :first_opened_at, :finalized_at,
                         :created_at, :updated_at, :summary
                     )
                     """
@@ -265,9 +342,10 @@ def list_cases(
         rows = conn.execute(
             text(
                 f"""
-                SELECT case_id, submission_id, status, jurisdiction,
-                      assignee, assigned_at, locked, decision_json,
-                      created_at, updated_at, summary
+                    SELECT case_id, submission_id, status, jurisdiction,
+                        assignee, assigned_at, locked, decision_json,
+                        first_opened_at, finalized_at,
+                        created_at, updated_at, summary
                 FROM cases
                 {where_clause}
                 ORDER BY created_at DESC
@@ -320,6 +398,149 @@ def get_case(case_id: str) -> Optional[Dict[str, Any]]:
         "events": [dict(row) for row in events],
         "notes": [dict(row) for row in notes],
     }
+
+
+def get_case_by_submission_id(submission_id: str) -> Optional[Dict[str, Any]]:
+    ensure_schema()
+    engine = get_engine()
+    with engine.begin() as conn:
+        row = conn.execute(
+            text(
+                """
+                  SELECT case_id, submission_id, status, jurisdiction,
+                      assignee, assigned_at, locked, decision_json,
+                      first_opened_at, finalized_at,
+                      created_at, updated_at, summary
+                FROM cases
+                WHERE submission_id = :submission_id
+                """
+            ),
+            {"submission_id": submission_id},
+        ).mappings().first()
+    return _normalize_case(row) if row else None
+
+
+def get_or_create_case_for_submission(
+    submission_id: str,
+    jurisdiction: Optional[str],
+    summary: str,
+    *,
+    status: str = "in_review",
+) -> Dict[str, Any]:
+    ensure_schema()
+    engine = get_engine()
+    now = _now_iso()
+    default_assignee = os.getenv("VERIFIER_DEFAULT_ASSIGNEE", "verifier-1")
+
+    with engine.begin() as conn:
+        existing = conn.execute(
+            text(
+                """
+                  SELECT case_id, submission_id, status, jurisdiction,
+                      assignee, assigned_at, locked, decision_json,
+                      first_opened_at, finalized_at,
+                      created_at, updated_at, summary
+                FROM cases
+                WHERE submission_id = :submission_id
+                """
+            ),
+            {"submission_id": submission_id},
+        ).mappings().first()
+        if existing:
+            return _normalize_case(existing)
+
+        case_id = f"sub-{submission_id}"
+        conn.execute(
+            text(
+                """
+                INSERT INTO cases (
+                    case_id, submission_id, status, jurisdiction,
+                    assignee, assigned_at, locked, decision_json,
+                    first_opened_at, finalized_at,
+                    created_at, updated_at, summary
+                ) VALUES (
+                    :case_id, :submission_id, :status, :jurisdiction,
+                    :assignee, :assigned_at, :locked, :decision_json,
+                    :first_opened_at, :finalized_at,
+                    :created_at, :updated_at, :summary
+                )
+                """
+            ),
+            {
+                "case_id": case_id,
+                "submission_id": submission_id,
+                "status": status,
+                "jurisdiction": jurisdiction,
+                "assignee": default_assignee,
+                "assigned_at": now,
+                "locked": 0,
+                "decision_json": None,
+                "first_opened_at": None,
+                "finalized_at": None,
+                "created_at": now,
+                "updated_at": now,
+                "summary": summary,
+            },
+        )
+
+        payload = json.dumps(
+            {
+                "submission_id": submission_id,
+                "status": status,
+                "summary": summary,
+            }
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO verifier_events (
+                    case_id, event_type, payload_json, created_at
+                ) VALUES (
+                    :case_id, :event_type, :payload_json, :created_at
+                )
+                """
+            ),
+            {
+                "case_id": case_id,
+                "event_type": "submission_received",
+                "payload_json": payload,
+                "created_at": now,
+            },
+        )
+        assigned_payload = json.dumps({"assignee": default_assignee, "actor": "system"})
+        conn.execute(
+            text(
+                """
+                INSERT INTO verifier_events (
+                    case_id, event_type, payload_json, created_at
+                ) VALUES (
+                    :case_id, :event_type, :payload_json, :created_at
+                )
+                """
+            ),
+            {
+                "case_id": case_id,
+                "event_type": "assigned",
+                "payload_json": assigned_payload,
+                "created_at": now,
+            },
+        )
+
+        created = conn.execute(
+            text(
+                """
+                  SELECT case_id, submission_id, status, jurisdiction,
+                      assignee, assigned_at, locked, decision_json,
+                      first_opened_at, finalized_at,
+                      created_at, updated_at, summary
+                FROM cases
+                WHERE case_id = :case_id
+                """
+            ),
+            {"case_id": case_id},
+        ).mappings().first()
+
+    return _normalize_case(created)
 
 
 def assign_case(
@@ -625,6 +846,46 @@ def list_notes(case_id: str) -> List[Dict[str, Any]]:
             {"case_id": case_id},
         ).mappings().all()
     return [dict(row) for row in rows]
+
+
+def emit_event(
+    case_id: str,
+    event_type: str,
+    payload: Optional[Dict[str, Any]] = None,
+    created_at: Optional[str] = None,
+) -> Dict[str, Any]:
+    ensure_schema()
+    engine = get_engine()
+    now = created_at or _now_iso()
+    payload_json = json.dumps(payload) if payload is not None else None
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO verifier_events (
+                    case_id, event_type, payload_json, created_at
+                ) VALUES (
+                    :case_id, :event_type, :payload_json, :created_at
+                )
+                """
+            ),
+            {
+                "case_id": case_id,
+                "event_type": event_type,
+                "payload_json": payload_json,
+                "created_at": now,
+            },
+        )
+        event_id = conn.execute(text("SELECT last_insert_rowid() AS id")).mappings().first()["id"]
+
+    return {
+        "id": event_id,
+        "case_id": case_id,
+        "event_type": event_type,
+        "payload_json": payload_json,
+        "created_at": now,
+    }
 
 
 def set_case_decision(

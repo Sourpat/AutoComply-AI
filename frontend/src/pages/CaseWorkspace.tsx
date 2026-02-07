@@ -26,11 +26,15 @@ import {
   bulkVerifierCaseAction,
   bulkVerifierCaseAssign,
   decideVerifierCase,
+  downloadVerifierAttachment,
   downloadAuditZip,
   downloadDecisionPacketPdf,
   fetchVerifierCaseEvents,
+  fetchVerifierCaseAttachments,
+  fetchVerifierCaseSubmission,
   fetchVerifierCaseDetail,
   fetchVerifierCases,
+  fetchVerifierCaseStats,
   getDecisionPacket,
   postVerifierCaseNote,
   setVerifierCaseAssignment,
@@ -39,6 +43,7 @@ import {
   type VerifierCaseDetail,
   type VerifierCaseEvent,
   type VerifierNote,
+  type VerifierCaseStats,
 } from "../api/verifierCasesClient";
 import { safeFormatDate, safeFormatRelative } from "../utils/dateUtils";
 
@@ -54,11 +59,15 @@ export const CaseWorkspace: React.FC = () => {
   const [count, setCount] = useState(0);
   const [statusFilter, setStatusFilter] = useState("all");
   const [jurisdictionFilter, setJurisdictionFilter] = useState("all");
+  const [submissionStatusFilter, setSubmissionStatusFilter] = useState("all");
+  const [slaFilter, setSlaFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [myQueueOnly, setMyQueueOnly] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [slaStats, setSlaStats] = useState<VerifierCaseStats | null>(null);
+  const [slaStatsError, setSlaStatsError] = useState<string | null>(null);
   const [detail, setDetail] = useState<VerifierCaseDetail | null>(null);
   const [events, setEvents] = useState<VerifierCaseEvent[]>([]);
   const [notes, setNotes] = useState<VerifierNote[]>([]);
@@ -87,6 +96,12 @@ export const CaseWorkspace: React.FC = () => {
   const [packetError, setPacketError] = useState<string | null>(null);
   const [packetCache, setPacketCache] = useState<Record<string, any>>({});
   const [packetToast, setPacketToast] = useState<string | null>(null);
+  const [submissionData, setSubmissionData] = useState<any | null>(null);
+  const [submissionLoading, setSubmissionLoading] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [submissionAttachments, setSubmissionAttachments] = useState<any[]>([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [attachmentsError, setAttachmentsError] = useState<string | null>(null);
 
   const casesCountRef = useRef(0);
 
@@ -113,6 +128,9 @@ export const CaseWorkspace: React.FC = () => {
           status: statusFilter === "all" ? undefined : statusFilter,
           jurisdiction: jurisdictionFilter === "all" ? undefined : jurisdictionFilter,
           assignee: myQueueOnly ? "me" : undefined,
+          submission_status:
+            submissionStatusFilter === "all" ? undefined : submissionStatusFilter,
+          sla_filter: slaFilter === "all" ? undefined : slaFilter,
         });
 
         setCount(response.count);
@@ -121,13 +139,21 @@ export const CaseWorkspace: React.FC = () => {
         } else {
           setCases((prev) => [...prev, ...response.items]);
         }
+        try {
+          const stats = await fetchVerifierCaseStats();
+          setSlaStats(stats);
+          setSlaStatsError(null);
+        } catch (err) {
+          setSlaStatsError(err instanceof Error ? err.message : "Failed to load SLA stats");
+          setSlaStats(null);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load cases");
       } finally {
         setIsLoading(false);
       }
     },
-    [statusFilter, jurisdictionFilter, myQueueOnly]
+    [statusFilter, jurisdictionFilter, myQueueOnly, submissionStatusFilter, slaFilter]
   );
 
   const loadCaseDetail = useCallback(async (caseId: string) => {
@@ -172,6 +198,8 @@ export const CaseWorkspace: React.FC = () => {
         const parsed = JSON.parse(stored);
         if (parsed.status) setStatusFilter(parsed.status);
         if (parsed.jurisdiction) setJurisdictionFilter(parsed.jurisdiction);
+        if (parsed.submission_status) setSubmissionStatusFilter(parsed.submission_status);
+        if (parsed.sla_filter) setSlaFilter(parsed.sla_filter);
         if (typeof parsed.myQueueOnly === "boolean") setMyQueueOnly(parsed.myQueueOnly);
         if (typeof parsed.searchQuery === "string") setSearchQuery(parsed.searchQuery);
       } catch {
@@ -184,7 +212,7 @@ export const CaseWorkspace: React.FC = () => {
   useEffect(() => {
     if (!filtersReady) return;
     loadCases({ reset: true });
-  }, [loadCases, statusFilter, jurisdictionFilter, myQueueOnly, filtersReady]);
+  }, [loadCases, statusFilter, jurisdictionFilter, myQueueOnly, submissionStatusFilter, slaFilter, filtersReady]);
 
   useEffect(() => {
     if (!filtersReady) return;
@@ -193,11 +221,13 @@ export const CaseWorkspace: React.FC = () => {
       JSON.stringify({
         status: statusFilter,
         jurisdiction: jurisdictionFilter,
+        submission_status: submissionStatusFilter,
+        sla_filter: slaFilter,
         myQueueOnly,
         searchQuery,
       })
     );
-  }, [statusFilter, jurisdictionFilter, myQueueOnly, searchQuery, filtersReady]);
+  }, [statusFilter, jurisdictionFilter, submissionStatusFilter, slaFilter, myQueueOnly, searchQuery, filtersReady]);
 
   useEffect(() => {
     if (!selectedCaseId && cases.length > 0) {
@@ -210,10 +240,44 @@ export const CaseWorkspace: React.FC = () => {
       setDetail(null);
       setEvents([]);
       setNotes([]);
+      setSubmissionData(null);
       return;
     }
     loadCaseDetail(selectedCaseId);
   }, [selectedCaseId, loadCaseDetail]);
+
+  useEffect(() => {
+    if (!detail?.case?.submission_id) {
+      setSubmissionData(null);
+      setSubmissionAttachments([]);
+      return;
+    }
+    setSubmissionLoading(true);
+    setSubmissionError(null);
+    fetchVerifierCaseSubmission(detail.case.case_id)
+      .then((data) => setSubmissionData(data))
+      .catch((err) => {
+        setSubmissionError(err instanceof Error ? err.message : "Failed to load submission");
+        setSubmissionData(null);
+      })
+      .finally(() => setSubmissionLoading(false));
+  }, [detail?.case?.submission_id, detail?.case?.case_id]);
+
+  useEffect(() => {
+    if (!detail?.case?.submission_id) {
+      setSubmissionAttachments([]);
+      return;
+    }
+    setAttachmentsLoading(true);
+    setAttachmentsError(null);
+    fetchVerifierCaseAttachments(detail.case.case_id)
+      .then((items) => setSubmissionAttachments(items))
+      .catch((err) => {
+        setAttachmentsError(err instanceof Error ? err.message : "Failed to load attachments");
+        setSubmissionAttachments([]);
+      })
+      .finally(() => setAttachmentsLoading(false));
+  }, [detail?.case?.submission_id, detail?.case?.case_id]);
 
 
   const handleAddNote = useCallback(async () => {
@@ -471,6 +535,22 @@ export const CaseWorkspace: React.FC = () => {
     }
   }, [selectedCaseId]);
 
+  const handleDownloadAttachment = useCallback(async (attachment: any) => {
+    try {
+      const blob = await downloadVerifierAttachment(attachment.attachment_id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = attachment.filename || "attachment";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setAttachmentsError(err instanceof Error ? err.message : "Failed to download attachment");
+    }
+  }, []);
+
   const handleDownloadAuditZip = useCallback(async () => {
     if (!selectedCaseId) return;
     try {
@@ -483,11 +563,13 @@ export const CaseWorkspace: React.FC = () => {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      setPacketToast(`Audit ZIP downloaded for ${selectedCaseId}`);
+      setPacketToast(
+        `Audit ZIP (${isLocked ? "Final" : "Draft"}) downloaded for ${selectedCaseId}`
+      );
     } catch (err) {
       setPacketError(err instanceof Error ? err.message : "Failed to download audit zip");
     }
-  }, [selectedCaseId]);
+  }, [selectedCaseId, isLocked]);
 
   useEffect(() => {
     if (!packetToast) return;
@@ -505,6 +587,11 @@ export const CaseWorkspace: React.FC = () => {
     cases.forEach((item) => item.status && values.add(item.status));
     return Array.from(values);
   }, [cases]);
+
+  const submissionStatusOptions = useMemo(
+    () => ["submitted", "in_review", "needs_info", "approved", "rejected"],
+    []
+  );
 
   const jurisdictionOptions = useMemo(() => {
     const values = new Set(["OH", "NY", "CA", "TX"]);
@@ -535,7 +622,28 @@ export const CaseWorkspace: React.FC = () => {
   const decisionPacket = packetKey ? packetCache[packetKey] : null;
   const citations = decisionPacket?.explain?.citations || [];
   const isLocked = detail?.case?.locked ?? false;
-  const isNeedsInfo = detail?.case?.status === "needs_info";
+  const submissionStatus = detail?.case?.submission_status || "";
+  const isNeedsInfo = submissionStatus === "needs_info";
+  const slaCounters = [
+    {
+      key: "due_soon",
+      label: "Due soon",
+      value: slaStats?.verifier_due_soon ?? 0,
+      tone: "text-amber-700",
+    },
+    {
+      key: "overdue",
+      label: "Overdue",
+      value: slaStats?.verifier_overdue ?? 0,
+      tone: "text-red-700",
+    },
+    {
+      key: "needs_info",
+      label: "Needs info aging",
+      value: slaStats?.needs_info_overdue ?? 0,
+      tone: "text-rose-700",
+    },
+  ];
 
 
   return (
@@ -577,6 +685,39 @@ export const CaseWorkspace: React.FC = () => {
                 My Queue ({CURRENT_USER})
               </label>
             </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-[11px]">
+              <div className="grid grid-cols-3 gap-2">
+                {slaCounters.map((counter) => (
+                  <div key={counter.key} className="rounded-md bg-white p-2 text-center">
+                    <div className="text-[10px] uppercase tracking-wide text-slate-400">
+                      {counter.label}
+                    </div>
+                    <div className={`text-sm font-semibold ${counter.tone}`}>{counter.value}</div>
+                  </div>
+                ))}
+              </div>
+              {slaStatsError && (
+                <div className="mt-2 text-[10px] text-red-600">{slaStatsError}</div>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {["all", "due_soon", "overdue", "needs_info"].map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setSlaFilter(filter)}
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                    slaFilter === filter
+                      ? "border-slate-700 bg-slate-800 text-white"
+                      : "border-slate-200 bg-white text-slate-600"
+                  }`}
+                >
+                  {filter === "all" && "All"}
+                  {filter === "due_soon" && "Due soon"}
+                  {filter === "overdue" && "Overdue"}
+                  {filter === "needs_info" && "Needs info"}
+                </button>
+              ))}
+            </div>
             <div className="flex flex-wrap gap-2">
               <label className="flex flex-col text-xs text-slate-600">
                 Status
@@ -589,6 +730,23 @@ export const CaseWorkspace: React.FC = () => {
                 >
                   <option value="all">All</option>
                   {statusOptions.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col text-xs text-slate-600">
+                Submission Status
+                <select
+                  value={submissionStatusFilter}
+                  onChange={(e) => {
+                    setSubmissionStatusFilter(e.target.value);
+                  }}
+                  className="mt-1 px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
+                >
+                  <option value="all">All</option>
+                  {submissionStatusOptions.map((status) => (
                     <option key={status} value={status}>
                       {status}
                     </option>
@@ -775,6 +933,11 @@ export const CaseWorkspace: React.FC = () => {
                         <span className="text-xs uppercase tracking-wide text-slate-500">
                           {detail.case.status}
                         </span>
+                        {submissionStatus && (
+                          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-sky-700">
+                            {submissionStatus.replace("_", " ")}
+                          </span>
+                        )}
                         {detail.case.locked && (
                           <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-700">
                             Locked
@@ -812,8 +975,16 @@ export const CaseWorkspace: React.FC = () => {
                   </div>
 
                   {isNeedsInfo && (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-                      Awaiting submitter updates.
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 space-y-1">
+                      <div className="font-semibold">Needs info from submitter</div>
+                      {detail.case.request_info?.message && (
+                        <div>Message: {detail.case.request_info.message}</div>
+                      )}
+                      {detail.case.request_info?.requested_at && (
+                        <div>
+                          Requested: {safeFormatDate(detail.case.request_info.requested_at)}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -914,6 +1085,91 @@ export const CaseWorkspace: React.FC = () => {
 
                   <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
                     <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-slate-700">Submission</h3>
+                      {detail.case.submission_id && (
+                        <span className="text-xs text-slate-500">{detail.case.submission_id}</span>
+                      )}
+                    </div>
+                    {!detail.case.submission_id && (
+                      <p className="text-xs text-slate-500">No submission linked.</p>
+                    )}
+                    {detail.case.submission_id && submissionLoading && (
+                      <p className="text-xs text-slate-500">Loading submission…</p>
+                    )}
+                    {detail.case.submission_id && submissionError && (
+                      <p className="text-xs text-red-600">{submissionError}</p>
+                    )}
+                    {detail.case.submission_id && submissionData && !submissionLoading && (
+                      <div className="space-y-2 text-xs text-slate-600">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <div className="font-semibold text-slate-700">Subject</div>
+                            <div>{submissionData.title || submissionData.payload?.subject || "—"}</div>
+                          </div>
+                          <div>
+                            <div className="font-semibold text-slate-700">Submitter</div>
+                            <div>{submissionData.payload?.submitter_name || "—"}</div>
+                          </div>
+                          <div>
+                            <div className="font-semibold text-slate-700">Doc type</div>
+                            <div>{submissionData.payload?.doc_type || submissionData.csf_type || "—"}</div>
+                          </div>
+                          <div>
+                            <div className="font-semibold text-slate-700">Jurisdiction</div>
+                            <div>{submissionData.payload?.jurisdiction || submissionData.tenant || "—"}</div>
+                          </div>
+                          <div>
+                            <div className="font-semibold text-slate-700">Created</div>
+                            <div>{safeFormatDate(submissionData.created_at)}</div>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-700">Notes</div>
+                          <div className="whitespace-pre-wrap">
+                            {submissionData.payload?.notes || submissionData.summary || "—"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-700">Attachments</div>
+                          {attachmentsLoading && (
+                            <p className="text-slate-500">Loading attachments…</p>
+                          )}
+                          {attachmentsError && (
+                            <p className="text-red-600">{attachmentsError}</p>
+                          )}
+                          {!attachmentsLoading && !attachmentsError && submissionAttachments.length === 0 && (
+                            <p className="text-slate-500">No attachments.</p>
+                          )}
+                          {!attachmentsLoading && submissionAttachments.length > 0 && (
+                            <ul className="mt-1 space-y-1">
+                              {submissionAttachments.map((item: any) => (
+                                <li key={item.attachment_id} className="rounded border border-slate-100 bg-slate-50 p-2">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <div className="font-semibold text-slate-700">{item.filename || "Attachment"}</div>
+                                      <div className="text-[11px] text-slate-500">
+                                        {item.content_type || "unknown"}
+                                        {item.byte_size ? ` • ${item.byte_size} bytes` : ""}
+                                      </div>
+                                    </div>
+                                    <button
+                                      onClick={() => handleDownloadAttachment(item)}
+                                      className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                      Download
+                                    </button>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
+                    <div className="flex items-center justify-between">
                       <h3 className="text-sm font-semibold text-slate-700">Decision Packet</h3>
                       <div className="flex items-center gap-2">
                         <button
@@ -932,7 +1188,7 @@ export const CaseWorkspace: React.FC = () => {
                           onClick={handleDownloadAuditZip}
                           className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                         >
-                          Download Audit ZIP
+                          Audit ZIP ({isLocked ? "Final" : "Draft"})
                         </button>
                         <button
                           onClick={() => loadDecisionPacket(detail.case.case_id, true)}
@@ -1030,12 +1286,19 @@ export const CaseWorkspace: React.FC = () => {
                         {events.map((event) => (
                           <li key={event.id} className="rounded border border-slate-100 bg-slate-50 p-2">
                             <div className="flex items-center justify-between text-xs text-slate-600">
-                              <span className="font-semibold text-slate-700">{event.event_type}</span>
+                              <span className="font-semibold text-slate-700">
+                                {event.title || event.event_type}
+                              </span>
                               <span>{safeFormatRelative(event.created_at)}</span>
                             </div>
-                            <div className="mt-1 text-[11px] text-slate-500 break-all">
-                              {event.payload_json}
-                            </div>
+                            {event.message && (
+                              <div className="mt-1 text-[11px] text-slate-600">{event.message}</div>
+                            )}
+                            {event.payload_json && (
+                              <div className="mt-1 text-[11px] text-slate-500 break-all">
+                                {event.payload_json}
+                              </div>
+                            )}
                           </li>
                         ))}
                       </ul>

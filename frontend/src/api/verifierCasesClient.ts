@@ -8,6 +8,12 @@ export type VerifierCase = {
   case_id: string;
   submission_id: string | null;
   status: string;
+  submission_status?: string | null;
+  request_info?: {
+    message?: string | null;
+    requested_at?: string | null;
+    requested_by?: string | null;
+  } | null;
   jurisdiction: string | null;
   assignee: string | null;
   assigned_at: string | null;
@@ -19,16 +25,29 @@ export type VerifierCase = {
     timestamp?: string | null;
     version?: string | null;
   } | null;
+  first_opened_at?: string | null;
+  finalized_at?: string | null;
+  submission_summary?: {
+    submitter_name?: string | null;
+    created_at?: string | null;
+    notes_count?: number | null;
+    attachment_count?: number | null;
+  } | null;
   created_at: string;
   updated_at: string;
   summary: string;
 };
 
 export type VerifierCaseEvent = {
-  id: number;
+  id: string;
+  submission_id?: string | null;
   case_id: string;
+  actor_type?: string | null;
+  actor_id?: string | null;
   event_type: string;
-  payload_json: string;
+  title?: string | null;
+  message?: string | null;
+  payload_json?: string | null;
   created_at: string;
 };
 
@@ -45,6 +64,15 @@ export type VerifierCasesResponse = {
   limit: number;
   offset: number;
   count: number;
+};
+
+export type VerifierCaseStats = {
+  verifier_due_soon: number;
+  verifier_overdue: number;
+  needs_info_due_soon: number;
+  needs_info_overdue: number;
+  decision_due_soon: number;
+  decision_overdue: number;
 };
 
 export type VerifierCaseDetail = {
@@ -91,6 +119,8 @@ export async function fetchVerifierCases(params: {
   status?: string;
   jurisdiction?: string;
   assignee?: string;
+  submission_status?: string;
+  sla_filter?: string;
 }): Promise<VerifierCasesResponse> {
   const search = new URLSearchParams({
     limit: params.limit.toString(),
@@ -109,8 +139,21 @@ export async function fetchVerifierCases(params: {
     search.set("assignee", params.assignee);
   }
 
+  if (params.submission_status) {
+    search.set("submission_status", params.submission_status);
+  }
+  if (params.sla_filter) {
+    search.set("sla_filter", params.sla_filter);
+  }
+
   return apiFetch<VerifierCasesResponse>(`${VERIFIER_BASE}/cases?${search.toString()}`, {
     headers: getAuthHeaders(),
+  });
+}
+
+export async function fetchVerifierCaseStats(): Promise<VerifierCaseStats> {
+  return apiFetch<VerifierCaseStats>(`${VERIFIER_BASE}/cases/stats`, {
+    headers: getJsonHeaders(),
   });
 }
 
@@ -184,6 +227,27 @@ export async function fetchVerifierCaseNotes(caseId: string): Promise<VerifierNo
   return apiFetch<VerifierNote[]>(`${VERIFIER_BASE}/cases/${caseId}/notes`, {
     headers: getAuthHeaders(),
   });
+}
+
+export async function fetchVerifierCaseSubmission(caseId: string): Promise<any> {
+  return apiFetch<any>(`${VERIFIER_BASE}/cases/${caseId}/submission`, {
+    headers: getAuthHeaders(),
+  });
+}
+
+export async function fetchVerifierCaseAttachments(caseId: string): Promise<any[]> {
+  return apiFetch<any[]>(`${VERIFIER_BASE}/cases/${caseId}/attachments`, {
+    headers: getAuthHeaders(),
+  });
+}
+
+export async function downloadVerifierAttachment(attachmentId: string): Promise<Blob> {
+  const url = `${API_BASE}${VERIFIER_BASE}/attachments/${attachmentId}/download`;
+  const response = await fetch(url, { headers: getAuthHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to download attachment: ${response.status}`);
+  }
+  return response.blob();
 }
 
 export async function bulkVerifierCaseAction(payload: {

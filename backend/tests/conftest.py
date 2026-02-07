@@ -181,6 +181,9 @@ ensure_test_schema()
 
 from fastapi.testclient import TestClient
 from src.api.main import app
+from src.autocomply.domain.notification_store import reset_notification_store
+from src.autocomply.domain.submissions_store import reset_submission_store
+from src.autocomply.domain.verifier_store import reset_verifier_store
 
 client = TestClient(app)
 
@@ -191,6 +194,18 @@ def _reset_settings_cache() -> None:
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_in_memory_stores() -> None:
+    """Reset singleton stores between tests to avoid cross-test pollution."""
+    reset_submission_store()
+    reset_notification_store()
+    reset_verifier_store()
+    yield
+    reset_submission_store()
+    reset_notification_store()
+    reset_verifier_store()
 
 
 @pytest.fixture(autouse=True)

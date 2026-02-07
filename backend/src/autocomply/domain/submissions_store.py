@@ -12,11 +12,16 @@ Future: Replace with SQLAlchemy models or document store
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
+
+from src.autocomply.domain import sla_policy
+
+
+def _now_iso() -> str:
+    return sla_policy.now_iso()
 
 
 class SubmissionStatus(str, Enum):
@@ -24,6 +29,7 @@ class SubmissionStatus(str, Enum):
 
     SUBMITTED = "submitted"
     IN_REVIEW = "in_review"
+    NEEDS_INFO = "needs_info"
     APPROVED = "approved"
     REJECTED = "rejected"
     BLOCKED = "blocked"
@@ -63,6 +69,15 @@ class Submission(BaseModel):
     status: SubmissionStatus = Field(
         default=SubmissionStatus.SUBMITTED, description="Current submission status"
     )
+    last_status_at: Optional[str] = Field(
+        None, description="ISO 8601 timestamp of last status change"
+    )
+    last_status_by: Optional[str] = Field(
+        None, description="Actor who last changed status"
+    )
+    request_info: Optional[Dict] = Field(
+        None, description="Request info payload when verifier needs more info"
+    )
     priority: SubmissionPriority = Field(
         default=SubmissionPriority.MEDIUM, description="Verification priority"
     )
@@ -96,6 +111,21 @@ class Submission(BaseModel):
     reviewed_at: Optional[str] = Field(
         None, description="ISO 8601 timestamp when reviewed (approved/rejected)"
     )
+    sla_first_touch_due_at: Optional[str] = Field(
+        None, description="ISO 8601 timestamp when first touch is due"
+    )
+    sla_needs_info_due_at: Optional[str] = Field(
+        None, description="ISO 8601 timestamp when needs-info response is due"
+    )
+    sla_decision_due_at: Optional[str] = Field(
+        None, description="ISO 8601 timestamp when final decision is due"
+    )
+    sla_escalation_level: int = Field(
+        0, description="Current SLA escalation level"
+    )
+    sla_last_notified_at: Optional[str] = Field(
+        None, description="ISO 8601 timestamp when SLA reminder last emitted"
+    )
 
     class Config:
         use_enum_values = True
@@ -111,6 +141,7 @@ class SubmissionStore:
 
     def __init__(self):
         self._store: Dict[str, Submission] = {}
+        self._client_index: Dict[str, str] = {}
 
     def create_submission(
         self,
@@ -124,6 +155,8 @@ class SubmissionStore:
         risk_level: Optional[str] = None,
         priority: SubmissionPriority = SubmissionPriority.MEDIUM,
         summary: Optional[str] = None,
+        submission_id: Optional[str] = None,
+        client_token: Optional[str] = None,
     ) -> Submission:
         """
         Create a new verification submission.
@@ -143,17 +176,21 @@ class SubmissionStore:
         Returns:
             Created Submission object
         """
-        now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
-        submission_id = str(uuid.uuid4())
+        now = sla_policy.utc_now()
+        now_iso = now.isoformat().replace('+00:00', 'Z')
+        if submission_id is None:
+            submission_id = str(uuid.uuid4())
 
         submission = Submission(
             submission_id=submission_id,
             csf_type=csf_type,
             tenant=tenant,
             status=SubmissionStatus.SUBMITTED,
+            last_status_at=now_iso,
+            last_status_by="submitter",
             priority=priority,
-            created_at=now,
-            updated_at=now,
+            created_at=now_iso,
+            updated_at=now_iso,
             title=title,
             subtitle=subtitle,
             summary=summary,
@@ -161,13 +198,25 @@ class SubmissionStore:
             payload=payload,
             decision_status=decision_status,
             risk_level=risk_level,
+            sla_first_touch_due_at=sla_policy.add_hours_iso(now, sla_policy.FIRST_TOUCH_HOURS),
+            sla_decision_due_at=sla_policy.add_hours_iso(now, sla_policy.DECISION_HOURS),
+            sla_escalation_level=0,
+            sla_last_notified_at=None,
         )
 
         self._store[submission_id] = submission
+        if client_token:
+            self._client_index[client_token] = submission_id
         return submission
 
     def get_submission(self, submission_id: str) -> Optional[Submission]:
         """Retrieve a submission by ID."""
+        return self._store.get(submission_id)
+
+    def get_submission_by_client_token(self, client_token: str) -> Optional[Submission]:
+        submission_id = self._client_index.get(client_token)
+        if not submission_id:
+            return None
         return self._store.get(submission_id)
 
     def list_submissions(
@@ -202,17 +251,50 @@ class SubmissionStore:
 
         return submissions[:limit]
 
-    def update_submission_status(
-        self, submission_id: str, status: SubmissionStatus
+    def set_submission_status(
+        self,
+        submission_id: str,
+        status: SubmissionStatus,
+        by: str,
+        request_info: Optional[Dict] = None,
     ) -> Optional[Submission]:
-        """Update submission status and updated_at timestamp."""
         submission = self._store.get(submission_id)
         if not submission:
             return None
 
         submission.status = status
-        submission.updated_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        submission.last_status_at = _now_iso()
+        submission.last_status_by = by
+        if request_info is not None:
+            submission.request_info = request_info
+        if status != SubmissionStatus.NEEDS_INFO and request_info is None:
+            submission.request_info = None
+        if status == SubmissionStatus.NEEDS_INFO:
+            submission.sla_needs_info_due_at = sla_policy.add_hours_iso(
+                sla_policy.utc_now(), sla_policy.NEEDS_INFO_HOURS
+            )
+        elif status != SubmissionStatus.NEEDS_INFO:
+            submission.sla_needs_info_due_at = None
+        if status == SubmissionStatus.IN_REVIEW:
+            submission.sla_first_touch_due_at = None
+        if status in [SubmissionStatus.APPROVED, SubmissionStatus.REJECTED]:
+            if not submission.reviewed_at:
+                submission.reviewed_at = submission.last_status_at
+            if by:
+                submission.reviewed_by = by
+            submission.sla_first_touch_due_at = None
+            submission.sla_needs_info_due_at = None
+            submission.sla_decision_due_at = None
+            submission.sla_escalation_level = 0
+            submission.sla_last_notified_at = None
+        submission.updated_at = submission.last_status_at
         return submission
+
+    def update_submission_status(
+        self, submission_id: str, status: SubmissionStatus
+    ) -> Optional[Submission]:
+        """Update submission status and updated_at timestamp."""
+        return self.set_submission_status(submission_id, status, by="system")
 
     def update_submission(
         self,
@@ -227,11 +309,7 @@ class SubmissionStore:
             return None
 
         if status is not None:
-            submission.status = status
-            # Set reviewed_at when status changes to approved or rejected
-            if status in [SubmissionStatus.APPROVED, SubmissionStatus.REJECTED]:
-                if not submission.reviewed_at:
-                    submission.reviewed_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+            self.set_submission_status(submission_id, status, by=reviewed_by or "system")
         
         if reviewer_notes is not None:
             submission.reviewer_notes = reviewer_notes
@@ -239,7 +317,7 @@ class SubmissionStore:
         if reviewed_by is not None:
             submission.reviewed_by = reviewed_by
         
-        submission.updated_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        submission.updated_at = _now_iso()
         return submission
 
     def delete_submission(self, submission_id: str) -> bool:
@@ -292,6 +370,16 @@ def get_submission_store() -> SubmissionStore:
     if _global_store is None:
         _global_store = SubmissionStore()
     return _global_store
+
+
+def set_submission_status(
+    submission_id: str,
+    status: SubmissionStatus,
+    by: str,
+    request_info: Optional[Dict] = None,
+) -> Optional[Submission]:
+    store = get_submission_store()
+    return store.set_submission_status(submission_id, status, by, request_info=request_info)
 
 
 def reset_submission_store() -> None:

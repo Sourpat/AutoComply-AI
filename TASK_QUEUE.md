@@ -1,6 +1,6 @@
 # Task Queue
 
-**Last Updated**: 2026-02-06
+**Last Updated**: 2026-02-07
 
 **Active WIP**: 0
 
@@ -9,6 +9,56 @@
 ---
 
 ## P0 - Critical (Do First)
+
+### CI Hotfix — Verifier events + SLA dedupe
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Normalize verifier events output, cast event ids to string, ensure bulk events, and dedupe SLA reminders.
+**Acceptance Criteria**:
+- [x] Verifier events endpoint returns assigned/unassigned/action with string ids
+- [x] Bulk assign/action events appear deterministically
+- [x] SLA runner emits one prioritized reminder per submission per run
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_verifier_bulk_api.py tests/test_verifier_actions_api.py tests/test_decision_packet_api.py tests/test_sla_reminders.py`
+- `npm run build`
+**Dependencies**: None
+**Notes**: Commit (HEAD)
+
+### CI Hotfix — SLA stats distinct submission counts
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Compute SLA stats from current submission state with distinct submission counts, excluding closed submissions.
+**Acceptance Criteria**:
+- [x] SLA stats count distinct submissions for needs-info/decision/verifier buckets
+- [x] Closed submissions excluded from SLA stats
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_sla_reminders.py`
+**Dependencies**: None
+**Notes**: Post-CI stats fix.
+
+### CI Hotfix — Scope SLA stats to SLA-tracked submissions
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Restrict SLA stats to SLA-tracked submissions to avoid seeded/demo data inflating KPI during tests.
+**Acceptance Criteria**:
+- [x] SLA stats include only submissions with SLA escalation or emitted SLA events
+- [x] Closed submissions excluded
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_sla_reminders.py`
+- `C:/Python314/python.exe -m pytest -q tests/test_verifier_bulk_api.py tests/test_verifier_actions_api.py tests/test_decision_packet_api.py tests/test_sla_reminders.py`
+**Dependencies**: None
+
+### CI Hotfix — Reset stores between tests
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Ensure pytest isolation by clearing in-memory/singleton stores between tests to prevent SLA stats pollution.
+**Acceptance Criteria**:
+- [x] Stores backing SLA stats are cleared between tests
+- [x] `tests/test_sla_reminders.py` passes when running full suite
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_sla_reminders.py`
+- `C:/Python314/python.exe -m pytest -q`
+**Dependencies**: None
 
 
 > **Status Legend**: `pending` | `in-progress` | `blocked` | `completed`
@@ -112,6 +162,61 @@
 - `C:/Python314/python.exe -m pytest -q tests/test_verifier_smoke_runner.py`
 - `npm run build`
 **Dependencies**: None
+
+
+### Phase 5.1 — Submitter → Verifier Queue linkage
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Create submitter submissions that flow into the verifier queue with idempotency.
+**Acceptance Criteria**:
+- [x] Submitter submission endpoint creates linked verifier case
+- [x] Idempotent by submission_id or client_token
+- [x] Verifier list/detail include submission summary
+- [x] Verifier submission endpoint returns payload
+- [x] Ops smoke check for submitter_to_verifier_flow
+- [x] Tests added + passing
+- [x] Docs: PHASE5 plan + smoke
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_submitter_to_verifier_flow.py`
+- `npm run build`
+**Dependencies**: None
+
+### Phase 5.5 — Submission events feed + email hooks
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Durable submission event feed for submitter + verifier views with email hook stubs.
+**Acceptance Criteria**:
+- [x] Submission events stored in SQLite with indexes
+- [x] Events emitted across create/open/needs-info/respond/upload/finalize
+- [x] Submitter + verifier events endpoints added
+- [x] Email hook writes outbox for needs-info + final decisions
+- [x] Ops smoke + RC Gate coverage updated
+- [x] Tests added + passing
+- [x] Docs updated (PHASE5 smoke)
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_submission_events_feed.py`
+- `npm run build`
+**Dependencies**: None
+**Notes**: Commit 2b26396
+
+### Phase 5.6 — SLA reminders + escalation + counters
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Deterministic SLA reminders/escalation with stats counters for verifier + submitter.
+**Acceptance Criteria**:
+- [x] SLA due fields persisted and updated across lifecycle
+- [x] Ops SLA runner emits due-soon/overdue events with escalation + email hook stubs
+- [x] Stats endpoints for verifier + submitter + UI counters/filters
+- [x] Tests added + passing
+- [x] Docs updated (PHASE5 plan + smoke)
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_sla_reminders.py`
+- `npm run build`
+**Dependencies**: None
+**Notes**: Commit (HEAD)
+
+
+
 
 
 
@@ -220,6 +325,38 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 5.4 — Submission status lifecycle (submitter ↔ verifier)
+**Completed**: 2026-02-07
+**Commit**: pending
+**Summary**: Submission status lifecycle now updates from verifier actions and submitter responses with request-info metadata.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_submission_status_flow.py`
+- `npm run build`
+
+### Phase 5.3 — Audit ZIP bundles snapshot + evidence
+**Completed**: 2026-02-06
+**Commit**: pending
+**Summary**: Audit ZIP exports now include snapshot-aware decision packet, manifest, and evidence files with hashes.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_audit_zip_includes_evidence.py`
+- `npm run build`
+
+### Phase 5.2 — Submitter attachments + verifier downloads
+**Completed**: 2026-02-06
+**Commit**: 2cf799b
+**Summary**: Added submitter attachment uploads with verifier list/download and decision packet linkage, plus tests and smoke coverage.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_attachments_flow.py`
+- `npm run build`
+
+### Phase 5.1 — Submitter → Verifier Queue linkage
+**Completed**: 2026-02-06
+**Commit**: f955479
+**Summary**: Submitter submissions now create linked verifier cases with idempotency and smoke coverage.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_submitter_to_verifier_flow.py`
+- `npm run build`
+
 ### Phase 4.8 — Verifier smoke runner + demo script + RC Gate
 **Completed**: 2026-02-06
 **Commit**: a2711c0
@@ -227,37 +364,6 @@
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q tests/test_verifier_smoke_runner.py`
 - `npm run build`
-
-### Phase 4.7 — Final decision flow + case lock + final packet snapshot
-**Completed**: 2026-02-06
-**Commit**: 1ae1081
-**Summary**: Added final decision endpoint with lock + snapshot, UI modal, and ops smoke coverage.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q tests/test_verifier_decision_flow.py`
-- `npm run build`
-
-### Phase 4: Verifier Console uses real submitted cases
-**Completed**: 2026-02-06
-**Commit**: d799866
-**Summary**: Wired verifier console to real cases, actions/notes, assignments, decision packet JSON/PDF, and audit ZIP exports with CI smoke gate and tests.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q tests/test_audit_packet_downloads.py`
-- `npm run build`
-
-### Phase 3.10 — CI health version + intelligence schema
-**Completed**: 2026-02-06
-**Commit**: 8afe541, 5bf0658, 79e561a
-**Summary**: Bootstrapped intelligence schema in startup/tests and normalized /health/details version/commit precedence.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_signal_intelligence.py backend/tests/test_health_details.py`
-- `C:/Python314/python.exe -m pytest -q`
-
-### Phase 3.8 — RC Gate readiness + CI env guards
-**Completed**: 2026-02-06
-**Commit**: 057233a, 9fe4389, 45858ef
-**Summary**: Hardened RC Gate env/pytest logging, readiness checks, and artifacts.
-**Verification**:
-- GitHub Actions RC Gate success
 
 ---
 

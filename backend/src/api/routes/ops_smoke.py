@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import os
 from datetime import datetime, timezone
+import io
+import zipfile
 from typing import Any, Dict, List
 
 import httpx
@@ -205,6 +207,7 @@ async def ops_smoke() -> Dict[str, Any]:
 
     verifier_packet_ok = True
     verifier_final_ok = True
+    submitter_flow_ok = True
     if env_marker == "ci":
         try:
             seed_cases()
@@ -262,8 +265,271 @@ async def ops_smoke() -> Dict[str, Any]:
             details["errors"].append({"check": "verifier_audit_packet", "detail": type(exc).__name__})
             verifier_final_ok = False
             details["errors"].append({"check": "verifier_final_decision", "detail": type(exc).__name__})
+    if env_marker == "ci":
+        try:
+            payload = {
+                "client_token": "ops-smoke-submitter",
+                "subject": "Ops smoke submission",
+                "submitter_name": "ops",
+                "jurisdiction": "OH",
+                "doc_type": "csf_facility",
+                "notes": "ops smoke",
+                "attachments": [],
+            }
+            submit_status = None
+            async with httpx.AsyncClient() as client:
+                submit_resp = await client.post(
+                    "http://127.0.0.1:8001/api/submitter/submissions",
+                    json=payload,
+                )
+                submit_status = submit_resp.status_code
+                if submit_resp.status_code != 200:
+                    submitter_flow_ok = False
+                else:
+                    case_id = submit_resp.json().get("verifier_case_id")
+                    if not case_id:
+                        submitter_flow_ok = False
+                    else:
+                        submission_resp = await client.get(
+                            f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/submission"
+                        )
+                        submitter_flow_ok = submission_resp.status_code == 200
+                if not submitter_flow_ok:
+                    details["errors"].append(
+                        {
+                            "check": "submitter_to_verifier_flow",
+                            "detail": f"status={submit_status}",
+                        }
+                    )
+        except Exception as exc:
+            submitter_flow_ok = False
+            details["errors"].append({"check": "submitter_to_verifier_flow", "detail": type(exc).__name__})
     record_check("verifier_audit_packet", verifier_packet_ok)
     record_check("verifier_final_decision", verifier_final_ok)
+    record_check("submitter_to_verifier_flow", submitter_flow_ok)
+
+    attachment_flow_ok = True
+    audit_zip_evidence_ok = True
+    if env_marker == "ci":
+        try:
+            submission_payload = {
+                "client_token": "ops-smoke-attach",
+                "subject": "Ops smoke attachment",
+                "submitter_name": "ops",
+                "jurisdiction": "OH",
+                "doc_type": "csf_facility",
+                "notes": "ops smoke",
+            }
+            async with httpx.AsyncClient() as client:
+                submit_resp = await client.post(
+                    "http://127.0.0.1:8001/api/submitter/submissions",
+                    json=submission_payload,
+                )
+                if submit_resp.status_code != 200:
+                    attachment_flow_ok = False
+                else:
+                    submission_id = submit_resp.json().get("submission_id")
+                    case_id = submit_resp.json().get("verifier_case_id")
+                    files = {"file": ("smoke.txt", b"smoke", "text/plain")}
+                    upload_resp = await client.post(
+                        f"http://127.0.0.1:8001/api/submissions/{submission_id}/attachments",
+                        files=files,
+                    )
+                    if upload_resp.status_code != 200:
+                        attachment_flow_ok = False
+                    else:
+                        attachment_id = upload_resp.json().get("attachment_id")
+                        list_resp = await client.get(
+                            f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/attachments"
+                        )
+                        download_resp = await client.get(
+                            f"http://127.0.0.1:8001/api/verifier/attachments/{attachment_id}/download"
+                        )
+                        attachment_flow_ok = (
+                            list_resp.status_code == 200
+                            and download_resp.status_code == 200
+                        )
+
+                        audit_zip_resp = await client.get(
+                            f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/audit.zip?include_explain=0"
+                        )
+                        if audit_zip_resp.status_code != 200:
+                            audit_zip_evidence_ok = False
+                        else:
+                            buffer = io.BytesIO(audit_zip_resp.content)
+                            with zipfile.ZipFile(buffer) as archive:
+                                names = archive.namelist()
+                                manifest_ok = "manifest.json" in names
+                                packet_ok = "decision_packet.json" in names
+                                evidence_files = [name for name in names if name.startswith("evidence/")]
+                                audit_zip_evidence_ok = (
+                                    manifest_ok and packet_ok and len(evidence_files) >= 1
+                                )
+                if not attachment_flow_ok:
+                    details["errors"].append(
+                        {
+                            "check": "submitter_attachment_flow",
+                            "detail": f"status={submit_resp.status_code}",
+                        }
+                    )
+                if not audit_zip_evidence_ok:
+                    details["errors"].append(
+                        {
+                            "check": "verifier_audit_zip_evidence",
+                            "detail": f"status={submit_resp.status_code}",
+                        }
+                    )
+        except Exception as exc:
+            attachment_flow_ok = False
+            details["errors"].append({"check": "submitter_attachment_flow", "detail": type(exc).__name__})
+            audit_zip_evidence_ok = False
+            details["errors"].append({"check": "verifier_audit_zip_evidence", "detail": type(exc).__name__})
+    record_check("submitter_attachment_flow", attachment_flow_ok)
+    record_check("verifier_audit_zip_evidence", audit_zip_evidence_ok)
+
+    submission_status_ok = True
+    if env_marker == "ci":
+        try:
+            async with httpx.AsyncClient() as client:
+                submit_resp = await client.post(
+                    "http://127.0.0.1:8001/api/submitter/submissions",
+                    json={
+                        "client_token": "ops-smoke-status",
+                        "subject": "Ops smoke status",
+                        "submitter_name": "ops",
+                        "jurisdiction": "OH",
+                        "doc_type": "csf_facility",
+                        "notes": "ops smoke",
+                    },
+                )
+                if submit_resp.status_code != 200:
+                    submission_status_ok = False
+                else:
+                    submission_id = submit_resp.json().get("submission_id")
+                    case_id = submit_resp.json().get("verifier_case_id")
+                    await client.get(f"http://127.0.0.1:8001/api/verifier/cases/{case_id}")
+
+                    request_resp = await client.post(
+                        f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/decision",
+                        json={"type": "request_info", "reason": "ops", "actor": "ops"},
+                    )
+                    respond_resp = await client.post(
+                        f"http://127.0.0.1:8001/api/submitter/submissions/{submission_id}/respond",
+                        json={"message": "response"},
+                    )
+                    approve_resp = await client.post(
+                        f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/decision",
+                        json={"type": "approve", "actor": "ops"},
+                    )
+                    final_detail = await client.get(
+                        f"http://127.0.0.1:8001/api/submitter/submissions/{submission_id}"
+                    )
+
+                    submission_status_ok = (
+                        request_resp.status_code == 200
+                        and respond_resp.status_code == 200
+                        and approve_resp.status_code == 200
+                        and final_detail.status_code == 200
+                        and final_detail.json().get("status") == "approved"
+                    )
+            if not submission_status_ok:
+                details["errors"].append(
+                    {"check": "submission_status_flow", "detail": "status flow failed"}
+                )
+        except Exception as exc:
+            submission_status_ok = False
+            details["errors"].append({"check": "submission_status_flow", "detail": type(exc).__name__})
+    record_check("submission_status_flow", submission_status_ok)
+
+    submission_events_ok = True
+    if env_marker == "ci":
+        try:
+            async with httpx.AsyncClient() as client:
+                submit_resp = await client.post(
+                    "http://127.0.0.1:8001/api/submitter/submissions",
+                    json={
+                        "client_token": "ops-smoke-events",
+                        "subject": "Ops smoke events",
+                        "submitter_name": "ops",
+                        "jurisdiction": "OH",
+                        "doc_type": "csf_facility",
+                        "notes": "ops smoke",
+                    },
+                )
+                if submit_resp.status_code != 200:
+                    submission_events_ok = False
+                else:
+                    submission_id = submit_resp.json().get("submission_id")
+                    case_id = submit_resp.json().get("verifier_case_id")
+                    await client.get(f"http://127.0.0.1:8001/api/verifier/cases/{case_id}")
+                    await client.post(
+                        f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/decision",
+                        json={"type": "request_info", "reason": "ops", "actor": "ops"},
+                    )
+                    await client.post(
+                        f"http://127.0.0.1:8001/api/submitter/submissions/{submission_id}/respond",
+                        json={"message": "response"},
+                    )
+                    await client.post(
+                        f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/decision",
+                        json={"type": "approve", "actor": "ops"},
+                    )
+                    events_resp = await client.get(
+                        f"http://127.0.0.1:8001/api/submitter/submissions/{submission_id}/events?limit=50"
+                    )
+                    if events_resp.status_code != 200:
+                        submission_events_ok = False
+                    else:
+                        event_types = {event.get("event_type") for event in events_resp.json()}
+                        required = {
+                            "submission_created",
+                            "verifier_opened",
+                            "verifier_requested_info",
+                            "submitter_responded",
+                            "verifier_approved",
+                        }
+                        submission_events_ok = required.issubset(event_types)
+            if not submission_events_ok:
+                details["errors"].append(
+                    {"check": "submission_events_feed", "detail": "missing events"}
+                )
+        except Exception as exc:
+            submission_events_ok = False
+            details["errors"].append({"check": "submission_events_feed", "detail": type(exc).__name__})
+    record_check("submission_events_feed", submission_events_ok)
+
+    sla_run_ok = True
+    if env_marker == "ci":
+        try:
+            async with httpx.AsyncClient() as client:
+                submit_resp = await client.post(
+                    "http://127.0.0.1:8001/api/submitter/submissions",
+                    json={
+                        "client_token": "ops-smoke-sla",
+                        "subject": "Ops smoke SLA",
+                        "submitter_name": "ops",
+                        "jurisdiction": "OH",
+                        "doc_type": "csf_facility",
+                        "notes": "ops sla",
+                    },
+                )
+                if submit_resp.status_code != 200:
+                    sla_run_ok = False
+                else:
+                    run_resp = await client.post("http://127.0.0.1:8001/api/ops/sla/run")
+                    if run_resp.status_code != 200:
+                        sla_run_ok = False
+                    else:
+                        payload = run_resp.json()
+                        required_keys = {"scanned_count", "emitted_count", "escalated_count", "by_type"}
+                        if not required_keys.issubset(payload.keys()):
+                            sla_run_ok = False
+            if not sla_run_ok:
+                details["errors"].append({"check": "sla_run", "detail": "missing sla keys"})
+        except Exception as exc:
+            sla_run_ok = False
+            details["errors"].append({"check": "sla_run", "detail": type(exc).__name__})
+    record_check("sla_run", sla_run_ok)
 
     replay_diff_ok = True
     if determinism_target:

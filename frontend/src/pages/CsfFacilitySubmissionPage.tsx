@@ -10,6 +10,16 @@ import { useNavigate } from 'react-router-dom';
 import { createSubmission } from '../submissions/submissionStoreSelector';
 import { intakeSubmissionToCase } from '../workflow/submissionIntakeService';
 import type { CreateSubmissionInput } from '../submissions/submissionTypes';
+import {
+  createSubmitterSubmission,
+  fetchSubmitterSubmissionEvents,
+  fetchSubmitterSubmission,
+  respondToSubmitterSubmission,
+  type SubmitterSubmissionDetail,
+  type SubmitterEvent,
+} from '../api/submitterApi';
+import { listSubmissionAttachments, uploadSubmissionAttachment } from '../api/attachmentsApi';
+import { formatDue, isOverdue } from '../workflow/sla';
 
 interface CsfFacilityFormData {
   facilityName: string;
@@ -52,6 +62,36 @@ export function CsfFacilitySubmissionPage() {
     submissionId: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [devSubmission, setDevSubmission] = useState<{
+    caseId: string;
+    submissionId: string;
+  } | null>(null);
+  const [submitterDetail, setSubmitterDetail] = useState<SubmitterSubmissionDetail | null>(null);
+  const [submitterEvents, setSubmitterEvents] = useState<SubmitterEvent[]>([]);
+  const [devBusy, setDevBusy] = useState(false);
+  const [devError, setDevError] = useState<string | null>(null);
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentList, setAttachmentList] = useState<any[]>([]);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [respondMessage, setRespondMessage] = useState('');
+  const [respondBusy, setRespondBusy] = useState(false);
+  const [respondError, setRespondError] = useState<string | null>(null);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+  const isDev = (import.meta as any)?.env?.DEV ?? false;
+  const needsInfoDueAt = submitterDetail?.sla_needs_info_due_at || undefined;
+  const needsInfoOverdue = isOverdue(needsInfoDueAt);
+
+  const loadSubmitterEvents = async (submissionId: string) => {
+    try {
+      setEventsError(null);
+      const events = await fetchSubmitterSubmissionEvents(submissionId);
+      setSubmitterEvents(events);
+    } catch (err) {
+      setEventsError(err instanceof Error ? err.message : 'Failed to load updates');
+      setSubmitterEvents([]);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,6 +146,76 @@ export function CsfFacilitySubmissionPage() {
     }
   };
 
+  const handleDevSubmitter = async () => {
+    setDevBusy(true);
+    setDevError(null);
+    try {
+      const response = await createSubmitterSubmission({
+        client_token: `dev-${Date.now()}`,
+        subject: `Demo submission ${new Date().toISOString()}`,
+        submitter_name: 'Demo Submitter',
+        jurisdiction: 'OH',
+        doc_type: 'csf_facility',
+        notes: 'Dev-only submitter submission for Phase 5.1',
+        attachments: [{ name: 'facility_license.pdf', content_type: 'application/pdf', size_bytes: 12345 }],
+      });
+      setDevSubmission({
+        caseId: response.verifier_case_id,
+        submissionId: response.submission_id,
+      });
+      const attachments = await listSubmissionAttachments(response.submission_id);
+      setAttachmentList(attachments);
+      const detail = await fetchSubmitterSubmission(response.submission_id);
+      setSubmitterDetail(detail);
+      await loadSubmitterEvents(response.submission_id);
+    } catch (err) {
+      setDevError(err instanceof Error ? err.message : 'Submitter submission failed');
+    } finally {
+      setDevBusy(false);
+    }
+  };
+
+  const handleUploadAttachment = async () => {
+    if (!attachmentFile) return;
+    const submissionId = submissionSuccess?.submissionId || devSubmission?.submissionId;
+    if (!submissionId) return;
+    setAttachmentBusy(true);
+    setAttachmentError(null);
+    try {
+      await uploadSubmissionAttachment(submissionId, attachmentFile);
+      const attachments = await listSubmissionAttachments(submissionId);
+      setAttachmentList(attachments);
+      setAttachmentFile(null);
+      if (devSubmission?.submissionId === submissionId) {
+        const detail = await fetchSubmitterSubmission(submissionId);
+        setSubmitterDetail(detail);
+        await loadSubmitterEvents(submissionId);
+      }
+    } catch (err) {
+      setAttachmentError(err instanceof Error ? err.message : 'Attachment upload failed');
+    } finally {
+      setAttachmentBusy(false);
+    }
+  };
+
+  const handleRespond = async () => {
+    if (!devSubmission?.submissionId) return;
+    setRespondBusy(true);
+    setRespondError(null);
+    try {
+      const detail = await respondToSubmitterSubmission(devSubmission.submissionId, {
+        message: respondMessage.trim() || undefined,
+      });
+      setSubmitterDetail(detail);
+      await loadSubmitterEvents(devSubmission.submissionId);
+      setRespondMessage('');
+    } catch (err) {
+      setRespondError(err instanceof Error ? err.message : 'Response failed');
+    } finally {
+      setRespondBusy(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <div className="max-w-4xl mx-auto px-6 py-12">
@@ -118,6 +228,151 @@ export function CsfFacilitySubmissionPage() {
             Controlled Substance Facilitator verification for hospitals and healthcare facilities
           </p>
         </div>
+
+        {isDev && (
+          <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800">Dev-only: Create submitter submission</h3>
+                <p className="text-xs text-slate-500">Creates a linked verifier case for Phase 5.1.</p>
+              </div>
+              <button
+                onClick={handleDevSubmitter}
+                disabled={devBusy}
+                className="px-3 py-1.5 rounded-md border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {devBusy ? 'Creating…' : 'Create submission'}
+              </button>
+            </div>
+            {devError && <p className="mt-2 text-xs text-red-600">{devError}</p>}
+            {devSubmission && (
+              <div className="mt-2 text-xs text-slate-600">
+                Verifier Case: {devSubmission.caseId} —
+                <button
+                  className="ml-2 text-xs font-semibold text-sky-600 hover:text-sky-700"
+                  onClick={() => navigate(`/console/cases?caseId=${devSubmission.caseId}`)}
+                >
+                  Open in Verifier Console
+                </button>
+              </div>
+            )}
+            {submitterDetail && (
+              <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs text-slate-600 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-700">Status</span>
+                  <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-sky-700">
+                    {submitterDetail.status.replace('_', ' ')}
+                  </span>
+                </div>
+                {submitterDetail.status === 'needs_info' && (
+                  <div className="rounded border border-amber-200 bg-amber-50 p-2 text-amber-800 space-y-1">
+                    <div className="font-semibold">Needs info from verifier</div>
+                    {needsInfoDueAt && (
+                      <div
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                          needsInfoOverdue
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}
+                      >
+                        {formatDue(needsInfoDueAt)}
+                      </div>
+                    )}
+                    {submitterDetail.request_info?.message && (
+                      <div>Message: {submitterDetail.request_info.message}</div>
+                    )}
+                    {submitterDetail.request_info?.requested_at && (
+                      <div>Requested: {new Date(submitterDetail.request_info.requested_at).toLocaleString()}</div>
+                    )}
+                    <div className="mt-2 flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={respondMessage}
+                        onChange={(event) => setRespondMessage(event.target.value)}
+                        placeholder="Add a response for the verifier"
+                        className="flex-1 rounded border border-slate-200 px-2 py-1 text-xs"
+                      />
+                      <button
+                        onClick={handleRespond}
+                        disabled={respondBusy}
+                        className="px-3 py-1.5 rounded-md border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {respondBusy ? 'Sending…' : 'Respond'}
+                      </button>
+                    </div>
+                    {respondError && <div className="text-xs text-red-600">{respondError}</div>}
+                  </div>
+                )}
+                <div className="rounded border border-slate-200 bg-white p-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-700">Updates</span>
+                    <span className="text-[11px] text-slate-400">{submitterEvents.length} events</span>
+                  </div>
+                  {eventsError && (
+                    <div className="mt-2 text-[11px] text-red-600">{eventsError}</div>
+                  )}
+                  {submitterEvents.length === 0 ? (
+                    <div className="mt-2 text-[11px] text-slate-500">No updates yet.</div>
+                  ) : (
+                    <ul className="mt-2 space-y-2">
+                      {submitterEvents.map((event) => {
+                        const highlight =
+                          event.event_type === 'verifier_requested_info' ||
+                          event.event_type === 'verifier_approved' ||
+                          event.event_type === 'verifier_rejected';
+                        return (
+                          <li
+                            key={event.id}
+                            className={`rounded border px-2 py-1 text-[11px] ${
+                              highlight ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-100 bg-slate-50 text-slate-600'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold">{event.title}</span>
+                              <span>{new Date(event.created_at).toLocaleString()}</span>
+                            </div>
+                            {event.message && <div className="mt-1">{event.message}</div>}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+            {(submissionSuccess?.submissionId || devSubmission?.submissionId) && (
+              <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                <div className="text-xs font-semibold text-slate-700">Evidence attachments</div>
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    type="file"
+                    onChange={(event) => setAttachmentFile(event.target.files?.[0] || null)}
+                    className="text-xs"
+                  />
+                  <button
+                    onClick={handleUploadAttachment}
+                    disabled={attachmentBusy || !attachmentFile}
+                    className="px-3 py-1.5 rounded-md border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {attachmentBusy ? 'Uploading…' : 'Upload'}
+                  </button>
+                </div>
+                {attachmentError && <p className="mt-2 text-xs text-red-600">{attachmentError}</p>}
+                {attachmentList.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-xs text-slate-600">
+                    {attachmentList.map((item: any) => (
+                      <li key={item.attachment_id} className="rounded border border-slate-200 bg-white px-2 py-1">
+                        {item.filename} ({item.byte_size} bytes)
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-500">No attachments uploaded yet.</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Success Banner */}
         {submissionSuccess && (
