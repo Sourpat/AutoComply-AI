@@ -10,6 +10,20 @@
 
 ## P0 - Critical (Do First)
 
+### CI Hotfix — Verifier events + SLA dedupe
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Normalize verifier events output, cast event ids to string, ensure bulk events, and dedupe SLA reminders.
+**Acceptance Criteria**:
+- [x] Verifier events endpoint returns assigned/unassigned/action with string ids
+- [x] Bulk assign/action events appear deterministically
+- [x] SLA runner emits one prioritized reminder per submission per run
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_verifier_bulk_api.py tests/test_verifier_actions_api.py tests/test_decision_packet_api.py tests/test_sla_reminders.py`
+- `npm run build`
+**Dependencies**: None
+**Notes**: Commit (HEAD)
+
 
 > **Status Legend**: `pending` | `in-progress` | `blocked` | `completed`
 

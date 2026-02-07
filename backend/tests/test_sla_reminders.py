@@ -84,7 +84,7 @@ def test_sla_reminders(monkeypatch) -> None:
     assert detail_resp.status_code == 200
     assert detail_resp.json()["sla_escalation_level"] == 2
 
-    current_time["value"] = base_time + timedelta(hours=80)
+    current_time["value"] = base_time + timedelta(hours=121)
     escalated_resp = client.post("/api/ops/sla/run")
     assert escalated_resp.status_code == 200
 

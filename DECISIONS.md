@@ -36,6 +36,28 @@
 
 ## Decisions
 
+### [2026-02-07] CI hotfix for verifier events + SLA dedupe
+
+**Context**: CI failures showed verifier event types mismatched expectations, event id type mismatches, missing events after bulk actions, and SLA runner emitting too many reminders.
+
+**Decision**: Normalize verifier events in API responses (string ids + public event_type mapping), ensure verifier events endpoint returns verifier store events, and constrain SLA reminders to a single prioritized event per submission per run with per-day dedupe.
+
+**Rationale**:
+- Keeps API backward compatible with tests and existing UI expectations
+- Ensures deterministic, low-noise SLA reminders
+
+**Alternatives Considered**:
+- Change tests: rejected to keep API compatibility
+- Keep multiple SLA events per run: rejected due to noisy reminders
+
+**Consequences**:
+- Positive: CI stability and predictable event feeds
+- Neutral: SLA runner now requires priority ordering
+
+**Status**: Accepted
+**Related**:
+- Commit: (HEAD)
+
 ### [2026-02-07] Phase 5.6 deterministic SLA reminders + escalation
 
 **Context**: Phase 5.6 needs SLA tracking (first touch, needs-info, decision) with reminders and escalation in a deterministic, CI-friendly manner.

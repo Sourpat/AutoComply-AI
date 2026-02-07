@@ -217,80 +217,58 @@ def run_sla_reminders(
         needs_info_due_at = submission.sla_needs_info_due_at
         decision_due_at = submission.sla_decision_due_at
 
-        if first_touch_due_at:
-            if sla_policy.is_due_soon(first_touch_due_at, now=now):
-                maybe_emit(
-                    "sla_due_soon",
-                    "First touch due soon",
-                    "Verifier has a first-touch SLA due soon.",
-                    {"sla_type": "first_touch", "due_at": first_touch_due_at},
-                )
-            elif sla_policy.is_overdue(first_touch_due_at, now=now):
-                overdue = sla_policy.overdue_hours(first_touch_due_at, now=now)
-                level = sla_policy.escalation_level_for_overdue(overdue)
-                if level > submission.sla_escalation_level:
-                    submission.sla_escalation_level = level
-                    escalated_count += 1
-                maybe_emit(
-                    "sla_overdue",
-                    "First touch overdue",
-                    "Verifier first-touch SLA is overdue.",
-                    {
-                        "sla_type": "first_touch",
-                        "due_at": first_touch_due_at,
-                        "escalation_level": submission.sla_escalation_level,
-                    },
-                )
+        priority_buckets = [
+            (
+                "needs_info",
+                needs_info_due_at,
+                "Needs info due soon",
+                "Submitter response is due soon.",
+                "Needs info overdue",
+                "Submitter response SLA is overdue.",
+            ),
+            (
+                "decision",
+                decision_due_at,
+                "Decision due soon",
+                "Final decision SLA is due soon.",
+                "Decision overdue",
+                "Final decision SLA is overdue.",
+            ),
+            (
+                "first_touch",
+                first_touch_due_at,
+                "First touch due soon",
+                "Verifier has a first-touch SLA due soon.",
+                "First touch overdue",
+                "Verifier first-touch SLA is overdue.",
+            ),
+        ]
 
-        if needs_info_due_at:
-            if sla_policy.is_due_soon(needs_info_due_at, now=now):
-                maybe_emit(
-                    "sla_due_soon",
-                    "Needs info due soon",
-                    "Submitter response is due soon.",
-                    {"sla_type": "needs_info", "due_at": needs_info_due_at},
-                )
-            elif sla_policy.is_overdue(needs_info_due_at, now=now):
-                overdue = sla_policy.overdue_hours(needs_info_due_at, now=now)
-                level = sla_policy.escalation_level_for_overdue(overdue)
-                if level > submission.sla_escalation_level:
-                    submission.sla_escalation_level = level
-                    escalated_count += 1
-                maybe_emit(
-                    "sla_overdue",
-                    "Needs info overdue",
-                    "Submitter response SLA is overdue.",
-                    {
-                        "sla_type": "needs_info",
-                        "due_at": needs_info_due_at,
-                        "escalation_level": submission.sla_escalation_level,
-                    },
-                )
+        selected = None
+        for sla_type, due_at, due_title, due_message, overdue_title, overdue_message in priority_buckets:
+            if not due_at:
+                continue
+            if sla_policy.is_overdue(due_at, now=now):
+                selected = ("sla_overdue", sla_type, due_at, overdue_title, overdue_message)
+                break
+            if sla_policy.is_due_soon(due_at, now=now):
+                selected = ("sla_due_soon", sla_type, due_at, due_title, due_message)
+                break
 
-        if decision_due_at:
-            if sla_policy.is_due_soon(decision_due_at, now=now):
-                maybe_emit(
-                    "sla_due_soon",
-                    "Decision due soon",
-                    "Final decision SLA is due soon.",
-                    {"sla_type": "decision", "due_at": decision_due_at},
-                )
-            elif sla_policy.is_overdue(decision_due_at, now=now):
-                overdue = sla_policy.overdue_hours(decision_due_at, now=now)
-                level = sla_policy.escalation_level_for_overdue(overdue)
-                if level > submission.sla_escalation_level:
-                    submission.sla_escalation_level = level
-                    escalated_count += 1
-                maybe_emit(
-                    "sla_overdue",
-                    "Decision overdue",
-                    "Final decision SLA is overdue.",
-                    {
-                        "sla_type": "decision",
-                        "due_at": decision_due_at,
-                        "escalation_level": submission.sla_escalation_level,
-                    },
-                )
+        if not selected:
+            continue
+
+        event_type, sla_type, due_at, title, message = selected
+        payload: Dict[str, Any] = {"sla_type": sla_type, "due_at": due_at}
+        if event_type == "sla_overdue":
+            overdue = sla_policy.overdue_hours(due_at, now=now)
+            level = sla_policy.escalation_level_for_overdue(overdue)
+            if level > submission.sla_escalation_level:
+                submission.sla_escalation_level = level
+                escalated_count += 1
+            payload["escalation_level"] = submission.sla_escalation_level
+
+        maybe_emit(event_type, title, message, payload)
 
     return {
         "scanned_count": len(submissions),

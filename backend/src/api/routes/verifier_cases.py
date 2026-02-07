@@ -11,7 +11,7 @@ from src.autocomply.domain.audit_zip import (
     build_audit_manifest_and_files,
     build_audit_zip_bundle,
 )
-from src.autocomply.domain.notification_store import emit_event, list_events_by_case
+from src.autocomply.domain.notification_store import emit_event
 from src.autocomply.domain import sla_policy
 from src.autocomply.domain.sla_tracker import compute_sla_stats
 from src.autocomply.domain.submissions_store import (
@@ -29,6 +29,7 @@ from src.autocomply.domain.verifier_store import (
     bulk_assign,
     get_final_packet,
     get_case,
+    list_events,
     list_cases,
     list_notes,
     mark_case_finalized,
@@ -38,6 +39,31 @@ from src.autocomply.domain.verifier_store import (
 )
 
 router = APIRouter(prefix="/api/verifier", tags=["verifier"])
+
+
+_EVENT_TYPE_MAP = {
+    "verifier_assigned": "assigned",
+    "verifier_unassigned": "unassigned",
+    "verifier_action": "action",
+    "case_action": "action",
+    "action_taken": "action",
+}
+
+
+def _public_event(event: dict) -> dict:
+    if not event:
+        return event
+    payload = dict(event)
+    if "id" in payload and payload["id"] is not None:
+        payload["id"] = str(payload["id"])
+    event_type = payload.get("event_type")
+    if event_type in _EVENT_TYPE_MAP:
+        payload["event_type"] = _EVENT_TYPE_MAP[event_type]
+    return payload
+
+
+def _public_events(events: list[dict]) -> list[dict]:
+    return [_public_event(event) for event in events]
 
 
 class VerifierCase(BaseModel):
@@ -418,7 +444,7 @@ def get_verifier_case(case_id: str) -> dict:
         payload["case"]["submission_status"] = submission.status if submission else None
         payload["case"]["request_info"] = submission.request_info if submission else None
     payload["case"]["submission_summary"] = _build_submission_summary(submission_id)
-    payload["events"] = list_events_by_case(case_id, limit=50)
+    payload["events"] = _public_events(list_events(case_id, limit=50))
     return payload
 
 
@@ -477,7 +503,7 @@ def post_verifier_action(case_id: str, payload: VerifierActionRequest) -> dict:
 
     if not case_row or not event_row:
         raise HTTPException(status_code=404, detail="Case not found")
-    return {"case": case_row, "event": event_row}
+    return {"case": case_row, "event": _public_event(event_row)}
 
 
 @router.post("/cases/{case_id}/notes", response_model=VerifierNoteResponse)
@@ -490,7 +516,7 @@ def post_verifier_note(case_id: str, payload: VerifierNoteRequest) -> dict:
 
     if not note_row or not event_row:
         raise HTTPException(status_code=404, detail="Case not found")
-    return {"note": note_row, "event": event_row}
+    return {"note": note_row, "event": _public_event(event_row)}
 
 
 @router.get("/cases/{case_id}/events")
@@ -498,7 +524,7 @@ def get_verifier_events(case_id: str, limit: int = Query(50, ge=1, le=200)) -> l
     payload = get_case(case_id)
     if not payload:
         raise HTTPException(status_code=404, detail="Case not found")
-    return list_events_by_case(case_id, limit=limit)
+    return _public_events(list_events(case_id, limit=limit))
 
 
 @router.get("/cases/{case_id}/notes", response_model=list[VerifierNote])
