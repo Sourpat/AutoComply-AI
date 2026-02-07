@@ -231,6 +231,27 @@
 
 **Status**: Accepted
 
+### [2026-02-06] Phase 5.2 submitter attachments stored on filesystem
+
+**Context**: Phase 5.2 requires submitter evidence uploads that can be listed/downloaded by verifiers and included in decision packets without introducing new database tables.
+
+**Decision**: Store submitter attachments on the filesystem under backend/.data/uploads with per-submission indexes and a global index, expose /api/submissions/{submission_id}/attachments for upload/list, and surface attachments via verifier case endpoints and decision packet evidence metadata.
+
+**Rationale**:
+- Keeps attachment storage deterministic and lightweight for CI and local demos
+- Avoids schema changes while enabling verifier download and packet inclusion
+- Allows tests to isolate storage via ATTACHMENTS_UPLOAD_DIR
+
+**Alternatives Considered**:
+- Store attachments in the workflow attachments table: rejected to avoid coupling to workflow cases
+- Introduce a new database table: rejected to keep Phase 5.2 minimal and fast
+
+**Consequences**:
+- Positive: Submitter evidence can be downloaded and audited in decision packets
+- Neutral: Attachments are stored on disk and must be managed by retention policies later
+
+**Status**: Accepted
+
 ### [2026-02-06] RC Gate release gate + commit SHA precedence
 
 **Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).

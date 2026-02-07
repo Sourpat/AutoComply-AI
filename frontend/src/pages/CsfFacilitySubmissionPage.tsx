@@ -11,6 +11,7 @@ import { createSubmission } from '../submissions/submissionStoreSelector';
 import { intakeSubmissionToCase } from '../workflow/submissionIntakeService';
 import type { CreateSubmissionInput } from '../submissions/submissionTypes';
 import { createSubmitterSubmission } from '../api/submitterApi';
+import { listSubmissionAttachments, uploadSubmissionAttachment } from '../api/attachmentsApi';
 
 interface CsfFacilityFormData {
   facilityName: string;
@@ -59,6 +60,10 @@ export function CsfFacilitySubmissionPage() {
   } | null>(null);
   const [devBusy, setDevBusy] = useState(false);
   const [devError, setDevError] = useState<string | null>(null);
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentList, setAttachmentList] = useState<any[]>([]);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const isDev = (import.meta as any)?.env?.DEV ?? false;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -131,10 +136,30 @@ export function CsfFacilitySubmissionPage() {
         caseId: response.verifier_case_id,
         submissionId: response.submission_id,
       });
+      const attachments = await listSubmissionAttachments(response.submission_id);
+      setAttachmentList(attachments);
     } catch (err) {
       setDevError(err instanceof Error ? err.message : 'Submitter submission failed');
     } finally {
       setDevBusy(false);
+    }
+  };
+
+  const handleUploadAttachment = async () => {
+    if (!attachmentFile) return;
+    const submissionId = submissionSuccess?.submissionId || devSubmission?.submissionId;
+    if (!submissionId) return;
+    setAttachmentBusy(true);
+    setAttachmentError(null);
+    try {
+      await uploadSubmissionAttachment(submissionId, attachmentFile);
+      const attachments = await listSubmissionAttachments(submissionId);
+      setAttachmentList(attachments);
+      setAttachmentFile(null);
+    } catch (err) {
+      setAttachmentError(err instanceof Error ? err.message : 'Attachment upload failed');
+    } finally {
+      setAttachmentBusy(false);
     }
   };
 
@@ -176,6 +201,37 @@ export function CsfFacilitySubmissionPage() {
                 >
                   Open in Verifier Console
                 </button>
+              </div>
+            )}
+            {(submissionSuccess?.submissionId || devSubmission?.submissionId) && (
+              <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                <div className="text-xs font-semibold text-slate-700">Evidence attachments</div>
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    type="file"
+                    onChange={(event) => setAttachmentFile(event.target.files?.[0] || null)}
+                    className="text-xs"
+                  />
+                  <button
+                    onClick={handleUploadAttachment}
+                    disabled={attachmentBusy || !attachmentFile}
+                    className="px-3 py-1.5 rounded-md border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {attachmentBusy ? 'Uploading…' : 'Upload'}
+                  </button>
+                </div>
+                {attachmentError && <p className="mt-2 text-xs text-red-600">{attachmentError}</p>}
+                {attachmentList.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-xs text-slate-600">
+                    {attachmentList.map((item: any) => (
+                      <li key={item.attachment_id} className="rounded border border-slate-200 bg-white px-2 py-1">
+                        {item.filename} ({item.byte_size} bytes)
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-500">No attachments uploaded yet.</p>
+                )}
               </div>
             )}
           </div>

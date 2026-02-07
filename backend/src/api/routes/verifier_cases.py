@@ -4,10 +4,12 @@ from io import BytesIO
 from zipfile import ZipFile, ZIP_DEFLATED
 
 from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from pydantic import AliasChoices, ConfigDict
 
 from src.autocomply.domain.decision_packet import build_decision_packet
+from src.autocomply.domain.attachments_store import get_attachment, list_attachments_for_submission
 from src.autocomply.domain.submissions_store import get_submission_store
 from src.autocomply.domain.packet_pdf import render_decision_packet_pdf
 from src.autocomply.domain.verifier_store import (
@@ -161,6 +163,10 @@ def _build_submission_summary(submission_id: str | None) -> dict | None:
         notes_count = 1 if isinstance(notes, str) and notes.strip() else 0
     attachments = payload.get("attachments") or []
     attachment_count = len(attachments) if isinstance(attachments, list) else 0
+
+    attachment_records = list_attachments_for_submission(submission_id)
+    if attachment_records:
+        attachment_count = len(attachment_records)
 
     return {
         "submitter_name": payload.get("submitter_name") or payload.get("subject") or submission.title,
@@ -332,6 +338,30 @@ def get_verifier_case_submission(case_id: str) -> dict:
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found")
     return submission.model_dump()
+
+
+@router.get("/cases/{case_id}/attachments")
+def list_verifier_case_attachments(case_id: str) -> list[dict]:
+    payload = get_case(case_id)
+    if not payload:
+        raise HTTPException(status_code=404, detail="Case not found")
+    submission_id = payload["case"].get("submission_id")
+    if not submission_id:
+        return []
+    return list_attachments_for_submission(submission_id)
+
+
+@router.get("/attachments/{attachment_id}/download")
+def download_verifier_attachment(attachment_id: str) -> FileResponse:
+    try:
+        record, file_path = get_attachment(attachment_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return FileResponse(
+        path=str(file_path),
+        media_type=record.get("content_type") or "application/octet-stream",
+        filename=record.get("filename") or "attachment",
+    )
 
 
 @router.post("/cases/{case_id}/actions", response_model=VerifierActionResponse)

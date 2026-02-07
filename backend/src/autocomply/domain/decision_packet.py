@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from src.autocomply.domain.verifier_store import get_case, list_events, list_notes
+from src.autocomply.domain.attachments_store import list_attachments_for_submission
 from src.api.routes.rag_regulatory import ExplainV1Request, build_explain_contract_v1
 from src.autocomply.domain.explainability.versioning import get_knowledge_version
 
@@ -111,6 +112,20 @@ async def build_decision_packet(
         except Exception:
             explain_payload = _build_explain_stub()
 
+    attachments = []
+    submission_id = case.get("submission_id")
+    if submission_id:
+        attachments = [
+            {
+                "id": record.get("attachment_id"),
+                "filename": record.get("filename"),
+                "content_type": record.get("content_type"),
+                "size": record.get("byte_size"),
+                "sha256": record.get("sha256"),
+            }
+            for record in list_attachments_for_submission(submission_id)
+        ]
+
     return {
         "packet_version": "dp-v1",
         "case": {
@@ -132,5 +147,8 @@ async def build_decision_packet(
         },
         "actions": actions,
         "timeline": timeline,
+        "evidence": {
+            "attachments": attachments,
+        },
         "explain": explain_payload,
     }

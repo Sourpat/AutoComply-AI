@@ -111,3 +111,31 @@ export async function redactAttachment(
 export function getAttachmentDownloadUrl(caseId: string, attachmentId: string): string {
   return `${WORKFLOW_BASE}/cases/${caseId}/attachments/${attachmentId}/download`;
 }
+
+export async function uploadSubmissionAttachment(
+  submissionId: string,
+  file: File
+): Promise<any> {
+  const form = new FormData();
+  form.append('file', file);
+
+  const response = await fetch(`/api/submissions/${submissionId}/attachments`, {
+    method: 'POST',
+    body: form,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Upload failed: ${response.status} ${text}`);
+  }
+
+  return response.json();
+}
+
+export async function listSubmissionAttachments(submissionId: string): Promise<any[]> {
+  const response = await fetch(`/api/submissions/${submissionId}/attachments`);
+  if (!response.ok) {
+    throw new Error(`Failed to list attachments: ${response.status}`);
+  }
+  return response.json();
+}

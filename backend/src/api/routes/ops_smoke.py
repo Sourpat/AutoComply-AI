@@ -306,6 +306,58 @@ async def ops_smoke() -> Dict[str, Any]:
     record_check("verifier_final_decision", verifier_final_ok)
     record_check("submitter_to_verifier_flow", submitter_flow_ok)
 
+    attachment_flow_ok = True
+    if env_marker == "ci":
+        try:
+            submission_payload = {
+                "client_token": "ops-smoke-attach",
+                "subject": "Ops smoke attachment",
+                "submitter_name": "ops",
+                "jurisdiction": "OH",
+                "doc_type": "csf_facility",
+                "notes": "ops smoke",
+            }
+            async with httpx.AsyncClient() as client:
+                submit_resp = await client.post(
+                    "http://127.0.0.1:8001/api/submitter/submissions",
+                    json=submission_payload,
+                )
+                if submit_resp.status_code != 200:
+                    attachment_flow_ok = False
+                else:
+                    submission_id = submit_resp.json().get("submission_id")
+                    case_id = submit_resp.json().get("verifier_case_id")
+                    files = {"file": ("smoke.txt", b"smoke", "text/plain")}
+                    upload_resp = await client.post(
+                        f"http://127.0.0.1:8001/api/submissions/{submission_id}/attachments",
+                        files=files,
+                    )
+                    if upload_resp.status_code != 200:
+                        attachment_flow_ok = False
+                    else:
+                        attachment_id = upload_resp.json().get("attachment_id")
+                        list_resp = await client.get(
+                            f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/attachments"
+                        )
+                        download_resp = await client.get(
+                            f"http://127.0.0.1:8001/api/verifier/attachments/{attachment_id}/download"
+                        )
+                        attachment_flow_ok = (
+                            list_resp.status_code == 200
+                            and download_resp.status_code == 200
+                        )
+                if not attachment_flow_ok:
+                    details["errors"].append(
+                        {
+                            "check": "submitter_attachment_flow",
+                            "detail": f"status={submit_resp.status_code}",
+                        }
+                    )
+        except Exception as exc:
+            attachment_flow_ok = False
+            details["errors"].append({"check": "submitter_attachment_flow", "detail": type(exc).__name__})
+    record_check("submitter_attachment_flow", attachment_flow_ok)
+
     replay_diff_ok = True
     if determinism_target:
         try:

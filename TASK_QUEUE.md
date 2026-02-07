@@ -138,6 +138,7 @@
 
 
 
+
 ### Example Task Template (DELETE THIS AFTER READING)
 ```markdown
 ### T-001: Fix critical bug in X
@@ -238,6 +239,14 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 5.2 — Submitter attachments + verifier downloads
+**Completed**: 2026-02-06
+**Commit**: 2cf799b
+**Summary**: Added submitter attachment uploads with verifier list/download and decision packet linkage, plus tests and smoke coverage.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_attachments_flow.py`
+- `npm run build`
+
 ### Phase 5.1 — Submitter → Verifier Queue linkage
 **Completed**: 2026-02-06
 **Commit**: f955479
@@ -269,14 +278,6 @@
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q tests/test_audit_packet_downloads.py`
 - `npm run build`
-
-### Phase 3.10 — CI health version + intelligence schema
-**Completed**: 2026-02-06
-**Commit**: 8afe541, 5bf0658, 79e561a
-**Summary**: Bootstrapped intelligence schema in startup/tests and normalized /health/details version/commit precedence.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q backend/tests/test_signal_intelligence.py backend/tests/test_health_details.py`
-- `C:/Python314/python.exe -m pytest -q`
 
 ---
 

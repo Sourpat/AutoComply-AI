@@ -28,6 +28,32 @@ Invoke-RestMethod http://127.0.0.1:8001/api/verifier/cases?limit=10
 Invoke-RestMethod http://127.0.0.1:8001/api/verifier/cases/<case_id>/submission
 ```
 
+## Upload submission attachment
+```powershell
+$filePath = "$PWD\\sample-attachment.txt"
+"Demo attachment" | Set-Content -Path $filePath
+
+$form = New-Object System.Net.Http.MultipartFormDataContent
+$fileStream = [System.IO.File]::OpenRead($filePath)
+$fileContent = New-Object System.Net.Http.StreamContent($fileStream)
+$fileContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse("text/plain")
+$form.Add($fileContent, "file", "sample-attachment.txt")
+
+$uploadResponse = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8001/api/submissions/<submission_id>/attachments -Body $form
+$fileStream.Dispose()
+$uploadResponse
+```
+
+## List verifier attachments
+```powershell
+Invoke-RestMethod http://127.0.0.1:8001/api/verifier/cases/<case_id>/attachments
+```
+
+## Download verifier attachment
+```powershell
+Invoke-WebRequest http://127.0.0.1:8001/api/verifier/attachments/<attachment_id>/download -OutFile downloaded-attachment.txt
+```
+
 ## Frontend build
 ```powershell
 Set-Location frontend

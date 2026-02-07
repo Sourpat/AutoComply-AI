@@ -5,7 +5,7 @@ FastAPI endpoints for submission persistence.
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File
 import logging
 
 from .models import (
@@ -21,6 +21,12 @@ from .repo import (
     update_submission,
     soft_delete_submission,
 )
+from src.autocomply.domain.attachments_store import (
+    list_attachments_for_submission,
+    save_upload,
+    MAX_ATTACHMENT_BYTES,
+)
+from src.autocomply.domain.submissions_store import get_submission_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/submissions", tags=["submissions"])
@@ -76,6 +82,45 @@ def get_submission_by_id(submission_id: str):
     if not submission:
         raise HTTPException(status_code=404, detail=f"Submission not found: {submission_id}")
     return submission
+
+
+def _submission_exists(submission_id: str) -> bool:
+    if get_submission(submission_id):
+        return True
+    store = get_submission_store()
+    return store.get_submission(submission_id) is not None
+
+
+@router.post("/{submission_id}/attachments", response_model=dict)
+async def upload_submission_attachment(
+    submission_id: str,
+    file: UploadFile = File(...),
+):
+    if not _submission_exists(submission_id):
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    content = await file.read()
+    if len(content) > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(status_code=413, detail="Attachment too large")
+
+    try:
+        record = save_upload(
+            content,
+            filename=file.filename or "upload.bin",
+            content_type=file.content_type,
+            submission_id=submission_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return record
+
+
+@router.get("/{submission_id}/attachments", response_model=List[dict])
+def list_submission_attachments(submission_id: str) -> List[dict]:
+    if not _submission_exists(submission_id):
+        raise HTTPException(status_code=404, detail="Submission not found")
+    return list_attachments_for_submission(submission_id)
 
 
 @router.post("", response_model=SubmissionRecord, status_code=201)

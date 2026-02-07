@@ -198,6 +198,21 @@ export async function fetchVerifierCaseSubmission(caseId: string): Promise<any> 
   });
 }
 
+export async function fetchVerifierCaseAttachments(caseId: string): Promise<any[]> {
+  return apiFetch<any[]>(`${VERIFIER_BASE}/cases/${caseId}/attachments`, {
+    headers: getAuthHeaders(),
+  });
+}
+
+export async function downloadVerifierAttachment(attachmentId: string): Promise<Blob> {
+  const url = `${API_BASE}${VERIFIER_BASE}/attachments/${attachmentId}/download`;
+  const response = await fetch(url, { headers: getAuthHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to download attachment: ${response.status}`);
+  }
+  return response.blob();
+}
+
 export async function bulkVerifierCaseAction(payload: {
   case_ids: string[];
   action: "approve" | "reject" | "needs_review";

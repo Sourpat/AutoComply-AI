@@ -26,9 +26,11 @@ import {
   bulkVerifierCaseAction,
   bulkVerifierCaseAssign,
   decideVerifierCase,
+  downloadVerifierAttachment,
   downloadAuditZip,
   downloadDecisionPacketPdf,
   fetchVerifierCaseEvents,
+  fetchVerifierCaseAttachments,
   fetchVerifierCaseSubmission,
   fetchVerifierCaseDetail,
   fetchVerifierCases,
@@ -91,6 +93,9 @@ export const CaseWorkspace: React.FC = () => {
   const [submissionData, setSubmissionData] = useState<any | null>(null);
   const [submissionLoading, setSubmissionLoading] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [submissionAttachments, setSubmissionAttachments] = useState<any[]>([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [attachmentsError, setAttachmentsError] = useState<string | null>(null);
 
   const casesCountRef = useRef(0);
 
@@ -223,6 +228,7 @@ export const CaseWorkspace: React.FC = () => {
   useEffect(() => {
     if (!detail?.case?.submission_id) {
       setSubmissionData(null);
+      setSubmissionAttachments([]);
       return;
     }
     setSubmissionLoading(true);
@@ -234,6 +240,22 @@ export const CaseWorkspace: React.FC = () => {
         setSubmissionData(null);
       })
       .finally(() => setSubmissionLoading(false));
+  }, [detail?.case?.submission_id, detail?.case?.case_id]);
+
+  useEffect(() => {
+    if (!detail?.case?.submission_id) {
+      setSubmissionAttachments([]);
+      return;
+    }
+    setAttachmentsLoading(true);
+    setAttachmentsError(null);
+    fetchVerifierCaseAttachments(detail.case.case_id)
+      .then((items) => setSubmissionAttachments(items))
+      .catch((err) => {
+        setAttachmentsError(err instanceof Error ? err.message : "Failed to load attachments");
+        setSubmissionAttachments([]);
+      })
+      .finally(() => setAttachmentsLoading(false));
   }, [detail?.case?.submission_id, detail?.case?.case_id]);
 
 
@@ -491,6 +513,22 @@ export const CaseWorkspace: React.FC = () => {
       setPacketError(err instanceof Error ? err.message : "Failed to download PDF");
     }
   }, [selectedCaseId]);
+
+  const handleDownloadAttachment = useCallback(async (attachment: any) => {
+    try {
+      const blob = await downloadVerifierAttachment(attachment.attachment_id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = attachment.filename || "attachment";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setAttachmentsError(err instanceof Error ? err.message : "Failed to download attachment");
+    }
+  }, []);
 
   const handleDownloadAuditZip = useCallback(async () => {
     if (!selectedCaseId) return;
@@ -981,21 +1019,37 @@ export const CaseWorkspace: React.FC = () => {
                         </div>
                         <div>
                           <div className="font-semibold text-slate-700">Attachments</div>
-                          {Array.isArray(submissionData.payload?.attachments) &&
-                          submissionData.payload.attachments.length > 0 ? (
+                          {attachmentsLoading && (
+                            <p className="text-slate-500">Loading attachments…</p>
+                          )}
+                          {attachmentsError && (
+                            <p className="text-red-600">{attachmentsError}</p>
+                          )}
+                          {!attachmentsLoading && !attachmentsError && submissionAttachments.length === 0 && (
+                            <p className="text-slate-500">No attachments.</p>
+                          )}
+                          {!attachmentsLoading && submissionAttachments.length > 0 && (
                             <ul className="mt-1 space-y-1">
-                              {submissionData.payload.attachments.map((item: any, idx: number) => (
-                                <li key={`${item.name || "attachment"}-${idx}`} className="rounded border border-slate-100 bg-slate-50 p-2">
-                                  <div className="font-semibold text-slate-700">{item.name || "Attachment"}</div>
-                                  <div className="text-[11px] text-slate-500">
-                                    {item.content_type || "unknown"}
-                                    {item.size_bytes ? ` • ${item.size_bytes} bytes` : ""}
+                              {submissionAttachments.map((item: any) => (
+                                <li key={item.attachment_id} className="rounded border border-slate-100 bg-slate-50 p-2">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <div className="font-semibold text-slate-700">{item.filename || "Attachment"}</div>
+                                      <div className="text-[11px] text-slate-500">
+                                        {item.content_type || "unknown"}
+                                        {item.byte_size ? ` • ${item.byte_size} bytes` : ""}
+                                      </div>
+                                    </div>
+                                    <button
+                                      onClick={() => handleDownloadAttachment(item)}
+                                      className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                      Download
+                                    </button>
                                   </div>
                                 </li>
                               ))}
                             </ul>
-                          ) : (
-                            <p className="text-slate-500">No attachments.</p>
                           )}
                         </div>
                       </div>

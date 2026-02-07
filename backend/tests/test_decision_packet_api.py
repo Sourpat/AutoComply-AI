@@ -15,6 +15,8 @@ def test_decision_packet_basic() -> None:
     assert payload["case"]["case_id"] == "case-001"
     assert payload["explain"] is not None
     assert payload["explain"]["knowledge_version"]
+    assert "evidence" in payload
+    assert "attachments" in payload["evidence"]
 
 
 def test_decision_packet_no_explain() -> None:
