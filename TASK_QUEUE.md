@@ -131,6 +131,24 @@
 - `npm run build`
 **Dependencies**: None
 
+### Phase 5.5 — Submission events feed + email hooks
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Durable submission event feed for submitter + verifier views with email hook stubs.
+**Acceptance Criteria**:
+- [x] Submission events stored in SQLite with indexes
+- [x] Events emitted across create/open/needs-info/respond/upload/finalize
+- [x] Submitter + verifier events endpoints added
+- [x] Email hook writes outbox for needs-info + final decisions
+- [x] Ops smoke + RC Gate coverage updated
+- [x] Tests added + passing
+- [x] Docs updated (PHASE5 smoke)
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_submission_events_feed.py`
+- `npm run build`
+**Dependencies**: None
+**Notes**: Commit a98e4dd
+
 
 
 

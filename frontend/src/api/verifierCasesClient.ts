@@ -37,10 +37,15 @@ export type VerifierCase = {
 };
 
 export type VerifierCaseEvent = {
-  id: number;
+  id: string;
+  submission_id?: string | null;
   case_id: string;
+  actor_type?: string | null;
+  actor_id?: string | null;
   event_type: string;
-  payload_json: string;
+  title?: string | null;
+  message?: string | null;
+  payload_json?: string | null;
   created_at: string;
 };
 

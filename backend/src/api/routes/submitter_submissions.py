@@ -14,6 +14,10 @@ from src.autocomply.domain.submissions_store import (
     get_submission_store,
     set_submission_status,
 )
+from src.autocomply.domain.notification_store import (
+    emit_event,
+    list_events_by_submission,
+)
 from src.autocomply.domain.verifier_store import (
     add_note,
     get_case_by_submission_id,
@@ -126,11 +130,35 @@ def create_submitter_submission(payload: SubmitterSubmissionRequest) -> Submitte
         summary=subject,
     )
 
+    emit_event(
+        submission_id=submission.submission_id,
+        case_id=case.get("case_id"),
+        actor_type="submitter",
+        actor_id=payload.submitter_name,
+        event_type="submission_created",
+        title="Submission created",
+        message=payload.subject or "Submission received",
+        payload={"submission_id": submission.submission_id},
+    )
+
     return SubmitterSubmissionResponse(
         submission_id=submission.submission_id,
         verifier_case_id=case["case_id"],
         status=case["status"],
     )
+
+
+@router.get("/submissions/{submission_id}/events")
+def list_submitter_submission_events(
+    submission_id: str,
+    limit: int = Query(50, ge=1, le=200),
+) -> list[dict]:
+    _ensure_allowed()
+    store = get_submission_store()
+    submission = store.get_submission(submission_id)
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    return list_events_by_submission(submission_id, limit=limit)
 
 
 @router.get("/submissions")
@@ -181,6 +209,18 @@ def respond_submitter_submission(
         }
     )
     submission.payload["responses"] = responses
+
+    case = get_case_by_submission_id(submission_id)
+    emit_event(
+        submission_id=submission_id,
+        case_id=case["case_id"] if case else None,
+        actor_type="submitter",
+        actor_id="submitter",
+        event_type="submitter_responded",
+        title="Submitter responded",
+        message=payload.message,
+        payload={"message": payload.message},
+    )
 
     if payload.message:
         case = get_case_by_submission_id(submission_id)

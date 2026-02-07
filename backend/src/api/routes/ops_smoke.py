@@ -441,6 +441,63 @@ async def ops_smoke() -> Dict[str, Any]:
             details["errors"].append({"check": "submission_status_flow", "detail": type(exc).__name__})
     record_check("submission_status_flow", submission_status_ok)
 
+    submission_events_ok = True
+    if env_marker == "ci":
+        try:
+            async with httpx.AsyncClient() as client:
+                submit_resp = await client.post(
+                    "http://127.0.0.1:8001/api/submitter/submissions",
+                    json={
+                        "client_token": "ops-smoke-events",
+                        "subject": "Ops smoke events",
+                        "submitter_name": "ops",
+                        "jurisdiction": "OH",
+                        "doc_type": "csf_facility",
+                        "notes": "ops smoke",
+                    },
+                )
+                if submit_resp.status_code != 200:
+                    submission_events_ok = False
+                else:
+                    submission_id = submit_resp.json().get("submission_id")
+                    case_id = submit_resp.json().get("verifier_case_id")
+                    await client.get(f"http://127.0.0.1:8001/api/verifier/cases/{case_id}")
+                    await client.post(
+                        f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/decision",
+                        json={"type": "request_info", "reason": "ops", "actor": "ops"},
+                    )
+                    await client.post(
+                        f"http://127.0.0.1:8001/api/submitter/submissions/{submission_id}/respond",
+                        json={"message": "response"},
+                    )
+                    await client.post(
+                        f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/decision",
+                        json={"type": "approve", "actor": "ops"},
+                    )
+                    events_resp = await client.get(
+                        f"http://127.0.0.1:8001/api/submitter/submissions/{submission_id}/events?limit=50"
+                    )
+                    if events_resp.status_code != 200:
+                        submission_events_ok = False
+                    else:
+                        event_types = {event.get("event_type") for event in events_resp.json()}
+                        required = {
+                            "submission_created",
+                            "verifier_opened",
+                            "verifier_requested_info",
+                            "submitter_responded",
+                            "verifier_approved",
+                        }
+                        submission_events_ok = required.issubset(event_types)
+            if not submission_events_ok:
+                details["errors"].append(
+                    {"check": "submission_events_feed", "detail": "missing events"}
+                )
+        except Exception as exc:
+            submission_events_ok = False
+            details["errors"].append({"check": "submission_events_feed", "detail": type(exc).__name__})
+    record_check("submission_events_feed", submission_events_ok)
+
     replay_diff_ok = True
     if determinism_target:
         try:

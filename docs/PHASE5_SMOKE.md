@@ -55,6 +55,12 @@ Invoke-RestMethod -Method Post http://127.0.0.1:8001/api/verifier/cases/<case_id
 } | ConvertTo-Json) -ContentType "application/json"
 ```
 
+## Submission events feed
+```powershell
+Invoke-RestMethod http://127.0.0.1:8001/api/submitter/submissions/<submission_id>/events?limit=50
+Invoke-RestMethod http://127.0.0.1:8001/api/verifier/cases/<case_id>/events?limit=50
+```
+
 ## Upload submission attachment
 ```powershell
 $filePath = "$PWD\\sample-attachment.txt"

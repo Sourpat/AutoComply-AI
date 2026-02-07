@@ -26,11 +26,13 @@ from src.autocomply.domain.attachments_store import (
     save_upload,
     MAX_ATTACHMENT_BYTES,
 )
+from src.autocomply.domain.notification_store import emit_event
 from src.autocomply.domain.submissions_store import (
     SubmissionStatus,
     get_submission_store,
     set_submission_status,
 )
+from src.autocomply.domain.verifier_store import get_case_by_submission_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/submissions", tags=["submissions"])
@@ -121,6 +123,18 @@ async def upload_submission_attachment(
     submission = store.get_submission(submission_id)
     if submission and submission.status == SubmissionStatus.NEEDS_INFO:
         set_submission_status(submission_id, SubmissionStatus.SUBMITTED, "submitter")
+
+    case = get_case_by_submission_id(submission_id)
+    emit_event(
+        submission_id=submission_id,
+        case_id=case["case_id"] if case else None,
+        actor_type="submitter",
+        actor_id="submitter",
+        event_type="submitter_uploaded_attachment",
+        title="Attachment uploaded",
+        message=file.filename or "upload",
+        payload={"filename": file.filename},
+    )
 
     return record
 

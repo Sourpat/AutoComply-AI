@@ -12,9 +12,11 @@ import { intakeSubmissionToCase } from '../workflow/submissionIntakeService';
 import type { CreateSubmissionInput } from '../submissions/submissionTypes';
 import {
   createSubmitterSubmission,
+  fetchSubmitterSubmissionEvents,
   fetchSubmitterSubmission,
   respondToSubmitterSubmission,
   type SubmitterSubmissionDetail,
+  type SubmitterEvent,
 } from '../api/submitterApi';
 import { listSubmissionAttachments, uploadSubmissionAttachment } from '../api/attachmentsApi';
 
@@ -64,6 +66,7 @@ export function CsfFacilitySubmissionPage() {
     submissionId: string;
   } | null>(null);
   const [submitterDetail, setSubmitterDetail] = useState<SubmitterSubmissionDetail | null>(null);
+  const [submitterEvents, setSubmitterEvents] = useState<SubmitterEvent[]>([]);
   const [devBusy, setDevBusy] = useState(false);
   const [devError, setDevError] = useState<string | null>(null);
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
@@ -73,7 +76,19 @@ export function CsfFacilitySubmissionPage() {
   const [respondMessage, setRespondMessage] = useState('');
   const [respondBusy, setRespondBusy] = useState(false);
   const [respondError, setRespondError] = useState<string | null>(null);
+  const [eventsError, setEventsError] = useState<string | null>(null);
   const isDev = (import.meta as any)?.env?.DEV ?? false;
+
+  const loadSubmitterEvents = async (submissionId: string) => {
+    try {
+      setEventsError(null);
+      const events = await fetchSubmitterSubmissionEvents(submissionId);
+      setSubmitterEvents(events);
+    } catch (err) {
+      setEventsError(err instanceof Error ? err.message : 'Failed to load updates');
+      setSubmitterEvents([]);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,6 +164,7 @@ export function CsfFacilitySubmissionPage() {
       setAttachmentList(attachments);
       const detail = await fetchSubmitterSubmission(response.submission_id);
       setSubmitterDetail(detail);
+      await loadSubmitterEvents(response.submission_id);
     } catch (err) {
       setDevError(err instanceof Error ? err.message : 'Submitter submission failed');
     } finally {
@@ -170,6 +186,7 @@ export function CsfFacilitySubmissionPage() {
       if (devSubmission?.submissionId === submissionId) {
         const detail = await fetchSubmitterSubmission(submissionId);
         setSubmitterDetail(detail);
+        await loadSubmitterEvents(submissionId);
       }
     } catch (err) {
       setAttachmentError(err instanceof Error ? err.message : 'Attachment upload failed');
@@ -187,6 +204,7 @@ export function CsfFacilitySubmissionPage() {
         message: respondMessage.trim() || undefined,
       });
       setSubmitterDetail(detail);
+      await loadSubmitterEvents(devSubmission.submissionId);
       setRespondMessage('');
     } catch (err) {
       setRespondError(err instanceof Error ? err.message : 'Response failed');
@@ -271,6 +289,41 @@ export function CsfFacilitySubmissionPage() {
                     {respondError && <div className="text-xs text-red-600">{respondError}</div>}
                   </div>
                 )}
+                <div className="rounded border border-slate-200 bg-white p-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-700">Updates</span>
+                    <span className="text-[11px] text-slate-400">{submitterEvents.length} events</span>
+                  </div>
+                  {eventsError && (
+                    <div className="mt-2 text-[11px] text-red-600">{eventsError}</div>
+                  )}
+                  {submitterEvents.length === 0 ? (
+                    <div className="mt-2 text-[11px] text-slate-500">No updates yet.</div>
+                  ) : (
+                    <ul className="mt-2 space-y-2">
+                      {submitterEvents.map((event) => {
+                        const highlight =
+                          event.event_type === 'verifier_requested_info' ||
+                          event.event_type === 'verifier_approved' ||
+                          event.event_type === 'verifier_rejected';
+                        return (
+                          <li
+                            key={event.id}
+                            className={`rounded border px-2 py-1 text-[11px] ${
+                              highlight ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-100 bg-slate-50 text-slate-600'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold">{event.title}</span>
+                              <span>{new Date(event.created_at).toLocaleString()}</span>
+                            </div>
+                            {event.message && <div className="mt-1">{event.message}</div>}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
               </div>
             )}
             {(submissionSuccess?.submissionId || devSubmission?.submissionId) && (

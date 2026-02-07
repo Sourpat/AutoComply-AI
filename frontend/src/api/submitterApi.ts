@@ -48,6 +48,19 @@ export type SubmitterSubmissionDetail = {
   updated_at: string;
 };
 
+export type SubmitterEvent = {
+  id: string;
+  submission_id: string;
+  case_id?: string | null;
+  actor_type: string;
+  actor_id?: string | null;
+  event_type: string;
+  title: string;
+  message?: string | null;
+  payload_json?: string | null;
+  created_at: string;
+};
+
 export async function createSubmitterSubmission(
   payload: SubmitterSubmissionRequest
 ): Promise<SubmitterSubmissionResponse> {
@@ -93,6 +106,18 @@ export async function respondToSubmitterSubmission(
       method: "POST",
       headers: getJsonHeaders(),
       body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function fetchSubmitterSubmissionEvents(
+  submissionId: string,
+  limit: number = 50
+): Promise<SubmitterEvent[]> {
+  return apiFetch<SubmitterEvent[]>(
+    `/api/submitter/submissions/${submissionId}/events?limit=${limit}`,
+    {
+      headers: getJsonHeaders(),
     }
   );
 }

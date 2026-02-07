@@ -294,6 +294,27 @@
 
 **Status**: Accepted
 
+### [2026-02-07] Phase 5.5 submission events feed + email hooks
+
+**Context**: Phase 5.5 needs a durable submission events feed shared by submitter and verifier views with enterprise-ready email hooks.
+
+**Decision**: Introduce a dedicated SQLite-backed submission_events store with indexed queries by submission and case. Emit canonical events across submitter + verifier actions. Provide submitter and verifier events endpoints and a dev/ci-only email outbox hook for request-info and final decision events.
+
+**Rationale**:
+- Keeps notification history durable without altering existing workflow tables
+- Supports submitter-facing updates and verifier activity with a single event stream
+- Email hooks stay safe in dev/ci while enabling future integration
+
+**Alternatives Considered**:
+- Reuse verifier_events only: rejected because submitter feed needs durable cross-case access
+- Integrate with external email service now: deferred to keep scope minimal
+
+**Consequences**:
+- Positive: Unified notification feed and event emission points
+- Neutral: Additional SQLite file to manage under .data
+
+**Status**: Accepted
+
 ### [2026-02-06] RC Gate release gate + commit SHA precedence
 
 **Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).

@@ -1217,12 +1217,19 @@ export const CaseWorkspace: React.FC = () => {
                         {events.map((event) => (
                           <li key={event.id} className="rounded border border-slate-100 bg-slate-50 p-2">
                             <div className="flex items-center justify-between text-xs text-slate-600">
-                              <span className="font-semibold text-slate-700">{event.event_type}</span>
+                              <span className="font-semibold text-slate-700">
+                                {event.title || event.event_type}
+                              </span>
                               <span>{safeFormatRelative(event.created_at)}</span>
                             </div>
-                            <div className="mt-1 text-[11px] text-slate-500 break-all">
-                              {event.payload_json}
-                            </div>
+                            {event.message && (
+                              <div className="mt-1 text-[11px] text-slate-600">{event.message}</div>
+                            )}
+                            {event.payload_json && (
+                              <div className="mt-1 text-[11px] text-slate-500 break-all">
+                                {event.payload_json}
+                              </div>
+                            )}
                           </li>
                         ))}
                       </ul>

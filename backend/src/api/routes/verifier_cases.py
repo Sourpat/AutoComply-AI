@@ -11,11 +11,13 @@ from src.autocomply.domain.audit_zip import (
     build_audit_manifest_and_files,
     build_audit_zip_bundle,
 )
+from src.autocomply.domain.notification_store import emit_event, list_events_by_case
 from src.autocomply.domain.submissions_store import (
     SubmissionStatus,
     get_submission_store,
     set_submission_status,
 )
+from src.autocomply.integrations.email_hooks import enqueue_email
 from src.autocomply.domain.packet_pdf import render_decision_packet_pdf
 from src.autocomply.domain.verifier_store import (
     add_action,
@@ -26,7 +28,6 @@ from src.autocomply.domain.verifier_store import (
     get_final_packet,
     get_case,
     list_cases,
-    list_events,
     list_notes,
     set_case_decision,
     write_final_packet,
@@ -53,7 +54,7 @@ class VerifierCase(BaseModel):
 
 
 class VerifierEvent(BaseModel):
-    id: int
+    id: str
     case_id: str
     event_type: str
     payload_json: str
@@ -361,9 +362,21 @@ def get_verifier_case(case_id: str) -> dict:
         if submission and submission.status == SubmissionStatus.SUBMITTED:
             set_submission_status(submission_id, SubmissionStatus.IN_REVIEW, "verifier")
             submission = store.get_submission(submission_id)
+            emit_event(
+                submission_id=submission_id,
+                case_id=case_id,
+                actor_type="verifier",
+                actor_id=os.getenv("VERIFIER_DEFAULT_ASSIGNEE", "verifier-1"),
+                event_type="verifier_opened",
+                title="Verifier opened case",
+                message=payload["case"].get("summary"),
+                payload={"case_id": case_id},
+                dedupe_by_day=True,
+            )
         payload["case"]["submission_status"] = submission.status if submission else None
         payload["case"]["request_info"] = submission.request_info if submission else None
     payload["case"]["submission_summary"] = _build_submission_summary(submission_id)
+    payload["events"] = list_events_by_case(case_id, limit=50)
     return payload
 
 
@@ -438,12 +451,12 @@ def post_verifier_note(case_id: str, payload: VerifierNoteRequest) -> dict:
     return {"note": note_row, "event": event_row}
 
 
-@router.get("/cases/{case_id}/events", response_model=list[VerifierEvent])
-def get_verifier_events(case_id: str) -> list[dict]:
+@router.get("/cases/{case_id}/events")
+def get_verifier_events(case_id: str, limit: int = Query(50, ge=1, le=200)) -> list[dict]:
     payload = get_case(case_id)
     if not payload:
         raise HTTPException(status_code=404, detail="Case not found")
-    return list_events(case_id)
+    return list_events_by_case(case_id, limit=limit)
 
 
 @router.get("/cases/{case_id}/notes", response_model=list[VerifierNote])
@@ -469,6 +482,17 @@ def patch_verifier_assignment(case_id: str, payload: VerifierAssignmentRequest) 
         submission = store.get_submission(submission_id)
         if submission and submission.status == SubmissionStatus.SUBMITTED:
             set_submission_status(submission_id, SubmissionStatus.IN_REVIEW, "verifier")
+        emit_event(
+            submission_id=submission_id,
+            case_id=case_id,
+            actor_type="verifier",
+            actor_id=payload.assignee,
+            event_type="verifier_assigned",
+            title="Verifier assigned",
+            message=f"Assigned to {payload.assignee}",
+            payload={"assignee": payload.assignee},
+            dedupe_by_day=True,
+        )
     return case_row
 
 
@@ -508,10 +532,46 @@ async def post_verifier_decision(
             "verifier",
             request_info=request_info,
         )
+        event = emit_event(
+            submission_id=submission_id,
+            case_id=case_id,
+            actor_type="verifier",
+            actor_id=payload.actor,
+            event_type="verifier_requested_info",
+            title="Verifier requested info",
+            message=payload.reason,
+            payload=request_info,
+        )
+        if event:
+            enqueue_email(event)
     if payload.type == "approve" and submission_id:
         set_submission_status(submission_id, SubmissionStatus.APPROVED, "verifier")
+        event = emit_event(
+            submission_id=submission_id,
+            case_id=case_id,
+            actor_type="verifier",
+            actor_id=payload.actor,
+            event_type="verifier_approved",
+            title="Verifier approved",
+            message=payload.reason,
+            payload={"decision": "approve"},
+        )
+        if event:
+            enqueue_email(event)
     if payload.type == "reject" and submission_id:
         set_submission_status(submission_id, SubmissionStatus.REJECTED, "verifier")
+        event = emit_event(
+            submission_id=submission_id,
+            case_id=case_id,
+            actor_type="verifier",
+            actor_id=payload.actor,
+            event_type="verifier_rejected",
+            title="Verifier rejected",
+            message=payload.reason,
+            payload={"decision": "reject"},
+        )
+        if event:
+            enqueue_email(event)
 
     if case_row.get("locked"):
         packet = await build_decision_packet(
