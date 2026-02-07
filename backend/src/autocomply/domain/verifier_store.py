@@ -27,6 +27,16 @@ def get_engine() -> Engine:
     return _engine
 
 
+def reset_verifier_store() -> None:
+    """Reset the verifier store (for testing)."""
+    global _engine
+    if _engine is not None:
+        _engine.dispose()
+        _engine = None
+    if DB_PATH.exists():
+        DB_PATH.unlink()
+
+
 def ensure_schema() -> None:
     engine = get_engine()
     table_statements = [

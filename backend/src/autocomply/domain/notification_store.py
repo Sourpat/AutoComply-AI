@@ -183,3 +183,13 @@ def list_events_by_case(case_id: str, limit: int = 50) -> List[Dict[str, Any]]:
             {"case_id": case_id, "limit": limit},
         ).mappings().all()
     return [dict(row) for row in rows]
+
+
+def reset_notification_store() -> None:
+    """Reset the notification store (for testing)."""
+    global _engine
+    if _engine is not None:
+        _engine.dispose()
+        _engine = None
+    if DB_PATH.exists():
+        DB_PATH.unlink()

@@ -125,6 +125,28 @@
 **Related**:
 - Commit: (HEAD)
 
+### [2026-02-07] Reset singleton stores between tests
+
+**Context**: Full test runs showed SLA stats polluted by in-memory/SQLite singleton stores across tests.
+
+**Decision**: Add per-test fixtures to reset submission, notification, and verifier stores, and provide explicit reset helpers in the store modules.
+
+**Rationale**:
+- Prevents cross-test data leakage into SLA stats
+- Keeps test expectations deterministic without relaxing assertions
+
+**Alternatives Considered**:
+- Weaken SLA assertions: rejected to preserve correctness
+- Manual cleanup in each test: rejected to avoid repetition
+
+**Consequences**:
+- Positive: Clean isolation for in-memory and SQLite-backed singleton stores
+- Neutral: Tests recreate store schema as needed
+
+**Status**: Accepted
+**Related**:
+- Commit: (HEAD)
+
 ### [2026-02-06] Phase 4 verifier cases store
 
 **Context**: Phase 4 needs deterministic verifier cases for list/detail APIs and smoke checks, independent of the main workflow DB.

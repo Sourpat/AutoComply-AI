@@ -48,6 +48,18 @@
 - `C:/Python314/python.exe -m pytest -q tests/test_verifier_bulk_api.py tests/test_verifier_actions_api.py tests/test_decision_packet_api.py tests/test_sla_reminders.py`
 **Dependencies**: None
 
+### CI Hotfix — Reset stores between tests
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Ensure pytest isolation by clearing in-memory/singleton stores between tests to prevent SLA stats pollution.
+**Acceptance Criteria**:
+- [x] Stores backing SLA stats are cleared between tests
+- [x] `tests/test_sla_reminders.py` passes when running full suite
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_sla_reminders.py`
+- `C:/Python314/python.exe -m pytest -q`
+**Dependencies**: None
+
 
 > **Status Legend**: `pending` | `in-progress` | `blocked` | `completed`
 
