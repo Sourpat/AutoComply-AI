@@ -29,7 +29,7 @@ from src.autocomply.domain.verifier_store import (
     bulk_assign,
     get_final_packet,
     get_case,
-    insert_event,
+    emit_event as emit_verifier_event,
     list_events,
     list_cases,
     list_notes,
@@ -54,20 +54,26 @@ _EVENT_TYPE_MAP = {
 }
 
 
-def _public_event(event: dict) -> dict:
-    if not event:
-        return event
-    payload = dict(event)
+def _public_event_dict(event: object) -> dict:
+    if event is None:
+        return {}
+    if isinstance(event, dict):
+        payload = dict(event)
+    elif hasattr(event, "model_dump"):
+        payload = event.model_dump()
+    else:
+        payload = dict(event)
+
     if "id" in payload and payload["id"] is not None:
         payload["id"] = str(payload["id"])
     event_type = payload.get("event_type")
-    if event_type in _EVENT_TYPE_MAP:
-        payload["event_type"] = _EVENT_TYPE_MAP[event_type]
+    if event_type:
+        payload["event_type"] = _EVENT_TYPE_MAP.get(event_type, event_type)
     return payload
 
 
-def _public_events(events: list[dict]) -> list[dict]:
-    return [_public_event(event) for event in events]
+def _public_events(events: list[object]) -> list[dict]:
+    return [_public_event_dict(event) for event in events]
 
 
 class VerifierCase(BaseModel):
@@ -310,7 +316,7 @@ def post_verifier_bulk_action(payload: VerifierBulkActionRequest) -> dict:
     for case_id in payload.case_ids:
         if case_id in failure_ids:
             continue
-        insert_event(
+        emit_verifier_event(
             case_id=case_id,
             event_type="verifier_action",
             payload={"action": payload.action, "actor": payload.actor, "reason": payload.reason},
@@ -327,7 +333,7 @@ def post_verifier_bulk_assign(payload: VerifierBulkAssignRequest) -> dict:
     for case_id in payload.case_ids:
         if case_id in failure_ids:
             continue
-        insert_event(
+        emit_verifier_event(
             case_id=case_id,
             event_type=event_type,
             payload={"assignee": payload.assignee, "actor": payload.actor},
@@ -527,7 +533,7 @@ def post_verifier_action(case_id: str, payload: VerifierActionRequest) -> dict:
 
     if not case_row or not event_row:
         raise HTTPException(status_code=404, detail="Case not found")
-    return {"case": case_row, "event": _public_event(event_row)}
+    return {"case": case_row, "event": _public_event_dict(event_row)}
 
 
 @router.post("/cases/{case_id}/notes", response_model=VerifierNoteResponse)
@@ -540,7 +546,7 @@ def post_verifier_note(case_id: str, payload: VerifierNoteRequest) -> dict:
 
     if not note_row or not event_row:
         raise HTTPException(status_code=404, detail="Case not found")
-    return {"note": note_row, "event": _public_event(event_row)}
+    return {"note": note_row, "event": _public_event_dict(event_row)}
 
 
 @router.get("/cases/{case_id}/events")
@@ -549,7 +555,7 @@ def get_verifier_events(case_id: str, limit: int = Query(50, ge=1, le=200)) -> l
     if not payload:
         raise HTTPException(status_code=404, detail="Case not found")
     raw_events = list_events(case_id, limit=limit)
-    return _public_events([dict(event) for event in raw_events])
+    return _public_events(raw_events)
 
 
 @router.get("/cases/{case_id}/notes", response_model=list[VerifierNote])

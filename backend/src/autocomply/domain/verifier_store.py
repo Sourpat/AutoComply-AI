@@ -838,7 +838,7 @@ def list_notes(case_id: str) -> List[Dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
-def insert_event(
+def emit_event(
     case_id: str,
     event_type: str,
     payload: Optional[Dict[str, Any]] = None,
