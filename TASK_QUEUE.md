@@ -147,7 +147,7 @@
 - `C:/Python314/python.exe -m pytest -q tests/test_submission_events_feed.py`
 - `npm run build`
 **Dependencies**: None
-**Notes**: Commit a98e4dd
+**Notes**: Commit 2b26396
 
 
 
