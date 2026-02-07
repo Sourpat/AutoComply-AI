@@ -1,5 +1,7 @@
 # Phase 4 Smoke Checklist — Verifier Console
 
+**Status**: PASS (RC Gate — 2026-02-06)
+
 See the full demo script in docs/PHASE4_DEMO_SCRIPT.md.
 
 ## Backend start

@@ -49,6 +49,15 @@
 **Status**: completed
 **Assigned**: GitHub Copilot
 **Goal**: Wire Verifier Console to real cases with backend list/detail endpoints and deterministic demo data.
+**Phase 4.1–4.8**: COMPLETE (RC Gate: PASS — 2026-02-06)
+**Phase 4 Subphases**:
+- [x] 4.1–4.2: Real cases list/detail + filters
+- [x] 4.3: Actions/notes/timeline
+- [x] 4.4: Assignment + bulk ops + My Queue
+- [x] 4.5: Decision packet JSON
+- [x] 4.6: Decision packet PDF + audit ZIP
+- [x] 4.7: Final decision + lock + snapshot
+- [x] 4.8: Smoke runner + RC Gate coverage
 **Acceptance Criteria**:
 - [x] Backend: persist submissions → cases table / case store (or reuse workflow store)
 - [x] Backend: list cases endpoint for verifier (filter/sort/pagination)

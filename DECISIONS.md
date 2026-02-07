@@ -192,6 +192,25 @@
 
 **Status**: Accepted
 
+### [2026-02-06] Phase 4 verifier console complete
+
+**Context**: Phase 4 delivered the Verifier Console with end-to-end workflow coverage and CI smoke gating.
+
+**Decision**: Mark Phase 4 as complete with real cases APIs, actions/notes/timeline, bulk ops, decision packet JSON/PDF/ZIP exports, final decision lock + snapshot, and the verifier smoke runner enforced in RC Gate.
+
+**Rationale**:
+- Confirms Phase 4 scope is complete and demo-ready
+- Establishes RC Gate as the acceptance signal for the workflow
+
+**Alternatives Considered**:
+- Defer completion until Phase 5: rejected to keep milestones clear
+
+**Consequences**:
+- Positive: Phase 4 is stable, demoable, and CI-gated
+- Neutral: Future phases build on a locked audit workflow
+
+**Status**: Accepted
+
 ### [2026-02-06] RC Gate release gate + commit SHA precedence
 
 **Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).
