@@ -54,6 +54,14 @@ Invoke-RestMethod http://127.0.0.1:8001/api/verifier/cases/<case_id>/attachments
 Invoke-WebRequest http://127.0.0.1:8001/api/verifier/attachments/<attachment_id>/download -OutFile downloaded-attachment.txt
 ```
 
+## Download audit ZIP + inspect manifest
+```powershell
+Invoke-WebRequest http://127.0.0.1:8001/api/verifier/cases/<case_id>/audit.zip -OutFile audit-packet.zip
+Expand-Archive -Path audit-packet.zip -DestinationPath audit-packet
+Get-Content audit-packet/manifest.json
+Get-ChildItem audit-packet/evidence
+```
+
 ## Frontend build
 ```powershell
 Set-Location frontend

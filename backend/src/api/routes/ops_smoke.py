@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import os
 from datetime import datetime, timezone
+import io
+import zipfile
 from typing import Any, Dict, List
 
 import httpx
@@ -307,6 +309,7 @@ async def ops_smoke() -> Dict[str, Any]:
     record_check("submitter_to_verifier_flow", submitter_flow_ok)
 
     attachment_flow_ok = True
+    audit_zip_evidence_ok = True
     if env_marker == "ci":
         try:
             submission_payload = {
@@ -346,6 +349,22 @@ async def ops_smoke() -> Dict[str, Any]:
                             list_resp.status_code == 200
                             and download_resp.status_code == 200
                         )
+
+                        audit_zip_resp = await client.get(
+                            f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/audit.zip?include_explain=0"
+                        )
+                        if audit_zip_resp.status_code != 200:
+                            audit_zip_evidence_ok = False
+                        else:
+                            buffer = io.BytesIO(audit_zip_resp.content)
+                            with zipfile.ZipFile(buffer) as archive:
+                                names = archive.namelist()
+                                manifest_ok = "manifest.json" in names
+                                packet_ok = "decision_packet.json" in names
+                                evidence_files = [name for name in names if name.startswith("evidence/")]
+                                audit_zip_evidence_ok = (
+                                    manifest_ok and packet_ok and len(evidence_files) >= 1
+                                )
                 if not attachment_flow_ok:
                     details["errors"].append(
                         {
@@ -353,10 +372,20 @@ async def ops_smoke() -> Dict[str, Any]:
                             "detail": f"status={submit_resp.status_code}",
                         }
                     )
+                if not audit_zip_evidence_ok:
+                    details["errors"].append(
+                        {
+                            "check": "verifier_audit_zip_evidence",
+                            "detail": f"status={submit_resp.status_code}",
+                        }
+                    )
         except Exception as exc:
             attachment_flow_ok = False
             details["errors"].append({"check": "submitter_attachment_flow", "detail": type(exc).__name__})
+            audit_zip_evidence_ok = False
+            details["errors"].append({"check": "verifier_audit_zip_evidence", "detail": type(exc).__name__})
     record_check("submitter_attachment_flow", attachment_flow_ok)
+    record_check("verifier_audit_zip_evidence", audit_zip_evidence_ok)
 
     replay_diff_ok = True
     if determinism_target:

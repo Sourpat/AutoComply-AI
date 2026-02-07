@@ -139,6 +139,7 @@
 
 
 
+
 ### Example Task Template (DELETE THIS AFTER READING)
 ```markdown
 ### T-001: Fix critical bug in X
@@ -239,6 +240,14 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 5.3 — Audit ZIP bundles snapshot + evidence
+**Completed**: 2026-02-06
+**Commit**: pending
+**Summary**: Audit ZIP exports now include snapshot-aware decision packet, manifest, and evidence files with hashes.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_audit_zip_includes_evidence.py`
+- `npm run build`
+
 ### Phase 5.2 — Submitter attachments + verifier downloads
 **Completed**: 2026-02-06
 **Commit**: 2cf799b
@@ -269,14 +278,6 @@
 **Summary**: Added final decision endpoint with lock + snapshot, UI modal, and ops smoke coverage.
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q tests/test_verifier_decision_flow.py`
-- `npm run build`
-
-### Phase 4: Verifier Console uses real submitted cases
-**Completed**: 2026-02-06
-**Commit**: d799866
-**Summary**: Wired verifier console to real cases, actions/notes, assignments, decision packet JSON/PDF, and audit ZIP exports with CI smoke gate and tests.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q tests/test_audit_packet_downloads.py`
 - `npm run build`
 
 ---

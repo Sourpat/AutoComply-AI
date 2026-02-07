@@ -1,8 +1,4 @@
-import json
 import os
-from io import BytesIO
-from zipfile import ZipFile, ZIP_DEFLATED
-
 from fastapi import APIRouter, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -10,6 +6,10 @@ from pydantic import AliasChoices, ConfigDict
 
 from src.autocomply.domain.decision_packet import build_decision_packet
 from src.autocomply.domain.attachments_store import get_attachment, list_attachments_for_submission
+from src.autocomply.domain.audit_zip import (
+    build_audit_manifest_and_files,
+    build_audit_zip_bundle,
+)
 from src.autocomply.domain.submissions_store import get_submission_store
 from src.autocomply.domain.packet_pdf import render_decision_packet_pdf
 from src.autocomply.domain.verifier_store import (
@@ -258,60 +258,75 @@ async def get_verifier_audit_zip(
     case_id: str,
     include_explain: int = Query(1, ge=0, le=1),
 ) -> Response:
+    payload = get_case(case_id)
+    if not payload:
+        raise HTTPException(status_code=404, detail="Case not found")
+    case_row = payload.get("case", {})
+    submission_id = case_row.get("submission_id")
+    locked = bool(case_row.get("locked"))
+
+    packet = None
+    if locked:
+        packet = get_final_packet(case_id)
+    if not packet:
+        packet = await build_decision_packet(
+            case_id,
+            actor=os.getenv("VERIFIER_DEFAULT_ASSIGNEE", "verifier-1"),
+            include_explain=include_explain == 1,
+        )
+
     try:
-        packet = await _resolve_packet_for_case(case_id, include_explain == 1)
-    except ValueError as exc:
+        zip_bytes, _manifest = build_audit_zip_bundle(
+            packet,
+            case_id=case_id,
+            submission_id=submission_id,
+            locked=locked,
+        )
+    except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    pdf_bytes = render_decision_packet_pdf(packet)
-    citations = packet.get("explain", {}) if packet.get("explain") else {}
-    citations_list = citations.get("citations", [])
-    citations_list = sorted(
-        citations_list,
-        key=lambda c: (
-            str(c.get("source_title") or c.get("doc_id") or ""),
-            str(c.get("citation") or ""),
-            str(c.get("chunk_id") or ""),
-        ),
-    )
-    timeline = packet.get("timeline", [])
-    packet_json = json.dumps(packet, indent=2)
-    citations_json = json.dumps(citations_list, indent=2)
-    timeline_json = json.dumps(timeline, indent=2)
-    include_flag = "1" if include_explain == 1 else "0"
-    knowledge_version = None
-    if packet.get("explain"):
-        knowledge_version = packet["explain"].get("knowledge_version")
-
-    readme = "\n".join(
-        [
-            "Decision Packet Audit ZIP",
-            f"Packet version: {packet.get('packet_version')}",
-            f"Case: {case_id}",
-            f"Generated at: {packet.get('verifier', {}).get('generated_at')}",
-            f"Include explain: {include_flag}",
-            f"Knowledge version: {knowledge_version or 'n/a'}",
-            "",
-            "Files:",
-            f"- decision-packet-{case_id}.json",
-            f"- decision-packet-{case_id}.pdf",
-            "- citations.json",
-            "- timeline.json",
-        ]
-    )
-
-    buffer = BytesIO()
-    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
-        archive.writestr(f"decision-packet-{case_id}.json", packet_json)
-        archive.writestr(f"decision-packet-{case_id}.pdf", pdf_bytes)
-        archive.writestr("citations.json", citations_json)
-        archive.writestr("timeline.json", timeline_json)
-        archive.writestr("README.txt", readme)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     headers = {
         "Content-Disposition": f"attachment; filename=audit-packet-{case_id}.zip"
     }
-    return Response(content=buffer.getvalue(), media_type="application/zip", headers=headers)
+    return Response(content=zip_bytes, media_type="application/zip", headers=headers)
+
+
+@router.get("/cases/{case_id}/audit/manifest")
+async def get_verifier_audit_manifest(
+    case_id: str,
+    include_explain: int = Query(1, ge=0, le=1),
+) -> dict:
+    payload = get_case(case_id)
+    if not payload:
+        raise HTTPException(status_code=404, detail="Case not found")
+    case_row = payload.get("case", {})
+    submission_id = case_row.get("submission_id")
+    locked = bool(case_row.get("locked"))
+
+    packet = None
+    if locked:
+        packet = get_final_packet(case_id)
+    if not packet:
+        packet = await build_decision_packet(
+            case_id,
+            actor=os.getenv("VERIFIER_DEFAULT_ASSIGNEE", "verifier-1"),
+            include_explain=include_explain == 1,
+        )
+
+    try:
+        manifest, _packet_bytes, _evidence = build_audit_manifest_and_files(
+            packet,
+            case_id=case_id,
+            submission_id=submission_id,
+            locked=locked,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return manifest
 
 
 @router.get("/cases/{case_id}", response_model=VerifierCaseDetailResponse)

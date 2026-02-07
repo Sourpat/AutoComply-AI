@@ -542,11 +542,13 @@ export const CaseWorkspace: React.FC = () => {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      setPacketToast(`Audit ZIP downloaded for ${selectedCaseId}`);
+      setPacketToast(
+        `Audit ZIP (${isLocked ? "Final" : "Draft"}) downloaded for ${selectedCaseId}`
+      );
     } catch (err) {
       setPacketError(err instanceof Error ? err.message : "Failed to download audit zip");
     }
-  }, [selectedCaseId]);
+  }, [selectedCaseId, isLocked]);
 
   useEffect(() => {
     if (!packetToast) return;
@@ -1076,7 +1078,7 @@ export const CaseWorkspace: React.FC = () => {
                           onClick={handleDownloadAuditZip}
                           className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                         >
-                          Download Audit ZIP
+                          Audit ZIP ({isLocked ? "Final" : "Draft"})
                         </button>
                         <button
                           onClick={() => loadDecisionPacket(detail.case.case_id, true)}

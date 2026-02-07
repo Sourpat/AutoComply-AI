@@ -252,6 +252,27 @@
 
 **Status**: Accepted
 
+### [2026-02-06] Phase 5.3 audit ZIP bundles snapshot + evidence
+
+**Context**: Phase 5.3 requires audit ZIP exports to be snapshot-aware and include attachments with a verifiable manifest for downstream audit review.
+
+**Decision**: Package audit ZIPs with decision_packet.json (snapshot when locked), manifest.json (packet hash + attachment hashes), and evidence files stored under deterministic evidence/{index}_{attachment_id}_{sanitized_filename} paths. Provide a manifest endpoint for preview/debug.
+
+**Rationale**:
+- Ensures final decisions export immutable snapshot data
+- Adds tamper-evident hashes for packet + evidence
+- Keeps evidence filenames deterministic and safe for CI
+
+**Alternatives Considered**:
+- Include PDFs/citations in the ZIP: deferred to keep Phase 5.3 focused on evidence and manifest
+- Store evidence in the database: rejected to avoid schema changes
+
+**Consequences**:
+- Positive: Audit ZIPs are self-describing with evidence hashes
+- Neutral: Evidence files are copied into ZIP on demand
+
+**Status**: Accepted
+
 ### [2026-02-06] RC Gate release gate + commit SHA precedence
 
 **Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).

@@ -1,19 +1,18 @@
 from __future__ import annotations
 
-import json
 import os
-from io import BytesIO
 from typing import Any, Dict, List
-from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import APIRouter, HTTPException
 
 from src.api.routes.verifier_cases import _resolve_packet_for_case
 from src.autocomply.domain.decision_packet import build_decision_packet
+from src.autocomply.domain.audit_zip import build_audit_zip_bundle
 from src.autocomply.domain.packet_pdf import render_decision_packet_pdf
 from src.autocomply.domain.verifier_store import (
     add_action,
     add_note,
+    get_case,
     get_final_packet,
     list_cases,
     seed_cases,
@@ -35,53 +34,22 @@ def _ensure_allowed() -> None:
     raise HTTPException(status_code=403, detail="Verifier smoke runner disabled")
 
 
-def _build_audit_zip(packet: Dict[str, Any], case_id: str, include_explain: bool) -> bytes:
-    pdf_bytes = render_decision_packet_pdf(packet)
-    citations = packet.get("explain", {}) if packet.get("explain") else {}
-    citations_list = citations.get("citations", [])
-    citations_list = sorted(
-        citations_list,
-        key=lambda c: (
-            str(c.get("source_title") or c.get("doc_id") or ""),
-            str(c.get("citation") or ""),
-            str(c.get("chunk_id") or ""),
-        ),
+def _build_audit_zip(packet: Dict[str, Any], case_id: str) -> bytes:
+    case_payload = get_case(case_id)
+    submission_id = None
+    locked = False
+    if case_payload:
+        case_row = case_payload.get("case", {})
+        submission_id = case_row.get("submission_id")
+        locked = bool(case_row.get("locked"))
+
+    zip_bytes, _manifest = build_audit_zip_bundle(
+        packet,
+        case_id=case_id,
+        submission_id=submission_id,
+        locked=locked,
     )
-    timeline = packet.get("timeline", [])
-    packet_json = json.dumps(packet, indent=2)
-    citations_json = json.dumps(citations_list, indent=2)
-    timeline_json = json.dumps(timeline, indent=2)
-    include_flag = "1" if include_explain else "0"
-    knowledge_version = None
-    if packet.get("explain"):
-        knowledge_version = packet["explain"].get("knowledge_version")
-
-    readme = "\n".join(
-        [
-            "Decision Packet Audit ZIP",
-            f"Packet version: {packet.get('packet_version')}",
-            f"Case: {case_id}",
-            f"Generated at: {packet.get('verifier', {}).get('generated_at')}",
-            f"Include explain: {include_flag}",
-            f"Knowledge version: {knowledge_version or 'n/a'}",
-            "",
-            "Files:",
-            f"- decision-packet-{case_id}.json",
-            f"- decision-packet-{case_id}.pdf",
-            "- citations.json",
-            "- timeline.json",
-        ]
-    )
-
-    buffer = BytesIO()
-    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
-        archive.writestr(f"decision-packet-{case_id}.json", packet_json)
-        archive.writestr(f"decision-packet-{case_id}.pdf", pdf_bytes)
-        archive.writestr("citations.json", citations_json)
-        archive.writestr("timeline.json", timeline_json)
-        archive.writestr("README.txt", readme)
-
-    return buffer.getvalue()
+    return zip_bytes
 
 
 @router.get("/run")
@@ -157,7 +125,7 @@ async def run_verifier_smoke() -> Dict[str, Any]:
         return {"ok": False, "case_id": case_id, "steps": steps}
 
     try:
-        zip_bytes = _build_audit_zip(packet, case_id, include_explain=False)
+        zip_bytes = _build_audit_zip(packet, case_id)
         if not zip_bytes or len(zip_bytes) < 100:
             raise ValueError("zip too small")
         record("audit_zip", True, {"content_type": "application/zip", "bytes": len(zip_bytes)})
