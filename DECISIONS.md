@@ -273,6 +273,27 @@
 
 **Status**: Accepted
 
+### [2026-02-07] Phase 5.4 submission status lifecycle
+
+**Context**: Phase 5.4 requires a single submission status source of truth shared between submitter and verifier views with automatic updates from verifier actions and submitter responses.
+
+**Decision**: Persist submission status in the unified submissions store with status metadata (last_status_at/by) and request_info payload. Update status on verifier assignment/open, request-info decisions, final decisions, and submitter responses/uploads. Expose status and request_info in submitter and verifier APIs with optional filtering.
+
+**Rationale**:
+- Keeps submitter and verifier views consistent without duplicating state
+- Supports needs-info loop with explicit request info payload
+- Avoids new tables while maintaining deterministic CI behavior
+
+**Alternatives Considered**:
+- Store status only on verifier cases: rejected because submitter UI needs a direct source of truth
+- Create a dedicated status table: deferred to keep Phase 5.4 minimal
+
+**Consequences**:
+- Positive: Status transitions are centralized and auditable
+- Neutral: Submission store remains in-memory until DB migration later
+
+**Status**: Accepted
+
 ### [2026-02-06] RC Gate release gate + commit SHA precedence
 
 **Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).

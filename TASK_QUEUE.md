@@ -140,6 +140,7 @@
 
 
 
+
 ### Example Task Template (DELETE THIS AFTER READING)
 ```markdown
 ### T-001: Fix critical bug in X
@@ -240,6 +241,14 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 5.4 — Submission status lifecycle (submitter ↔ verifier)
+**Completed**: 2026-02-07
+**Commit**: pending
+**Summary**: Submission status lifecycle now updates from verifier actions and submitter responses with request-info metadata.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_submission_status_flow.py`
+- `npm run build`
+
 ### Phase 5.3 — Audit ZIP bundles snapshot + evidence
 **Completed**: 2026-02-06
 **Commit**: pending
@@ -270,14 +279,6 @@
 **Summary**: Added verifier smoke runner endpoint, demo script, and RC Gate coverage.
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q tests/test_verifier_smoke_runner.py`
-- `npm run build`
-
-### Phase 4.7 — Final decision flow + case lock + final packet snapshot
-**Completed**: 2026-02-06
-**Commit**: 1ae1081
-**Summary**: Added final decision endpoint with lock + snapshot, UI modal, and ops smoke coverage.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q tests/test_verifier_decision_flow.py`
 - `npm run build`
 
 ---

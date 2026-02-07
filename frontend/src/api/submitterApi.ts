@@ -25,6 +25,29 @@ export type SubmitterSubmissionResponse = {
   status: string;
 };
 
+export type SubmitterRequestInfo = {
+  message?: string | null;
+  requested_at?: string | null;
+  requested_by?: string | null;
+};
+
+export type SubmitterSubmissionDetail = {
+  submission_id: string;
+  csf_type: string;
+  tenant: string;
+  status: string;
+  last_status_at?: string | null;
+  last_status_by?: string | null;
+  request_info?: SubmitterRequestInfo | null;
+  title: string;
+  subtitle: string;
+  summary?: string | null;
+  trace_id: string;
+  payload?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
 export async function createSubmitterSubmission(
   payload: SubmitterSubmissionRequest
 ): Promise<SubmitterSubmissionResponse> {
@@ -33,4 +56,43 @@ export async function createSubmitterSubmission(
     headers: getJsonHeaders(),
     body: JSON.stringify(payload),
   });
+}
+
+export async function fetchSubmitterSubmissions(params?: {
+  status?: string;
+  limit?: number;
+}): Promise<SubmitterSubmissionDetail[]> {
+  const search = new URLSearchParams();
+  if (params?.status) {
+    search.set("status", params.status);
+  }
+  if (params?.limit) {
+    search.set("limit", params.limit.toString());
+  }
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+  return apiFetch<SubmitterSubmissionDetail[]>(`/api/submitter/submissions${suffix}`, {
+    headers: getJsonHeaders(),
+  });
+}
+
+export async function fetchSubmitterSubmission(
+  submissionId: string
+): Promise<SubmitterSubmissionDetail> {
+  return apiFetch<SubmitterSubmissionDetail>(`/api/submitter/submissions/${submissionId}`, {
+    headers: getJsonHeaders(),
+  });
+}
+
+export async function respondToSubmitterSubmission(
+  submissionId: string,
+  payload: { message?: string | null }
+): Promise<SubmitterSubmissionDetail> {
+  return apiFetch<SubmitterSubmissionDetail>(
+    `/api/submitter/submissions/${submissionId}/respond`,
+    {
+      method: "POST",
+      headers: getJsonHeaders(),
+      body: JSON.stringify(payload),
+    }
+  );
 }

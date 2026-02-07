@@ -26,7 +26,11 @@ from src.autocomply.domain.attachments_store import (
     save_upload,
     MAX_ATTACHMENT_BYTES,
 )
-from src.autocomply.domain.submissions_store import get_submission_store
+from src.autocomply.domain.submissions_store import (
+    SubmissionStatus,
+    get_submission_store,
+    set_submission_status,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/submissions", tags=["submissions"])
@@ -112,6 +116,11 @@ async def upload_submission_attachment(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    store = get_submission_store()
+    submission = store.get_submission(submission_id)
+    if submission and submission.status == SubmissionStatus.NEEDS_INFO:
+        set_submission_status(submission_id, SubmissionStatus.SUBMITTED, "submitter")
 
     return record
 

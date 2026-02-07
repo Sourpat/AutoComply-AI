@@ -8,6 +8,12 @@ export type VerifierCase = {
   case_id: string;
   submission_id: string | null;
   status: string;
+  submission_status?: string | null;
+  request_info?: {
+    message?: string | null;
+    requested_at?: string | null;
+    requested_by?: string | null;
+  } | null;
   jurisdiction: string | null;
   assignee: string | null;
   assigned_at: string | null;
@@ -97,6 +103,7 @@ export async function fetchVerifierCases(params: {
   status?: string;
   jurisdiction?: string;
   assignee?: string;
+  submission_status?: string;
 }): Promise<VerifierCasesResponse> {
   const search = new URLSearchParams({
     limit: params.limit.toString(),
@@ -113,6 +120,10 @@ export async function fetchVerifierCases(params: {
 
   if (params.assignee) {
     search.set("assignee", params.assignee);
+  }
+
+  if (params.submission_status) {
+    search.set("submission_status", params.submission_status);
   }
 
   return apiFetch<VerifierCasesResponse>(`${VERIFIER_BASE}/cases?${search.toString()}`, {

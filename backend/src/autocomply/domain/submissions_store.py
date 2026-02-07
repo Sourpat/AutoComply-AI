@@ -24,6 +24,7 @@ class SubmissionStatus(str, Enum):
 
     SUBMITTED = "submitted"
     IN_REVIEW = "in_review"
+    NEEDS_INFO = "needs_info"
     APPROVED = "approved"
     REJECTED = "rejected"
     BLOCKED = "blocked"
@@ -62,6 +63,15 @@ class Submission(BaseModel):
     tenant: str = Field(..., description="Tenant/facility identifier")
     status: SubmissionStatus = Field(
         default=SubmissionStatus.SUBMITTED, description="Current submission status"
+    )
+    last_status_at: Optional[str] = Field(
+        None, description="ISO 8601 timestamp of last status change"
+    )
+    last_status_by: Optional[str] = Field(
+        None, description="Actor who last changed status"
+    )
+    request_info: Optional[Dict] = Field(
+        None, description="Request info payload when verifier needs more info"
     )
     priority: SubmissionPriority = Field(
         default=SubmissionPriority.MEDIUM, description="Verification priority"
@@ -155,6 +165,8 @@ class SubmissionStore:
             csf_type=csf_type,
             tenant=tenant,
             status=SubmissionStatus.SUBMITTED,
+            last_status_at=now,
+            last_status_by="submitter",
             priority=priority,
             created_at=now,
             updated_at=now,
@@ -214,17 +226,39 @@ class SubmissionStore:
 
         return submissions[:limit]
 
-    def update_submission_status(
-        self, submission_id: str, status: SubmissionStatus
+    def set_submission_status(
+        self,
+        submission_id: str,
+        status: SubmissionStatus,
+        by: str,
+        request_info: Optional[Dict] = None,
     ) -> Optional[Submission]:
-        """Update submission status and updated_at timestamp."""
         submission = self._store.get(submission_id)
         if not submission:
             return None
 
         submission.status = status
-        submission.updated_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        submission.last_status_at = datetime.now(timezone.utc).isoformat().replace(
+            '+00:00', 'Z'
+        )
+        submission.last_status_by = by
+        if request_info is not None:
+            submission.request_info = request_info
+        if status != SubmissionStatus.NEEDS_INFO and request_info is None:
+            submission.request_info = None
+        if status in [SubmissionStatus.APPROVED, SubmissionStatus.REJECTED]:
+            if not submission.reviewed_at:
+                submission.reviewed_at = submission.last_status_at
+            if by:
+                submission.reviewed_by = by
+        submission.updated_at = submission.last_status_at
         return submission
+
+    def update_submission_status(
+        self, submission_id: str, status: SubmissionStatus
+    ) -> Optional[Submission]:
+        """Update submission status and updated_at timestamp."""
+        return self.set_submission_status(submission_id, status, by="system")
 
     def update_submission(
         self,
@@ -239,11 +273,7 @@ class SubmissionStore:
             return None
 
         if status is not None:
-            submission.status = status
-            # Set reviewed_at when status changes to approved or rejected
-            if status in [SubmissionStatus.APPROVED, SubmissionStatus.REJECTED]:
-                if not submission.reviewed_at:
-                    submission.reviewed_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+            self.set_submission_status(submission_id, status, by=reviewed_by or "system")
         
         if reviewer_notes is not None:
             submission.reviewer_notes = reviewer_notes
@@ -304,6 +334,16 @@ def get_submission_store() -> SubmissionStore:
     if _global_store is None:
         _global_store = SubmissionStore()
     return _global_store
+
+
+def set_submission_status(
+    submission_id: str,
+    status: SubmissionStatus,
+    by: str,
+    request_info: Optional[Dict] = None,
+) -> Optional[Submission]:
+    store = get_submission_store()
+    return store.set_submission_status(submission_id, status, by, request_info=request_info)
 
 
 def reset_submission_store() -> None:

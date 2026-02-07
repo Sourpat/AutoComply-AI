@@ -1,14 +1,24 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.autocomply.domain.submissions_store import SubmissionStore, get_submission_store
-from src.autocomply.domain.verifier_store import get_or_create_case_for_submission
+from src.autocomply.domain.submissions_store import (
+    SubmissionStatus,
+    SubmissionStore,
+    get_submission_store,
+    set_submission_status,
+)
+from src.autocomply.domain.verifier_store import (
+    add_note,
+    get_case_by_submission_id,
+    get_or_create_case_for_submission,
+)
 from src.config import get_settings
 
 router = APIRouter(prefix="/api/submitter", tags=["submitter"])
@@ -38,6 +48,10 @@ class SubmitterSubmissionResponse(BaseModel):
     submission_id: str
     verifier_case_id: str
     status: str
+
+
+class SubmitterRespondRequest(BaseModel):
+    message: str | None = None
 
 
 def _ensure_allowed() -> None:
@@ -117,3 +131,66 @@ def create_submitter_submission(payload: SubmitterSubmissionRequest) -> Submitte
         verifier_case_id=case["case_id"],
         status=case["status"],
     )
+
+
+@router.get("/submissions")
+def list_submitter_submissions(
+    status: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+) -> list[dict]:
+    _ensure_allowed()
+    store = get_submission_store()
+    statuses = None
+    if status:
+        try:
+            statuses = [SubmissionStatus(status)]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid status")
+    submissions = store.list_submissions(status=statuses, limit=limit)
+    return [submission.model_dump() for submission in submissions]
+
+
+@router.get("/submissions/{submission_id}")
+def get_submitter_submission(submission_id: str) -> dict:
+    _ensure_allowed()
+    store = get_submission_store()
+    submission = store.get_submission(submission_id)
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    return submission.model_dump()
+
+
+@router.post("/submissions/{submission_id}/respond")
+def respond_submitter_submission(
+    submission_id: str,
+    payload: SubmitterRespondRequest,
+) -> dict:
+    _ensure_allowed()
+    store = get_submission_store()
+    submission = store.get_submission(submission_id)
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    responses = submission.payload.get("responses") if isinstance(submission.payload, dict) else None
+    if responses is None:
+        responses = []
+    responses.append(
+        {
+            "message": payload.message,
+            "responded_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+    )
+    submission.payload["responses"] = responses
+
+    if payload.message:
+        case = get_case_by_submission_id(submission_id)
+        if case:
+            try:
+                add_note(case["case_id"], payload.message, actor="submitter")
+            except ValueError:
+                pass
+
+    if submission.status == SubmissionStatus.NEEDS_INFO:
+        set_submission_status(submission_id, SubmissionStatus.SUBMITTED, "submitter")
+
+    return submission.model_dump()

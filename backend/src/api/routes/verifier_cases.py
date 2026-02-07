@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -10,7 +11,11 @@ from src.autocomply.domain.audit_zip import (
     build_audit_manifest_and_files,
     build_audit_zip_bundle,
 )
-from src.autocomply.domain.submissions_store import get_submission_store
+from src.autocomply.domain.submissions_store import (
+    SubmissionStatus,
+    get_submission_store,
+    set_submission_status,
+)
 from src.autocomply.domain.packet_pdf import render_decision_packet_pdf
 from src.autocomply.domain.verifier_store import (
     add_action,
@@ -34,6 +39,7 @@ class VerifierCase(BaseModel):
     case_id: str
     submission_id: str | None = None
     status: str
+    submission_status: str | None = None
     jurisdiction: str | None = None
     assignee: str | None = None
     assigned_at: str | None = None
@@ -43,6 +49,7 @@ class VerifierCase(BaseModel):
     updated_at: str
     summary: str
     submission_summary: dict | None = None
+    request_info: dict | None = None
 
 
 class VerifierEvent(BaseModel):
@@ -173,6 +180,8 @@ def _build_submission_summary(submission_id: str | None) -> dict | None:
         "created_at": submission.created_at,
         "notes_count": notes_count,
         "attachment_count": attachment_count,
+        "status": submission.status,
+        "request_info": submission.request_info,
     }
 
 
@@ -183,6 +192,7 @@ def list_verifier_cases(
     status: str | None = Query(None),
     jurisdiction: str | None = Query(None),
     assignee: str | None = Query(None),
+    submission_status: str | None = Query(None),
 ) -> dict:
     assignee_filter = assignee
     if assignee == "me":
@@ -194,10 +204,20 @@ def list_verifier_cases(
         jurisdiction=jurisdiction,
         assignee=assignee_filter,
     )
+    store = get_submission_store()
+    filtered_items = []
     for item in items:
-        item["submission_summary"] = _build_submission_summary(item.get("submission_id"))
+        submission_id = item.get("submission_id")
+        submission = store.get_submission(submission_id) if submission_id else None
+        if submission_status:
+            if not submission or submission.status != submission_status:
+                continue
+        item["submission_status"] = submission.status if submission else None
+        item["request_info"] = submission.request_info if submission else None
+        item["submission_summary"] = _build_submission_summary(submission_id)
+        filtered_items.append(item)
     return {
-        "items": items,
+        "items": filtered_items,
         "limit": limit,
         "offset": offset,
         "count": count,
@@ -334,9 +354,16 @@ def get_verifier_case(case_id: str) -> dict:
     payload = get_case(case_id)
     if not payload:
         raise HTTPException(status_code=404, detail="Case not found")
-    payload["case"]["submission_summary"] = _build_submission_summary(
-        payload["case"].get("submission_id")
-    )
+    submission_id = payload["case"].get("submission_id")
+    if submission_id:
+        store = get_submission_store()
+        submission = store.get_submission(submission_id)
+        if submission and submission.status == SubmissionStatus.SUBMITTED:
+            set_submission_status(submission_id, SubmissionStatus.IN_REVIEW, "verifier")
+            submission = store.get_submission(submission_id)
+        payload["case"]["submission_status"] = submission.status if submission else None
+        payload["case"]["request_info"] = submission.request_info if submission else None
+    payload["case"]["submission_summary"] = _build_submission_summary(submission_id)
     return payload
 
 
@@ -436,6 +463,12 @@ def patch_verifier_assignment(case_id: str, payload: VerifierAssignmentRequest) 
         raise HTTPException(status_code=status, detail=str(exc)) from exc
     if not case_row:
         raise HTTPException(status_code=404, detail="Case not found")
+    submission_id = case_row.get("submission_id")
+    if submission_id and payload.assignee:
+        store = get_submission_store()
+        submission = store.get_submission(submission_id)
+        if submission and submission.status == SubmissionStatus.SUBMITTED:
+            set_submission_status(submission_id, SubmissionStatus.IN_REVIEW, "verifier")
     return case_row
 
 
@@ -461,6 +494,24 @@ async def post_verifier_decision(
 
     if not case_row:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    submission_id = case_row.get("submission_id")
+    if payload.type == "request_info" and submission_id:
+        request_info = {
+            "message": payload.reason,
+            "requested_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "requested_by": payload.actor,
+        }
+        set_submission_status(
+            submission_id,
+            SubmissionStatus.NEEDS_INFO,
+            "verifier",
+            request_info=request_info,
+        )
+    if payload.type == "approve" and submission_id:
+        set_submission_status(submission_id, SubmissionStatus.APPROVED, "verifier")
+    if payload.type == "reject" and submission_id:
+        set_submission_status(submission_id, SubmissionStatus.REJECTED, "verifier")
 
     if case_row.get("locked"):
         packet = await build_decision_packet(

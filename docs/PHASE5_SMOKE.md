@@ -28,6 +28,33 @@ Invoke-RestMethod http://127.0.0.1:8001/api/verifier/cases?limit=10
 Invoke-RestMethod http://127.0.0.1:8001/api/verifier/cases/<case_id>/submission
 ```
 
+## Submission status lifecycle (needs-info loop)
+```powershell
+# Status should be submitted initially
+Invoke-RestMethod http://127.0.0.1:8001/api/submitter/submissions/<submission_id>
+
+# Open case detail to move to in_review
+Invoke-RestMethod http://127.0.0.1:8001/api/verifier/cases/<case_id>
+
+# Request info (needs_info)
+Invoke-RestMethod -Method Post http://127.0.0.1:8001/api/verifier/cases/<case_id>/decision -Body (@{
+  type="request_info";
+  reason="Need updated documents";
+  actor="verifier"
+} | ConvertTo-Json) -ContentType "application/json"
+
+# Submitter responds (back to submitted)
+Invoke-RestMethod -Method Post http://127.0.0.1:8001/api/submitter/submissions/<submission_id>/respond -Body (@{
+  message="Uploaded additional docs"
+} | ConvertTo-Json) -ContentType "application/json"
+
+# Finalize approve
+Invoke-RestMethod -Method Post http://127.0.0.1:8001/api/verifier/cases/<case_id>/decision -Body (@{
+  type="approve";
+  actor="verifier"
+} | ConvertTo-Json) -ContentType "application/json"
+```
+
 ## Upload submission attachment
 ```powershell
 $filePath = "$PWD\\sample-attachment.txt"

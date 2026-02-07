@@ -57,6 +57,7 @@ export const CaseWorkspace: React.FC = () => {
   const [count, setCount] = useState(0);
   const [statusFilter, setStatusFilter] = useState("all");
   const [jurisdictionFilter, setJurisdictionFilter] = useState("all");
+  const [submissionStatusFilter, setSubmissionStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [myQueueOnly, setMyQueueOnly] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -122,6 +123,8 @@ export const CaseWorkspace: React.FC = () => {
           status: statusFilter === "all" ? undefined : statusFilter,
           jurisdiction: jurisdictionFilter === "all" ? undefined : jurisdictionFilter,
           assignee: myQueueOnly ? "me" : undefined,
+          submission_status:
+            submissionStatusFilter === "all" ? undefined : submissionStatusFilter,
         });
 
         setCount(response.count);
@@ -136,7 +139,7 @@ export const CaseWorkspace: React.FC = () => {
         setIsLoading(false);
       }
     },
-    [statusFilter, jurisdictionFilter, myQueueOnly]
+    [statusFilter, jurisdictionFilter, myQueueOnly, submissionStatusFilter]
   );
 
   const loadCaseDetail = useCallback(async (caseId: string) => {
@@ -181,6 +184,7 @@ export const CaseWorkspace: React.FC = () => {
         const parsed = JSON.parse(stored);
         if (parsed.status) setStatusFilter(parsed.status);
         if (parsed.jurisdiction) setJurisdictionFilter(parsed.jurisdiction);
+        if (parsed.submission_status) setSubmissionStatusFilter(parsed.submission_status);
         if (typeof parsed.myQueueOnly === "boolean") setMyQueueOnly(parsed.myQueueOnly);
         if (typeof parsed.searchQuery === "string") setSearchQuery(parsed.searchQuery);
       } catch {
@@ -193,7 +197,7 @@ export const CaseWorkspace: React.FC = () => {
   useEffect(() => {
     if (!filtersReady) return;
     loadCases({ reset: true });
-  }, [loadCases, statusFilter, jurisdictionFilter, myQueueOnly, filtersReady]);
+  }, [loadCases, statusFilter, jurisdictionFilter, myQueueOnly, submissionStatusFilter, filtersReady]);
 
   useEffect(() => {
     if (!filtersReady) return;
@@ -202,11 +206,12 @@ export const CaseWorkspace: React.FC = () => {
       JSON.stringify({
         status: statusFilter,
         jurisdiction: jurisdictionFilter,
+        submission_status: submissionStatusFilter,
         myQueueOnly,
         searchQuery,
       })
     );
-  }, [statusFilter, jurisdictionFilter, myQueueOnly, searchQuery, filtersReady]);
+  }, [statusFilter, jurisdictionFilter, submissionStatusFilter, myQueueOnly, searchQuery, filtersReady]);
 
   useEffect(() => {
     if (!selectedCaseId && cases.length > 0) {
@@ -567,6 +572,11 @@ export const CaseWorkspace: React.FC = () => {
     return Array.from(values);
   }, [cases]);
 
+  const submissionStatusOptions = useMemo(
+    () => ["submitted", "in_review", "needs_info", "approved", "rejected"],
+    []
+  );
+
   const jurisdictionOptions = useMemo(() => {
     const values = new Set(["OH", "NY", "CA", "TX"]);
     cases.forEach((item) => item.jurisdiction && values.add(item.jurisdiction));
@@ -596,7 +606,8 @@ export const CaseWorkspace: React.FC = () => {
   const decisionPacket = packetKey ? packetCache[packetKey] : null;
   const citations = decisionPacket?.explain?.citations || [];
   const isLocked = detail?.case?.locked ?? false;
-  const isNeedsInfo = detail?.case?.status === "needs_info";
+  const submissionStatus = detail?.case?.submission_status || "";
+  const isNeedsInfo = submissionStatus === "needs_info";
 
 
   return (
@@ -650,6 +661,23 @@ export const CaseWorkspace: React.FC = () => {
                 >
                   <option value="all">All</option>
                   {statusOptions.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col text-xs text-slate-600">
+                Submission Status
+                <select
+                  value={submissionStatusFilter}
+                  onChange={(e) => {
+                    setSubmissionStatusFilter(e.target.value);
+                  }}
+                  className="mt-1 px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
+                >
+                  <option value="all">All</option>
+                  {submissionStatusOptions.map((status) => (
                     <option key={status} value={status}>
                       {status}
                     </option>
@@ -836,6 +864,11 @@ export const CaseWorkspace: React.FC = () => {
                         <span className="text-xs uppercase tracking-wide text-slate-500">
                           {detail.case.status}
                         </span>
+                        {submissionStatus && (
+                          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-sky-700">
+                            {submissionStatus.replace("_", " ")}
+                          </span>
+                        )}
                         {detail.case.locked && (
                           <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-700">
                             Locked
@@ -873,8 +906,16 @@ export const CaseWorkspace: React.FC = () => {
                   </div>
 
                   {isNeedsInfo && (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-                      Awaiting submitter updates.
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 space-y-1">
+                      <div className="font-semibold">Needs info from submitter</div>
+                      {detail.case.request_info?.message && (
+                        <div>Message: {detail.case.request_info.message}</div>
+                      )}
+                      {detail.case.request_info?.requested_at && (
+                        <div>
+                          Requested: {safeFormatDate(detail.case.request_info.requested_at)}
+                        </div>
+                      )}
                     </div>
                   )}
 

@@ -10,7 +10,12 @@ import { useNavigate } from 'react-router-dom';
 import { createSubmission } from '../submissions/submissionStoreSelector';
 import { intakeSubmissionToCase } from '../workflow/submissionIntakeService';
 import type { CreateSubmissionInput } from '../submissions/submissionTypes';
-import { createSubmitterSubmission } from '../api/submitterApi';
+import {
+  createSubmitterSubmission,
+  fetchSubmitterSubmission,
+  respondToSubmitterSubmission,
+  type SubmitterSubmissionDetail,
+} from '../api/submitterApi';
 import { listSubmissionAttachments, uploadSubmissionAttachment } from '../api/attachmentsApi';
 
 interface CsfFacilityFormData {
@@ -58,12 +63,16 @@ export function CsfFacilitySubmissionPage() {
     caseId: string;
     submissionId: string;
   } | null>(null);
+  const [submitterDetail, setSubmitterDetail] = useState<SubmitterSubmissionDetail | null>(null);
   const [devBusy, setDevBusy] = useState(false);
   const [devError, setDevError] = useState<string | null>(null);
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentList, setAttachmentList] = useState<any[]>([]);
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [respondMessage, setRespondMessage] = useState('');
+  const [respondBusy, setRespondBusy] = useState(false);
+  const [respondError, setRespondError] = useState<string | null>(null);
   const isDev = (import.meta as any)?.env?.DEV ?? false;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -138,6 +147,8 @@ export function CsfFacilitySubmissionPage() {
       });
       const attachments = await listSubmissionAttachments(response.submission_id);
       setAttachmentList(attachments);
+      const detail = await fetchSubmitterSubmission(response.submission_id);
+      setSubmitterDetail(detail);
     } catch (err) {
       setDevError(err instanceof Error ? err.message : 'Submitter submission failed');
     } finally {
@@ -156,10 +167,31 @@ export function CsfFacilitySubmissionPage() {
       const attachments = await listSubmissionAttachments(submissionId);
       setAttachmentList(attachments);
       setAttachmentFile(null);
+      if (devSubmission?.submissionId === submissionId) {
+        const detail = await fetchSubmitterSubmission(submissionId);
+        setSubmitterDetail(detail);
+      }
     } catch (err) {
       setAttachmentError(err instanceof Error ? err.message : 'Attachment upload failed');
     } finally {
       setAttachmentBusy(false);
+    }
+  };
+
+  const handleRespond = async () => {
+    if (!devSubmission?.submissionId) return;
+    setRespondBusy(true);
+    setRespondError(null);
+    try {
+      const detail = await respondToSubmitterSubmission(devSubmission.submissionId, {
+        message: respondMessage.trim() || undefined,
+      });
+      setSubmitterDetail(detail);
+      setRespondMessage('');
+    } catch (err) {
+      setRespondError(err instanceof Error ? err.message : 'Response failed');
+    } finally {
+      setRespondBusy(false);
     }
   };
 
@@ -201,6 +233,44 @@ export function CsfFacilitySubmissionPage() {
                 >
                   Open in Verifier Console
                 </button>
+              </div>
+            )}
+            {submitterDetail && (
+              <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs text-slate-600 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-700">Status</span>
+                  <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-sky-700">
+                    {submitterDetail.status.replace('_', ' ')}
+                  </span>
+                </div>
+                {submitterDetail.status === 'needs_info' && (
+                  <div className="rounded border border-amber-200 bg-amber-50 p-2 text-amber-800 space-y-1">
+                    <div className="font-semibold">Needs info from verifier</div>
+                    {submitterDetail.request_info?.message && (
+                      <div>Message: {submitterDetail.request_info.message}</div>
+                    )}
+                    {submitterDetail.request_info?.requested_at && (
+                      <div>Requested: {new Date(submitterDetail.request_info.requested_at).toLocaleString()}</div>
+                    )}
+                    <div className="mt-2 flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={respondMessage}
+                        onChange={(event) => setRespondMessage(event.target.value)}
+                        placeholder="Add a response for the verifier"
+                        className="flex-1 rounded border border-slate-200 px-2 py-1 text-xs"
+                      />
+                      <button
+                        onClick={handleRespond}
+                        disabled={respondBusy}
+                        className="px-3 py-1.5 rounded-md border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {respondBusy ? 'Sending…' : 'Respond'}
+                      </button>
+                    </div>
+                    {respondError && <div className="text-xs text-red-600">{respondError}</div>}
+                  </div>
+                )}
               </div>
             )}
             {(submissionSuccess?.submissionId || devSubmission?.submissionId) && (
