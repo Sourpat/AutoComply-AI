@@ -114,6 +114,24 @@
 **Dependencies**: None
 
 
+### Phase 5.1 — Submitter → Verifier Queue linkage
+**Status**: completed
+**Assigned**: GitHub Copilot
+**Goal**: Create submitter submissions that flow into the verifier queue with idempotency.
+**Acceptance Criteria**:
+- [x] Submitter submission endpoint creates linked verifier case
+- [x] Idempotent by submission_id or client_token
+- [x] Verifier list/detail include submission summary
+- [x] Verifier submission endpoint returns payload
+- [x] Ops smoke check for submitter_to_verifier_flow
+- [x] Tests added + passing
+- [x] Docs: PHASE5 plan + smoke
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_submitter_to_verifier_flow.py`
+- `npm run build`
+**Dependencies**: None
+
+
 
 
 
@@ -220,6 +238,14 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 5.1 — Submitter → Verifier Queue linkage
+**Completed**: 2026-02-06
+**Commit**: (pending)
+**Summary**: Submitter submissions now create linked verifier cases with idempotency and smoke coverage.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q tests/test_submitter_to_verifier_flow.py`
+- `npm run build`
+
 ### Phase 4.8 — Verifier smoke runner + demo script + RC Gate
 **Completed**: 2026-02-06
 **Commit**: a2711c0
@@ -251,13 +277,6 @@
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q backend/tests/test_signal_intelligence.py backend/tests/test_health_details.py`
 - `C:/Python314/python.exe -m pytest -q`
-
-### Phase 3.8 — RC Gate readiness + CI env guards
-**Completed**: 2026-02-06
-**Commit**: 057233a, 9fe4389, 45858ef
-**Summary**: Hardened RC Gate env/pytest logging, readiness checks, and artifacts.
-**Verification**:
-- GitHub Actions RC Gate success
 
 ---
 

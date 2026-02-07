@@ -19,6 +19,12 @@ export type VerifierCase = {
     timestamp?: string | null;
     version?: string | null;
   } | null;
+  submission_summary?: {
+    submitter_name?: string | null;
+    created_at?: string | null;
+    notes_count?: number | null;
+    attachment_count?: number | null;
+  } | null;
   created_at: string;
   updated_at: string;
   summary: string;
@@ -182,6 +188,12 @@ export async function fetchVerifierCaseEvents(caseId: string): Promise<VerifierC
 
 export async function fetchVerifierCaseNotes(caseId: string): Promise<VerifierNote[]> {
   return apiFetch<VerifierNote[]>(`${VERIFIER_BASE}/cases/${caseId}/notes`, {
+    headers: getAuthHeaders(),
+  });
+}
+
+export async function fetchVerifierCaseSubmission(caseId: string): Promise<any> {
+  return apiFetch<any>(`${VERIFIER_BASE}/cases/${caseId}/submission`, {
     headers: getAuthHeaders(),
   });
 }

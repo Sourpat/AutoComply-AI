@@ -111,6 +111,7 @@ class SubmissionStore:
 
     def __init__(self):
         self._store: Dict[str, Submission] = {}
+        self._client_index: Dict[str, str] = {}
 
     def create_submission(
         self,
@@ -124,6 +125,8 @@ class SubmissionStore:
         risk_level: Optional[str] = None,
         priority: SubmissionPriority = SubmissionPriority.MEDIUM,
         summary: Optional[str] = None,
+        submission_id: Optional[str] = None,
+        client_token: Optional[str] = None,
     ) -> Submission:
         """
         Create a new verification submission.
@@ -144,7 +147,8 @@ class SubmissionStore:
             Created Submission object
         """
         now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
-        submission_id = str(uuid.uuid4())
+        if submission_id is None:
+            submission_id = str(uuid.uuid4())
 
         submission = Submission(
             submission_id=submission_id,
@@ -164,10 +168,18 @@ class SubmissionStore:
         )
 
         self._store[submission_id] = submission
+        if client_token:
+            self._client_index[client_token] = submission_id
         return submission
 
     def get_submission(self, submission_id: str) -> Optional[Submission]:
         """Retrieve a submission by ID."""
+        return self._store.get(submission_id)
+
+    def get_submission_by_client_token(self, client_token: str) -> Optional[Submission]:
+        submission_id = self._client_index.get(client_token)
+        if not submission_id:
+            return None
         return self._store.get(submission_id)
 
     def list_submissions(

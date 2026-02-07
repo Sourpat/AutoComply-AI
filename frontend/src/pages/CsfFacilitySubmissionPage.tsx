@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { createSubmission } from '../submissions/submissionStoreSelector';
 import { intakeSubmissionToCase } from '../workflow/submissionIntakeService';
 import type { CreateSubmissionInput } from '../submissions/submissionTypes';
+import { createSubmitterSubmission } from '../api/submitterApi';
 
 interface CsfFacilityFormData {
   facilityName: string;
@@ -52,6 +53,13 @@ export function CsfFacilitySubmissionPage() {
     submissionId: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [devSubmission, setDevSubmission] = useState<{
+    caseId: string;
+    submissionId: string;
+  } | null>(null);
+  const [devBusy, setDevBusy] = useState(false);
+  const [devError, setDevError] = useState<string | null>(null);
+  const isDev = (import.meta as any)?.env?.DEV ?? false;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,6 +114,30 @@ export function CsfFacilitySubmissionPage() {
     }
   };
 
+  const handleDevSubmitter = async () => {
+    setDevBusy(true);
+    setDevError(null);
+    try {
+      const response = await createSubmitterSubmission({
+        client_token: `dev-${Date.now()}`,
+        subject: `Demo submission ${new Date().toISOString()}`,
+        submitter_name: 'Demo Submitter',
+        jurisdiction: 'OH',
+        doc_type: 'csf_facility',
+        notes: 'Dev-only submitter submission for Phase 5.1',
+        attachments: [{ name: 'facility_license.pdf', content_type: 'application/pdf', size_bytes: 12345 }],
+      });
+      setDevSubmission({
+        caseId: response.verifier_case_id,
+        submissionId: response.submission_id,
+      });
+    } catch (err) {
+      setDevError(err instanceof Error ? err.message : 'Submitter submission failed');
+    } finally {
+      setDevBusy(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <div className="max-w-4xl mx-auto px-6 py-12">
@@ -118,6 +150,36 @@ export function CsfFacilitySubmissionPage() {
             Controlled Substance Facilitator verification for hospitals and healthcare facilities
           </p>
         </div>
+
+        {isDev && (
+          <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800">Dev-only: Create submitter submission</h3>
+                <p className="text-xs text-slate-500">Creates a linked verifier case for Phase 5.1.</p>
+              </div>
+              <button
+                onClick={handleDevSubmitter}
+                disabled={devBusy}
+                className="px-3 py-1.5 rounded-md border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {devBusy ? 'Creating…' : 'Create submission'}
+              </button>
+            </div>
+            {devError && <p className="mt-2 text-xs text-red-600">{devError}</p>}
+            {devSubmission && (
+              <div className="mt-2 text-xs text-slate-600">
+                Verifier Case: {devSubmission.caseId} —
+                <button
+                  className="ml-2 text-xs font-semibold text-sky-600 hover:text-sky-700"
+                  onClick={() => navigate(`/console/cases?caseId=${devSubmission.caseId}`)}
+                >
+                  Open in Verifier Console
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Success Banner */}
         {submissionSuccess && (

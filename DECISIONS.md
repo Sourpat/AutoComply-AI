@@ -211,6 +211,26 @@
 
 **Status**: Accepted
 
+### [2026-02-06] Phase 5.1 submitter → verifier linkage and idempotency
+
+**Context**: Phase 5.1 needs a deterministic path from submitter submissions into the verifier queue, with idempotency to avoid duplicate cases.
+
+**Decision**: Add `/api/submitter/submissions` to persist submissions in the unified in-memory store and create (or reuse) a verifier case keyed by `submission_id`. Idempotency is enforced via `submission_id` or `client_token`.
+
+**Rationale**:
+- Keeps submissions deterministic for CI and demos
+- Prevents duplicate verifier cases on retries
+
+**Alternatives Considered**:
+- Reuse workflow submissions endpoint: rejected to avoid coupling to workflow case model
+- Require database uniqueness: deferred while submissions store remains in-memory
+
+**Consequences**:
+- Positive: Submitter flow is predictable and verifier queue stays clean
+- Neutral: Idempotency scope is limited to process lifetime
+
+**Status**: Accepted
+
 ### [2026-02-06] RC Gate release gate + commit SHA precedence
 
 **Context**: CI needs a single release gate and /health/details must report a deterministic commit SHA for tests and deployments (Render/GitHub).

@@ -322,6 +322,142 @@ def get_case(case_id: str) -> Optional[Dict[str, Any]]:
     }
 
 
+def get_case_by_submission_id(submission_id: str) -> Optional[Dict[str, Any]]:
+    ensure_schema()
+    engine = get_engine()
+    with engine.begin() as conn:
+        row = conn.execute(
+            text(
+                """
+                SELECT case_id, submission_id, status, jurisdiction,
+                       assignee, assigned_at, locked, decision_json,
+                       created_at, updated_at, summary
+                FROM cases
+                WHERE submission_id = :submission_id
+                """
+            ),
+            {"submission_id": submission_id},
+        ).mappings().first()
+    return _normalize_case(row) if row else None
+
+
+def get_or_create_case_for_submission(
+    submission_id: str,
+    jurisdiction: Optional[str],
+    summary: str,
+    *,
+    status: str = "in_review",
+) -> Dict[str, Any]:
+    ensure_schema()
+    engine = get_engine()
+    now = _now_iso()
+    default_assignee = os.getenv("VERIFIER_DEFAULT_ASSIGNEE", "verifier-1")
+
+    with engine.begin() as conn:
+        existing = conn.execute(
+            text(
+                """
+                SELECT case_id, submission_id, status, jurisdiction,
+                       assignee, assigned_at, locked, decision_json,
+                       created_at, updated_at, summary
+                FROM cases
+                WHERE submission_id = :submission_id
+                """
+            ),
+            {"submission_id": submission_id},
+        ).mappings().first()
+        if existing:
+            return _normalize_case(existing)
+
+        case_id = f"sub-{submission_id}"
+        conn.execute(
+            text(
+                """
+                INSERT INTO cases (
+                    case_id, submission_id, status, jurisdiction,
+                    assignee, assigned_at, locked, decision_json,
+                    created_at, updated_at, summary
+                ) VALUES (
+                    :case_id, :submission_id, :status, :jurisdiction,
+                    :assignee, :assigned_at, :locked, :decision_json,
+                    :created_at, :updated_at, :summary
+                )
+                """
+            ),
+            {
+                "case_id": case_id,
+                "submission_id": submission_id,
+                "status": status,
+                "jurisdiction": jurisdiction,
+                "assignee": default_assignee,
+                "assigned_at": now,
+                "locked": 0,
+                "decision_json": None,
+                "created_at": now,
+                "updated_at": now,
+                "summary": summary,
+            },
+        )
+
+        payload = json.dumps(
+            {
+                "submission_id": submission_id,
+                "status": status,
+                "summary": summary,
+            }
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO verifier_events (
+                    case_id, event_type, payload_json, created_at
+                ) VALUES (
+                    :case_id, :event_type, :payload_json, :created_at
+                )
+                """
+            ),
+            {
+                "case_id": case_id,
+                "event_type": "submission_received",
+                "payload_json": payload,
+                "created_at": now,
+            },
+        )
+        assigned_payload = json.dumps({"assignee": default_assignee, "actor": "system"})
+        conn.execute(
+            text(
+                """
+                INSERT INTO verifier_events (
+                    case_id, event_type, payload_json, created_at
+                ) VALUES (
+                    :case_id, :event_type, :payload_json, :created_at
+                )
+                """
+            ),
+            {
+                "case_id": case_id,
+                "event_type": "assigned",
+                "payload_json": assigned_payload,
+                "created_at": now,
+            },
+        )
+
+        created = conn.execute(
+            text(
+                """
+                SELECT case_id, submission_id, status, jurisdiction,
+                       assignee, assigned_at, locked, decision_json,
+                       created_at, updated_at, summary
+                FROM cases
+                WHERE case_id = :case_id
+                """
+            ),
+            {"case_id": case_id},
+        ).mappings().first()
+
+    return _normalize_case(created)
+
+
 def assign_case(
     case_id: str,
     assignee: Optional[str],

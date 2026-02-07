@@ -205,6 +205,7 @@ async def ops_smoke() -> Dict[str, Any]:
 
     verifier_packet_ok = True
     verifier_final_ok = True
+    submitter_flow_ok = True
     if env_marker == "ci":
         try:
             seed_cases()
@@ -262,8 +263,48 @@ async def ops_smoke() -> Dict[str, Any]:
             details["errors"].append({"check": "verifier_audit_packet", "detail": type(exc).__name__})
             verifier_final_ok = False
             details["errors"].append({"check": "verifier_final_decision", "detail": type(exc).__name__})
+    if env_marker == "ci":
+        try:
+            payload = {
+                "client_token": "ops-smoke-submitter",
+                "subject": "Ops smoke submission",
+                "submitter_name": "ops",
+                "jurisdiction": "OH",
+                "doc_type": "csf_facility",
+                "notes": "ops smoke",
+                "attachments": [],
+            }
+            submit_status = None
+            async with httpx.AsyncClient() as client:
+                submit_resp = await client.post(
+                    "http://127.0.0.1:8001/api/submitter/submissions",
+                    json=payload,
+                )
+                submit_status = submit_resp.status_code
+                if submit_resp.status_code != 200:
+                    submitter_flow_ok = False
+                else:
+                    case_id = submit_resp.json().get("verifier_case_id")
+                    if not case_id:
+                        submitter_flow_ok = False
+                    else:
+                        submission_resp = await client.get(
+                            f"http://127.0.0.1:8001/api/verifier/cases/{case_id}/submission"
+                        )
+                        submitter_flow_ok = submission_resp.status_code == 200
+                if not submitter_flow_ok:
+                    details["errors"].append(
+                        {
+                            "check": "submitter_to_verifier_flow",
+                            "detail": f"status={submit_status}",
+                        }
+                    )
+        except Exception as exc:
+            submitter_flow_ok = False
+            details["errors"].append({"check": "submitter_to_verifier_flow", "detail": type(exc).__name__})
     record_check("verifier_audit_packet", verifier_packet_ok)
     record_check("verifier_final_decision", verifier_final_ok)
+    record_check("submitter_to_verifier_flow", submitter_flow_ok)
 
     replay_diff_ok = True
     if determinism_target:

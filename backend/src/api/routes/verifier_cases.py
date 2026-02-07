@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from pydantic import AliasChoices, ConfigDict
 
 from src.autocomply.domain.decision_packet import build_decision_packet
+from src.autocomply.domain.submissions_store import get_submission_store
 from src.autocomply.domain.packet_pdf import render_decision_packet_pdf
 from src.autocomply.domain.verifier_store import (
     add_action,
@@ -39,6 +40,7 @@ class VerifierCase(BaseModel):
     created_at: str
     updated_at: str
     summary: str
+    submission_summary: dict | None = None
 
 
 class VerifierEvent(BaseModel):
@@ -143,6 +145,31 @@ async def _resolve_packet_for_case(case_id: str, include_explain: bool) -> dict:
     )
 
 
+def _build_submission_summary(submission_id: str | None) -> dict | None:
+    if not submission_id:
+        return None
+    store = get_submission_store()
+    submission = store.get_submission(submission_id)
+    if not submission:
+        return None
+
+    payload = submission.payload or {}
+    notes = payload.get("notes")
+    if isinstance(notes, list):
+        notes_count = len([item for item in notes if item])
+    else:
+        notes_count = 1 if isinstance(notes, str) and notes.strip() else 0
+    attachments = payload.get("attachments") or []
+    attachment_count = len(attachments) if isinstance(attachments, list) else 0
+
+    return {
+        "submitter_name": payload.get("submitter_name") or payload.get("subject") or submission.title,
+        "created_at": submission.created_at,
+        "notes_count": notes_count,
+        "attachment_count": attachment_count,
+    }
+
+
 @router.get("/cases", response_model=VerifierCasesResponse)
 def list_verifier_cases(
     limit: int = Query(50, ge=1, le=200),
@@ -161,6 +188,8 @@ def list_verifier_cases(
         jurisdiction=jurisdiction,
         assignee=assignee_filter,
     )
+    for item in items:
+        item["submission_summary"] = _build_submission_summary(item.get("submission_id"))
     return {
         "items": items,
         "limit": limit,
@@ -284,7 +313,25 @@ def get_verifier_case(case_id: str) -> dict:
     payload = get_case(case_id)
     if not payload:
         raise HTTPException(status_code=404, detail="Case not found")
+    payload["case"]["submission_summary"] = _build_submission_summary(
+        payload["case"].get("submission_id")
+    )
     return payload
+
+
+@router.get("/cases/{case_id}/submission")
+def get_verifier_case_submission(case_id: str) -> dict:
+    payload = get_case(case_id)
+    if not payload:
+        raise HTTPException(status_code=404, detail="Case not found")
+    submission_id = payload["case"].get("submission_id")
+    if not submission_id:
+        raise HTTPException(status_code=404, detail="Submission not linked")
+    store = get_submission_store()
+    submission = store.get_submission(submission_id)
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    return submission.model_dump()
 
 
 @router.post("/cases/{case_id}/actions", response_model=VerifierActionResponse)

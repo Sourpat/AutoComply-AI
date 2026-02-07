@@ -29,6 +29,7 @@ import {
   downloadAuditZip,
   downloadDecisionPacketPdf,
   fetchVerifierCaseEvents,
+  fetchVerifierCaseSubmission,
   fetchVerifierCaseDetail,
   fetchVerifierCases,
   getDecisionPacket,
@@ -87,6 +88,9 @@ export const CaseWorkspace: React.FC = () => {
   const [packetError, setPacketError] = useState<string | null>(null);
   const [packetCache, setPacketCache] = useState<Record<string, any>>({});
   const [packetToast, setPacketToast] = useState<string | null>(null);
+  const [submissionData, setSubmissionData] = useState<any | null>(null);
+  const [submissionLoading, setSubmissionLoading] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
 
   const casesCountRef = useRef(0);
 
@@ -210,10 +214,27 @@ export const CaseWorkspace: React.FC = () => {
       setDetail(null);
       setEvents([]);
       setNotes([]);
+      setSubmissionData(null);
       return;
     }
     loadCaseDetail(selectedCaseId);
   }, [selectedCaseId, loadCaseDetail]);
+
+  useEffect(() => {
+    if (!detail?.case?.submission_id) {
+      setSubmissionData(null);
+      return;
+    }
+    setSubmissionLoading(true);
+    setSubmissionError(null);
+    fetchVerifierCaseSubmission(detail.case.case_id)
+      .then((data) => setSubmissionData(data))
+      .catch((err) => {
+        setSubmissionError(err instanceof Error ? err.message : "Failed to load submission");
+        setSubmissionData(null);
+      })
+      .finally(() => setSubmissionLoading(false));
+  }, [detail?.case?.submission_id, detail?.case?.case_id]);
 
 
   const handleAddNote = useCallback(async () => {
@@ -908,6 +929,75 @@ export const CaseWorkspace: React.FC = () => {
                             <p className="mt-1 text-slate-700 whitespace-pre-wrap">{note.note}</p>
                           </div>
                         ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-slate-700">Submission</h3>
+                      {detail.case.submission_id && (
+                        <span className="text-xs text-slate-500">{detail.case.submission_id}</span>
+                      )}
+                    </div>
+                    {!detail.case.submission_id && (
+                      <p className="text-xs text-slate-500">No submission linked.</p>
+                    )}
+                    {detail.case.submission_id && submissionLoading && (
+                      <p className="text-xs text-slate-500">Loading submission…</p>
+                    )}
+                    {detail.case.submission_id && submissionError && (
+                      <p className="text-xs text-red-600">{submissionError}</p>
+                    )}
+                    {detail.case.submission_id && submissionData && !submissionLoading && (
+                      <div className="space-y-2 text-xs text-slate-600">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <div className="font-semibold text-slate-700">Subject</div>
+                            <div>{submissionData.title || submissionData.payload?.subject || "—"}</div>
+                          </div>
+                          <div>
+                            <div className="font-semibold text-slate-700">Submitter</div>
+                            <div>{submissionData.payload?.submitter_name || "—"}</div>
+                          </div>
+                          <div>
+                            <div className="font-semibold text-slate-700">Doc type</div>
+                            <div>{submissionData.payload?.doc_type || submissionData.csf_type || "—"}</div>
+                          </div>
+                          <div>
+                            <div className="font-semibold text-slate-700">Jurisdiction</div>
+                            <div>{submissionData.payload?.jurisdiction || submissionData.tenant || "—"}</div>
+                          </div>
+                          <div>
+                            <div className="font-semibold text-slate-700">Created</div>
+                            <div>{safeFormatDate(submissionData.created_at)}</div>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-700">Notes</div>
+                          <div className="whitespace-pre-wrap">
+                            {submissionData.payload?.notes || submissionData.summary || "—"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-700">Attachments</div>
+                          {Array.isArray(submissionData.payload?.attachments) &&
+                          submissionData.payload.attachments.length > 0 ? (
+                            <ul className="mt-1 space-y-1">
+                              {submissionData.payload.attachments.map((item: any, idx: number) => (
+                                <li key={`${item.name || "attachment"}-${idx}`} className="rounded border border-slate-100 bg-slate-50 p-2">
+                                  <div className="font-semibold text-slate-700">{item.name || "Attachment"}</div>
+                                  <div className="text-[11px] text-slate-500">
+                                    {item.content_type || "unknown"}
+                                    {item.size_bytes ? ` • ${item.size_bytes} bytes` : ""}
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-slate-500">No attachments.</p>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
