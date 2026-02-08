@@ -36,6 +36,28 @@
 
 ## Decisions
 
+### [2026-02-07] Verifier Console submission panel loads case-scoped attachments
+
+**Context**: Phase 6.2 needs the Verifier Console submission panel to display case-scoped submission data and attachments with download support.
+
+**Decision**: Extend the Case Details drawer to fetch verifier submission + attachments by case id and expose attachment downloads through the verifier attachment endpoint.
+
+**Rationale**:
+- Reuses existing verifier endpoints without backend changes
+- Keeps the submission panel aligned with case scope and real attachment data
+
+**Alternatives Considered**:
+- Reuse submitter submission store in the console: rejected to avoid non-case-scoped data
+- Add new backend aggregation endpoint: rejected to keep Phase 6.2 frontend-only
+
+**Consequences**:
+- Positive: Verifier Console shows real submission metadata and attachments
+- Neutral: Drawer now performs additional fetches per case selection
+
+**Status**: Accepted
+**Related**:
+- Tasks: Phase 6.2 — Verifier Console submission + attachments
+
 ### [2026-02-07] Map verifier case statuses to console workflow labels
 
 **Context**: Verifier case APIs return statuses like `new`, `in_review`, `needs_info`, `approved`, and `rejected`, while Console UI components expect workflow labels (`submitted`, `needs_review`, `request_info`, `blocked`).
