@@ -323,6 +323,15 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 6.3 — Verifier queue server-side search
+**Completed**: 2026-02-07
+**Commit**: pending
+**Summary**: Added server-side `q` filtering for verifier cases and wired the console queue to pass search queries.
+**Verification**:
+- `C:/Python314/python.exe -m pytest -q`
+- `npm test -- --run`
+- `npm run build`
+
 ### Phase 6.2 — Verifier Console submission + attachments
 **Completed**: 2026-02-07
 **Commit**: pending
@@ -353,14 +362,6 @@
 **Summary**: Audit ZIP exports now include snapshot-aware decision packet, manifest, and evidence files with hashes.
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q tests/test_audit_zip_includes_evidence.py`
-- `npm run build`
-
-### Phase 5.2 — Submitter attachments + verifier downloads
-**Completed**: 2026-02-06
-**Commit**: 2cf799b
-**Summary**: Added submitter attachment uploads with verifier list/download and decision packet linkage, plus tests and smoke coverage.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q tests/test_attachments_flow.py`
 - `npm run build`
 
 ---

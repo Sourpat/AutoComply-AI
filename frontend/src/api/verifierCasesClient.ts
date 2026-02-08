@@ -121,6 +121,7 @@ export async function fetchVerifierCases(params: {
   assignee?: string;
   submission_status?: string;
   sla_filter?: string;
+  query?: string;
 }): Promise<VerifierCasesResponse> {
   const search = new URLSearchParams({
     limit: params.limit.toString(),
@@ -144,6 +145,9 @@ export async function fetchVerifierCases(params: {
   }
   if (params.sla_filter) {
     search.set("sla_filter", params.sla_filter);
+  }
+  if (params.query && params.query.trim()) {
+    search.set("q", params.query.trim());
   }
 
   return apiFetch<VerifierCasesResponse>(`${VERIFIER_BASE}/cases?${search.toString()}`, {

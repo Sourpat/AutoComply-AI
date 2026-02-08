@@ -228,6 +228,64 @@ def _build_submission_summary(submission_id: str | None) -> dict | None:
     }
 
 
+def _build_search_haystack(
+    item: dict,
+    submission: object | None,
+    submission_summary: dict | None,
+) -> str:
+    values: list[str] = []
+
+    def add_value(value: object | None) -> None:
+        if value is None:
+            return
+        if isinstance(value, str):
+            if value.strip():
+                values.append(value)
+            return
+        if isinstance(value, (int, float)):
+            values.append(str(value))
+            return
+
+    for key in [
+        "case_id",
+        "id",
+        "submission_id",
+        "tenant",
+        "jurisdiction",
+        "status",
+        "assignee",
+        "assigned_to",
+        "scenario",
+        "summary",
+        "title",
+        "facility",
+        "decision_type",
+    ]:
+        add_value(item.get(key))
+
+    if submission_summary:
+        add_value(submission_summary.get("submitter_name"))
+
+    if submission is None:
+        return " ".join(values).lower()
+
+    payload = getattr(submission, "payload", None) or {}
+    add_value(getattr(submission, "title", None))
+    add_value(getattr(submission, "tenant", None))
+    add_value(getattr(submission, "csf_type", None))
+    add_value(getattr(submission, "decision_type", None))
+    add_value(payload.get("tenant"))
+    add_value(payload.get("jurisdiction"))
+    add_value(payload.get("scenario"))
+    add_value(payload.get("title") or payload.get("subject"))
+    add_value(payload.get("facility"))
+    add_value(payload.get("facility_name"))
+    add_value(payload.get("facilityName"))
+    add_value(payload.get("decision_type"))
+
+    return " ".join(values).lower()
+
+
 @router.get("/cases", response_model=VerifierCasesResponse)
 def list_verifier_cases(
     limit: int = Query(50, ge=1, le=200),
@@ -237,17 +295,30 @@ def list_verifier_cases(
     assignee: str | None = Query(None),
     submission_status: str | None = Query(None),
     sla_filter: str | None = Query(None, description="due_soon|overdue|needs_info"),
+    query: str | None = Query(None, alias="q"),
 ) -> dict:
     assignee_filter = assignee
     if assignee == "me":
         assignee_filter = os.getenv("VERIFIER_DEFAULT_ASSIGNEE", "verifier-1")
-    items, count = list_cases(
-        limit=limit,
-        offset=offset,
-        status=status,
-        jurisdiction=jurisdiction,
-        assignee=assignee_filter,
-    )
+    query_value = query.strip() if query else ""
+    query_tokens = query_value.lower().split() if query_value else []
+
+    if query_tokens:
+        items, count = list_cases(
+            limit=5000,
+            offset=0,
+            status=status,
+            jurisdiction=jurisdiction,
+            assignee=assignee_filter,
+        )
+    else:
+        items, count = list_cases(
+            limit=limit,
+            offset=offset,
+            status=status,
+            jurisdiction=jurisdiction,
+            assignee=assignee_filter,
+        )
     now = sla_policy.utc_now()
     store = get_submission_store()
     filtered_items = []
@@ -281,10 +352,23 @@ def list_verifier_cases(
                     now=now,
                 ):
                     continue
+        submission_summary = _build_submission_summary(submission_id)
+        if query_tokens:
+            haystack = _build_search_haystack(item, submission, submission_summary)
+            if not all(token in haystack for token in query_tokens):
+                continue
         item["submission_status"] = submission.status if submission else None
         item["request_info"] = submission.request_info if submission else None
-        item["submission_summary"] = _build_submission_summary(submission_id)
+        item["submission_summary"] = submission_summary
         filtered_items.append(item)
+    if query_tokens:
+        total = len(filtered_items)
+        return {
+            "items": filtered_items[offset : offset + limit],
+            "limit": limit,
+            "offset": offset,
+            "count": total,
+        }
     return {
         "items": filtered_items,
         "limit": limit,

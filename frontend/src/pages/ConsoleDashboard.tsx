@@ -1349,7 +1349,11 @@ const ConsoleDashboard: React.FC = () => {
     setIsLoading(true);
     try {
       // Fetch from Verifier API (ordered by created_at DESC)
-      const response = await fetchVerifierCases({ limit: 1000, offset: 0 });
+      const response = await fetchVerifierCases({
+        limit: 1000,
+        offset: 0,
+        query: searchQuery,
+      });
 
       let policySafeFailuresByTrace = new Map<string, { policy_action?: string; summary?: string }>();
       let policyOverridesBySubmission = new Map<string, PolicyOverrideDetail>();
