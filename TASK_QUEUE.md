@@ -296,8 +296,6 @@
 
 ## P1 - High Priority (Do Next)
 
-
-
 ### T-016: Audit suite demo readiness
 **Status**: deferred
 **Assigned**: (none)
@@ -325,6 +323,22 @@
 
 **Phase 8 Status**: DONE
 
+### Phase 6.2 — Verifier Console submission + attachments
+**Completed**: 2026-02-07
+**Commit**: pending
+**Summary**: Wired the Verifier Console submission panel to case-scoped submission data, attachments, and download actions.
+**Verification**:
+- `npm run build`
+- `powershell -ExecutionPolicy Bypass -File scripts/rc_smoke.ps1`
+
+### Phase 6.1 — Verifier Console real cases
+**Completed**: 2026-02-07
+**Commit**: pending
+**Summary**: Replaced demoStore/workflowApi usage in Verifier Console with verifierCasesClient and refreshed drawer/actions to use real case data.
+**Verification**:
+- `cd frontend; $env:CI="1"; npm test -- --run`
+- `cd backend; C:/Python314/python.exe -m pytest -q`
+
 ### Phase 5.4 — Submission status lifecycle (submitter ↔ verifier)
 **Completed**: 2026-02-07
 **Commit**: pending
@@ -347,22 +361,6 @@
 **Summary**: Added submitter attachment uploads with verifier list/download and decision packet linkage, plus tests and smoke coverage.
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q tests/test_attachments_flow.py`
-- `npm run build`
-
-### Phase 5.1 — Submitter → Verifier Queue linkage
-**Completed**: 2026-02-06
-**Commit**: f955479
-**Summary**: Submitter submissions now create linked verifier cases with idempotency and smoke coverage.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q tests/test_submitter_to_verifier_flow.py`
-- `npm run build`
-
-### Phase 4.8 — Verifier smoke runner + demo script + RC Gate
-**Completed**: 2026-02-06
-**Commit**: a2711c0
-**Summary**: Added verifier smoke runner endpoint, demo script, and RC Gate coverage.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q tests/test_verifier_smoke_runner.py`
 - `npm run build`
 
 ---

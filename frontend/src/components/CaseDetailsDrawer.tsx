@@ -3,42 +3,232 @@
  * Step 2.0: Workflow Status Transitions + Audit Log Timeline
  */
 
-import { useState, useEffect } from "react";
-import type { WorkQueueItem, Submission } from "../types/workQueue";
-import type { AuditEvent } from "../types/audit";
-import { demoStore } from "../lib/demoStore";
+import { useState, useEffect, useCallback } from "react";
+import type { AuditEvent, AuditAction } from "../types/audit";
+import {
+  fetchVerifierCaseDetail,
+  fetchVerifierCaseEvents,
+  fetchVerifierCaseSubmission,
+  fetchVerifierCaseAttachments,
+  downloadVerifierAttachment,
+  type VerifierCase,
+  type VerifierCaseEvent,
+} from "../api/verifierCasesClient";
 import { Timeline } from "./Timeline";
-import { getStatusLabel, getStatusColor } from "../workflow/statusTransitions";
+import { getStatusLabel, getStatusColor, type WorkflowStatus } from "../workflow/statusTransitions";
 import { ragDetailsUrl } from "../lib/ragLink";
+import { formatAgeShort, getAgeMs } from "../workflow/sla";
 
 interface CaseDetailsDrawerProps {
   caseId: string | null;
+  refreshToken?: number;
   onClose: () => void;
 }
 
-export function CaseDetailsDrawer({ caseId, onClose }: CaseDetailsDrawerProps) {
-  const [caseItem, setCaseItem] = useState<WorkQueueItem | null>(null);
-  const [submission, setSubmission] = useState<Submission | null>(null);
+type DrawerCase = {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  status: WorkflowStatus;
+  priority: "High" | "Medium" | "Low";
+  priorityColor: string;
+  age: string;
+  submissionId?: string | null;
+  traceId?: string | null;
+};
+
+function normalizeStatus(status?: string | null): WorkflowStatus {
+  switch (status) {
+    case "approved":
+      return "approved";
+    case "rejected":
+    case "blocked":
+      return "blocked";
+    case "needs_info":
+    case "request_info":
+      return "request_info";
+    case "in_review":
+    case "needs_review":
+      return "needs_review";
+    case "new":
+    case "submitted":
+      return "submitted";
+    default:
+      return "needs_review";
+  }
+}
+
+function buildDrawerCase(caseRow: VerifierCase): DrawerCase {
+  const createdAt = caseRow.created_at || new Date().toISOString();
+  const title = caseRow.submission_summary?.submitter_name || caseRow.summary || `Case ${caseRow.case_id}`;
+  return {
+    id: caseRow.case_id,
+    title,
+    subtitle: caseRow.summary || null,
+    status: normalizeStatus(caseRow.status),
+    priority: "Medium",
+    priorityColor: "text-slate-600",
+    age: formatAgeShort(getAgeMs(createdAt)),
+    submissionId: caseRow.submission_id,
+    traceId: caseRow.submission_id,
+  };
+}
+
+function parsePayload(payload?: string | null): Record<string, any> | null {
+  if (!payload) return null;
+  try {
+    return JSON.parse(payload);
+  } catch {
+    return null;
+  }
+}
+
+function mapEventAction(eventType: string, payload: Record<string, any> | null): AuditAction {
+  if (eventType === "assigned") return "ASSIGNED";
+  if (eventType === "unassigned") return "UNASSIGNED";
+  if (eventType === "note") return "NOTE_ADDED";
+  if (eventType === "decision") {
+    const decisionType = payload?.decision?.type || payload?.decision?.status || payload?.decision_type;
+    if (decisionType === "approve" || payload?.status === "approved") return "APPROVED";
+    if (decisionType === "reject" || payload?.status === "rejected") return "BLOCKED";
+    if (decisionType === "request_info" || payload?.status === "needs_info") return "REQUEST_INFO";
+  }
+  if (eventType === "action") {
+    const action = payload?.action || payload?.status;
+    if (action === "approve" || action === "approved") return "APPROVED";
+    if (action === "reject" || action === "rejected") return "BLOCKED";
+    if (action === "needs_review" || action === "in_review") return "NEEDS_REVIEW";
+  }
+  return "NEEDS_REVIEW";
+}
+
+function mapVerifierEvent(event: VerifierCaseEvent, submissionId?: string | null): AuditEvent {
+  const payload = parsePayload(event.payload_json);
+  const action = mapEventAction(event.event_type, payload);
+  const actorName = payload?.actor || payload?.decision?.actor || "Verifier";
+  const message = payload?.reason || payload?.note || payload?.message || null;
+  return {
+    id: event.id,
+    caseId: event.case_id,
+    submissionId: submissionId || undefined,
+    actorRole: "verifier",
+    actorName,
+    action,
+    message: message || undefined,
+    createdAt: event.created_at,
+  };
+}
+
+export function CaseDetailsDrawer({ caseId, refreshToken, onClose }: CaseDetailsDrawerProps) {
+  const [caseItem, setCaseItem] = useState<DrawerCase | null>(null);
+  const [submission, setSubmission] = useState<any | null>(null);
+  const [submissionLoading, setSubmissionLoading] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [attachmentsError, setAttachmentsError] = useState<string | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+
+  const handleDownloadAttachment = useCallback(async (attachment: any) => {
+    try {
+      const blob = await downloadVerifierAttachment(attachment.attachment_id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = attachment.filename || "attachment";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setAttachmentsError(err instanceof Error ? err.message : "Failed to download attachment");
+    }
+  }, []);
 
   useEffect(() => {
     if (!caseId) return;
+    let isActive = true;
 
-    // Load case data
-    const workQueue = demoStore.getWorkQueue();
-    const item = workQueue.find((i) => i.id === caseId);
-    setCaseItem(item || null);
+    setSubmission(null);
+    setSubmissionError(null);
+    setSubmissionLoading(false);
+    setAttachments([]);
+    setAttachmentsError(null);
+    setAttachmentsLoading(false);
 
-    // Load submission
-    if (item?.submissionId) {
-      const sub = demoStore.getSubmission(item.submissionId);
-      setSubmission(sub);
-    }
+    const loadDetail = async () => {
+      try {
+        const detail = await fetchVerifierCaseDetail(caseId);
+        if (!isActive) return;
+        const nextCase = buildDrawerCase(detail.case);
+        setCaseItem(nextCase);
 
-    // Load audit events
-    const events = demoStore.getAuditEvents(caseId);
-    setAuditEvents(events);
-  }, [caseId]);
+        const events = await fetchVerifierCaseEvents(caseId);
+        if (!isActive) return;
+        setAuditEvents((events || []).map((evt) => mapVerifierEvent(evt, detail.case.submission_id)));
+
+        if (!detail.case.submission_id) {
+          setSubmission(null);
+          setSubmissionError(null);
+          setSubmissionLoading(false);
+          setAttachments([]);
+          setAttachmentsError(null);
+          setAttachmentsLoading(false);
+          return;
+        }
+
+        setSubmissionLoading(true);
+        setSubmissionError(null);
+        try {
+          const submissionDetail = await fetchVerifierCaseSubmission(caseId);
+          if (!isActive) return;
+          setSubmission(submissionDetail || null);
+        } catch (err) {
+          console.warn("[CaseDetailsDrawer] Failed to load submission:", err);
+          if (isActive) {
+            setSubmissionError(err instanceof Error ? err.message : "Failed to load submission");
+            setSubmission(null);
+          }
+        } finally {
+          if (isActive) setSubmissionLoading(false);
+        }
+
+        setAttachmentsLoading(true);
+        setAttachmentsError(null);
+        try {
+          const items = await fetchVerifierCaseAttachments(caseId);
+          if (!isActive) return;
+          setAttachments(items || []);
+        } catch (err) {
+          console.warn("[CaseDetailsDrawer] Failed to load attachments:", err);
+          if (isActive) {
+            setAttachmentsError(err instanceof Error ? err.message : "Failed to load attachments");
+            setAttachments([]);
+          }
+        } finally {
+          if (isActive) setAttachmentsLoading(false);
+        }
+      } catch (err) {
+        console.warn("[CaseDetailsDrawer] Failed to load case detail:", err);
+        if (isActive) {
+          setCaseItem(null);
+          setAuditEvents([]);
+          setSubmission(null);
+          setSubmissionError(err instanceof Error ? err.message : "Failed to load submission");
+          setSubmissionLoading(false);
+          setAttachments([]);
+          setAttachmentsError(err instanceof Error ? err.message : "Failed to load attachments");
+          setAttachmentsLoading(false);
+        }
+      }
+    };
+
+    loadDetail();
+
+    return () => {
+      isActive = false;
+    };
+  }, [caseId, refreshToken]);
 
   if (!caseId) return null;
 
@@ -92,11 +282,23 @@ export function CaseDetailsDrawer({ caseId, onClose }: CaseDetailsDrawerProps) {
           )}
 
           {/* Submission Snapshot */}
-          {submission && (
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-slate-900 mb-3">
-                Submission Details
-              </h3>
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-slate-900">Submission Details</h3>
+              {caseItem?.submissionId && (
+                <span className="text-xs text-slate-500">{caseItem.submissionId}</span>
+              )}
+            </div>
+            {!caseItem?.submissionId && (
+              <p className="text-xs text-slate-500">No submission linked.</p>
+            )}
+            {caseItem?.submissionId && submissionLoading && (
+              <p className="text-xs text-slate-500">Loading submission…</p>
+            )}
+            {caseItem?.submissionId && submissionError && (
+              <p className="text-xs text-red-600">{submissionError}</p>
+            )}
+            {caseItem?.submissionId && submission && !submissionLoading && (
               <div className="space-y-2 text-sm">
                 {(submission.payload as any)?.practitionerName && (
                   <div className="flex justify-between">
@@ -117,13 +319,17 @@ export function CaseDetailsDrawer({ caseId, onClose }: CaseDetailsDrawerProps) {
                 <div className="flex justify-between">
                   <span className="text-slate-600">Type:</span>
                   <span className="text-slate-900 font-medium">
-                    {submission.kind === "csf_practitioner" ? "Practitioner CSF" : submission.kind === "csf_facility" ? "Hospital CSF" : submission.kind}
+                    {submission.csf_type === "csf_practitioner"
+                      ? "Practitioner CSF"
+                      : submission.csf_type === "csf_facility"
+                      ? "Hospital CSF"
+                      : submission.csf_type || "Submission"}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Submitted:</span>
                   <span className="text-slate-900">
-                    {new Date(submission.submittedAt).toLocaleString("en-US", {
+                    {new Date(submission.created_at || submission.submittedAt).toLocaleString("en-US", {
                       month: "short",
                       day: "numeric",
                       year: "numeric",
@@ -144,9 +350,46 @@ export function CaseDetailsDrawer({ caseId, onClose }: CaseDetailsDrawerProps) {
                     <span className="text-slate-900 font-mono">{(submission.payload as any).dea}</span>
                   </div>
                 )}
+                <div>
+                  <div className="font-semibold text-slate-700">Attachments</div>
+                  {attachmentsLoading && (
+                    <p className="text-xs text-slate-500">Loading attachments…</p>
+                  )}
+                  {attachmentsError && (
+                    <p className="text-xs text-red-600">{attachmentsError}</p>
+                  )}
+                  {!attachmentsLoading && !attachmentsError && attachments.length === 0 && (
+                    <p className="text-xs text-slate-500">No attachments.</p>
+                  )}
+                  {!attachmentsLoading && attachments.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {attachments.map((item: any) => (
+                        <li key={item.attachment_id} className="rounded border border-slate-100 bg-white p-2">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="text-sm font-semibold text-slate-700">
+                                {item.filename || "Attachment"}
+                              </div>
+                              <div className="text-[11px] text-slate-500">
+                                {item.content_type || "unknown"}
+                                {item.byte_size ? ` • ${item.byte_size} bytes` : ""}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleDownloadAttachment(item)}
+                              className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                              Download
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Timeline */}
           <div>
