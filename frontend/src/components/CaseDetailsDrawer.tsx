@@ -4,41 +4,159 @@
  */
 
 import { useState, useEffect } from "react";
-import type { WorkQueueItem, Submission } from "../types/workQueue";
-import type { AuditEvent } from "../types/audit";
-import { demoStore } from "../lib/demoStore";
+import type { AuditEvent, AuditAction } from "../types/audit";
+import { fetchVerifierCaseDetail, fetchVerifierCaseEvents, fetchVerifierCaseSubmission, type VerifierCase, type VerifierCaseEvent } from "../api/verifierCasesClient";
 import { Timeline } from "./Timeline";
-import { getStatusLabel, getStatusColor } from "../workflow/statusTransitions";
+import { getStatusLabel, getStatusColor, type WorkflowStatus } from "../workflow/statusTransitions";
 import { ragDetailsUrl } from "../lib/ragLink";
+import { formatAgeShort, getAgeMs } from "../workflow/sla";
 
 interface CaseDetailsDrawerProps {
   caseId: string | null;
+  refreshToken?: number;
   onClose: () => void;
 }
 
-export function CaseDetailsDrawer({ caseId, onClose }: CaseDetailsDrawerProps) {
-  const [caseItem, setCaseItem] = useState<WorkQueueItem | null>(null);
-  const [submission, setSubmission] = useState<Submission | null>(null);
+type DrawerCase = {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  status: WorkflowStatus;
+  priority: "High" | "Medium" | "Low";
+  priorityColor: string;
+  age: string;
+  submissionId?: string | null;
+  traceId?: string | null;
+};
+
+function normalizeStatus(status?: string | null): WorkflowStatus {
+  switch (status) {
+    case "approved":
+      return "approved";
+    case "rejected":
+    case "blocked":
+      return "blocked";
+    case "needs_info":
+    case "request_info":
+      return "request_info";
+    case "in_review":
+    case "needs_review":
+      return "needs_review";
+    case "new":
+    case "submitted":
+      return "submitted";
+    default:
+      return "needs_review";
+  }
+}
+
+function buildDrawerCase(caseRow: VerifierCase): DrawerCase {
+  const createdAt = caseRow.created_at || new Date().toISOString();
+  const title = caseRow.submission_summary?.submitter_name || caseRow.summary || `Case ${caseRow.case_id}`;
+  return {
+    id: caseRow.case_id,
+    title,
+    subtitle: caseRow.summary || null,
+    status: normalizeStatus(caseRow.status),
+    priority: "Medium",
+    priorityColor: "text-slate-600",
+    age: formatAgeShort(getAgeMs(createdAt)),
+    submissionId: caseRow.submission_id,
+    traceId: caseRow.submission_id,
+  };
+}
+
+function parsePayload(payload?: string | null): Record<string, any> | null {
+  if (!payload) return null;
+  try {
+    return JSON.parse(payload);
+  } catch {
+    return null;
+  }
+}
+
+function mapEventAction(eventType: string, payload: Record<string, any> | null): AuditAction {
+  if (eventType === "assigned") return "ASSIGNED";
+  if (eventType === "unassigned") return "UNASSIGNED";
+  if (eventType === "note") return "NOTE_ADDED";
+  if (eventType === "decision") {
+    const decisionType = payload?.decision?.type || payload?.decision?.status || payload?.decision_type;
+    if (decisionType === "approve" || payload?.status === "approved") return "APPROVED";
+    if (decisionType === "reject" || payload?.status === "rejected") return "BLOCKED";
+    if (decisionType === "request_info" || payload?.status === "needs_info") return "REQUEST_INFO";
+  }
+  if (eventType === "action") {
+    const action = payload?.action || payload?.status;
+    if (action === "approve" || action === "approved") return "APPROVED";
+    if (action === "reject" || action === "rejected") return "BLOCKED";
+    if (action === "needs_review" || action === "in_review") return "NEEDS_REVIEW";
+  }
+  return "NEEDS_REVIEW";
+}
+
+function mapVerifierEvent(event: VerifierCaseEvent, submissionId?: string | null): AuditEvent {
+  const payload = parsePayload(event.payload_json);
+  const action = mapEventAction(event.event_type, payload);
+  const actorName = payload?.actor || payload?.decision?.actor || "Verifier";
+  const message = payload?.reason || payload?.note || payload?.message || null;
+  return {
+    id: event.id,
+    caseId: event.case_id,
+    submissionId: submissionId || undefined,
+    actorRole: "verifier",
+    actorName,
+    action,
+    message: message || undefined,
+    createdAt: event.created_at,
+  };
+}
+
+export function CaseDetailsDrawer({ caseId, refreshToken, onClose }: CaseDetailsDrawerProps) {
+  const [caseItem, setCaseItem] = useState<DrawerCase | null>(null);
+  const [submission, setSubmission] = useState<any | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
 
   useEffect(() => {
     if (!caseId) return;
+    let isActive = true;
 
-    // Load case data
-    const workQueue = demoStore.getWorkQueue();
-    const item = workQueue.find((i) => i.id === caseId);
-    setCaseItem(item || null);
+    const loadDetail = async () => {
+      try {
+        const detail = await fetchVerifierCaseDetail(caseId);
+        if (!isActive) return;
+        const nextCase = buildDrawerCase(detail.case);
+        setCaseItem(nextCase);
 
-    // Load submission
-    if (item?.submissionId) {
-      const sub = demoStore.getSubmission(item.submissionId);
-      setSubmission(sub);
-    }
+        const events = await fetchVerifierCaseEvents(caseId);
+        if (!isActive) return;
+        setAuditEvents((events || []).map((evt) => mapVerifierEvent(evt, detail.case.submission_id)));
+      } catch (err) {
+        console.warn("[CaseDetailsDrawer] Failed to load case detail:", err);
+        if (isActive) {
+          setCaseItem(null);
+          setAuditEvents([]);
+        }
+      }
+    };
 
-    // Load audit events
-    const events = demoStore.getAuditEvents(caseId);
-    setAuditEvents(events);
-  }, [caseId]);
+    const loadSubmission = async () => {
+      try {
+        const detail = await fetchVerifierCaseSubmission(caseId);
+        if (!isActive) return;
+        setSubmission(detail || null);
+      } catch (err) {
+        console.warn("[CaseDetailsDrawer] Failed to load submission:", err);
+        if (isActive) setSubmission(null);
+      }
+    };
+
+    loadDetail();
+    loadSubmission();
+
+    return () => {
+      isActive = false;
+    };
+  }, [caseId, refreshToken]);
 
   if (!caseId) return null;
 
@@ -117,13 +235,17 @@ export function CaseDetailsDrawer({ caseId, onClose }: CaseDetailsDrawerProps) {
                 <div className="flex justify-between">
                   <span className="text-slate-600">Type:</span>
                   <span className="text-slate-900 font-medium">
-                    {submission.kind === "csf_practitioner" ? "Practitioner CSF" : submission.kind === "csf_facility" ? "Hospital CSF" : submission.kind}
+                    {submission.csf_type === "csf_practitioner"
+                      ? "Practitioner CSF"
+                      : submission.csf_type === "csf_facility"
+                      ? "Hospital CSF"
+                      : submission.csf_type || "Submission"}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Submitted:</span>
                   <span className="text-slate-900">
-                    {new Date(submission.submittedAt).toLocaleString("en-US", {
+                        {new Date(submission.created_at || submission.submittedAt).toLocaleString("en-US", {
                       month: "short",
                       day: "numeric",
                       year: "numeric",

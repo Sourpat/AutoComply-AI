@@ -6,22 +6,29 @@
  */
 
 import React from "react";
-import { demoStore } from "../../lib/demoStore";
-import type { WorkQueueItem as DemoWorkQueueItem } from "../../types/workQueue";
 import { isOverdue, formatAgeShort, formatDue, getSlaStatusColor } from "../../workflow/sla";
 
+export type WorkQueueListItem = {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  status: string;
+  priority: "high" | "medium" | "low" | string;
+  createdAt: string;
+  dueAt?: string;
+  assignedTo?: { name?: string | null } | string | null;
+};
+
 interface WorkQueueListPanelProps {
-  items: DemoWorkQueueItem[];
+  items: WorkQueueListItem[];
   selectedCaseId: string | null;
   onSelectCase: (caseId: string) => void;
-  showActions?: boolean;
 }
 
 export const WorkQueueListPanel: React.FC<WorkQueueListPanelProps> = ({
   items,
   selectedCaseId,
   onSelectCase,
-  showActions = false,
 }) => {
   if (items.length === 0) {
     return (
@@ -35,8 +42,8 @@ export const WorkQueueListPanel: React.FC<WorkQueueListPanelProps> = ({
     <div className="divide-y divide-slate-200">
       {items.map((item) => {
         const isSelected = item.id === selectedCaseId;
-        const overdueStatus = isOverdue(item.dueAt);
-        const slaColor = getSlaStatusColor(item.dueAt);
+        const overdueStatus = isOverdue(item.dueAt ?? undefined);
+        const slaColor = getSlaStatusColor(item.dueAt ?? undefined);
         const age = formatAgeShort(new Date(item.createdAt).getTime());
 
         return (
@@ -103,7 +110,7 @@ export const WorkQueueListPanel: React.FC<WorkQueueListPanelProps> = ({
                   {/* Assignee */}
                   {item.assignedTo ? (
                     <span className="text-slate-600">
-                      👤 {item.assignedTo.name}
+                      👤 {typeof item.assignedTo === "string" ? item.assignedTo : item.assignedTo?.name}
                     </span>
                   ) : (
                     <span className="text-slate-400 italic">Unassigned</span>

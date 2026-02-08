@@ -296,8 +296,6 @@
 
 ## P1 - High Priority (Do Next)
 
-
-
 ### T-016: Audit suite demo readiness
 **Status**: deferred
 **Assigned**: (none)
@@ -324,6 +322,14 @@
 ## Completed Tasks (Last 5)
 
 **Phase 8 Status**: DONE
+
+### Phase 6.1 — Verifier Console real cases
+**Completed**: 2026-02-07
+**Commit**: pending
+**Summary**: Replaced demoStore/workflowApi usage in Verifier Console with verifierCasesClient and refreshed drawer/actions to use real case data.
+**Verification**:
+- `cd frontend; $env:CI="1"; npm test -- --run`
+- `cd backend; C:/Python314/python.exe -m pytest -q`
 
 ### Phase 5.4 — Submission status lifecycle (submitter ↔ verifier)
 **Completed**: 2026-02-07
@@ -355,14 +361,6 @@
 **Summary**: Submitter submissions now create linked verifier cases with idempotency and smoke coverage.
 **Verification**:
 - `C:/Python314/python.exe -m pytest -q tests/test_submitter_to_verifier_flow.py`
-- `npm run build`
-
-### Phase 4.8 — Verifier smoke runner + demo script + RC Gate
-**Completed**: 2026-02-06
-**Commit**: a2711c0
-**Summary**: Added verifier smoke runner endpoint, demo script, and RC Gate coverage.
-**Verification**:
-- `C:/Python314/python.exe -m pytest -q tests/test_verifier_smoke_runner.py`
 - `npm run build`
 
 ---

@@ -36,6 +36,28 @@
 
 ## Decisions
 
+### [2026-02-07] Map verifier case statuses to console workflow labels
+
+**Context**: Verifier case APIs return statuses like `new`, `in_review`, `needs_info`, `approved`, and `rejected`, while Console UI components expect workflow labels (`submitted`, `needs_review`, `request_info`, `blocked`).
+
+**Decision**: Add a lightweight frontend mapping layer in the Verifier Console to translate verifier case statuses to existing UI workflow status labels.
+
+**Rationale**:
+- Keeps UI behavior and styling unchanged without backend contract changes
+- Allows action/decision handlers to map back to verifier endpoints cleanly
+
+**Alternatives Considered**:
+- Change backend to emit UI-specific statuses: rejected to keep API stable
+- Refactor UI to accept verifier statuses directly: rejected to minimize scope
+
+**Consequences**:
+- Positive: Minimal UI changes while preserving expected visuals
+- Neutral: Mapping logic must be maintained alongside status enums
+
+**Status**: Accepted
+**Related**:
+- Tasks: Phase 6.1 — Verifier Console real cases
+
 ### [2026-02-07] CI hotfix for verifier events + SLA dedupe
 
 **Context**: CI failures showed verifier event types mismatched expectations, event id type mismatches, missing events after bulk actions, and SLA runner emitting too many reminders.

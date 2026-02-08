@@ -3,20 +3,17 @@ import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import "./ConsoleDashboard.css";
 import { TraceReplayDrawer, TraceData, TraceStep } from "../components/TraceReplayDrawer";
 import { ApiRequestError, apiFetch } from "../lib/api";
-import { demoStore } from "../lib/demoStore";
 import * as submissionSelector from "../submissions/submissionStoreSelector";
 import type { SubmissionRecord } from "../submissions/submissionTypes";
 import { deleteSubmission, updateSubmission } from "../api/submissionsApi";
-import { listCases, getCaseInfoRequest, resubmitCase } from "../api/workflowApi";
+import { respondToSubmitterSubmission } from "../api/submitterApi";
 import { uploadEvidence, listEvidence, type EvidenceUploadItem, getEvidenceDownloadUrl } from "../api/evidenceApi";
-import type { WorkQueueItem as DemoWorkQueueItem } from "../types/workQueue";
 import { buildDecisionPacket } from "../utils/buildDecisionPacket";
 import { downloadJson } from "../utils/exportPacket";
 import { useRole } from "../context/RoleContext";
 import { canViewWorkQueue, canViewRecentDecisions, canClearDemoData, canSeedDemoData, getConsoleInstructions } from "../auth/permissions";
 import { CaseDetailsDrawer } from "../components/CaseDetailsDrawer";
 import { canTransition, getAllowedTransitions, type WorkflowStatus } from "../workflow/statusTransitions";
-import type { AuditAction } from "../types/audit";
 import { DEMO_VERIFIERS, getCurrentDemoUser, type DemoUser } from "../demo/users";
 import { getAgeMs, formatAgeShort, isOverdue, formatDue, getSlaStatusColor } from "../workflow/sla";
 import { viewStore } from "../lib/viewStore";
@@ -29,6 +26,16 @@ import { getAuthHeaders } from "../lib/authHeaders";
 import { getHealthFull, getHealthz, getSigningStatus, getSmoke, getKbStats, postDemoReset } from "../api/demoOps";
 import { clearHealthCheckCache, getWorkflowStore } from "../workflow/workflowStoreSelector";
 import { ragDetailsUrl } from "../lib/ragLink";
+import {
+  bulkVerifierCaseAction,
+  bulkVerifierCaseAssign,
+  decideVerifierCase,
+  fetchVerifierCases,
+  getDecisionPacket,
+  postVerifierCaseAction,
+  setVerifierCaseAssignment,
+  type VerifierCase,
+} from "../api/verifierCasesClient";
 
 type DecisionStatus = "ok_to_ship" | "blocked" | "needs_review";
 type ActiveSection = "dashboard" | "csf" | "licenses" | "orders" | "settings" | "about";
@@ -280,7 +287,7 @@ interface WorkQueueItem {
   policySafeFailure?: boolean;
   policySafeFailureLabel?: string;
   // Fields from API CaseRecord - no need to look up demoStore
-  status: 'new' | 'in_review' | 'needs_info' | 'approved' | 'blocked' | 'closed';
+  status: WorkflowStatus;
   assignedTo: string | null;
   decisionType: string;
   dueAt: string;
@@ -289,11 +296,79 @@ interface WorkQueueItem {
   sla_status?: 'ok' | 'warning' | 'breach';
 }
 
-// Seed demo data on first load
-if (!demoStore.hasData()) {
-  console.log('[ConsoleDashboard] First load - seeding demo data');
-  demoStore.seedDemoDataIfEmpty();
-}
+const normalizeVerifierStatus = (status?: string | null): WorkflowStatus => {
+  switch (status) {
+    case "approved":
+      return "approved";
+    case "rejected":
+    case "blocked":
+      return "blocked";
+    case "needs_info":
+    case "request_info":
+      return "request_info";
+    case "in_review":
+    case "needs_review":
+      return "needs_review";
+    case "new":
+    case "submitted":
+      return "submitted";
+    default:
+      return "needs_review";
+  }
+};
+
+const mapVerifierCaseToWorkQueueItem = (
+  caseRecord: VerifierCase,
+  policySafeFailure?: { policy_action?: string; summary?: string },
+  override?: PolicyOverrideDetail
+): WorkQueueItem => {
+  const traceId = caseRecord.submission_id || "";
+  let safeFailureLabel: string | undefined;
+  let overrideLabel: string | undefined;
+
+  if (policySafeFailure?.policy_action === "block") {
+    safeFailureLabel = "Policy blocked AI";
+  } else if (policySafeFailure?.policy_action === "require_human") {
+    safeFailureLabel = "Policy forced review";
+  } else if (policySafeFailure?.policy_action === "escalate") {
+    safeFailureLabel = "Policy escalated AI";
+  } else if (policySafeFailure) {
+    safeFailureLabel = "Policy override";
+  }
+
+  if (override?.override_action === "approve") {
+    overrideLabel = "Override: approve";
+  } else if (override?.override_action === "block") {
+    overrideLabel = "Override: block";
+  } else if (override?.override_action === "require_review") {
+    overrideLabel = "Override: review";
+  } else if (override) {
+    overrideLabel = "Override applied";
+  }
+
+  return {
+    id: caseRecord.case_id,
+    trace_id: traceId,
+    facility: caseRecord.submission_summary?.submitter_name || caseRecord.summary || caseRecord.case_id,
+    reason: caseRecord.summary || "Submission received",
+    age: formatAgeShort(getAgeMs(caseRecord.created_at)),
+    priority: "Medium",
+    priorityColor: "text-slate-600",
+    policyOverride: Boolean(override),
+    policyOverrideLabel: overrideLabel,
+    policySafeFailure: Boolean(policySafeFailure),
+    policySafeFailureLabel: safeFailureLabel,
+    status: normalizeVerifierStatus(caseRecord.status),
+    assignedTo: caseRecord.assignee,
+    decisionType: caseRecord.submission_id || "csf",
+    dueAt: caseRecord.created_at,
+    createdAt: caseRecord.created_at,
+    age_hours: caseRecord.submission_summary?.created_at
+      ? (Date.now() - Date.parse(caseRecord.submission_summary.created_at)) / 36e5
+      : undefined,
+    sla_status: undefined,
+  };
+};
 
 const MOCK_DECISIONS: RecentDecisionRow[] = [
   {
@@ -943,39 +1018,29 @@ const ConsoleDashboard: React.FC = () => {
   const fetchCaseRequestsForSubmissions = async (submissionList: SubmissionRecord[]) => {
     try {
       // Get all cases for these submissions
-      const allCases = await listCases({ limit: 1000 });
+      const allCases = await fetchVerifierCases({ limit: 1000, offset: 0 });
       const submissionIdSet = new Set(submissionList.map(s => s.id));
-      const relevantCases = allCases.items.filter(c => c.submissionId && submissionIdSet.has(c.submissionId));
+      const relevantCases = allCases.items.filter(c => c.submission_id && submissionIdSet.has(c.submission_id));
       const nextCaseMap = new Map<string, string>();
       const nextStatusMap = new Map<string, string>();
+      const requestsMap = new Map();
       relevantCases.forEach((c) => {
-        if (c.submissionId) {
-          nextCaseMap.set(c.submissionId, c.id);
-          nextStatusMap.set(c.submissionId, c.status);
+        if (!c.submission_id) return;
+        nextCaseMap.set(c.submission_id, c.case_id);
+        nextStatusMap.set(c.submission_id, normalizeVerifierStatus(c.status));
+        if (c.request_info?.message) {
+          requestsMap.set(c.submission_id, {
+            caseId: c.case_id,
+            request: {
+              message: c.request_info.message,
+              requiredFields: c.request_info.required_fields || undefined,
+            },
+          });
         }
       });
       setCaseMap(nextCaseMap);
       setCaseStatusMap(nextStatusMap);
-      
-      // Fetch open requests for each case
-      const requestsMap = new Map();
-      await Promise.all(
-        relevantCases.map(async (caseItem) => {
-          try {
-            const result = await getCaseInfoRequest(caseItem.id);
-            if (result.request) {
-              requestsMap.set(caseItem.submissionId, {
-                caseId: caseItem.id,
-                request: result.request,
-              });
-            }
-          } catch (err) {
-            // Ignore errors for individual requests
-            console.warn(`[ConsoleDashboard] Failed to fetch request for case ${caseItem.id}:`, err);
-          }
-        })
-      );
-      
+
       setCaseRequests(requestsMap);
       await fetchEvidenceForCases(nextCaseMap);
       console.log('[ConsoleDashboard] Loaded case requests:', requestsMap.size);
@@ -1160,16 +1225,15 @@ const ConsoleDashboard: React.FC = () => {
   };
   
   // Phase 4.1: Handle resubmit after editing
-  const handleResubmit = async (submissionId: string, caseId: string) => {
+  const handleResubmit = async (submissionId: string) => {
     const caseStatus = caseStatusMap.get(submissionId);
     if (caseStatus === 'approved' || caseStatus === 'blocked' || caseStatus === 'closed') {
       alert('This submission is finalized and cannot be resubmitted.');
       return;
     }
     try {
-      await resubmitCase(caseId, {
-        submissionId: submissionId,
-        note: 'Addressed requested information',
+      await respondToSubmitterSubmission(submissionId, {
+        message: 'Addressed requested information',
       });
       
       // Clear from session storage
@@ -1179,9 +1243,6 @@ const ConsoleDashboard: React.FC = () => {
       await refreshSubmissions();
       
       // Dispatch data-changed event
-      window.dispatchEvent(new CustomEvent('acai:data-changed', {
-        detail: { type: 'case', action: 'resubmit', id: caseId }
-      }));
       window.dispatchEvent(new CustomEvent('acai:data-changed', {
         detail: { type: 'submission', action: 'resubmit', id: submissionId }
       }));
@@ -1227,6 +1288,7 @@ const ConsoleDashboard: React.FC = () => {
   };
   
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [caseDetailRefreshToken, setCaseDetailRefreshToken] = useState(0);
   const [requestInfoCaseId, setRequestInfoCaseId] = useState<string | null>(null);
   const [requestInfoMessage, setRequestInfoMessage] = useState("");
   const [queueFilter, setQueueFilter] = useState<"all" | "mine" | "unassigned" | "overdue">("all");
@@ -1286,8 +1348,8 @@ const ConsoleDashboard: React.FC = () => {
   const loadWorkQueue = async () => {
     setIsLoading(true);
     try {
-      // Fetch from API (excludes cancelled by default, ordered by created_at DESC)
-      const response = await listCases({ limit: 1000 });
+      // Fetch from Verifier API (ordered by created_at DESC)
+      const response = await fetchVerifierCases({ limit: 1000, offset: 0 });
 
       let policySafeFailuresByTrace = new Map<string, { policy_action?: string; summary?: string }>();
       let policyOverridesBySubmission = new Map<string, PolicyOverrideDetail>();
@@ -1311,56 +1373,14 @@ const ConsoleDashboard: React.FC = () => {
         console.warn("[ConsoleDashboard] Failed to load policy overrides:", err);
       }
       
-      // Map CaseRecord[] to WorkQueueItem[] display format - includes all fields, no need for demoStore lookup
+      // Map verifier cases to WorkQueueItem[] display format
       const displayItems: WorkQueueItem[] = response.items.map(caseRecord => {
-        const traceId = caseRecord.submissionId || '';
+        const traceId = caseRecord.submission_id || '';
         const safeFailure = policySafeFailuresByTrace.get(traceId);
-        const override = caseRecord.submissionId
-          ? policyOverridesBySubmission.get(caseRecord.submissionId)
+        const override = caseRecord.submission_id
+          ? policyOverridesBySubmission.get(caseRecord.submission_id)
           : undefined;
-        let safeFailureLabel: string | undefined;
-        let overrideLabel: string | undefined;
-        if (safeFailure?.policy_action === "block") {
-          safeFailureLabel = "Policy blocked AI";
-        } else if (safeFailure?.policy_action === "require_human") {
-          safeFailureLabel = "Policy forced review";
-        } else if (safeFailure?.policy_action === "escalate") {
-          safeFailureLabel = "Policy escalated AI";
-        } else if (safeFailure) {
-          safeFailureLabel = "Policy override";
-        }
-
-        if (override?.override_action === "approve") {
-          overrideLabel = "Override: approve";
-        } else if (override?.override_action === "block") {
-          overrideLabel = "Override: block";
-        } else if (override?.override_action === "require_review") {
-          overrideLabel = "Override: review";
-        } else if (override) {
-          overrideLabel = "Override applied";
-        }
-
-        return {
-        id: caseRecord.id, // STABLE KEY - use case.id not index
-        trace_id: traceId,
-        facility: caseRecord.title,
-        reason: caseRecord.summary || '',
-        age: formatAgeShort(new Date(caseRecord.createdAt)),
-        priority: 'Medium', // Cases don't have priority field yet
-        priorityColor: 'text-slate-600',
-        policyOverride: Boolean(override),
-        policyOverrideLabel: overrideLabel,
-        policySafeFailure: Boolean(safeFailure),
-        policySafeFailureLabel: safeFailureLabel,
-        // API fields - prevents need to look up demoStore
-        status: caseRecord.status,
-        assignedTo: caseRecord.assignedTo,
-        decisionType: caseRecord.decisionType,
-        dueAt: caseRecord.dueAt,
-        createdAt: caseRecord.createdAt,
-        age_hours: caseRecord.age_hours,
-        sla_status: caseRecord.sla_status
-      };
+        return mapVerifierCaseToWorkQueueItem(caseRecord, safeFailure, override);
       });
       
       // Ensure no duplicates by using Map with id as key
@@ -1472,72 +1492,60 @@ const ConsoleDashboard: React.FC = () => {
   };
 
   // Status transition handlers
-  const handleStatusChange = (caseId: string, newStatus: WorkflowStatus) => {
-    const item = demoStore.getWorkQueue().find((i) => i.id === caseId);
+  const handleStatusChange = async (caseId: string, newStatus: WorkflowStatus) => {
+    const item = workQueueItems.find((i) => i.id === caseId);
     if (!item) return;
 
     // Check if transition is allowed
-    if (!canTransition(item.status as WorkflowStatus, newStatus, role)) {
+    if (!canTransition(item.status, newStatus, role)) {
       alert(`Cannot transition from ${item.status} to ${newStatus}`);
       return;
     }
 
-    // Update work queue item status
-    demoStore.updateWorkQueueItem(caseId, { status: newStatus });
-
-    // Update submission status if linked
-    if (item.submissionId) {
-      const submissions = demoStore.getSubmissions();
-      const subIndex = submissions.findIndex((s) => s.id === item.submissionId);
-      if (subIndex !== -1) {
-        submissions[subIndex].status = newStatus;
-        demoStore.saveSubmissions(submissions);
-      }
-    }
-
-    // Add audit event
-    const actionMap: Record<WorkflowStatus, AuditAction> = {
-      approved: "APPROVED",
-      blocked: "BLOCKED",
-      needs_review: "NEEDS_REVIEW",
-      request_info: "REQUEST_INFO",
-      submitted: "SUBMITTED",
+    const actionMap: Record<WorkflowStatus, "approve" | "reject" | "needs_review" | null> = {
+      approved: "approve",
+      blocked: "reject",
+      needs_review: "needs_review",
+      request_info: null,
+      submitted: null,
     };
 
-    demoStore.addAuditEvent({
-      caseId,
-      submissionId: item.submissionId,
-      actorRole: role,
-      actorName: role === "admin" ? "Admin" : "Verifier",
-      action: actionMap[newStatus],
-      message: newStatus === "approved" ? "All requirements met" : 
-               newStatus === "blocked" ? "Missing required information" :
-               newStatus === "needs_review" ? "Flagged for manual review" : undefined,
-    });
+    const action = actionMap[newStatus];
+    if (!action) return;
 
-    // Refresh work queue
-    refreshWorkQueue();
+    try {
+      await postVerifierCaseAction(caseId, {
+        action,
+        actor: currentUser?.name || "Verifier",
+        reason: newStatus === "blocked" ? "Marked blocked by verifier" : undefined,
+      });
+      await refreshWorkQueue();
+      bumpCaseDetail();
+    } catch (err) {
+      console.error("[ConsoleDashboard] Failed to update status:", err);
+      setError(err instanceof Error ? err.message : "Failed to update status");
+    }
   };
 
-  const handleRequestInfo = () => {
+  const handleRequestInfo = async () => {
     if (!requestInfoCaseId) return;
+    const reason = requestInfoMessage.trim() || "Please provide the requested information.";
 
-    handleStatusChange(requestInfoCaseId, "request_info");
-
-    // Add note with request message
-    if (requestInfoMessage.trim()) {
-      demoStore.addAuditEvent({
-        caseId: requestInfoCaseId,
-        submissionId: demoStore.getWorkQueue().find((i) => i.id === requestInfoCaseId)?.submissionId,
-        actorRole: role,
-        actorName: role === "admin" ? "Admin" : "Verifier",
-        action: "REQUEST_INFO",
-        message: requestInfoMessage,
+    try {
+      await decideVerifierCase(requestInfoCaseId, {
+        type: "request_info",
+        reason,
+        actor: currentUser?.name || "Verifier",
       });
+      await refreshWorkQueue();
+      bumpCaseDetail();
+    } catch (err) {
+      console.error("[ConsoleDashboard] Failed to request info:", err);
+      setError(err instanceof Error ? err.message : "Failed to request info");
+    } finally {
+      setRequestInfoCaseId(null);
+      setRequestInfoMessage("");
     }
-
-    setRequestInfoCaseId(null);
-    setRequestInfoMessage("");
   };
 
   // Step 2.3: Load saved views on mount
@@ -1657,6 +1665,10 @@ const ConsoleDashboard: React.FC = () => {
     await loadWorkQueue();
   };
 
+  const bumpCaseDetail = () => {
+    setCaseDetailRefreshToken((prev) => prev + 1);
+  };
+
   const handleDemoReset = async () => {
     if (isDemoResetting) return;
     setIsDemoResetting(true);
@@ -1681,20 +1693,36 @@ const ConsoleDashboard: React.FC = () => {
   };
 
   // Assignment handlers
-  const handleAssign = (caseId: string, user: DemoUser) => {
-    demoStore.assignWorkQueueItem(
-      caseId,
-      { id: user.id, name: user.name },
-      currentUser?.name || "Admin"
-    );
-    setAssignMenuOpen(null);
-    refreshWorkQueue();
+  const handleAssign = async (caseId: string, user: DemoUser) => {
+    try {
+      await setVerifierCaseAssignment(caseId, {
+        assignee: user.id,
+        actor: currentUser?.name || "Admin",
+      });
+      await refreshWorkQueue();
+      bumpCaseDetail();
+    } catch (err) {
+      console.error("[ConsoleDashboard] Failed to assign case:", err);
+      setError(err instanceof Error ? err.message : "Failed to assign case");
+    } finally {
+      setAssignMenuOpen(null);
+    }
   };
 
-  const handleUnassign = (caseId: string) => {
-    demoStore.unassignWorkQueueItem(caseId, currentUser?.name || "Admin");
-    setAssignMenuOpen(null);
-    refreshWorkQueue();
+  const handleUnassign = async (caseId: string) => {
+    try {
+      await setVerifierCaseAssignment(caseId, {
+        assignee: null,
+        actor: currentUser?.name || "Admin",
+      });
+      await refreshWorkQueue();
+      bumpCaseDetail();
+    } catch (err) {
+      console.error("[ConsoleDashboard] Failed to unassign case:", err);
+      setError(err instanceof Error ? err.message : "Failed to unassign case");
+    } finally {
+      setAssignMenuOpen(null);
+    }
   };
 
   // Selection helpers
@@ -1722,154 +1750,114 @@ const ConsoleDashboard: React.FC = () => {
   const isSomeSelected = selectedIds.size > 0 && !isAllVisibleSelected;
 
   // Bulk operations
-  const handleBulkAssign = (user: DemoUser | null) => {
-    let success = 0;
-    selectedIds.forEach((caseId) => {
-      if (user) {
-        demoStore.assignWorkQueueItem(caseId, { id: user.id, name: user.name }, currentUser?.name || "Admin");
-      } else {
-        demoStore.unassignWorkQueueItem(caseId, currentUser?.name || "Admin");
-      }
-      success++;
-    });
-    setBulkActionOpen(null);
-    refreshWorkQueue();
-    clearSelection();
-    setBulkActionSummary({ success, failed: 0, errors: [] });
-    setTimeout(() => setBulkActionSummary(null), 5000);
+  const handleBulkAssign = async (user: DemoUser | null) => {
+    const caseIds = Array.from(selectedIds);
+    if (caseIds.length === 0) return;
+
+    try {
+      const response = await bulkVerifierCaseAssign({
+        case_ids: caseIds,
+        assignee: user ? user.id : null,
+        actor: currentUser?.name || "Admin",
+      });
+      const errors = response.failures.map((f) => `${f.case_id}: ${f.reason}`);
+      setBulkActionSummary({ success: response.updated_count, failed: response.failures.length, errors });
+      await refreshWorkQueue();
+      bumpCaseDetail();
+    } catch (err) {
+      setBulkActionSummary({
+        success: 0,
+        failed: caseIds.length,
+        errors: [err instanceof Error ? err.message : "Bulk assignment failed"],
+      });
+    } finally {
+      setBulkActionOpen(null);
+      clearSelection();
+      setTimeout(() => setBulkActionSummary(null), 5000);
+    }
   };
 
-  const handleBulkStatusChange = (newStatus: WorkflowStatus) => {
-    let success = 0;
-    let failed = 0;
-    const errors: string[] = [];
+  const handleBulkStatusChange = async (newStatus: WorkflowStatus) => {
+    const actionMap: Record<WorkflowStatus, "approve" | "reject" | "needs_review" | null> = {
+      approved: "approve",
+      blocked: "reject",
+      needs_review: "needs_review",
+      request_info: null,
+      submitted: null,
+    };
+    const action = actionMap[newStatus];
+    if (!action) return;
 
-    selectedIds.forEach((caseId) => {
-      const item = demoStore.getWorkQueue().find((i) => i.id === caseId);
-      if (!item) return;
+    const caseIds = Array.from(selectedIds);
+    if (caseIds.length === 0) return;
 
-      // Check transition validity
-      if (!canTransition(item.status as WorkflowStatus, newStatus, role)) {
-        failed++;
-        errors.push(`${item.title}: Cannot transition from ${item.status} to ${newStatus}`);
-        return;
-      }
-
-      // Update status
-      demoStore.updateWorkQueueItem(caseId, { status: newStatus });
-
-      // Update linked submission
-      if (item.submissionId) {
-        const submissions = demoStore.getSubmissions();
-        const subIndex = submissions.findIndex((s) => s.id === item.submissionId);
-        if (subIndex !== -1) {
-          submissions[subIndex].status = newStatus;
-          demoStore.saveSubmissions(submissions);
-        }
-      }
-
-      // Add audit event
-      const actionMap: Record<WorkflowStatus, AuditAction> = {
-        approved: "APPROVED",
-        blocked: "BLOCKED",
-        needs_review: "NEEDS_REVIEW",
-        request_info: "REQUEST_INFO",
-        submitted: "SUBMITTED",
-      };
-
-      demoStore.addAuditEvent({
-        caseId,
-        submissionId: item.submissionId,
-        actorRole: role,
-        actorName: currentUser?.name || "Admin",
-        action: actionMap[newStatus],
-        message: `Bulk status change to ${newStatus}`,
+    try {
+      const response = await bulkVerifierCaseAction({
+        case_ids: caseIds,
+        action,
+        actor: currentUser?.name || "Admin",
+        reason: `Bulk status change to ${newStatus}`,
       });
-
-      success++;
-    });
-
-    setBulkActionOpen(null);
-    refreshWorkQueue();
-    clearSelection();
-    setBulkActionSummary({ success, failed, errors });
-    setTimeout(() => setBulkActionSummary(null), 5000);
+      const errors = response.failures.map((f) => `${f.case_id}: ${f.reason}`);
+      setBulkActionSummary({ success: response.updated_count, failed: response.failures.length, errors });
+      await refreshWorkQueue();
+      bumpCaseDetail();
+    } catch (err) {
+      setBulkActionSummary({
+        success: 0,
+        failed: caseIds.length,
+        errors: [err instanceof Error ? err.message : "Bulk status change failed"],
+      });
+    } finally {
+      setBulkActionOpen(null);
+      clearSelection();
+      setTimeout(() => setBulkActionSummary(null), 5000);
+    }
   };
 
-  const handleBulkRequestInfo = () => {
+  const handleBulkRequestInfo = async () => {
+    const caseIds = Array.from(selectedIds);
+    if (caseIds.length === 0) return;
+
     let success = 0;
-    let failed = 0;
     const errors: string[] = [];
+    const reason = bulkRequestInfoMessage || "Please provide the following missing information:";
 
-    selectedIds.forEach((caseId) => {
-      const item = demoStore.getWorkQueue().find((i) => i.id === caseId);
-      if (!item) return;
-
-      // Check if transition to request_info is allowed
-      if (!canTransition(item.status as WorkflowStatus, "request_info", role)) {
-        failed++;
-        errors.push(`${item.title}: Cannot request info from ${item.status} state`);
-        return;
+    for (const caseId of caseIds) {
+      try {
+        await decideVerifierCase(caseId, {
+          type: "request_info",
+          reason,
+          actor: currentUser?.name || "Admin",
+        });
+        success++;
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : `Request info failed for ${caseId}`);
       }
-
-      // Update status
-      demoStore.updateWorkQueueItem(caseId, { status: "request_info" });
-
-      // Update linked submission
-      if (item.submissionId) {
-        const submissions = demoStore.getSubmissions();
-        const subIndex = submissions.findIndex((s) => s.id === item.submissionId);
-        if (subIndex !== -1) {
-          submissions[subIndex].status = "request_info";
-          demoStore.saveSubmissions(submissions);
-        }
-      }
-
-      // Add audit event
-      demoStore.addAuditEvent({
-        caseId,
-        submissionId: item.submissionId,
-        actorRole: role,
-        actorName: currentUser?.name || "Admin",
-        action: "REQUEST_INFO",
-        message: bulkRequestInfoMessage || "Please provide the following missing information:",
-      });
-
-      success++;
-    });
+    }
 
     setShowBulkRequestInfoModal(false);
     setBulkRequestInfoMessage("");
-    refreshWorkQueue();
+    await refreshWorkQueue();
+    bumpCaseDetail();
     clearSelection();
-    setBulkActionSummary({ success, failed, errors });
+    setBulkActionSummary({ success, failed: errors.length, errors });
     setTimeout(() => setBulkActionSummary(null), 5000);
   };
 
   const handleBulkExport = async () => {
     const packets: any[] = [];
     let success = 0;
+    const errors: string[] = [];
 
     for (const caseId of Array.from(selectedIds)) {
-      const item = demoStore.getWorkQueue().find((i) => i.id === caseId);
-      if (!item || !item.submissionId) continue;
-
-      const submission = demoStore.getSubmission(item.submissionId);
-      if (!submission) continue;
-
-      const packet = buildDecisionPacket(
-        submission.decisionTrace || {},
-        submission.payload || {},
-        {
-          submission_id: submission.id,
-          trace_id: submission.traceId || "",
-          tenant: submission.tenantId || "demo",
-          csf_type: submission.csfType || submission.kind,
-        }
-      );
-
-      packets.push(packet);
-      success++;
+      try {
+        const packet = await getDecisionPacket(caseId, true);
+        packets.push(packet);
+        success++;
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : `Failed to export ${caseId}`);
+      }
     }
 
     // Download combined JSON file
@@ -1882,7 +1870,7 @@ const ConsoleDashboard: React.FC = () => {
       };
 
       downloadJson(combined, `bulk-export-${packets.length}-packets-${Date.now()}.json`);
-      setBulkActionSummary({ success, failed: 0, errors: [] });
+      setBulkActionSummary({ success, failed: errors.length, errors });
       setTimeout(() => setBulkActionSummary(null), 5000);
     }
 
@@ -2001,6 +1989,7 @@ const ConsoleDashboard: React.FC = () => {
       />
       <CaseDetailsDrawer
         caseId={selectedCaseId}
+        refreshToken={caseDetailRefreshToken}
         onClose={() => setSelectedCaseId(null)}
       />
       {/* Sidebar */}
@@ -3139,7 +3128,7 @@ const ConsoleDashboard: React.FC = () => {
                                   1. Edit Submission
                                 </button>
                                 <button
-                                  onClick={() => handleResubmit(submission.id, requestInfo.caseId)}
+                                  onClick={() => handleResubmit(submission.id)}
                                   disabled={isFinalDecision}
                                   className={`rounded-lg px-3 py-1.5 text-xs font-medium text-white ${
                                     isFinalDecision ? 'bg-slate-300 cursor-not-allowed' : 'bg-amber-600 hover:bg-amber-700'
